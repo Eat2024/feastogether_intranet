@@ -1,0 +1,67 @@
+import type { EFormDoc, Employee } from "./types";
+
+const CREATORS = {
+  pinyu: { name: "林品妤", employeeNo: "10230156" },
+  boyd: { name: "陳柏丞", employeeNo: "10180423" },
+  chris: { name: "黃啟軒", employeeNo: "10210788" },
+} satisfies Record<string, Employee>;
+
+// 假資料，串接 API 前供畫面呈現用
+export const MOCK_FORMS: EFormDoc[] = [
+  {
+    id: "f1",
+    name: "2026 年度員工誠信聲明書",
+    docNumber: "ES-2026-0012",
+    docType: "online",
+    status: "active",
+    startAt: "2026-08-20",
+    endAt: "2026-10-31",
+    signers: [
+      { id: "u1", name: "許婷惠", status: "signed", signedAt: "2026-08-21" },
+      { id: "u2", name: "徐瑩珊", status: "signed", signedAt: "2026-08-22" },
+      { id: "u3", name: "李秉彥", status: "pending" },
+      { id: "u4", name: "陳韋齊", status: "pending" },
+    ],
+    createdBy: CREATORS.pinyu,
+  },
+  {
+    id: "f2",
+    name: "職場不法侵害防治教育訓練簽到",
+    docNumber: null,
+    docType: "online",
+    status: "draft",
+    startAt: null,
+    endAt: null,
+    signers: [],
+    createdBy: CREATORS.pinyu,
+  },
+  {
+    id: "f3",
+    name: "2025 年度資訊安全承諾書",
+    docNumber: "ES-2025-0087",
+    docType: "upload",
+    status: "active",
+    startAt: "2025-11-01",
+    endAt: "2025-12-31",
+    signers: [
+      { id: "u3", name: "李秉彥", status: "signed", signedAt: "2025-11-03" },
+      { id: "u4", name: "陳韋齊", status: "signed", signedAt: "2025-11-04" },
+      { id: "u5", name: "陳柏丞", status: "signed", signedAt: "2025-11-05" },
+    ],
+    createdBy: CREATORS.boyd,
+  },
+  {
+    id: "f4",
+    name: "供應商保密協議（NDA）",
+    docNumber: "ES-2026-0005",
+    docType: "upload",
+    status: "stopped",
+    startAt: "2026-03-01",
+    endAt: "2026-04-15",
+    signers: [
+      { id: "u7", name: "黃啟軒", status: "signed", signedAt: "2026-03-02" },
+      { id: "u1", name: "許婷惠", status: "pending" },
+    ],
+    createdBy: CREATORS.chris,
+  },
+];

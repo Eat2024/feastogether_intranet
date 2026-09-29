@@ -6,8 +6,12 @@ export type FormStatus = "draft" | "active" | "completed" | "stopped";
 export type Signer = {
   id: string;
   name: string;
+  /** 八碼員工編號 */
+  employeeNo: string;
   status: "pending" | "signed";
   signedAt?: string;
+  /** 已被提醒的次數 */
+  notifyCount?: number;
 };
 
 export type Employee = {

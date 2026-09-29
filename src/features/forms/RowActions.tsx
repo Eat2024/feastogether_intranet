@@ -10,14 +10,13 @@ import DeleteFormButton from './DeleteFormButton';
 import NotifySignersButton from './NotifySignersDialog';
 import ViewSignProgressButton from './SignProgressDialog';
 import StopSigningButton from './StopSigningButton';
-import { deriveStatus, signedCount } from './status';
+import { deriveStatus, pendingCount, signedCount } from './status';
 import type { EFormDoc } from './types';
 
 // 操作按鈕一律全部列出、順序固定，依狀態停用（可操作為 info 色、停止簽署為 error 色，停用為灰）；規則沿用 req_doc/forms-admin.html
 export default function RowActions({ form }: { form: EFormDoc }) {
   const status = deriveStatus(form);
   const signed = signedCount(form);
-  const total = form.signers.length;
 
   return (
     <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -30,7 +29,7 @@ export default function RowActions({ form }: { form: EFormDoc }) {
       <ViewSignProgressButton form={form} disabled={status === 'draft'} />
       <NotifySignersButton
         form={form}
-        disabled={status !== 'active' || total - signed === 0}
+        disabled={status !== 'active' || pendingCount(form) === 0}
       />
       <TooltipIconButton
         label="編輯"

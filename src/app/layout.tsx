@@ -21,7 +21,7 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "電子簽核",
+  title: "電子簽署",
   description: "饗賓內部電子簽服務",
 };
 

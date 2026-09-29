@@ -8,8 +8,11 @@ export type Signer = {
   name: string;
   /** 八碼員工編號 */
   employeeNo: string;
-  status: "pending" | "signed";
+  status: "pending" | "signed" | "rejected";
   signedAt?: string;
+  rejectedAt?: string;
+  /** 拒絕原因（選填） */
+  rejectReason?: string;
   /** 已被提醒的次數 */
   notifyCount?: number;
 };

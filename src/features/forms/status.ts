@@ -17,10 +17,15 @@ export function signedCount(form: EFormDoc) {
   return form.signers.filter((s) => s.status === "signed").length;
 }
 
+/** 尚未回應（未簽署也未拒絕）的人數 */
+export function pendingCount(form: EFormDoc) {
+  return form.signers.filter((s) => s.status === "pending").length;
+}
+
+// 有人拒絕不影響其他人簽署；所有簽署人都已回應（簽署或拒絕）即視為已完成
 export function deriveStatus(form: EFormDoc): FormStatus {
   if (form.status !== "active") return form.status;
-  const total = form.signers.length;
-  return total > 0 && signedCount(form) === total ? "completed" : "active";
+  return form.signers.length > 0 && pendingCount(form) === 0 ? "completed" : "active";
 }
 
 export function formatRange(start: string | null, end: string | null) {

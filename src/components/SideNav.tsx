@@ -40,7 +40,7 @@ export default function SideNav() {
     >
       <Toolbar>
         <Typography variant="sectionTitle" component="div" noWrap sx={{ color: "common.white" }}>
-          電子簽核
+          電子簽署
         </Typography>
       </Toolbar>
       <List component="nav" sx={{ px: 1 }}>

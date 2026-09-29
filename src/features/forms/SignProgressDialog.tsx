@@ -16,19 +16,27 @@ import { SignerList, SignerRow } from './SignerList';
 import { signedCount } from './status';
 import type { EFormDoc, Signer } from './types';
 
+const SIGN_STATUS_TEXT: Record<Signer['status'], (s: Signer) => string> = {
+  signed: (s) => `已簽署・${s.signedAt}`,
+  rejected: (s) => `已拒絕・${s.rejectedAt}`,
+  pending: () => '待簽署',
+};
+
+// success／error 主色白底對比不足，文字用 dark
+const SIGN_STATUS_COLOR: Record<Signer['status'], string> = {
+  signed: 'success.dark',
+  rejected: 'error.dark',
+  pending: 'text.secondary',
+};
+
 function SignStatus({ signer }: { signer: Signer }) {
-  const signed = signer.status === 'signed';
   return (
-    // success 主色白底對比不足，文字用 success.dark
     <Typography
       variant="content"
       component="span"
-      sx={{
-        color: signed ? 'success.dark' : 'text.secondary',
-        whiteSpace: 'nowrap',
-      }}
+      sx={{ color: SIGN_STATUS_COLOR[signer.status], whiteSpace: 'nowrap' }}
     >
-      {signed ? `已簽署・${signer.signedAt}` : '待簽署'}
+      {SIGN_STATUS_TEXT[signer.status](signer)}
     </Typography>
   );
 }

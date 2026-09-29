@@ -5,6 +5,7 @@
 import type { ReactNode } from "react";
 import IconButton, { type IconButtonProps } from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
+import NextLink from "next/link";
 
 type TooltipIconButtonProps = {
   /** Tooltip 文字，同時作為 aria-label */
@@ -12,7 +13,9 @@ type TooltipIconButtonProps = {
   icon: ReactNode;
   color?: IconButtonProps["color"];
   disabled?: boolean;
-  onClick?: IconButtonProps["onClick"];
+  onClick?: () => void;
+  /** 連結目的地（以 Next.js Link 導頁；停用時不帶連結） */
+  href?: string;
 };
 
 export default function TooltipIconButton({
@@ -21,20 +24,34 @@ export default function TooltipIconButton({
   color = "default",
   disabled,
   onClick,
+  href,
 }: TooltipIconButtonProps) {
   return (
     <Tooltip title={label}>
       {/* 停用的按鈕不會觸發滑鼠事件，外包 span 讓 Tooltip 仍可顯示 */}
       <span>
-        <IconButton
-          size="small"
-          color={color}
-          disabled={disabled}
-          aria-label={label}
-          onClick={onClick}
-        >
-          {icon}
-        </IconButton>
+        {href && !disabled ? (
+          <IconButton
+            component={NextLink}
+            href={href}
+            size="small"
+            color={color}
+            aria-label={label}
+            onClick={onClick}
+          >
+            {icon}
+          </IconButton>
+        ) : (
+          <IconButton
+            size="small"
+            color={color}
+            disabled={disabled}
+            aria-label={label}
+            onClick={onClick}
+          >
+            {icon}
+          </IconButton>
+        )}
       </span>
     </Tooltip>
   );

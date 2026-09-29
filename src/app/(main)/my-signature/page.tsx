@@ -1,5 +1,6 @@
 import PageHeader from '@/components/PageHeader';
-import { CURRENT_USER_ID, MOCK_FORMS } from '@/features/forms/mock';
+import { CURRENT_USER_ID } from '@/features/forms/mock';
+import { getForms } from '@/features/forms/store';
 import MySignTable from '@/features/my-signature/MySignTable';
 import MySignTabs from '@/features/my-signature/MySignTabs';
 import { getMySignTasks, parseTab } from '@/features/my-signature/tasks';
@@ -10,7 +11,7 @@ export const metadata: Metadata = { title: '我的電子簽' };
 
 export default async function MySignaturePage({ searchParams }: PageProps<'/my-signature'>) {
   const tab = parseTab((await searchParams).tab);
-  const tasks = getMySignTasks(MOCK_FORMS, CURRENT_USER_ID);
+  const tasks = getMySignTasks(getForms(), CURRENT_USER_ID);
   const counts = {
     pending: tasks.pending.length,
     signed: tasks.signed.length,

@@ -1,0 +1,28 @@
+import PageHeader from '@/components/PageHeader';
+import StepFlow from '@/components/StepFlow';
+import SignersEditor from '@/features/forms/editor/SignersEditor';
+import { CREATE_STEPS } from '@/features/forms/editor/steps';
+import { getEmployees, getForm } from '@/features/forms/store';
+import type { Metadata } from 'next';
+import { notFound, redirect } from 'next/navigation';
+
+export const metadata: Metadata = { title: '設定簽署' };
+export const dynamic = 'force-dynamic';
+
+export default async function FormSignersPage({ params }: PageProps<'/forms/[id]/signers'>) {
+  const form = getForm((await params).id);
+  if (!form) notFound();
+  // 已發起的文件不能再改簽署設定
+  if (form.status !== 'draft') redirect('/forms');
+
+  return (
+    <>
+      <StepFlow steps={CREATE_STEPS} activeIndex={1} />
+      <PageHeader
+        title="設定簽署"
+        description={`「${form.name}」${form.docNumber ? `（${form.docNumber}）` : ''}－ 為此文件指定需簽署的人員，並設定簽署期間。`}
+      />
+      <SignersEditor form={form} employees={getEmployees()} />
+    </>
+  );
+}

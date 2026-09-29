@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Divider from "@mui/material/Divider";
 import Drawer from "@mui/material/Drawer";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -43,6 +44,8 @@ export default function SideNav() {
           電子簽署
         </Typography>
       </Toolbar>
+      {/* 深色底上 divider token（黑色 12%）看不見，改用白色 12% */}
+      <Divider sx={(theme) => ({ borderColor: alpha(theme.palette.common.white, 0.12) })} />
       <List component="nav" sx={{ px: 1 }}>
         {NAV_ITEMS.map((item) => (
           <ListItemButton

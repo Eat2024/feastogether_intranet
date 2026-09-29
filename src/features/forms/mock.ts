@@ -1,4 +1,15 @@
-import type { EFormDoc, Employee } from './types';
+import type { EFormDoc, Employee, StaffMember } from './types';
+
+/** 員工名冊（選擇簽署人用） */
+export const MOCK_EMPLOYEES: StaffMember[] = [
+  { id: 'u1', name: '許婷惠', employeeNo: '10150032', dept: '專案管理部' },
+  { id: 'u2', name: '徐瑩珊', employeeNo: '10160147', dept: '專案管理部' },
+  { id: 'u3', name: '李秉彥', employeeNo: '10170289', dept: '系統維運部' },
+  { id: 'u4', name: '陳韋齊', employeeNo: '10190315', dept: '系統維運部' },
+  { id: 'u5', name: '陳柏丞', employeeNo: '10180423', dept: '系統維運部' },
+  { id: 'u6', name: '林品妤', employeeNo: '10230156', dept: '人力資源部' },
+  { id: 'u7', name: '黃啟軒', employeeNo: '10210788', dept: '財務部' },
+];
 
 const CREATORS = {
   pinyu: { name: '林品妤', employeeNo: '10230156' },

@@ -9,6 +9,7 @@
 
 import { createTheme, type TypographyStyle } from "@mui/material/styles";
 import { dialogClasses } from "@mui/material/Dialog";
+import NextLink from "next/link";
 import {
   breakpoints,
   color,
@@ -122,6 +123,11 @@ const theme = createTheme({
   },
 
   components: {
+    // 帶 href 的 Button／IconButton 等一律以 Next.js Link 導頁
+    MuiButtonBase: {
+      defaultProps: { LinkComponent: NextLink },
+    },
+
     MuiCssBaseline: {
       styleOverrides: {
         ":root": cssVariables,

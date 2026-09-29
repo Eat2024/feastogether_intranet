@@ -24,6 +24,7 @@ export default function RowActions({ form }: { form: EFormDoc }) {
         label="發起簽署"
         icon={<SendRoundedIcon />}
         color="info"
+        href={`/forms/${form.id}/signers`}
         disabled={status !== 'draft'}
       />
       <ViewSignProgressButton form={form} disabled={status === 'draft'} />
@@ -35,6 +36,7 @@ export default function RowActions({ form }: { form: EFormDoc }) {
         label="編輯"
         icon={<EditRoundedIcon />}
         color="info"
+        href={`/forms/${form.id}/edit`}
         disabled={signed !== 0 || status === 'stopped'}
       />
       <StopSigningButton form={form} disabled={status !== 'active'} />

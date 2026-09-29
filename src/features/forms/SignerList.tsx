@@ -11,6 +11,24 @@ import type { Signer } from './types';
 // 頭像顯示名字後兩字（例：許婷惠 → 婷惠）
 const initials = (name: string) => name.slice(-2);
 
+/** 簽署人頭像：淡主色底＋深主色字，顯示名字後兩字 */
+export function SignerAvatar({ name }: { name: string }) {
+  return (
+    <Avatar
+      sx={(theme) => ({
+        width: 26,
+        height: 26,
+        fontSize: theme.typography.caption.fontSize,
+        fontWeight: theme.typography.fontWeightBold,
+        bgcolor: 'primary.less',
+        color: 'primary.dark',
+      })}
+    >
+      {initials(name)}
+    </Avatar>
+  );
+}
+
 type SignerRowProps = {
   signer: Signer;
   /** 頭像左側（例：勾選框） */
@@ -23,18 +41,7 @@ export function SignerRow({ signer, left, right }: SignerRowProps) {
   return (
     <ListItem divider sx={{ gap: 1.5, py: 1 }}>
       {left}
-      <Avatar
-        sx={(theme) => ({
-          width: 26,
-          height: 26,
-          fontSize: theme.typography.caption.fontSize,
-          fontWeight: theme.typography.fontWeightBold,
-          bgcolor: 'primary.less',
-          color: 'primary.dark',
-        })}
-      >
-        {initials(signer.name)}
-      </Avatar>
+      <SignerAvatar name={signer.name} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="content" component="span">
           {signer.name}

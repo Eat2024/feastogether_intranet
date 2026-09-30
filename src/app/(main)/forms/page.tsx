@@ -1,7 +1,7 @@
 import FlashSnackbar from '@/components/FlashSnackbar';
 import PageHeader from '@/components/PageHeader';
 import FormsTable from '@/features/forms/FormsTable';
-import { getForms } from '@/features/forms/store';
+import { getForms, toClientForm } from '@/features/forms/store';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import Button from '@mui/material/Button';
 import type { Metadata } from 'next';
@@ -35,7 +35,7 @@ export default function FormsPage() {
           </Button>
         }
       />
-      <FormsTable forms={getForms()} />
+      <FormsTable forms={getForms().map((f) => toClientForm(f))} />
       <Suspense>
         <FlashSnackbar messages={FLASH_MESSAGES} />
       </Suspense>

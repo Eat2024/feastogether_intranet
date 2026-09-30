@@ -1,4 +1,3 @@
-import TruncatedText from '@/components/TruncatedText';
 import SignProgressButton from '@/features/forms/SignProgressDialog';
 import { FORM_STATUS_META, deriveStatus } from '@/features/forms/status';
 import Box from '@mui/material/Box';
@@ -13,6 +12,8 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
+import DownloadSignedCopyButton from './sign/DownloadSignedCopyButton';
+import { getSignBlock } from './sign/eligibility';
 import { daysUntil, type MySignTab, type MySignTask } from './tasks';
 
 // 剩餘天數 ≤ 此值時標示「即將到期」
@@ -88,9 +89,14 @@ export default function MySignTable({
       { header: '簽署期限', nowrap: true, cell: ({ form }) => <DueDate date={form.endAt} today={today} /> },
       {
         header: '操作',
-        // TODO: 簽署頁完成後改為連到 /my-signature/[id]
-        cell: () => (
-          <Button size="small" variant="contained">
+        // 已逾期或尚未開始時停用
+        cell: ({ form, me }) => (
+          <Button
+            size="small"
+            variant="contained"
+            href={`/my-signature/${form.id}`}
+            disabled={getSignBlock(form, me, today) !== null}
+          >
             簽署
           </Button>
         ),
@@ -106,15 +112,30 @@ export default function MySignTable({
           return <Chip size="small" variant="soft" label={status.label} color={status.color} />;
         },
       },
-      viewAction,
+      {
+        header: '操作',
+        cell: ({ form, me }) => (
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            <SignProgressButton form={form} />
+            <DownloadSignedCopyButton form={form} me={me} variant="icon" />
+          </Box>
+        ),
+      },
     ],
     rejected: [
       ...common,
       { header: '拒絕時間', nowrap: true, cell: ({ me }) => me.rejectedAt },
       {
         header: '拒絕原因',
+        // 完整顯示、自動換行；保留最小寬度避免被擠成過窄的一欄
         cell: ({ me }) =>
-          me.rejectReason ? <TruncatedText text={me.rejectReason} maxWidth={240} /> : '—',
+          me.rejectReason ? (
+            <Typography variant="content" sx={{ minWidth: 240, overflowWrap: 'anywhere' }}>
+              {me.rejectReason}
+            </Typography>
+          ) : (
+            '—'
+          ),
       },
       viewAction,
     ],

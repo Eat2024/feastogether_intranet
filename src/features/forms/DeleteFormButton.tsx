@@ -27,7 +27,7 @@ export default function DeleteFormButton({
       <TooltipIconButton
         label="刪除"
         icon={<DeleteOutlineRoundedIcon />}
-        color="info"
+        color="error"
         disabled={disabled}
         onClick={() => setOpen(true)}
       />

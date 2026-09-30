@@ -51,3 +51,16 @@ export function nextDocNumber() {
   const next = (seqs.length ? Math.max(...seqs) : 0) + 1;
   return `${prefix}${String(next).padStart(4, '0')}`;
 }
+
+/**
+ * 傳給畫面（client 元件）前移除其他人的手寫簽名與同意紀錄，避免簽名圖檔外流；
+ * viewerId 為目前使用者時保留本人的資料，未提供則全部移除。
+ */
+export function toClientForm(form: EFormDoc, viewerId?: string): EFormDoc {
+  return {
+    ...form,
+    signers: form.signers.map((s) =>
+      s.id === viewerId ? s : { ...s, signatures: undefined, consent: undefined },
+    ),
+  };
+}

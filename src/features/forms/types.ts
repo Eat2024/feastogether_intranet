@@ -15,6 +15,10 @@ export type Signer = {
   rejectReason?: string;
   /** 已被提醒的次數 */
   notifyCount?: number;
+  /** 各簽名欄位的手寫簽名（欄位 id → PNG data URL） */
+  signatures?: Record<number, string>;
+  /** 簽署時同意的電子簽名使用條款 */
+  consent?: { version: string; agreedAt: string };
 };
 
 export type Employee = {

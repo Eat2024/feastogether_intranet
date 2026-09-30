@@ -4,6 +4,7 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import DrawRoundedIcon from '@mui/icons-material/DrawRounded';
 import EventRoundedIcon from '@mui/icons-material/EventRounded';
 import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded';
+import { AlertTitle } from '@mui/material';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -637,9 +638,11 @@ export default function UploadEditor({
                   </Typography>
 
                   <Alert severity="info" variant="outlined" sx={{ mt: 2 }}>
-                    這裡定位的是這份文件範本的欄位座標（第幾頁、x%、y%），只需設定一次。不論
-                    5 人或 500
-                    人簽署，系統都會用同一組座標，在每個人自己的文件副本上疊上各自的簽名，不需要逐一標記。
+                    <AlertTitle>關於大量簽署時的畫面空間</AlertTitle>
+                    這裡拖曳定位的是「這份文件範本」的欄位座標（第幾頁、x%、y%），只需設定一次。
+                    之後不論是 5 人或 500
+                    人簽署，系統都會用同一組座標，在每個人自己的那份文件副本上疊上各自的簽名——
+                    不會因為簽署人數變多而需要更多畫面空間，也不需要逐一標記。
                   </Alert>
                 </Box>
               )}

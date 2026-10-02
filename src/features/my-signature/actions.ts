@@ -6,6 +6,7 @@ import { getForm } from '@/features/forms/store';
 import type { Signer } from '@/features/forms/types';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { isValidSignatureId } from '@/lib/signatureQr';
 import { getSignBlock } from './sign/eligibility';
 import { SIGN_TERMS_VERSION } from './sign/terms';
 
@@ -42,6 +43,8 @@ function revalidateLists() {
 export async function signDocument(input: {
   formId: string;
   signatures: Record<number, string>;
+  /** 各簽名欄位的識別碼（追蹤 QR code 用） */
+  signatureIds: Record<number, string>;
   consent: { version: string; agreedAt: string };
 }): Promise<ActionResult> {
   const found = findMe(input.formId);
@@ -59,11 +62,16 @@ export async function signDocument(input: {
     return !sig.startsWith(PNG_PREFIX) || sig.length > MAX_SIGNATURE_LENGTH;
   });
   if (invalid) return { error: '簽名資料格式不正確，請重新簽名' };
+  const ids = required.map((f) => input.signatureIds[f.id]);
+  if (ids.some((id) => !id || !isValidSignatureId(id)) || new Set(ids).size !== ids.length) {
+    return { error: '簽名識別碼不正確，請重新簽名' };
+  }
 
   Object.assign(signer, {
     status: 'signed',
     signedAt: nowStr(),
     signatures: Object.fromEntries(required.map((f) => [f.id, input.signatures[f.id]])),
+    signatureIds: Object.fromEntries(required.map((f) => [f.id, input.signatureIds[f.id]])),
     consent: input.consent,
   } satisfies Partial<Signer>);
   revalidateLists();

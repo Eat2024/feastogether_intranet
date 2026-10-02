@@ -7,6 +7,7 @@ import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import SignatureQr from './SignatureQr';
 
 type DocumentViewerProps = {
   form: EFormDoc;
@@ -14,6 +15,8 @@ type DocumentViewerProps = {
   layout: SignLayout;
   /** 欄位 id → 手寫簽名 PNG */
   signatures: Record<number, string>;
+  /** 欄位 id → 簽名識別碼（顯示追蹤 QR code） */
+  signatureIds?: Record<number, string>;
   /** 日期欄位顯示的日期 */
   dateText: string;
   activePage: number;
@@ -139,11 +142,14 @@ function ConfirmPageContent({
 function FieldBox({
   field,
   signature,
+  signatureId,
   dateText,
   onSign,
 }: {
   field: UploadField;
   signature?: string;
+  /** 簽名識別碼；有值時在欄位右下角顯示追蹤 QR code */
+  signatureId?: string;
   dateText: string;
   onSign?: () => void;
 }) {
@@ -169,7 +175,20 @@ function FieldBox({
   }
 
   const content = signature ? (
-    <Box component="img" src={signature} alt="你的簽名" sx={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+    // 簽名在左、追蹤 QR code 在右下角，互不遮擋
+    <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 0.5, width: '100%', height: '100%' }}>
+      <Box
+        component="img"
+        src={signature}
+        alt="你的簽名"
+        sx={{ flex: 1, minWidth: 0, height: '100%', objectFit: 'contain' }}
+      />
+      {signatureId && (
+        <Box sx={{ height: '72%' }}>
+          <SignatureQr signatureId={signatureId} />
+        </Box>
+      )}
+    </Box>
   ) : (
     <>
       <DrawRoundedIcon fontSize="small" />
@@ -226,6 +245,7 @@ export default function DocumentViewer({
   signer,
   layout,
   signatures,
+  signatureIds = {},
   dateText,
   activePage,
   onPageChange,
@@ -286,6 +306,7 @@ export default function DocumentViewer({
             key={f.id}
             field={f}
             signature={signatures[f.id]}
+            signatureId={signatureIds[f.id]}
             dateText={dateText}
             onSign={onSignField && (() => onSignField(f))}
           />

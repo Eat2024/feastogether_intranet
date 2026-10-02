@@ -18,6 +18,7 @@ import ListItemButton from '@mui/material/ListItemButton';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { newSignatureId } from '@/lib/signatureQr';
 import { useState, useTransition } from 'react';
 import { rejectDocument, signDocument } from '../actions';
 import DocumentViewer from './DocumentViewer';
@@ -48,6 +49,8 @@ export default function SignFlow({ form, me, today }: { form: EFormDoc; me: Sign
   const [consent, setConsent] = useState<{ version: string; agreedAt: string } | null>(null);
   const [readAgreed, setReadAgreed] = useState(false);
   const [signatures, setSignatures] = useState<Record<number, string>>({});
+  // 每次確認簽名都產生新的識別碼（重新簽名即換新）
+  const [signatureIds, setSignatureIds] = useState<Record<number, string>>({});
   const [activePage, setActivePage] = useState(1);
   const [padField, setPadField] = useState<UploadField | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -70,6 +73,7 @@ export default function SignFlow({ form, me, today }: { form: EFormDoc; me: Sign
     if (!padField) return;
     const next = { ...signatures, [padField.id]: dataUrl };
     setSignatures(next);
+    setSignatureIds((prev) => ({ ...prev, [padField.id]: newSignatureId() }));
     setPadField(null);
     // 自動切到下一個尚未簽名的欄位所在頁面（不自動開啟簽名板）
     const nextField = fields.find((f) => !next[f.id]);
@@ -80,7 +84,7 @@ export default function SignFlow({ form, me, today }: { form: EFormDoc; me: Sign
     if (!consent) return;
     setPendingAction('sign');
     startTransition(async () => {
-      const result = await signDocument({ formId: form.id, signatures, consent });
+      const result = await signDocument({ formId: form.id, signatures, signatureIds, consent });
       if (result?.error) {
         setError(result.error);
         setPendingAction(null);
@@ -141,6 +145,7 @@ export default function SignFlow({ form, me, today }: { form: EFormDoc; me: Sign
             signer={me}
             layout={layout}
             signatures={signatures}
+            signatureIds={signatureIds}
             dateText={today}
             activePage={activePage}
             onPageChange={setActivePage}

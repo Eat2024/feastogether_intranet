@@ -12,6 +12,7 @@ import {
   SIGNER_SORT_KEYS,
   STATUS_TABS,
 } from '@/features/forms/detail/signerQuery';
+import { getDeptName } from '@/features/forms/orgChart';
 import { FORM_STATUS_META, getProgress, signedCount } from '@/features/forms/status';
 import StopSigningButton from '@/features/forms/StopSigningButton';
 import { getForm, toClientForm } from '@/features/forms/store';
@@ -57,7 +58,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
   const statusMeta = FORM_STATUS_META[progress.status];
   const query = parseSignerQuery(await searchParams);
   const counts = countByStatus(form);
-  const { rows, total, page, pageCount } = querySigners(form, query);
+  const { rows, total, page, pageCount } = querySigners(form, query, getDeptName);
   const canEdit = signedCount(form) === 0 && form.status !== 'stopped';
 
   const sortHrefs = Object.fromEntries(
@@ -134,7 +135,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
         />
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
           <Suspense>
-            <SearchField placeholder="搜尋姓名、員工編號或 Email" />
+            <SearchField placeholder="搜尋姓名、員工編號或部門" />
           </Suspense>
           <Typography variant="secondary" component="span" sx={{ flexShrink: 0 }}>
             共 {total} 筆

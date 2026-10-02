@@ -21,7 +21,7 @@ import Typography from '@mui/material/Typography';
 import { useState, useTransition } from 'react';
 import { notifySigners } from '../actions';
 import type { Signer } from '../types';
-import type { SignerSort, SignerSortKey } from './signerQuery';
+import type { SignerRowData, SignerSort, SignerSortKey } from './signerQuery';
 
 const STATUS_META: Record<Signer['status'], { label: string; color: ChipProps['color'] }> = {
   pending: { label: '待簽署', color: 'warning' },
@@ -31,6 +31,7 @@ const STATUS_META: Record<Signer['status'], { label: string; color: ChipProps['c
 
 const COLUMNS: { key?: SignerSortKey; label: string }[] = [
   { key: 'name', label: '簽署人' },
+  { key: 'dept', label: '部門' },
   { key: 'status', label: '狀態' },
   { key: 'time', label: '簽署／拒絕時間' },
   { label: '拒絕原因' },
@@ -52,7 +53,7 @@ export default function SignerTable({
 }: {
   formId: string;
   /** 本頁的簽署人（已篩選、排序、分頁） */
-  rows: Signer[];
+  rows: SignerRowData[];
   sort: SignerSort;
   /** 各欄點擊後的排序網址 */
   sortHrefs: Record<SignerSortKey, string>;
@@ -155,6 +156,7 @@ export default function SignerTable({
                       <Typography variant="content">{s.name}</Typography>
                       <Typography variant="helper">{s.email ?? s.employeeNo}</Typography>
                     </TableCell>
+                    <TableCell>{s.dept ?? '—'}</TableCell>
                     <TableCell>
                       <Chip size="small" variant="soft" label={status.label} color={status.color} />
                     </TableCell>

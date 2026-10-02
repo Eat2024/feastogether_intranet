@@ -45,24 +45,36 @@ function loadOrgChart(): OrgDept[] {
 }
 
 // 快取在 globalThis：只在伺服器啟動後第一次使用時讀檔
+// （結構有變動時更換 key，讓開發伺服器熱更新後重建，不沿用舊結構的快取）
 const g = globalThis as typeof globalThis & {
-  __orgChart?: { tree: OrgDept[]; staff: Map<string, StaffMember> };
+  __orgChartV2?: {
+    tree: OrgDept[];
+    staff: Map<string, StaffMember>;
+    /** 員工 id → 所屬部門 id */
+    staffDept: Map<string, string>;
+    /** 部門 id → 部門 */
+    deptIndex: Map<string, OrgDept>;
+  };
 };
 
 function getCache() {
-  if (!g.__orgChart) {
+  if (!g.__orgChartV2) {
     const tree = loadOrgChart();
     const staff = new Map<string, StaffMember>();
+    const staffDept = new Map<string, string>();
+    const deptIndex = new Map<string, OrgDept>();
     const walk = (dept: OrgDept) => {
+      deptIndex.set(dept.id, dept);
       for (const e of dept.employees) {
         staff.set(e.id, { id: e.id, name: e.name, employeeNo: e.employeeNo ?? e.id, dept: dept.name });
+        staffDept.set(e.id, dept.id);
       }
       dept.children.forEach(walk);
     };
     tree.forEach(walk);
-    g.__orgChart = { tree, staff };
+    g.__orgChartV2 = { tree, staff, staffDept, deptIndex };
   }
-  return g.__orgChart;
+  return g.__orgChartV2;
 }
 
 /** 部門樹（含各部門人數），供選擇簽署人 */
@@ -85,4 +97,30 @@ export function getCurrentUserId(): string {
 
 export function getCurrentUser(): StaffMember {
   return getStaff(getCurrentUserId())!;
+}
+
+/** 簽署人所屬部門；組織架構查不到時改查假資料名冊，以 Email 加入者為 null */
+export function getDeptName(signerId: string): string | null {
+  return getStaff(signerId)?.dept ?? MOCK_EMPLOYEES.find((e) => e.id === signerId)?.dept ?? null;
+}
+
+/** 員工所屬部門 id；不在組織架構中則為 undefined */
+export function getDeptIdOf(staffId: string): string | undefined {
+  return getCache().staffDept.get(staffId);
+}
+
+/** 部門 id 展開為「自己＋所有下層部門」的 id */
+export function expandDeptIds(ids: string[]): Set<string> {
+  const { deptIndex } = getCache();
+  const out = new Set<string>();
+  const walk = (d: OrgDept) => {
+    out.add(d.id);
+    d.children.forEach(walk);
+  };
+  for (const id of ids) {
+    const d = deptIndex.get(id);
+    if (d) walk(d);
+    else out.add(id); // 非組織架構的分組（例如假資料部門、Email）原樣保留
+  }
+  return out;
 }

@@ -12,15 +12,19 @@ export const STATUS_TABS = [
 ] as const;
 export type StatusTab = (typeof STATUS_TABS)[number]['key'];
 
-export const SIGNER_SORT_KEYS = ['name', 'status', 'time', 'notify'] as const;
+export const SIGNER_SORT_KEYS = ['name', 'dept', 'status', 'time', 'notify'] as const;
 export type SignerSortKey = (typeof SIGNER_SORT_KEYS)[number];
 export type SignerSort = Sort<SignerSortKey>;
 
 // 狀態排序：待簽署 → 已簽署 → 已拒絕
 const STATUS_ORDER: Record<Signer['status'], number> = { pending: 0, signed: 1, rejected: 2 };
 
-const SORT_VALUE: Record<SignerSortKey, (s: Signer) => SortValue> = {
+/** 表格的一列：簽署人加上查得的部門 */
+export type SignerRowData = Signer & { dept: string | null };
+
+const SORT_VALUE: Record<SignerSortKey, (s: SignerRowData) => SortValue> = {
   name: (s) => s.name,
+  dept: (s) => s.dept,
   status: (s) => STATUS_ORDER[s.status],
   time: (s) => s.signedAt ?? s.rejectedAt ?? null,
   notify: (s) => (s.notifyCount ? [s.notifyCount, 0] : null),
@@ -43,13 +47,18 @@ export function countByStatus(form: EFormDoc): Record<StatusTab, number> {
   return { all: form.signers.length, pending: count('pending'), signed: count('signed'), rejected: count('rejected') };
 }
 
-/** 套用狀態、搜尋、排序與分頁；回傳本頁資料與總筆數 */
-export function querySigners(form: EFormDoc, query: SignerQuery) {
+/** 套用狀態、搜尋、排序與分頁；回傳本頁資料與總筆數。deptOf 用來查簽署人的部門 */
+export function querySigners(
+  form: EFormDoc,
+  query: SignerQuery,
+  deptOf: (signerId: string) => string | null,
+) {
   const q = query.q.toLowerCase();
-  let rows = form.signers.filter(
+  let rows: SignerRowData[] = form.signers.map((s) => ({ ...s, dept: deptOf(s.id) })).filter(
     (s) =>
       (query.status === 'all' || s.status === query.status) &&
-      (!q || [s.name, s.employeeNo, s.email ?? ''].some((v) => v.toLowerCase().includes(q))),
+      // 搜尋姓名、員工編號、部門
+      (!q || [s.name, s.employeeNo, s.dept ?? ''].some((v) => v.toLowerCase().includes(q))),
   );
   if (query.sort) rows = sortByValue(rows, SORT_VALUE[query.sort.key], query.sort.order);
   const total = rows.length;

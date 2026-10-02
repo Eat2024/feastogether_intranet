@@ -4,6 +4,7 @@
 // dev 模式下會觸發 React 的 key 警告（同 TooltipIconButton 的 Tooltip 問題）
 import TooltipIconButton from '@/components/TooltipIconButton';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
+import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
 import Box from '@mui/material/Box';
@@ -32,6 +33,14 @@ export default function RowActions({ form }: { form: EFormDoc }) {
         icon={<VisibilityRoundedIcon />}
         color="info"
         href={`/forms/${form.id}`}
+        disabled={status === 'draft'}
+      />
+      {/* 匯出簽署紀錄（草稿尚無簽署資料，停用） */}
+      <TooltipIconButton
+        label="匯出"
+        icon={<FileDownloadRoundedIcon />}
+        color="info"
+        href={`/forms/${form.id}/export`}
         disabled={status === 'draft'}
       />
       <TooltipIconButton

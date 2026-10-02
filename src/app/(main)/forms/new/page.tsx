@@ -2,6 +2,8 @@ import PageHeader from '@/components/PageHeader';
 import StepFlow from '@/components/StepFlow';
 import UploadEditor from '@/features/forms/editor/UploadEditor';
 import { CREATE_STEPS } from '@/features/forms/editor/steps';
+import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
+import { Box, Button } from '@mui/material';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = { title: '新增電子簽文件' };
@@ -9,6 +11,16 @@ export const metadata: Metadata = { title: '新增電子簽文件' };
 export default function NewFormPage() {
   return (
     <>
+      <Box>
+        <Button
+          variant="text"
+          startIcon={<ArrowBackRoundedIcon />}
+          href="/forms"
+        >
+          返回電子簽列表
+        </Button>
+      </Box>
+
       <PageHeader
         title="新增電子簽文件"
         description="上傳 Word／PDF 文件，逐頁預覽並指定簽名要落在哪裡。"

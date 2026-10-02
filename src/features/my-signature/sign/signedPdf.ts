@@ -5,7 +5,9 @@
 import { FIELD_H_PCT, FIELD_W_PCT, getSignLayout } from '@/features/forms/signLayout';
 import type { EFormDoc, Signer } from '@/features/forms/types';
 import { color } from '@/theme/tokens';
+import { signatureVerifyUrl } from '@/lib/signatureQr';
 import { PDFDocument } from 'pdf-lib';
+import QRCode from 'qrcode';
 
 // A4，150 dpi
 const W = 1240;
@@ -128,13 +130,30 @@ export async function buildSignedCopyPdf(form: EFormDoc, me: Signer): Promise<Ui
         continue;
       }
       const sig = me.signatures?.[f.id];
+      const sigId = me.signatureIds?.[f.id];
       if (sig) {
+        // 有識別碼時，右下角留給追蹤 QR code（與畫面相同：高度為欄位的 72%）
+        const qrSize = sigId ? h * 0.72 : 0;
+        const gap = sigId ? 4 * S : 0;
+        const sigW = w - qrSize - gap;
         const img = await loadImage(sig);
         // 等比縮放置中（contain）
-        const scale = Math.min(w / img.width, h / img.height);
+        const scale = Math.min(sigW / img.width, h / img.height);
         const dw = img.width * scale;
         const dh = img.height * scale;
-        ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+        ctx.drawImage(img, x + (sigW - dw) / 2, y + (h - dh) / 2, dw, dh);
+        if (sigId) {
+          const qr = await loadImage(
+            await QRCode.toDataURL(signatureVerifyUrl(sigId, window.location.origin), {
+              margin: 0,
+              errorCorrectionLevel: 'M',
+              width: Math.round(qrSize * 2),
+            }),
+          );
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(x + w - qrSize, y + h - qrSize, qrSize, qrSize);
+          ctx.drawImage(qr, x + w - qrSize, y + h - qrSize, qrSize, qrSize);
+        }
       } else {
         // 舊資料沒有簽名圖檔
         ctx.font = `400 ${11 * S}px ${font}`;

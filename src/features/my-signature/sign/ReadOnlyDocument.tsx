@@ -19,6 +19,7 @@ export default function ReadOnlyDocument({ form, me }: { form: EFormDoc; me: Sig
         signer={me}
         layout={layout}
         signatures={me.signatures ?? {}}
+        signatureIds={me.signatureIds ?? {}}
         dateText={me.status === 'signed' ? (me.signedAt ?? '').slice(0, 10) : '—'}
         activePage={activePage}
         onPageChange={setActivePage}

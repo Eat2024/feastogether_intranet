@@ -1,8 +1,9 @@
 import FlashSnackbar from '@/components/FlashSnackbar';
 import PageHeader from '@/components/PageHeader';
 import SearchField from '@/components/SearchField';
+import FormsFilterBar from '@/features/forms/FormsFilterBar';
 import FormsTable from '@/features/forms/FormsTable';
-import { filterForms, parseSort, sortForms } from '@/features/forms/sort';
+import { filterForms, parseFilters, parseSort, sortForms } from '@/features/forms/sort';
 import { getForms, toClientForm } from '@/features/forms/store';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import Box from '@mui/material/Box';
@@ -26,8 +27,8 @@ const FLASH_MESSAGES = {
 export default async function FormsPage({ searchParams }: PageProps<'/forms'>) {
   const params = await searchParams;
   const sort = parseSort(params);
-  const query = typeof params.q === 'string' ? params.q.trim() : '';
-  const forms = sortForms(filterForms(getForms(), query), sort);
+  const filters = parseFilters(params);
+  const forms = sortForms(filterForms(getForms(), filters), sort);
 
   return (
     <>
@@ -46,15 +47,18 @@ export default async function FormsPage({ searchParams }: PageProps<'/forms'>) {
         }
       />
       <Stack spacing={2}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-          <Suspense>
-            <SearchField placeholder="搜尋文件名稱、文件編號或建立人" />
-          </Suspense>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, flex: 1, minWidth: 0 }}>
+            <Suspense>
+              <SearchField placeholder="搜尋文件名稱或建立人" width={260} />
+              <FormsFilterBar statuses={filters.statuses} from={filters.from} to={filters.to} />
+            </Suspense>
+          </Box>
           <Typography variant="secondary" component="span" sx={{ flexShrink: 0 }}>
             共 {forms.length} 筆
           </Typography>
         </Box>
-        <FormsTable forms={forms.map((f) => toClientForm(f))} sort={sort} query={query} />
+        <FormsTable forms={forms.map((f) => toClientForm(f))} sort={sort} filters={filters} />
       </Stack>
       <Suspense>
         <FlashSnackbar messages={FLASH_MESSAGES} />

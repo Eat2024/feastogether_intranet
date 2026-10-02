@@ -16,7 +16,7 @@ import {
 } from './status';
 import SortableHeaderCell from '@/components/SortableHeaderCell';
 import RowActions from './RowActions';
-import { formsHref, nextSort, type SortKey, type SortState } from './sort';
+import { formsHref, hasFilters, nextSort, type FormFilters, type SortKey, type SortState } from './sort';
 import type { EFormDoc } from './types';
 
 const SORTABLE_COLUMNS: [SortKey, string][] = [
@@ -33,12 +33,12 @@ const SORTABLE_COLUMNS: [SortKey, string][] = [
 export default function FormsTable({
   forms,
   sort,
-  query,
+  filters,
 }: {
   forms: EFormDoc[];
   sort: SortState;
-  /** 目前的搜尋關鍵字（排序連結會保留） */
-  query: string;
+  /** 目前的搜尋與篩選條件（排序連結會保留） */
+  filters: FormFilters;
 }) {
   return (
     <TableContainer component={Paper} variant="outlined">
@@ -52,7 +52,7 @@ export default function FormsTable({
                   key={key}
                   active={sort?.key === key}
                   order={sort?.order ?? 'asc'}
-                  href={formsHref({ query, sort: next })}
+                  href={formsHref({ filters, sort: next })}
                 >
                   {label}
                 </SortableHeaderCell>
@@ -66,8 +66,10 @@ export default function FormsTable({
             <TableRow>
               <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
                 <Typography variant="description">
-                  {query
-                    ? `找不到符合「${query}」的文件，請換個關鍵字試試。`
+                  {hasFilters(filters)
+                    ? filters.query
+                      ? `找不到符合「${filters.query}」的文件，請換個關鍵字或篩選條件試試。`
+                      : '沒有符合篩選條件的文件，請調整篩選條件試試。'
                     : '尚無電子簽文件，點擊右上角「新增電子簽文件」建立第一份文件。'}
                 </Typography>
               </TableCell>

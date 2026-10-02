@@ -1,6 +1,6 @@
 import PageHeader from '@/components/PageHeader';
-import { CURRENT_USER_ID } from '@/features/forms/mock';
-import { getForm, toClientForm, todayStr } from '@/features/forms/store';
+import { getCurrentUserId } from '@/features/forms/orgChart';
+import { getForm, toSignerView, todayStr } from '@/features/forms/store';
 import DownloadSignedCopyButton from '@/features/my-signature/sign/DownloadSignedCopyButton';
 import { getSignBlock } from '@/features/my-signature/sign/eligibility';
 import ReadOnlyDocument from '@/features/my-signature/sign/ReadOnlyDocument';
@@ -16,14 +16,15 @@ export default async function SignDocumentPage({
   params,
 }: PageProps<'/my-signature/[id]'>) {
   const stored = getForm((await params).id);
-  const storedMe = stored?.signers.find((s) => s.id === CURRENT_USER_ID);
+  const userId = getCurrentUserId();
+  const storedMe = stored?.signers.find((s) => s.id === userId);
   // 不是簽署人就當作不存在，不透露文件資訊
   if (!stored || !storedMe || stored.status === 'draft') notFound();
 
-  // 只把本人的簽名資料傳給畫面
-  const form = toClientForm(stored, CURRENT_USER_ID);
-  const me = form.signers.find((s) => s.id === CURRENT_USER_ID)!;
-  const block = getSignBlock(form, me, new Date());
+  // 以完整資料判斷可否簽署，再只把本人的紀錄傳給畫面（不外流其他簽署人）
+  const block = getSignBlock(stored, storedMe, new Date());
+  const form = toSignerView(stored, userId);
+  const me = form.signers[0];
 
   return (
     <>

@@ -3,6 +3,7 @@
 import ConfirmDialog from '@/components/ConfirmDialog';
 import TooltipIconButton from '@/components/TooltipIconButton';
 import DoDisturbIcon from '@mui/icons-material/DoDisturb';
+import Button from '@mui/material/Button';
 import { useState } from 'react';
 import { pendingCount } from './status';
 import type { EFormDoc } from './types';
@@ -11,9 +12,12 @@ import type { EFormDoc } from './types';
 export default function StopSigningButton({
   form,
   disabled,
+  variant = 'icon',
 }: {
   form: EFormDoc;
   disabled?: boolean;
+  /** icon：表格操作欄；button：頁面上的文字按鈕 */
+  variant?: 'icon' | 'button';
 }) {
   const [open, setOpen] = useState(false);
   const pending = pendingCount(form);
@@ -25,13 +29,26 @@ export default function StopSigningButton({
 
   return (
     <>
-      <TooltipIconButton
-        label="停止簽署"
-        icon={<DoDisturbIcon />}
-        color="error"
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-      />
+      {variant === 'button' ? (
+        <Button
+          size="large"
+          variant="outlined"
+          color="error"
+          startIcon={<DoDisturbIcon />}
+          disabled={disabled}
+          onClick={() => setOpen(true)}
+        >
+          停止簽署
+        </Button>
+      ) : (
+        <TooltipIconButton
+          label="停止簽署"
+          icon={<DoDisturbIcon />}
+          color="error"
+          disabled={disabled}
+          onClick={() => setOpen(true)}
+        />
+      )}
       <ConfirmDialog
         open={open}
         color="error"

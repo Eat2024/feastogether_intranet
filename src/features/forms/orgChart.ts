@@ -4,7 +4,7 @@
 // 串接人事系統 API 時替換 loadOrgChart 即可。
 import fs from 'node:fs';
 import path from 'node:path';
-import { MOCK_EMPLOYEES } from './mock';
+import { CURRENT_USER_ID, FALLBACK_USER_ID, MOCK_EMPLOYEES } from './mock';
 import type { OrgDept, StaffMember } from './types';
 
 const ORG_CHART_PATH = path.join(process.cwd(), 'data', 'org-chart.json');
@@ -73,4 +73,16 @@ export function getOrgTree(): OrgDept[] {
 /** 依 id 查員工（含所屬部門名稱） */
 export function getStaff(id: string): StaffMember | undefined {
   return getCache().staff.get(id);
+}
+
+/**
+ * 目前登入者的 id（尚未串接登入）。組織架構中找不到時（例如沒有資料檔）改用假資料的李秉彥。
+ * 串接登入時改為從 session 取得即可。
+ */
+export function getCurrentUserId(): string {
+  return getStaff(CURRENT_USER_ID) ? CURRENT_USER_ID : FALLBACK_USER_ID;
+}
+
+export function getCurrentUser(): StaffMember {
+  return getStaff(getCurrentUserId())!;
 }

@@ -18,6 +18,8 @@ export type Signer = {
   rejectReason?: string;
   /** 已被提醒的次數 */
   notifyCount?: number;
+  /** 最後一次被提醒的時間（YYYY/MM/DD HH:mm） */
+  lastNotifiedAt?: string;
   /** 各簽名欄位的手寫簽名（欄位 id → PNG data URL） */
   signatures?: Record<number, string>;
   /** 簽署時同意的電子簽名使用條款 */

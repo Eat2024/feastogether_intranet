@@ -1,4 +1,5 @@
-import { deriveStatus } from '@/features/forms/status';
+import { getProgress, type FormProgress } from '@/features/forms/status';
+import { getSignBlock } from './sign/eligibility';
 import type { EFormDoc, Signer } from '@/features/forms/types';
 
 export type MySignTab = 'pending' | 'signed' | 'rejected';
@@ -9,8 +10,11 @@ export const MY_SIGN_TABS: { key: MySignTab; label: string }[] = [
   { key: 'rejected', label: '已拒絕' },
 ];
 
-/** 一份需要我簽署的文件，以及我在這份文件的簽署紀錄 */
-export type MySignTask = { form: EFormDoc; me: Signer };
+/**
+ * 一份需要我簽署的文件與我的簽署紀錄。
+ * progress、signBlock 以完整資料在伺服器端計算；傳到畫面前 form 只會保留本人（見 toSignerView）。
+ */
+export type MySignTask = { form: EFormDoc; me: Signer; progress: FormProgress; signBlock: string | null };
 
 export function parseTab(value: string | string[] | undefined): MySignTab {
   return MY_SIGN_TABS.some((t) => t.key === value) ? (value as MySignTab) : 'pending';
@@ -20,17 +24,20 @@ export function parseTab(value: string | string[] | undefined): MySignTab {
 export function getMySignTasks(
   forms: EFormDoc[],
   userId: string,
+  today: Date,
 ): Record<MySignTab, MySignTask[]> {
-  const tasks = forms.flatMap((form) => {
+  const tasks: MySignTask[] = forms.flatMap((form) => {
     const me = form.signers.find((s) => s.id === userId);
     // 草稿尚未發起，不會出現在簽署人這裡
-    return me && form.status !== 'draft' ? [{ form, me }] : [];
+    return me && form.status !== 'draft'
+      ? [{ form, me, progress: getProgress(form), signBlock: getSignBlock(form, me, today) }]
+      : [];
   });
 
   return {
     // 只有簽署中的文件能簽；已停止的文件不再列為待簽署
     pending: tasks
-      .filter((t) => t.me.status === 'pending' && deriveStatus(t.form) === 'active')
+      .filter((t) => t.me.status === 'pending' && t.progress.status === 'active')
       .sort((a, b) => (a.form.endAt ?? '').localeCompare(b.form.endAt ?? '')),
     signed: tasks
       .filter((t) => t.me.status === 'signed')
@@ -41,10 +48,5 @@ export function getMySignTasks(
   };
 }
 
-/** 今天到期限還有幾天（日期格式 YYYY/MM/DD；負數表示已逾期） */
-export function daysUntil(date: string, today: Date) {
-  const [y, m, d] = date.split('/').map(Number);
-  const due = new Date(y, m - 1, d);
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  return Math.round((due.getTime() - start.getTime()) / 86_400_000);
-}
+// 相容既有引用
+export { daysUntil } from '@/lib/dates';

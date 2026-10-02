@@ -1,6 +1,5 @@
 'use client';
 
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
@@ -8,40 +7,18 @@ import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
 import type { Signer } from './types';
 
-// 頭像顯示名字後兩字（例：許婷惠 → 婷惠）；未填姓名的 Email 簽署人顯示 email 首字母
-const initials = (name: string) => (name.includes('@') ? name[0].toUpperCase() : name.slice(-2));
-
-/** 簽署人頭像：淡主色底＋深主色字，顯示名字後兩字 */
-export function SignerAvatar({ name }: { name: string }) {
-  return (
-    <Avatar
-      sx={(theme) => ({
-        width: 26,
-        height: 26,
-        fontSize: theme.typography.caption.fontSize,
-        fontWeight: theme.typography.fontWeightBold,
-        bgcolor: 'primary.less',
-        color: 'primary.dark',
-      })}
-    >
-      {initials(name)}
-    </Avatar>
-  );
-}
-
 type SignerRowProps = {
   signer: Signer;
-  /** 頭像左側（例：勾選框） */
+  /** 姓名左側（例：勾選框） */
   left?: ReactNode;
   right: ReactNode;
 };
 
-/** 簽署人一列：頭像＋姓名＋員工編號，左右兩側內容由各 dialog 決定 */
+/** 簽署人一列：姓名＋員工編號（或 Email），左右兩側內容由各 dialog 決定 */
 export function SignerRow({ signer, left, right }: SignerRowProps) {
   return (
     <ListItem divider sx={{ gap: 1.5, py: 1 }}>
       {left}
-      <SignerAvatar name={signer.name} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="content" component="span">
           {signer.name}

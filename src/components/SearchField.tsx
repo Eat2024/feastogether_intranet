@@ -7,16 +7,21 @@ import SearchInput from "./SearchInput";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 const DEBOUNCE_MS = 300;
+// 模組常數：避免預設陣列每次渲染都是新的，使 effect 重跑
+const DEFAULT_RESET_PARAMS = ["page"];
 
 export default function SearchField({
   placeholder,
   param = "q",
   width = 360,
+  resetParams = DEFAULT_RESET_PARAMS,
 }: {
   placeholder: string;
   /** 對應的網址參數名稱 */
   param?: string;
   width?: number;
+  /** 關鍵字改變時一併移除的網址參數（例如頁碼，避免停在不存在的頁） */
+  resetParams?: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -42,12 +47,13 @@ export default function SearchField({
       const qs = new URLSearchParams(params);
       if (next) qs.set(param, next);
       else qs.delete(param);
+      resetParams.forEach((p) => qs.delete(p));
       const query = qs.toString();
       startTransition(() => router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false }));
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // composeTick：選字結束後重新觸發
-  }, [value, composeTick, urlValue, params, param, pathname, router]);
+  }, [value, composeTick, urlValue, params, param, pathname, router, resetParams]);
 
   return (
     <SearchInput

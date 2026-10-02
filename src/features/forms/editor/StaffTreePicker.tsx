@@ -11,7 +11,6 @@ import { useTreeItemModel } from '@mui/x-tree-view/hooks';
 import { RichTreeView } from '@mui/x-tree-view/RichTreeView';
 import { TreeItem, type TreeItemProps } from '@mui/x-tree-view/TreeItem';
 import { forwardRef, useDeferredValue, useMemo, useState } from 'react';
-import { SignerAvatar } from '../SignerList';
 import type { OrgDept } from '../types';
 
 // 已選人員標籤最多顯示幾位，其餘以「還有 N 位」表示
@@ -75,7 +74,6 @@ const OrgTreeItem = forwardRef<HTMLLIElement, TreeItemProps>(function OrgTreeIte
   const label =
     item?.kind === 'emp' ? (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.25, minWidth: 0 }}>
-        <SignerAvatar name={item.label} />
         <Typography variant="content" component="span" noWrap>
           {item.label}
         </Typography>

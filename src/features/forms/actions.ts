@@ -3,10 +3,9 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
-import { getStaff } from './orgChart';
-import { signedCount } from './status';
+import { getCurrentUser, getStaff } from './orgChart';
+import { deriveStatus, signedCount } from './status';
 import {
-  getCurrentUser,
   getForm,
   insertForm,
   nextDocNumber,
@@ -14,10 +13,18 @@ import {
 } from './store';
 import type { Signer, UploadInfo } from './types';
 
+/** 現在時間，格式 YYYY/MM/DD HH:mm */
+function nowStr() {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export type ActionResult = { error: string } | undefined;
 
 function revalidateLists() {
-  revalidatePath('/forms');
+  // 'layout'：連同 /forms/[id] 等子頁面一起更新
+  revalidatePath('/forms', 'layout');
   revalidatePath('/my-signature');
 }
 
@@ -124,4 +131,27 @@ export async function saveSigners(input: {
   });
   revalidateLists();
   redirect(`/forms?flash=published&count=${signers.length}`);
+}
+
+/** 通知（提醒）簽署人；未指定 signerIds 時通知所有待簽署者。只會通知待簽署的人，回傳實際通知人數 */
+export async function notifySigners(input: {
+  formId: string;
+  signerIds?: string[];
+}): Promise<{ error: string } | { count: number }> {
+  const form = getForm(input.formId);
+  if (!form) return { error: '找不到此文件' };
+  if (deriveStatus(form) !== 'active') return { error: '只有簽署中的文件可以通知簽署人' };
+
+  const wanted = input.signerIds ? new Set(input.signerIds) : null;
+  const targets = form.signers.filter((s) => s.status === 'pending' && (!wanted || wanted.has(s.id)));
+  if (targets.length === 0) return { error: '沒有可通知的待簽署者' };
+
+  // TODO: 串接寄信／站內通知 API；目前僅記錄通知次數與時間
+  const now = nowStr();
+  for (const s of targets) {
+    s.notifyCount = (s.notifyCount ?? 0) + 1;
+    s.lastNotifiedAt = now;
+  }
+  revalidateLists();
+  return { count: targets.length };
 }

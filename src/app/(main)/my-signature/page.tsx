@@ -1,7 +1,7 @@
 import FlashSnackbar from '@/components/FlashSnackbar';
 import PageHeader from '@/components/PageHeader';
-import { CURRENT_USER_ID } from '@/features/forms/mock';
-import { getForms, toClientForm } from '@/features/forms/store';
+import { getCurrentUserId } from '@/features/forms/orgChart';
+import { getForms, toSignerView } from '@/features/forms/store';
 import MySignTable from '@/features/my-signature/MySignTable';
 import MySignTabs from '@/features/my-signature/MySignTabs';
 import { parseMySort, sortTasks } from '@/features/my-signature/sort';
@@ -21,10 +21,15 @@ export default async function MySignaturePage({ searchParams }: PageProps<'/my-s
   const params = await searchParams;
   const tab = parseTab(params.tab);
   const sort = parseMySort(params, tab);
-  const tasks = getMySignTasks(
-    getForms().map((f) => toClientForm(f, CURRENT_USER_ID)),
-    CURRENT_USER_ID,
-  );
+  // 以完整資料計算進度與可否簽署，再只保留本人的紀錄傳給畫面（不外流其他簽署人）
+  const userId = getCurrentUserId();
+  const allTasks = getMySignTasks(getForms(), userId, new Date());
+  const tasks = Object.fromEntries(
+    Object.entries(allTasks).map(([tab, list]) => [
+      tab,
+      list.map((t) => ({ ...t, form: toSignerView(t.form, userId) })),
+    ]),
+  ) as typeof allTasks;
   const counts = {
     pending: tasks.pending.length,
     signed: tasks.signed.length,

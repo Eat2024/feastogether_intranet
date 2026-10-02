@@ -27,3 +27,24 @@ export function deriveStatus(form: EFormDoc): FormStatus {
   if (form.status !== "active") return form.status;
   return form.signers.length > 0 && pendingCount(form) === 0 ? "completed" : "active";
 }
+
+/** 文件的整體簽署進度（簽署人看不到名單時，用來顯示進度與狀態） */
+export type FormProgress = {
+  total: number;
+  signed: number;
+  rejected: number;
+  pending: number;
+  status: FormStatus;
+};
+
+export function getProgress(form: EFormDoc): FormProgress {
+  const signed = signedCount(form);
+  const pending = pendingCount(form);
+  return {
+    total: form.signers.length,
+    signed,
+    rejected: form.signers.length - signed - pending,
+    pending,
+    status: deriveStatus(form),
+  };
+}

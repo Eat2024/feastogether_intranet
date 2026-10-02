@@ -1,8 +1,8 @@
 // 文件資料的讀寫層（僅供伺服器端使用）。
 // 尚未串接 API：資料放在伺服器記憶體，以 MOCK_FORMS 為初始值，重新啟動伺服器即重置。
 // 串接 API 時只需替換本檔的函式實作，呼叫端不必改。
-import { CURRENT_USER_ID, MOCK_EMPLOYEES, MOCK_FORMS } from './mock';
-import type { EFormDoc, StaffMember } from './types';
+import { MOCK_FORMS } from './mock';
+import type { EFormDoc } from './types';
 
 // 掛在 globalThis：dev 模式熱更新重新載入模組時資料不會被重置
 const g = globalThis as typeof globalThis & { __eformStore?: EFormDoc[] };
@@ -23,10 +23,6 @@ export function insertForm(form: EFormDoc) {
 export function updateForm(id: string, patch: Partial<EFormDoc>) {
   const form = getForm(id);
   if (form) Object.assign(form, patch);
-}
-
-export function getCurrentUser(): StaffMember {
-  return MOCK_EMPLOYEES.find((e) => e.id === CURRENT_USER_ID)!;
 }
 
 /** 今天日期，格式 YYYY/MM/DD */
@@ -59,4 +55,9 @@ export function toClientForm(form: EFormDoc, viewerId?: string): EFormDoc {
       s.id === viewerId ? s : { ...s, signatures: undefined, consent: undefined },
     ),
   };
+}
+
+/** 簽署人視角：只保留本人的簽署紀錄，不傳出其他簽署人的姓名與狀態（整體進度請用 getProgress） */
+export function toSignerView(form: EFormDoc, viewerId: string): EFormDoc {
+  return { ...form, signers: form.signers.filter((s) => s.id === viewerId) };
 }

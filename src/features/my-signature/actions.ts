@@ -1,6 +1,6 @@
 'use server';
 
-import { CURRENT_USER_ID } from '@/features/forms/mock';
+import { getCurrentUserId } from '@/features/forms/orgChart';
 import { getSignLayout, signFields } from '@/features/forms/signLayout';
 import { getForm } from '@/features/forms/store';
 import type { Signer } from '@/features/forms/types';
@@ -25,7 +25,8 @@ function nowStr() {
 function findMe(formId: string): { signer: Signer; form: NonNullable<ReturnType<typeof getForm>> } | { error: string } {
   const form = getForm(formId);
   if (!form) return { error: '找不到此文件' };
-  const signer = form.signers.find((s) => s.id === CURRENT_USER_ID);
+  const userId = getCurrentUserId();
+  const signer = form.signers.find((s) => s.id === userId);
   if (!signer) return { error: '你不是此文件的簽署人' };
   const block = getSignBlock(form, signer, new Date());
   if (block) return { error: block };

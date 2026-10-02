@@ -1,9 +1,8 @@
 import SortableHeaderCell from '@/components/SortableHeaderCell';
-import SignProgressButton from '@/features/forms/SignProgressDialog';
+import SignProgressButton from './MySignProgressDialog';
 import { nextSortState } from '@/lib/tableSort';
-import { FORM_STATUS_META, deriveStatus } from '@/features/forms/status';
+import { FORM_STATUS_META } from '@/features/forms/status';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
@@ -14,8 +13,8 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
+import SignActionButton from './SignActionButton';
 import DownloadSignedCopyButton from './sign/DownloadSignedCopyButton';
-import { getSignBlock } from './sign/eligibility';
 import { mySignHref, type MySortKey, type MySortState } from './sort';
 import { daysUntil, type MySignTab, type MySignTask } from './tasks';
 
@@ -93,7 +92,7 @@ export default function MySignTable({
 
   const viewAction: Column = {
     header: '操作',
-    cell: ({ form }) => <SignProgressButton form={form} />,
+    cell: ({ form, me, progress }) => <SignProgressButton form={form} me={me} progress={progress} />,
   };
 
   const columnsByTab: Record<MySignTab, Column[]> = {
@@ -107,16 +106,7 @@ export default function MySignTable({
       {
         header: '操作',
         // 已逾期或尚未開始時停用
-        cell: ({ form, me }) => (
-          <Button
-            size="small"
-            variant="contained"
-            href={`/my-signature/${form.id}`}
-            disabled={getSignBlock(form, me, today) !== null}
-          >
-            簽署
-          </Button>
-        ),
+        cell: ({ form, signBlock }) => <SignActionButton formId={form.id} disabled={signBlock !== null} />,
       },
     ],
     signed: [
@@ -126,17 +116,17 @@ export default function MySignTable({
       {
         header: '文件狀態',
       sortKey: 'status',
-        cell: ({ form }) => {
-          const status = FORM_STATUS_META[deriveStatus(form)];
+        cell: ({ progress }) => {
+          const status = FORM_STATUS_META[progress.status];
           return <Chip size="small" variant="soft" label={status.label} color={status.color} />;
         },
       },
       initiator,
       {
         header: '操作',
-        cell: ({ form, me }) => (
+        cell: ({ form, me, progress }) => (
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <SignProgressButton form={form} />
+            <SignProgressButton form={form} me={me} progress={progress} />
             <DownloadSignedCopyButton form={form} me={me} variant="icon" />
           </Box>
         ),

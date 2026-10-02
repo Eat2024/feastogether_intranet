@@ -17,8 +17,10 @@ const CREATORS = {
   chris: { name: '黃啟軒', employeeNo: '10210788' },
 } satisfies Record<string, Employee>;
 
-/** 目前登入者（尚未串接登入，先固定為李秉彥） */
-export const CURRENT_USER_ID = 'u3';
+/** 目前登入者（尚未串接登入，先固定為組織架構中的陳柏丞 11506071） */
+export const CURRENT_USER_ID = '11506071';
+/** 沒有組織架構檔時改用的目前登入者（假資料的李秉彥） */
+export const FALLBACK_USER_ID = 'u3';
 
 // 假資料，串接 API 前供畫面呈現用
 export const MOCK_FORMS: EFormDoc[] = [

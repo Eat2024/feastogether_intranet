@@ -1,7 +1,7 @@
 import { getSignLayout } from '@/features/forms/signLayout';
 import { deriveStatus } from '@/features/forms/status';
 import type { EFormDoc, Signer } from '@/features/forms/types';
-import { daysUntil } from '../tasks';
+import { daysUntil } from '@/lib/dates';
 
 /** 目前不能簽署的原因；可以簽署時回傳 null（簽署頁與送出時的檢查共用） */
 export function getSignBlock(form: EFormDoc, me: Signer, today: Date): string | null {

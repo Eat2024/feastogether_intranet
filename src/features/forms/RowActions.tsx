@@ -5,12 +5,11 @@
 import TooltipIconButton from '@/components/TooltipIconButton';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
+import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
 import Box from '@mui/material/Box';
 import DeleteFormButton from './DeleteFormButton';
-import NotifySignersButton from './NotifySignersDialog';
-import ViewSignProgressButton from './SignProgressDialog';
 import StopSigningButton from './StopSigningButton';
-import { deriveStatus, pendingCount, signedCount } from './status';
+import { deriveStatus, signedCount } from './status';
 import type { EFormDoc } from './types';
 
 // 操作按鈕一律全部列出、順序固定，依狀態停用（可操作為 info 色、停止簽署為 error 色，停用為灰）；規則沿用 req_doc/forms-admin.html
@@ -27,10 +26,13 @@ export default function RowActions({ form }: { form: EFormDoc }) {
         href={`/forms/${form.id}/signers`}
         disabled={status !== 'draft'}
       />
-      <ViewSignProgressButton form={form} disabled={status === 'draft'} />
-      <NotifySignersButton
-        form={form}
-        disabled={status !== 'active' || pendingCount(form) === 0}
+      {/* 檢視簽署狀態與通知簽署人（草稿尚無進度，停用） */}
+      <TooltipIconButton
+        label="檢視"
+        icon={<VisibilityRoundedIcon />}
+        color="info"
+        href={`/forms/${form.id}`}
+        disabled={status === 'draft'}
       />
       <TooltipIconButton
         label="編輯"

@@ -1,5 +1,4 @@
 import { STATUS_ORDER } from '@/features/forms/sort';
-import { deriveStatus } from '@/features/forms/status';
 import { parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
 import type { MySignTab, MySignTask } from './tasks';
 
@@ -30,7 +29,7 @@ const SORT_VALUE: Record<MySortKey, (t: MySignTask) => SortValue> = {
   // 待簽署的文件都已發起，未設結束日（不限）視為最晚
   endAt: ({ form }) => form.endAt ?? '￿',
   signedAt: ({ me }) => me.signedAt ?? null,
-  status: ({ form }) => STATUS_ORDER[deriveStatus(form)],
+  status: ({ progress }) => STATUS_ORDER[progress.status],
   rejectedAt: ({ me }) => me.rejectedAt ?? null,
   rejectReason: ({ me }) => me.rejectReason ?? null,
   initiator: ({ form }) => `${form.createdBy.name}\u0000${form.createdBy.employeeNo}`,

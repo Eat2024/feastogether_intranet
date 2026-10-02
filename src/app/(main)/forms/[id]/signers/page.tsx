@@ -2,7 +2,8 @@ import PageHeader from '@/components/PageHeader';
 import StepFlow from '@/components/StepFlow';
 import SignersEditor from '@/features/forms/editor/SignersEditor';
 import { CREATE_STEPS } from '@/features/forms/editor/steps';
-import { getEmployees, getForm } from '@/features/forms/store';
+import { getOrgTree } from '@/features/forms/orgChart';
+import { getForm } from '@/features/forms/store';
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 
@@ -22,7 +23,7 @@ export default async function FormSignersPage({ params }: PageProps<'/forms/[id]
         title="設定簽署"
         description={`「${form.name}」${form.docNumber ? `（${form.docNumber}）` : ''}－ 為此文件指定需簽署的人員，並設定簽署期間。`}
       />
-      <SignersEditor form={form} employees={getEmployees()} />
+      <SignersEditor form={form} org={getOrgTree()} />
     </>
   );
 }

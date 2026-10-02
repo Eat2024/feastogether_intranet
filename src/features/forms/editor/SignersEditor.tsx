@@ -1,36 +1,39 @@
 'use client';
 
-import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
-import InputAdornment from '@mui/material/InputAdornment';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemButton from '@mui/material/ListItemButton';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useState, useTransition } from 'react';
 import { saveSigners } from '../actions';
-import { SignerAvatar } from '../SignerList';
-import type { EFormDoc, StaffMember } from '../types';
+import type { EFormDoc, OrgDept } from '../types';
 import DeadlineRangePicker from './DeadlineRangePicker';
+import EmailSignerInput, { type EmailSigner } from './EmailSignerInput';
+import StaffTreePicker from './StaffTreePicker';
+
+const DEADLINE_REQUIRED = '請選擇簽署期間的開始日與結束日';
 
 /** 設定簽署人員與簽署期間（流程第二步） */
 export default function SignersEditor({
   form,
-  employees,
+  org,
 }: {
   form: EFormDoc;
-  employees: StaffMember[];
+  /** 組織架構（部門樹與在職員工） */
+  org: OrgDept[];
 }) {
+  // 組織架構中的同仁（員工 id）與以 Email 加入的簽署人分開管理
   const [selected, setSelected] = useState(
-    () => new Set(form.signers.map((s) => s.id)),
+    () => new Set(form.signers.filter((s) => !s.email).map((s) => s.id)),
   );
-  const [query, setQuery] = useState('');
+  const [emailSigners, setEmailSigners] = useState<EmailSigner[]>(() =>
+    form.signers
+      .filter((s): s is typeof s & { email: string } => !!s.email)
+      .map((s) => ({ email: s.email, name: s.name === s.email ? '' : s.name })),
+  );
+  const totalSigners = selected.size + emailSigners.length;
   const [deadline, setDeadline] = useState<{
     start: string | null;
     end: string | null;
@@ -39,56 +42,33 @@ export default function SignersEditor({
     end: null,
   });
   const [error, setError] = useState<string>();
+  const [deadlineError, setDeadlineError] = useState<string>();
   const [pendingAction, setPendingAction] = useState<'save' | 'publish' | null>(
     null,
   );
   const [, startTransition] = useTransition();
 
-  const q = query.trim();
-  // 可用姓名或員工編號搜尋
-  const list = employees.filter(
-    (e) => !q || e.name.includes(q) || e.employeeNo.includes(q),
-  );
-  const listSelectedCount = list.filter((e) => selected.has(e.id)).length;
-  const allListSelected = list.length > 0 && listSelectedCount === list.length;
-
-  const toggle = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    setError(undefined);
-  };
-
-  // 全選只作用於目前搜尋結果
-  const toggleAll = () => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      list.forEach((e) =>
-        allListSelected ? next.delete(e.id) : next.add(e.id),
-      );
-      return next;
-    });
-    setError(undefined);
-  };
-
   const submit = (publish: boolean) => {
-    if (selected.size === 0) {
+    // 簽署期間於發起時必填；暫存設定時不需要（暫存不會保存簽署期間）
+    const missingDeadline = publish && (!deadline.start || !deadline.end);
+    if (missingDeadline) setDeadlineError(DEADLINE_REQUIRED);
+    if (totalSigners === 0) {
       setError('請至少選擇一位需簽署人員');
       return;
     }
+    if (missingDeadline) return;
     setPendingAction(publish ? 'publish' : 'save');
     startTransition(async () => {
       const result = await saveSigners({
         id: form.id,
         signerIds: [...selected],
+        emailSigners,
         deadline,
         publish,
       });
       if (result?.error) {
-        setError(result.error);
+        if (result.error === DEADLINE_REQUIRED) setDeadlineError(result.error);
+        else setError(result.error);
         setPendingAction(null);
       }
     });
@@ -101,133 +81,66 @@ export default function SignersEditor({
       <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
         <Stack spacing={3}>
           <Box>
-            <Typography variant="label" component="div" sx={{ mb: 1 }}>
+            <Typography variant="subheading" component="div" sx={{ mb: 1 }}>
               需簽署人員
             </Typography>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="搜尋員工姓名或員工編號"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              sx={{ mb: 2 }}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchRoundedIcon fontSize="small" />
-                    </InputAdornment>
-                  ),
-                },
+            <StaffTreePicker
+              org={org}
+              selected={selected}
+              error={!!error && !error.startsWith('結束日')}
+              onChange={(next) => {
+                setSelected(next);
+                setError(undefined);
               }}
             />
-            <List
-              disablePadding
-              sx={{
-                border: 1,
-                borderColor: error ? 'error.main' : 'formBorder',
-                borderRadius: 2,
-                maxHeight: 360,
-                overflowY: 'auto',
-                '& > li:last-of-type': { borderBottom: 0 },
-              }}
-            >
-              {/* 表頭列：全選目前搜尋結果＋已選人數 */}
-              <ListItem
-                divider
-                sx={{
-                  gap: 1.5,
-                  py: 0.5,
-                  bgcolor: 'formBorder',
-                  position: 'sticky',
-                  top: 0,
-                  zIndex: 1,
+            <Box sx={{ mt: 2 }}>
+              <EmailSignerInput
+                value={emailSigners}
+                onChange={(next) => {
+                  setEmailSigners(next);
+                  setError(undefined);
                 }}
-              >
-                <Checkbox
-                  size="small"
-                  checked={allListSelected}
-                  indeterminate={listSelectedCount > 0 && !allListSelected}
-                  disabled={list.length === 0}
-                  onChange={toggleAll}
-                  slotProps={{ input: { 'aria-label': '全選目前列表' } }}
-                />
-                <Typography variant="label" sx={{ flex: 1 }}>
-                  全選
-                </Typography>
-                <Typography variant="secondary" component="span">
-                  已選 {selected.size} 人
-                </Typography>
-              </ListItem>
-              {list.length === 0 ? (
-                <ListItem sx={{ py: 3, justifyContent: 'center' }}>
-                  <Typography variant="description">
-                    找不到符合的員工。
-                  </Typography>
-                </ListItem>
-              ) : (
-                list.map((emp) => (
-                  <ListItem key={emp.id} divider disablePadding>
-                    <ListItemButton
-                      onClick={() => toggle(emp.id)}
-                      sx={{ gap: 1.5, py: 1 }}
-                    >
-                      <Checkbox
-                        size="small"
-                        checked={selected.has(emp.id)}
-                        tabIndex={-1}
-                        disableRipple
-                        slotProps={{
-                          input: { 'aria-label': `選擇 ${emp.name}` },
-                        }}
-                      />
-                      <SignerAvatar name={emp.name} />
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="content" component="span">
-                          {emp.name}
-                        </Typography>{' '}
-                        <Typography variant="helper">
-                          {emp.employeeNo}
-                        </Typography>
-                      </Box>
-                      <Typography variant="helper">{emp.dept}</Typography>
-                    </ListItemButton>
-                  </ListItem>
-                ))
-              )}
-            </List>
-            {error && (
-              <Typography
-                variant="helper"
-                component="div"
-                sx={{ color: 'error.dark', mt: 1 }}
-              >
-                {error}
-              </Typography>
-            )}
+              />
+            </Box>
+            <Typography
+              variant="secondary"
+              component="div"
+              sx={{ mt: 1.5, ...(error && { color: 'error.dark' }) }}
+            >
+              {error ??
+                `共 ${totalSigners} 位簽署人${emailSigners.length ? `（組織架構 ${selected.size} 位、Email ${emailSigners.length} 位）` : ''}`}
+            </Typography>
           </Box>
 
           <Box>
-            <Typography variant="label" component="div" sx={{ mb: 1 }}>
-              簽署期間（選填）
+            <Typography variant="subheading" component="div" sx={{ mb: 1 }}>
+              簽署期間
             </Typography>
             <DeadlineRangePicker
               start={deadline.start}
               end={deadline.end}
-              onChange={setDeadline}
+              onChange={(range) => {
+                setDeadline(range);
+                if (range.start && range.end) setDeadlineError(undefined);
+              }}
             />
-            <Typography variant="helper" component="div" sx={{ mt: 1 }}>
-              {deadline.start || deadline.end
-                ? `已選擇：${deadline.start ?? '今天開始'} ～ ${deadline.end ?? '不限結束'}`
-                : '留空表示從發起當天開始、不設結束日，簽署人可隨時完成簽署。'}
+            <Typography
+              variant="label"
+              component="div"
+              sx={{ mt: 1, ...(deadlineError && { color: 'error.dark' }) }}
+            >
+              {deadlineError ??
+                (deadline.start || deadline.end
+                  ? `已選擇：${deadline.start ?? '（請選擇開始日）'} ～ ${deadline.end ?? '（請選擇結束日）'}`
+                  : '請選擇開始日與結束日，簽署人需在此期間內完成簽署。')}
             </Typography>
           </Box>
         </Stack>
       </Paper>
 
-      {error && error !== '請至少選擇一位需簽署人員' && (
-        <Alert severity="error">{error}</Alert>
-      )}
+      {error &&
+        error !== '請至少選擇一位需簽署人員' &&
+        error !== DEADLINE_REQUIRED && <Alert severity="error">{error}</Alert>}
 
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
         <Button

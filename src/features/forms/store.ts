@@ -25,10 +25,6 @@ export function updateForm(id: string, patch: Partial<EFormDoc>) {
   if (form) Object.assign(form, patch);
 }
 
-export function getEmployees(): StaffMember[] {
-  return MOCK_EMPLOYEES;
-}
-
 export function getCurrentUser(): StaffMember {
   return MOCK_EMPLOYEES.find((e) => e.id === CURRENT_USER_ID)!;
 }

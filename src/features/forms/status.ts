@@ -27,8 +27,3 @@ export function deriveStatus(form: EFormDoc): FormStatus {
   if (form.status !== "active") return form.status;
   return form.signers.length > 0 && pendingCount(form) === 0 ? "completed" : "active";
 }
-
-export function formatRange(start: string | null, end: string | null) {
-  if (!start) return "尚未發起";
-  return `${start} － ${end ?? "進行中"}`;
-}

@@ -2,14 +2,14 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
+import { getStaff } from './orgChart';
 import { signedCount } from './status';
 import {
   getCurrentUser,
-  getEmployees,
   getForm,
   insertForm,
   nextDocNumber,
-  todayStr,
   updateForm,
 } from './store';
 import type { Signer, UploadInfo } from './types';
@@ -73,25 +73,42 @@ export async function saveUploadDocument(input: {
 export async function saveSigners(input: {
   id: string;
   signerIds: string[];
+  /** 以 Email 加入、未列入組織架構的簽署人 */
+  emailSigners: { email: string; name: string }[];
   deadline: { start: string | null; end: string | null };
   publish: boolean;
 }): Promise<ActionResult> {
   const form = getForm(input.id);
   if (!form) return { error: '找不到此文件' };
   if (form.status !== 'draft') return { error: '此文件已發起簽署，無法再修改簽署設定' };
-  if (input.signerIds.length === 0) return { error: '請至少選擇一位需簽署人員' };
+  if (input.signerIds.length + input.emailSigners.length === 0) {
+    return { error: '請至少選擇一位需簽署人員' };
+  }
+  const emails = input.emailSigners.map((e) => ({ email: normalizeEmail(e.email), name: e.name.trim().slice(0, 50) }));
+  if (emails.some((e) => !isValidEmail(e.email))) return { error: 'Email 格式不正確' };
+  if (new Set(emails.map((e) => e.email)).size !== emails.length) return { error: 'Email 不可重複加入' };
+  if (input.publish) {
+    const { start, end } = input.deadline;
+    if (!start || !end) return { error: '請選擇簽署期間的開始日與結束日' };
+    // 日期格式 YYYY/MM/DD，字串比較即為日期先後
+    if (end < start) return { error: '結束日不能早於開始日' };
+  }
 
   // 保留原本已設定簽署人的狀態，新加入的為待簽署
   const prevById = new Map(form.signers.map((s) => [s.id, s]));
-  const employees = new Map(getEmployees().map((e) => [e.id, e]));
   const signers: Signer[] = input.signerIds.flatMap((sid) => {
     const prev = prevById.get(sid);
     if (prev) return [prev];
-    const emp = employees.get(sid);
+    const emp = getStaff(sid);
     return emp
       ? [{ id: emp.id, name: emp.name, employeeNo: emp.employeeNo, status: 'pending' as const }]
       : [];
   });
+  for (const { email, name } of emails) {
+    const id = emailSignerId(email);
+    // 未填姓名時以 email 顯示
+    signers.push(prevById.get(id) ?? { id, name: name || email, employeeNo: '', email, status: 'pending' });
+  }
 
   if (!input.publish) {
     updateForm(form.id, { signers });
@@ -102,7 +119,7 @@ export async function saveSigners(input: {
   updateForm(form.id, {
     signers,
     status: 'active',
-    startAt: input.deadline.start ?? todayStr(),
+    startAt: input.deadline.start,
     endAt: input.deadline.end,
   });
   revalidateLists();

@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 組織架構與在職員工（含個人資料），不可提交至版本控制
+/data/

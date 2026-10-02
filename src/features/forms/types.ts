@@ -4,10 +4,13 @@ export type DocType = "online" | "upload";
 export type FormStatus = "draft" | "active" | "completed" | "stopped";
 
 export type Signer = {
+  /** 組織架構的同仁為員工編號；以 Email 加入者為 `email:` 前綴＋email */
   id: string;
   name: string;
-  /** 八碼員工編號 */
+  /** 員工編號；以 Email 加入者為空字串 */
   employeeNo: string;
+  /** 以 Email 加入（未列入組織架構）的簽署人 */
+  email?: string;
   status: "pending" | "signed" | "rejected";
   signedAt?: string;
   rejectedAt?: string;
@@ -31,6 +34,16 @@ export type Employee = {
 export type StaffMember = Employee & {
   id: string;
   dept: string;
+};
+
+/** 組織架構中的一個部門（選擇簽署人用）；total 為含所有子部門的人數 */
+export type OrgDept = {
+  id: string;
+  name: string;
+  children: OrgDept[];
+  /** employeeNo 省略時與 id 相同（人事資料以員工編號為 id） */
+  employees: { id: string; name: string; title: string; employeeNo?: string }[];
+  total: number;
 };
 
 /** 上傳文件上的一個欄位位置（x、y 為頁面寬高的百分比） */

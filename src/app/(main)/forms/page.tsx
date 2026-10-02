@@ -1,9 +1,14 @@
 import FlashSnackbar from '@/components/FlashSnackbar';
 import PageHeader from '@/components/PageHeader';
+import SearchField from '@/components/SearchField';
 import FormsTable from '@/features/forms/FormsTable';
+import { filterForms, parseSort, sortForms } from '@/features/forms/sort';
 import { getForms, toClientForm } from '@/features/forms/store';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 
@@ -18,7 +23,12 @@ const FLASH_MESSAGES = {
   updated: '文件已更新',
 };
 
-export default function FormsPage() {
+export default async function FormsPage({ searchParams }: PageProps<'/forms'>) {
+  const params = await searchParams;
+  const sort = parseSort(params);
+  const query = typeof params.q === 'string' ? params.q.trim() : '';
+  const forms = sortForms(filterForms(getForms(), query), sort);
+
   return (
     <>
       <PageHeader
@@ -35,7 +45,17 @@ export default function FormsPage() {
           </Button>
         }
       />
-      <FormsTable forms={getForms().map((f) => toClientForm(f))} />
+      <Stack spacing={2}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Suspense>
+            <SearchField placeholder="搜尋文件名稱、文件編號或建立人" />
+          </Suspense>
+          <Typography variant="secondary" component="span" sx={{ flexShrink: 0 }}>
+            共 {forms.length} 筆
+          </Typography>
+        </Box>
+        <FormsTable forms={forms.map((f) => toClientForm(f))} sort={sort} query={query} />
+      </Stack>
       <Suspense>
         <FlashSnackbar messages={FLASH_MESSAGES} />
       </Suspense>

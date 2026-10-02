@@ -1,4 +1,6 @@
+import SortableHeaderCell from '@/components/SortableHeaderCell';
 import SignProgressButton from '@/features/forms/SignProgressDialog';
+import { nextSortState } from '@/lib/tableSort';
 import { FORM_STATUS_META, deriveStatus } from '@/features/forms/status';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -14,13 +16,15 @@ import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
 import DownloadSignedCopyButton from './sign/DownloadSignedCopyButton';
 import { getSignBlock } from './sign/eligibility';
+import { mySignHref, type MySortKey, type MySortState } from './sort';
 import { daysUntil, type MySignTab, type MySignTask } from './tasks';
 
 // 剩餘天數 ≤ 此值時標示「即將到期」
 const DUE_SOON_DAYS = 3;
 
 function DueDate({ date, today }: { date: string | null; today: Date }) {
-  if (!date) return <>—</>;
+  // 待簽署的文件都已發起，未設結束日即不限期
+  if (!date) return <>不限</>;
   const days = daysUntil(date, today);
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -35,6 +39,8 @@ function DueDate({ date, today }: { date: string | null; today: Date }) {
 
 type Column = {
   header: string;
+  /** 提供時此欄可排序 */
+  sortKey?: MySortKey;
   cell: (task: MySignTask) => ReactNode;
   nowrap?: boolean;
 };
@@ -45,37 +51,45 @@ const EMPTY_TEXT: Record<MySignTab, string> = {
   rejected: '目前沒有已拒絕的文件。',
 };
 
+/** tasks 需已依 sort 排序（排序在伺服器端完成） */
 export default function MySignTable({
   tab,
   tasks,
   today,
+  sort,
 }: {
   tab: MySignTab;
   tasks: MySignTask[];
   today: Date;
+  sort: MySortState;
 }) {
-  // 三個分頁共用的前兩欄
+  // 三個分頁共用的前兩欄：文件名稱、文件編號
   const common: Column[] = [
     {
       header: '文件名稱',
-      cell: ({ form }) => (
-        <>
-          <Typography variant="content">{form.name}</Typography>
-          {form.docNumber && <Typography variant="helper">{form.docNumber}</Typography>}
-        </>
-      ),
+      sortKey: 'name',
+      cell: ({ form }) => form.name,
     },
     {
-      header: '發起人',
+      header: '文件編號',
+      sortKey: 'docNumber',
       nowrap: true,
-      cell: ({ form }) => (
-        <>
-          <Typography variant="content">{form.createdBy.name}</Typography>
-          <Typography variant="helper">{form.createdBy.employeeNo}</Typography>
-        </>
-      ),
+      cell: ({ form }) => form.docNumber ?? '—',
     },
   ];
+
+  // 發起人一律放在「操作」左邊
+  const initiator: Column = {
+    header: '發起人',
+      sortKey: 'initiator',
+    nowrap: true,
+    cell: ({ form }) => (
+      <>
+        <Typography variant="content">{form.createdBy.name}</Typography>
+        <Typography variant="helper">{form.createdBy.employeeNo}</Typography>
+      </>
+    ),
+  };
 
   const viewAction: Column = {
     header: '操作',
@@ -85,8 +99,11 @@ export default function MySignTable({
   const columnsByTab: Record<MySignTab, Column[]> = {
     pending: [
       ...common,
-      { header: '發起日期', nowrap: true, cell: ({ form }) => form.startAt },
-      { header: '簽署期限', nowrap: true, cell: ({ form }) => <DueDate date={form.endAt} today={today} /> },
+      { header: '開始時間',
+      sortKey: 'startAt', nowrap: true, cell: ({ form }) => form.startAt },
+      { header: '結束時間',
+      sortKey: 'endAt', nowrap: true, cell: ({ form }) => <DueDate date={form.endAt} today={today} /> },
+      initiator,
       {
         header: '操作',
         // 已逾期或尚未開始時停用
@@ -104,14 +121,17 @@ export default function MySignTable({
     ],
     signed: [
       ...common,
-      { header: '簽署時間', nowrap: true, cell: ({ me }) => me.signedAt },
+      { header: '簽署時間',
+      sortKey: 'signedAt', nowrap: true, cell: ({ me }) => me.signedAt },
       {
         header: '文件狀態',
+      sortKey: 'status',
         cell: ({ form }) => {
           const status = FORM_STATUS_META[deriveStatus(form)];
           return <Chip size="small" variant="soft" label={status.label} color={status.color} />;
         },
       },
+      initiator,
       {
         header: '操作',
         cell: ({ form, me }) => (
@@ -124,9 +144,11 @@ export default function MySignTable({
     ],
     rejected: [
       ...common,
-      { header: '拒絕時間', nowrap: true, cell: ({ me }) => me.rejectedAt },
+      { header: '拒絕時間',
+      sortKey: 'rejectedAt', nowrap: true, cell: ({ me }) => me.rejectedAt },
       {
         header: '拒絕原因',
+      sortKey: 'rejectReason',
         // 完整顯示、自動換行；保留最小寬度避免被擠成過窄的一欄
         cell: ({ me }) =>
           me.rejectReason ? (
@@ -137,6 +159,7 @@ export default function MySignTable({
             '—'
           ),
       },
+      initiator,
       viewAction,
     ],
   };
@@ -148,9 +171,20 @@ export default function MySignTable({
       <Table>
         <TableHead>
           <TableRow>
-            {columns.map((col) => (
-              <TableCell key={col.header}>{col.header}</TableCell>
-            ))}
+            {columns.map((col) =>
+              col.sortKey ? (
+                <SortableHeaderCell
+                  key={col.header}
+                  active={sort?.key === col.sortKey}
+                  order={sort?.order ?? 'asc'}
+                  href={mySignHref(tab, nextSortState(sort, col.sortKey))}
+                >
+                  {col.header}
+                </SortableHeaderCell>
+              ) : (
+                <TableCell key={col.header}>{col.header}</TableCell>
+              ),
+            )}
           </TableRow>
         </TableHead>
         <TableBody>

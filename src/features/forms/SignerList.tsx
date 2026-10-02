@@ -8,8 +8,8 @@ import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
 import type { Signer } from './types';
 
-// 頭像顯示名字後兩字（例：許婷惠 → 婷惠）
-const initials = (name: string) => name.slice(-2);
+// 頭像顯示名字後兩字（例：許婷惠 → 婷惠）；未填姓名的 Email 簽署人顯示 email 首字母
+const initials = (name: string) => (name.includes('@') ? name[0].toUpperCase() : name.slice(-2));
 
 /** 簽署人頭像：淡主色底＋深主色字，顯示名字後兩字 */
 export function SignerAvatar({ name }: { name: string }) {
@@ -46,7 +46,7 @@ export function SignerRow({ signer, left, right }: SignerRowProps) {
         <Typography variant="content" component="span">
           {signer.name}
         </Typography>{' '}
-        <Typography variant="helper">{signer.employeeNo}</Typography>
+        <Typography variant="helper">{signer.email ?? signer.employeeNo}</Typography>
       </Box>
       {right}
     </ListItem>

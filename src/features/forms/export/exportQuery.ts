@@ -82,6 +82,15 @@ export function exportRows(
     .map((s) => ({ ...s, dept: helpers.deptOf(s.id) }));
 }
 
+/** 匯出範圍的文字說明（Excel 的「文件資訊」與匯出紀錄共用） */
+export function describeScope(query: ExportQuery, deptNames: string[]) {
+  const statusText = query.statuses.length
+    ? query.statuses.map((s) => STATUS_LABEL[s]).join('、')
+    : '全部';
+  const deptText = deptNames.length ? `${deptNames.join('、')}（含下層部門）` : '全部';
+  return `狀態：${statusText}；部門：${deptText}`;
+}
+
 function toSearch(query: ExportQuery) {
   const qs = new URLSearchParams();
   if (query.statuses.length) qs.set('status', query.statuses.join(','));

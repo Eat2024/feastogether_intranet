@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { addExportRecord } from '@/features/export-history/store';
 import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
 import { getCurrentUser, getStaff } from './orgChart';
 import { deriveStatus, signedCount } from './status';
@@ -9,9 +10,10 @@ import {
   getForm,
   insertForm,
   nextDocNumber,
+  toSignerView,
   updateForm,
 } from './store';
-import type { Signer, UploadInfo } from './types';
+import type { EFormDoc, Signer, UploadInfo } from './types';
 
 /** 現在時間，格式 YYYY/MM/DD HH:mm */
 function nowStr() {
@@ -154,4 +156,32 @@ export async function notifySigners(input: {
   }
   revalidateLists();
   return { count: targets.length };
+}
+
+const signerLabel = (s: Signer) => `${s.name}（${s.employeeNo || s.email || '—'}）`;
+
+/**
+ * 取得某位簽署人已簽署副本所需的資料（含其手寫簽名），供管理端匯出個人的已簽署文件。
+ * 只回傳該簽署人的紀錄，不帶出其他人的簽名；每次呼叫都會記入匯出紀錄。
+ * TODO: 串接登入與權限後，限制只有文件建立人或管理者可以匯出
+ */
+export async function getSignerCopy(input: {
+  formId: string;
+  signerId: string;
+}): Promise<{ error: string } | { form: EFormDoc; signer: Signer }> {
+  const form = getForm(input.formId);
+  if (!form) return { error: '找不到此文件' };
+  const signer = form.signers.find((s) => s.id === input.signerId);
+  if (!signer) return { error: '找不到此簽署人' };
+  if (signer.status !== 'signed') return { error: '此簽署人尚未簽署，沒有可匯出的文件' };
+  addExportRecord({
+    kind: 'signerCopy',
+    formId: form.id,
+    formName: form.name,
+    docNumber: form.docNumber ?? null,
+    scope: signerLabel(signer),
+    count: 1,
+    signerId: signer.id,
+  });
+  return { form: toSignerView(form, signer.id), signer };
 }

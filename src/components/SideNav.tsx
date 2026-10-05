@@ -13,15 +13,18 @@ import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
 import ListAltRoundedIcon from "@mui/icons-material/ListAltRounded";
 import DrawRoundedIcon from "@mui/icons-material/DrawRounded";
+import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 
 export const SIDE_NAV_WIDTH = 240;
 
 const NAV_ITEMS = [
   { label: "電子簽列表", href: "/forms", icon: <ListAltRoundedIcon /> },
   { label: "我的電子簽", href: "/my-signature", icon: <DrawRoundedIcon /> },
+  { label: "歷史匯出文件", href: "/export-history", icon: <HistoryRoundedIcon />, adminOnly: true },
 ];
 
-export default function SideNav() {
+/** isAdmin：顯示管理者專用的選項 */
+export default function SideNav({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -47,7 +50,7 @@ export default function SideNav() {
       {/* 深色底上 divider token（黑色 12%）看不見，改用白色 12% */}
       <Divider sx={(theme) => ({ borderColor: alpha(theme.palette.common.white, 0.12) })} />
       <List component="nav" sx={{ px: 1 }}>
-        {NAV_ITEMS.map((item) => (
+        {NAV_ITEMS.filter((item) => isAdmin || !("adminOnly" in item)).map((item) => (
           <ListItemButton
             key={item.href}
             component={Link}

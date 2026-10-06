@@ -3,7 +3,7 @@ import { color } from '@/theme/tokens';
 import ExcelJS from 'exceljs';
 import { getProgress } from '../status';
 import type { EFormDoc } from '../types';
-import { FIELDS, type ExportQuery, type ExportRow } from './exportQuery';
+import { describeScope, FIELDS, type ExportQuery, type ExportRow } from './exportQuery';
 
 const argb = (hex: string) => `FF${hex.replace('#', '').toUpperCase()}`;
 
@@ -44,16 +44,13 @@ export async function buildSignerXlsx(
     { key: 'k', width: 16 },
     { key: 'v', width: 48 },
   ];
-  const statusText = query.statuses.length
-    ? query.statuses.map((s) => ({ pending: '待簽署', signed: '已簽署', rejected: '已拒絕' })[s]).join('、')
-    : '全部';
   [
     ['文件名稱', form.name],
     ['文件編號', form.docNumber ?? ''],
     ['建立人', `${form.createdBy.name}（${form.createdBy.employeeNo}）`],
     ['簽署期間', `${form.startAt ?? '—'} ～ ${form.endAt ?? '不限'}`],
     ['簽署進度', `已簽署 ${progress.signed}／待簽署 ${progress.pending}／已拒絕 ${progress.rejected}（共 ${progress.total} 人）`],
-    ['匯出範圍', `狀態：${statusText}；部門：${deptNames.length ? `${deptNames.join('、')}（含下層部門）` : '全部'}`],
+    ['匯出範圍', describeScope(query, deptNames)],
     ['匯出筆數', String(rows.length)],
     ['匯出時間', exportedAt],
     ['注意', '本檔案含個人資料，請妥善保管，勿任意轉傳。'],

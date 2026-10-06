@@ -47,6 +47,13 @@ export function sortTasks(tasks: MySignTask[], sort: MySortState): MySignTask[] 
   return sort ? sortByValue(tasks, SORT_VALUE[sort.key], sort.order) : tasks;
 }
 
-export function mySignHref(tab: MySignTab, sort: { key: MySortKey; order: 'asc' | 'desc' }) {
-  return `/my-signature?tab=${tab}&sort=${sort.key}&order=${sort.order}`;
+/** 未指定頁碼時回到第 1 頁 */
+export function mySignHref(tab: MySignTab, sort: MySortState, page = 1) {
+  const qs = new URLSearchParams({ tab });
+  if (sort) {
+    qs.set('sort', sort.key);
+    qs.set('order', sort.order);
+  }
+  if (page > 1) qs.set('page', String(page));
+  return `/my-signature?${qs}`;
 }

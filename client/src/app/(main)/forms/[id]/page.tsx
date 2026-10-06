@@ -25,6 +25,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { pageHrefs } from '@/lib/paginate';
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
@@ -150,12 +151,10 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
           pendingTotal={progress.pending}
           emptyText={query.q ? `找不到符合「${query.q}」的簽署人。` : '此分類沒有簽署人。'}
         />
-        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-          <LinkPagination
-            page={page}
-            hrefs={Array.from({ length: pageCount }, (_, i) => signerHref(id, query, { page: i + 1 }))}
-          />
-        </Box>
+        <LinkPagination
+          page={page}
+          hrefs={pageHrefs(pageCount, (p) => signerHref(id, query, { page: p }))}
+        />
       </Stack>
     </>
   );

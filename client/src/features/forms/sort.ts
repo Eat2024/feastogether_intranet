@@ -33,25 +33,78 @@ export function sortForms(forms: EFormDoc[], sort: SortState): EFormDoc[] {
 
 export const nextSort = nextSortState<SortKey>;
 
-/** 搜尋：文件名稱、文件編號、建立人姓名或員工編號包含關鍵字（不分大小寫） */
-export function filterForms(forms: EFormDoc[], query: string): EFormDoc[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return forms;
-  return forms.filter((f) =>
-    [f.name, f.docNumber ?? '', f.createdBy.name, f.createdBy.employeeNo].some((v) =>
-      v.toLowerCase().includes(q),
-    ),
-  );
+export const FORM_STATUSES = ['draft', 'active', 'completed', 'stopped'] as const satisfies readonly FormStatus[];
+
+/** 列表的搜尋與篩選條件（記在網址上；日期為 YYYY-MM-DD，null 表示不限） */
+export type FormFilters = {
+  query: string;
+  /** 空陣列表示全部狀態 */
+  statuses: FormStatus[];
+  from: string | null;
+  to: string | null;
+};
+
+type FilterParams = { q?: string | string[]; status?: string | string[]; from?: string | string[]; to?: string | string[] };
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const dateParam = (v: string | string[] | undefined) => (typeof v === 'string' && ISO_DATE.test(v) ? v : null);
+
+export function parseFilters(params: FilterParams): FormFilters {
+  const statuses = typeof params.status === 'string' ? params.status.split(',') : [];
+  let from = dateParam(params.from);
+  let to = dateParam(params.to);
+  // 起日晚於迄日時對調，避免整個列表變空
+  if (from && to && from > to) [from, to] = [to, from];
+  return {
+    query: typeof params.q === 'string' ? params.q.trim() : '',
+    statuses: FORM_STATUSES.filter((s) => statuses.includes(s)),
+    from,
+    to,
+  };
 }
 
-/** 組出列表網址，保留搜尋與排序條件 */
-export function formsHref(opts: { query: string; sort: SortState }) {
+export const hasFilters = (f: FormFilters) => !!(f.query || f.statuses.length || f.from || f.to);
+
+/** 資料日期 YYYY/MM/DD 轉成可與網址日期比較的 YYYY-MM-DD */
+const iso = (d: string) => d.replaceAll('/', '-');
+
+/**
+ * 篩選：
+ * - 關鍵字：文件名稱、建立人姓名或員工編號包含關鍵字（不分大小寫）
+ * - 狀態：符合任一勾選的文件狀態
+ * - 簽署期間：與指定日期區間有重疊（未設結束日視為不限）；尚未發起的草稿沒有簽署期間，不會列出
+ */
+export function filterForms(forms: EFormDoc[], filters: FormFilters): EFormDoc[] {
+  const q = filters.query.toLowerCase();
+  return forms.filter((f) => {
+    if (
+      q &&
+      ![f.name, f.createdBy.name, f.createdBy.employeeNo].some((v) => v.toLowerCase().includes(q))
+    )
+      return false;
+    if (filters.statuses.length && !filters.statuses.includes(deriveStatus(f))) return false;
+    if (filters.from || filters.to) {
+      if (!f.startAt) return false;
+      if (filters.to && iso(f.startAt) > filters.to) return false;
+      if (filters.from && f.endAt && iso(f.endAt) < filters.from) return false;
+    }
+    return true;
+  });
+}
+
+/** 組出列表網址，保留搜尋、篩選與排序條件；未指定頁碼時回到第 1 頁 */
+export function formsHref(opts: { filters: FormFilters; sort: SortState; page?: number }) {
+  const { filters, sort, page = 1 } = opts;
   const qs = new URLSearchParams();
-  if (opts.query) qs.set('q', opts.query);
-  if (opts.sort) {
-    qs.set('sort', opts.sort.key);
-    qs.set('order', opts.sort.order);
+  if (filters.query) qs.set('q', filters.query);
+  if (filters.statuses.length) qs.set('status', filters.statuses.join(','));
+  if (filters.from) qs.set('from', filters.from);
+  if (filters.to) qs.set('to', filters.to);
+  if (sort) {
+    qs.set('sort', sort.key);
+    qs.set('order', sort.order);
   }
+  if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
   return s ? `/forms?${s}` : '/forms';
 }

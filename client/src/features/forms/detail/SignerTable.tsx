@@ -21,6 +21,7 @@ import Typography from '@mui/material/Typography';
 import { useState, useTransition } from 'react';
 import { notifySigners } from '../actions';
 import type { Signer } from '../types';
+import ExportSignerCopyButton from './ExportSignerCopyButton';
 import type { SignerRowData, SignerSort, SignerSortKey } from './signerQuery';
 
 const STATUS_META: Record<Signer['status'], { label: string; color: ChipProps['color'] }> = {
@@ -182,13 +183,20 @@ export default function SignerTable({
                         '—'
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <TooltipIconButton
                         label="通知"
                         icon={<NotificationsActiveRoundedIcon />}
                         color="info"
                         disabled={!canPick || pending}
                         onClick={() => setTarget({ ids: [s.id], count: 1 })}
+                      />
+                      {/* 只有已簽署的人有已簽署文件可以匯出 */}
+                      <ExportSignerCopyButton
+                        formId={formId}
+                        signerId={s.id}
+                        disabled={s.status !== 'signed'}
+                        onError={(message) => setResult({ ok: false, message })}
                       />
                     </TableCell>
                   </TableRow>

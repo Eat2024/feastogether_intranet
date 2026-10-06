@@ -1,8 +1,6 @@
 // 匯出頁的條件（範圍、欄位）與資料整理；條件記在網址上，預覽與 Excel 檔案共用同一套規則
 import type { EFormDoc, Signer } from '../types';
 
-export const PREVIEW_ROWS = 10;
-
 export const STATUS_OPTIONS = [
   { key: 'pending', label: '待簽署' },
   { key: 'signed', label: '已簽署' },
@@ -82,6 +80,15 @@ export function exportRows(
     .map((s) => ({ ...s, dept: helpers.deptOf(s.id) }));
 }
 
+/** 匯出範圍的文字說明（Excel 的「文件資訊」與匯出紀錄共用） */
+export function describeScope(query: ExportQuery, deptNames: string[]) {
+  const statusText = query.statuses.length
+    ? query.statuses.map((s) => STATUS_LABEL[s]).join('、')
+    : '全部';
+  const deptText = deptNames.length ? `${deptNames.join('、')}（含下層部門）` : '全部';
+  return `狀態：${statusText}；部門：${deptText}`;
+}
+
 function toSearch(query: ExportQuery) {
   const qs = new URLSearchParams();
   if (query.statuses.length) qs.set('status', query.statuses.join(','));
@@ -90,9 +97,11 @@ function toSearch(query: ExportQuery) {
   return qs.toString();
 }
 
-/** 匯出頁網址（條件改變時用） */
-export function exportPageHref(formId: string, query: ExportQuery) {
-  const s = toSearch(query);
+/** 匯出頁網址；條件改變時不帶頁碼（回到預覽第 1 頁） */
+export function exportPageHref(formId: string, query: ExportQuery, page = 1) {
+  const qs = new URLSearchParams(toSearch(query));
+  if (page > 1) qs.set('page', String(page));
+  const s = qs.toString();
   return s ? `/forms/${formId}/export?${s}` : `/forms/${formId}/export`;
 }
 

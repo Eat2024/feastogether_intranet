@@ -170,13 +170,27 @@ export async function buildSignedCopyPdf(form: EFormDoc, me: Signer): Promise<Ui
   return pdf.save();
 }
 
-/** 觸發瀏覽器下載 */
-export async function downloadSignedCopy(form: EFormDoc, me: Signer) {
-  const bytes = await buildSignedCopyPdf(form, me);
+/**
+ * 觸發瀏覽器下載。
+ * fileName 未指定時為「文件編號_文件名稱_已簽署.pdf」；有 password 時以 AES-256 加密，開啟檔案需輸入密碼。
+ */
+export async function downloadSignedCopy(
+  form: EFormDoc,
+  me: Signer,
+  opts: { fileName?: string; password?: string } = {},
+) {
+  const { fileName, password } = opts;
+  let bytes = await buildSignedCopyPdf(form, me);
+  if (password) {
+    // AES-256 需要 Web Crypto（crypto.subtle），只有 HTTPS 或 localhost 才有
+    if (!window.isSecureContext) throw new Error('INSECURE_CONTEXT');
+    const { encryptPDF } = await import('@pdfsmaller/pdf-encrypt');
+    bytes = await encryptPDF(bytes, password);
+  }
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${form.docNumber ?? form.id}_${form.name}_已簽署.pdf`;
+  a.download = fileName ?? `${form.docNumber ?? form.id}_${form.name}_已簽署.pdf`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

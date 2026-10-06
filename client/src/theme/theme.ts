@@ -82,8 +82,7 @@ const theme = createTheme({
 
   typography: {
     // next/font 變數由 app/layout.tsx 掛在 <html>
-    fontFamily:
-      '"Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif',
+    fontFamily: "var(--font-noto-sans-tc), var(--font-roboto), system-ui, sans-serif",
     fontSize: fontSize.body2,
     htmlFontSize: 16,
     fontWeightLight: fontWeight.normal,

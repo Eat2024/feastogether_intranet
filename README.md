@@ -1,36 +1,96 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 饗賓內部系統（電子簽署）
 
-## Getting Started
+饗賓集團內部使用的電子簽署系統，使用 Next.js（App Router）與 MUI 建置，包含：
 
-First, run the development server:
+- **電子簽列表**：建立文件、設定簽署人、追蹤簽署進度、匯出簽署紀錄
+- **我的電子簽**：簽署或拒絕需要自己簽署的文件、下載已簽署副本
+- **歷史匯出文件**：查看與重新下載過去的匯出（僅管理者）
+
+> 目前為前端示意版本：資料存在伺服器記憶體中，**伺服器重新啟動後，新增的文件、簽署與匯出紀錄都會清空**。尚未串接登入，目前登入者固定為一位同仁（見下方「登入者與管理者」）。
+
+## 環境需求
+
+| 項目    | 版本                                                 |
+| ------- | ---------------------------------------------------- |
+| Node.js | 20.9 以上（建議 24）                                 |
+| pnpm    | 11.9.0（由 `package.json` 的 `packageManager` 指定） |
+
+建議用 Corepack 啟用專案指定的 pnpm 版本（Node.js 內建）：
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+corepack enable
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 在本機啟動
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 1. 取得原始碼並安裝套件
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+git clone git@github.com:Eat2024/feastogether_intranet.git
+cd feastogether_intranet
+pnpm install
+```
 
-## Learn More
+### 2. 放入組織架構資料（選用，但建議）
 
-To learn more about Next.js, take a look at the following resources:
+設定簽署人時使用的組織架構與在職員工名單，讀取自：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+data/org-chart.json
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+請向專案負責人索取這個檔案，放到專案根目錄的 `data/` 資料夾（需自行建立）。
 
-## Deploy on Vercel
+> ⚠️ **這個檔案含員工個人資料，不可提交到版本控制。** `.gitignore` 已排除 `/data/`，請勿移除這條規則，也不要用其他方式把檔案傳到公開位置。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+沒有這個檔案時系統仍可執行，但會改用內建的假資料：組織架構只有「測試人員（假資料）」部門，登入者也會變成假資料中的人員。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 3. 啟動開發伺服器
+
+```bash
+pnpm dev
+```
+
+開啟瀏覽器前往 <http://localhost:3000>，會自動導向電子簽列表。修改程式碼後頁面會自動更新。
+
+要換連接埠時：
+
+```bash
+pnpm dev -p 3001
+```
+
+## 登入者與管理者
+
+尚未串接登入前，以下設定都是暫時的做法：
+
+- **目前登入者**：固定為員工編號 `11506071`（定義在 `src/features/forms/mock.ts` 的 `CURRENT_USER_ID`）。沒有組織架構資料檔時，改用假資料的 `u3`。
+- **管理者**：只有管理者看得到「歷史匯出文件」。預設管理者為 `11506071`，可在專案根目錄建立 `.env.local` 調整（多位以逗號分隔）：
+
+  ```bash
+  # .env.local
+  ADMIN_EMPLOYEE_IDS=11506071,10230156
+  ```
+
+  沒有組織架構資料檔時，登入者是 `u3`，若要看到「歷史匯出文件」，請設定 `ADMIN_EMPLOYEE_IDS=u3`。
+
+修改 `.env.local` 後需重新啟動伺服器才會生效。`.env*` 已列入 `.gitignore`。
+
+## 以正式版模式執行
+
+```bash
+pnpm build
+pnpm start          # 預設 http://localhost:3000
+pnpm start -p 3456  # 指定連接埠
+```
+
+開發伺服器（`pnpm dev`）與正式版伺服器的資料各自獨立，互不影響，適合在不動到開發資料的情況下測試。
+
+## 常用指令
+
+| 指令                     | 說明                         |
+| ------------------------ | ---------------------------- |
+| `pnpm dev`               | 啟動開發伺服器               |
+| `pnpm build`             | 建置正式版（同時做型別檢查） |
+| `pnpm start`             | 執行建置好的正式版           |
+| `pnpm lint`              | 執行 ESLint                  |
+| `pnpm exec tsc --noEmit` | 只做 TypeScript 型別檢查     |

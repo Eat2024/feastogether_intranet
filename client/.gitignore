@@ -1,0 +1,24 @@
+# dependencies
+/node_modules/
+
+# Next.js generated output
+/.next/
+/out/
+/build/
+/coverage/
+
+# local environment files; keep the template
+.env*
+!.env.example
+
+# local / generated files
+.DS_Store
+*.pem
+*.log
+.pnpm-debug.log*
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# 組織架構與在職員工（含個人資料）
+/data/

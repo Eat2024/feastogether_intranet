@@ -1,0 +1,126 @@
+{
+  "name": "feastogether-intranet-server",
+  "version": "0.0.1",
+  "description": "饗賓內部電子簽署系統後端",
+  "author": "",
+  "private": true,
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "imports": {
+    "#app/*": {
+      "development": "./src/*.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "nest build",
+    "dev": "node -r reflect-metadata ./node_modules/@nestjs/cli/bin/nest.js start --watch",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "start": "nest start",
+    "start:dev": "node -r reflect-metadata ./node_modules/@nestjs/cli/bin/nest.js start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:staging": "NODE_ENV=staging node dist/main",
+    "start:prod": "NODE_ENV=production node dist/main",
+    "start:worker": "NODE_ENV=production node dist/worker",
+    "worker:dev": "node -r reflect-metadata ./node_modules/@nestjs/cli/bin/nest.js start --entryFile worker --watch",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint:check": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix-dry-run",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage",
+    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:e2e": "node --conditions=development --env-file-if-exists=.env.test ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json --runInBand --forceExit",
+    "test:e2e:security": "node --conditions=development --env-file-if-exists=.env.test ./node_modules/jest/bin/jest.js --config ./test/jest-e2e-security.json --runInBand --forceExit",
+    "typeorm": "node --env-file=.env --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js -d src/infrastructure/database/mysql/data-source.ts",
+    "db:create": "node --env-file=.env --conditions=development -r ts-node/register src/infrastructure/database/create-db.ts",
+    "db:setup": "pnpm db:create && pnpm migration:run",
+    "db:test:create": "node --env-file=.env.test --conditions=development -r ts-node/register src/infrastructure/database/test/ensure-test-db.ts",
+    "schema:dump": "node --env-file=.env --conditions=development -r ts-node/register src/infrastructure/database/dump-schema.ts",
+    "migration:run": "pnpm typeorm migration:run",
+    "migration:revert": "pnpm typeorm migration:revert",
+    "migration:generate": "node --env-file=.env --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js migration:generate -d src/infrastructure/database/mysql/data-source.ts src/infrastructure/database/migrations/Migration",
+    "migration:create": "node --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js migration:create src/infrastructure/database/migrations/Migration",
+    "seed:rbac": "node --env-file=.env --conditions=development -r ts-node/register src/infrastructure/database/seeds/rbac.seed.ts"
+  },
+  "dependencies": {
+    "@date-fns/tz": "^1.5.0",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/multipart": "^10.1.0",
+    "@fastify/static": "^9.3.0",
+    "@nest-lab/throttler-storage-redis": "^1.2.0",
+    "@nestjs/axios": "^4.0.1",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/platform-fastify": "^11.1.27",
+    "@nestjs/swagger": "^11.2.4",
+    "@nestjs/throttler": "^6.5.0",
+    "axios": "^1.18.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.3",
+    "date-fns": "^4.4.0",
+    "decimal.js": "^10.6.0",
+    "fastify": "^5.8.5",
+    "ioredis": "^5.9.1",
+    "mysql2": "^3.18.2",
+    "nestjs-cls": "^6.2.1",
+    "nestjs-pino": "^4.6.1",
+    "openid-client": "6.8.8",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "pino-pretty": "^13.1.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "typeorm": "^0.3.28"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
+    "@eslint/js": "^9.18.0",
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.10.7",
+    "@types/supertest": "^6.0.2",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "eslint-plugin-sonarjs": "^4.2.0",
+    "globals": "^16.0.0",
+    "jest": "^30.0.0",
+    "prettier": "^3.4.2",
+    "source-map-support": "^0.5.21",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.5",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "moduleNameMapper": {
+      "^#app/(.*)$": "<rootDir>/$1",
+      "^openid-client$": "<rootDir>/../test/stubs/openid-client.stub.ts"
+    },
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "(?:oauth-runtime|request-id)\\.e2e-spec\\.ts$",
+  "testPathIgnorePatterns": ["/node_modules/"],
+  "globalSetup": "<rootDir>/test/global-setup.ts",
+  "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^#app/(.*)$": "<rootDir>/src/$1",
+    "^openid-client$": "<rootDir>/test/stubs/openid-client.stub.ts"
+  }
+}

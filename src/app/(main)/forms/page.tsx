@@ -1,10 +1,12 @@
 import FlashSnackbar from '@/components/FlashSnackbar';
+import LinkPagination from '@/components/LinkPagination';
 import PageHeader from '@/components/PageHeader';
 import SearchField from '@/components/SearchField';
 import FormsFilterBar from '@/features/forms/FormsFilterBar';
 import FormsTable from '@/features/forms/FormsTable';
-import { filterForms, parseFilters, parseSort, sortForms } from '@/features/forms/sort';
+import { filterForms, formsHref, parseFilters, parseSort, sortForms } from '@/features/forms/sort';
 import { getForms, toClientForm } from '@/features/forms/store';
+import { PAGE_SIZE, pageHrefs, paginate, parsePage } from '@/lib/paginate';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -18,6 +20,7 @@ export const metadata: Metadata = { title: '電子簽列表' };
 // 資料可被新增／修改，每次請求都重新讀取
 export const dynamic = 'force-dynamic';
 
+
 const FLASH_MESSAGES = {
   published: '已發起簽署，通知 {count} 位簽署人',
   saved: '已儲存簽署設定',
@@ -29,6 +32,7 @@ export default async function FormsPage({ searchParams }: PageProps<'/forms'>) {
   const sort = parseSort(params);
   const filters = parseFilters(params);
   const forms = sortForms(filterForms(getForms(), filters), sort);
+  const { items, page, pageCount } = paginate(forms, parsePage(params.page), PAGE_SIZE);
 
   return (
     <>
@@ -58,7 +62,8 @@ export default async function FormsPage({ searchParams }: PageProps<'/forms'>) {
             共 {forms.length} 筆
           </Typography>
         </Box>
-        <FormsTable forms={forms.map((f) => toClientForm(f))} sort={sort} filters={filters} />
+        <FormsTable forms={items.map((f) => toClientForm(f))} sort={sort} filters={filters} />
+        <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => formsHref({ filters, sort, page: p }))} />
       </Stack>
       <Suspense>
         <FlashSnackbar messages={FLASH_MESSAGES} />

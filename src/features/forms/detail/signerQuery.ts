@@ -1,8 +1,7 @@
 // 文件簽署狀態頁的簽署人篩選、排序與分頁（在伺服器端處理，條件記在網址上）
+import { PAGE_SIZE } from '@/lib/paginate';
 import { nextSortState, parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
 import type { EFormDoc, Signer } from '../types';
-
-export const PAGE_SIZE = 50;
 
 export const STATUS_TABS = [
   { key: 'all', label: '全部' },

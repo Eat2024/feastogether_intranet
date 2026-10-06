@@ -1,8 +1,6 @@
 // 匯出頁的條件（範圍、欄位）與資料整理；條件記在網址上，預覽與 Excel 檔案共用同一套規則
 import type { EFormDoc, Signer } from '../types';
 
-export const PREVIEW_ROWS = 10;
-
 export const STATUS_OPTIONS = [
   { key: 'pending', label: '待簽署' },
   { key: 'signed', label: '已簽署' },
@@ -99,9 +97,11 @@ function toSearch(query: ExportQuery) {
   return qs.toString();
 }
 
-/** 匯出頁網址（條件改變時用） */
-export function exportPageHref(formId: string, query: ExportQuery) {
-  const s = toSearch(query);
+/** 匯出頁網址；條件改變時不帶頁碼（回到預覽第 1 頁） */
+export function exportPageHref(formId: string, query: ExportQuery, page = 1) {
+  const qs = new URLSearchParams(toSearch(query));
+  if (page > 1) qs.set('page', String(page));
+  const s = qs.toString();
   return s ? `/forms/${formId}/export?${s}` : `/forms/${formId}/export`;
 }
 

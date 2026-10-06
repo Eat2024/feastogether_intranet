@@ -92,9 +92,9 @@ export function filterForms(forms: EFormDoc[], filters: FormFilters): EFormDoc[]
   });
 }
 
-/** 組出列表網址，保留搜尋、篩選與排序條件 */
-export function formsHref(opts: { filters: FormFilters; sort: SortState }) {
-  const { filters, sort } = opts;
+/** 組出列表網址，保留搜尋、篩選與排序條件；未指定頁碼時回到第 1 頁 */
+export function formsHref(opts: { filters: FormFilters; sort: SortState; page?: number }) {
+  const { filters, sort, page = 1 } = opts;
   const qs = new URLSearchParams();
   if (filters.query) qs.set('q', filters.query);
   if (filters.statuses.length) qs.set('status', filters.statuses.join(','));
@@ -104,6 +104,7 @@ export function formsHref(opts: { filters: FormFilters; sort: SortState }) {
     qs.set('sort', sort.key);
     qs.set('order', sort.order);
   }
+  if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
   return s ? `/forms?${s}` : '/forms';
 }

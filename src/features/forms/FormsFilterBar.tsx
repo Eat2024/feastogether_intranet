@@ -44,6 +44,8 @@ export default function FormsFilterBar({
       if (value) qs.set(key, value);
       else qs.delete(key);
     }
+    // 篩選條件改變時回到第 1 頁
+    qs.delete('page');
     const s = qs.toString();
     startTransition(() => router.replace(s ? `${pathname}?${s}` : pathname, { scroll: false }));
   };

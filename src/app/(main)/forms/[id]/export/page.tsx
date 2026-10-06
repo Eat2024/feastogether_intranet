@@ -1,16 +1,18 @@
+import LinkPagination from '@/components/LinkPagination';
 import PageHeader from '@/components/PageHeader';
 import { buildSignerDeptTree, selectedDeptKeys, signerDeptKey } from '@/features/forms/export/deptTree';
 import ExportOptions from '@/features/forms/export/ExportOptions';
 import {
   exportFileHref,
+  exportPageHref,
   exportRows,
   FIELDS,
   parseExportQuery,
-  PREVIEW_ROWS,
 } from '@/features/forms/export/exportQuery';
 import { getDeptName } from '@/features/forms/orgChart';
 import { FORM_STATUS_META, getProgress } from '@/features/forms/status';
 import { getForm } from '@/features/forms/store';
+import { PAGE_SIZE, pageHrefs, paginate, parsePage } from '@/lib/paginate';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
 import Alert from '@mui/material/Alert';
@@ -38,13 +40,15 @@ export default async function FormExportPage({ params, searchParams }: PageProps
   // 草稿尚無簽署資料可匯出
   if (form.status === 'draft') redirect('/forms');
 
-  const query = parseExportQuery(await searchParams);
+  const search = await searchParams;
+  const query = parseExportQuery(search);
   const deptTree = buildSignerDeptTree(form);
   const rows = exportRows(form, query, {
     deptOf: getDeptName,
     deptKeyOf: signerDeptKey,
     deptKeys: selectedDeptKeys(query.depts),
   });
+  const preview = paginate(rows, parsePage(search.page), PAGE_SIZE);
   const fields = FIELDS.filter((f) => query.fields.includes(f.key));
   const progress = getProgress(form);
   const statusMeta = FORM_STATUS_META[progress.status];
@@ -79,7 +83,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
       <Stack spacing={1.5}>
         <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 2 }}>
           <Typography variant="subheading" component="div">
-            4. 預覽（前 {PREVIEW_ROWS} 筆）
+            4. 預覽
           </Typography>
           <Typography variant="secondary" component="span">
             將匯出 {rows.length} 筆
@@ -102,7 +106,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.slice(0, PREVIEW_ROWS).map((r) => (
+                preview.items.map((r) => (
                   <TableRow key={r.id}>
                     {fields.map((f) => (
                       <TableCell key={f.key} sx={{ whiteSpace: f.key === 'rejectReason' ? 'normal' : 'nowrap' }}>
@@ -115,6 +119,10 @@ export default async function FormExportPage({ params, searchParams }: PageProps
             </TableBody>
           </Table>
         </TableContainer>
+        <LinkPagination
+          page={preview.page}
+          hrefs={pageHrefs(preview.pageCount, (p) => exportPageHref(id, query, p))}
+        />
       </Stack>
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>

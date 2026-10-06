@@ -5,6 +5,7 @@ import { isAdmin } from "@/features/export-history/admin";
 import RedownloadButton from "@/features/export-history/RedownloadButton";
 import { listExportRecords } from "@/features/export-history/store";
 import type { ExportKind } from "@/features/export-history/types";
+import { PAGE_SIZE, pageHrefs, paginate, parsePage } from "@/lib/paginate";
 import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -20,7 +21,6 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "歷史匯出文件" };
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 20;
 
 const TABS: { value: ExportKind; label: string; scopeLabel: string }[] = [
   { value: "list", label: "簽署紀錄清單 Excel", scopeLabel: "匯出範圍" },
@@ -41,7 +41,7 @@ export default async function ExportHistoryPage({
   const header = (
     <PageHeader
       title="歷史匯出文件"
-      description="查看所有人匯出的簽署紀錄與已簽署文件；重新下載時需設定檔案開啟密碼。"
+      description="查看所有人匯出的簽署紀錄與已簽署文件，並可重新下載。"
     />
   );
   if (!isAdmin()) {
@@ -58,9 +58,7 @@ export default async function ExportHistoryPage({
   const params = await searchParams;
   const tab = TABS.find((t) => t.value === params.tab) ?? TABS[0];
   const all = listExportRecords(tab.value);
-  const pageCount = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
-  const page = Math.min(Math.max(1, Number(params.page) || 1), pageCount);
-  const records = all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const { items: records, page, pageCount } = paginate(all, parsePage(params.page), PAGE_SIZE);
 
   return (
     <>
@@ -87,14 +85,13 @@ export default async function ExportHistoryPage({
                 <TableCell>{tab.scopeLabel}</TableCell>
                 {tab.value === "list" && <TableCell>筆數</TableCell>}
                 <TableCell>匯出人</TableCell>
-                <TableCell>重新下載紀錄</TableCell>
                 <TableCell>重新下載</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {records.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
                     <Typography variant="description">
                       目前還沒有匯出紀錄。
                     </Typography>
@@ -120,20 +117,6 @@ export default async function ExportHistoryPage({
                         {r.exportedBy.employeeNo}
                       </Typography>
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      {r.redownloads ? (
-                        <>
-                          <Typography variant="content">
-                            {r.redownloads} 次
-                          </Typography>
-                          <Typography variant="helper">
-                            最後 {r.lastRedownloadAt}
-                          </Typography>
-                        </>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
                     <TableCell>
                       <RedownloadButton recordId={r.id} kind={r.kind} />
                     </TableCell>
@@ -145,9 +128,7 @@ export default async function ExportHistoryPage({
         </TableContainer>
         <LinkPagination
           page={page}
-          hrefs={Array.from({ length: pageCount }, (_, i) =>
-            href(tab.value, i + 1),
-          )}
+          hrefs={pageHrefs(pageCount, (p) => href(tab.value, p))}
         />
       </Stack>
     </>

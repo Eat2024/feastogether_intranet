@@ -22,30 +22,33 @@ function loadRecord(recordId: string): Fail | { record: ExportRecord; form: EFor
 }
 
 /**
- * 重新下載簽署紀錄清單：依當時的匯出條件以目前資料重新產生，並以密碼加密（Office 標準加密，開啟時需輸入密碼）。
+ * 重新下載簽署紀錄清單：依當時的匯出條件以目前資料重新產生。
+ * 有 password 時以 Office 標準加密，開啟時需輸入密碼（目前畫面暫不提供設定密碼）。
  * 回傳 base64，由瀏覽器端組成檔案下載。
  */
 export async function redownloadList(input: {
   recordId: string;
-  password: string;
+  password?: string;
 }): Promise<Fail | { fileName: string; base64: string }> {
   const loaded = loadRecord(input.recordId);
   if ('error' in loaded) return loaded;
   const { record, form } = loaded;
   if (record.kind !== 'list' || !record.query) return { error: '匯出紀錄類型不符' };
-  const invalid = checkPassword(input.password);
-  if (invalid) return { error: invalid };
+  if (input.password !== undefined) {
+    const invalid = checkPassword(input.password);
+    if (invalid) return { error: invalid };
+  }
 
   const { file, fileName } = await buildListExport(form, record.query);
-  const encrypted: Buffer = officeCrypto.encrypt(file, { password: input.password });
+  const output: Buffer = input.password ? officeCrypto.encrypt(file, { password: input.password }) : file;
   markRedownloaded(record);
   revalidatePath('/export-history');
-  return { fileName, base64: encrypted.toString('base64') };
+  return { fileName, base64: output.toString('base64') };
 }
 
 /**
  * 重新下載個人已簽署文件所需的資料（只含該簽署人的紀錄）。
- * PDF 在瀏覽器端產生並加密，密碼不會傳到伺服器。
+ * PDF 在瀏覽器端產生（需要加密時也在瀏覽器端處理，密碼不會傳到伺服器）。
  */
 export async function getRedownloadCopy(input: {
   recordId: string;

@@ -1,16 +1,19 @@
 import FlashSnackbar from '@/components/FlashSnackbar';
+import LinkPagination from '@/components/LinkPagination';
 import PageHeader from '@/components/PageHeader';
 import { getCurrentUserId } from '@/features/forms/orgChart';
 import { getForms, toSignerView } from '@/features/forms/store';
 import MySignTable from '@/features/my-signature/MySignTable';
 import MySignTabs from '@/features/my-signature/MySignTabs';
-import { parseMySort, sortTasks } from '@/features/my-signature/sort';
+import { mySignHref, parseMySort, sortTasks } from '@/features/my-signature/sort';
 import { getMySignTasks, parseTab } from '@/features/my-signature/tasks';
+import { PAGE_SIZE, pageHrefs, paginate, parsePage } from '@/lib/paginate';
 import Stack from '@mui/material/Stack';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 
 export const metadata: Metadata = { title: '我的電子簽' };
+
 
 const FLASH_MESSAGES = {
   signed: '已完成簽署',
@@ -36,6 +39,8 @@ export default async function MySignaturePage({ searchParams }: PageProps<'/my-s
     rejected: tasks.rejected.length,
   };
 
+  const { items, page, pageCount } = paginate(sortTasks(tasks[tab], sort), parsePage(params.page), PAGE_SIZE);
+
   return (
     <>
       <PageHeader
@@ -44,7 +49,8 @@ export default async function MySignaturePage({ searchParams }: PageProps<'/my-s
       />
       <Stack spacing={2}>
         <MySignTabs value={tab} counts={counts} />
-        <MySignTable tab={tab} tasks={sortTasks(tasks[tab], sort)} today={new Date()} sort={sort} />
+        <MySignTable tab={tab} tasks={items} today={new Date()} sort={sort} />
+        <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => mySignHref(tab, sort, p))} />
       </Stack>
       <Suspense>
         <FlashSnackbar messages={FLASH_MESSAGES} />

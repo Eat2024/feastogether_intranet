@@ -1,4 +1,5 @@
 import { STATUS_ORDER } from '@/features/forms/sort';
+import { signingPeriod } from '@/features/forms/status';
 import { parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
 import type { MySignTab, MySignTask } from './tasks';
 
@@ -25,9 +26,10 @@ export const SORT_KEYS_BY_TAB: Record<MySignTab, readonly MySortKey[]> = {
 const SORT_VALUE: Record<MySortKey, (t: MySignTask) => SortValue> = {
   name: ({ form }) => form.name,
   docNumber: ({ form }) => form.docNumber,
-  startAt: ({ form }) => form.startAt,
+  // 依目前的簽署期間（補簽中為補簽期間）
+  startAt: ({ form }) => signingPeriod(form).startAt,
   // 待簽署的文件都已發起，未設結束日（不限）視為最晚
-  endAt: ({ form }) => form.endAt ?? '￿',
+  endAt: ({ form }) => signingPeriod(form).endAt ?? '￿',
   signedAt: ({ me }) => me.signedAt ?? null,
   status: ({ progress }) => STATUS_ORDER[progress.status],
   rejectedAt: ({ me }) => me.rejectedAt ?? null,

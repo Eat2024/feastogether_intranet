@@ -2,6 +2,7 @@
 // 尚無後端與原始 PDF 檔：每頁以示意版面繪製，並把本人的手寫簽名與日期疊在指定位置。
 // 串接後端後，應改由後端在原始 PDF 上合成並提供下載。
 // 以 canvas 繪製每頁再嵌入 PDF，可沿用網頁字型顯示中文（pdf-lib 內建字型不支援中文）。
+import { formOptions, WATERMARK_TEXT } from '@/features/forms/options';
 import { FIELD_H_PCT, FIELD_W_PCT, getSignLayout } from '@/features/forms/signLayout';
 import type { EFormDoc, Signer } from '@/features/forms/types';
 import { color } from '@/theme/tokens';
@@ -88,12 +89,35 @@ function drawPage(
   ctx.textAlign = 'left';
 }
 
+/** 浮水印：斜向重複鋪滿整頁，淡灰色不遮蔽內容 */
+function drawWatermark(ctx: CanvasRenderingContext2D, font: string) {
+  ctx.save();
+  ctx.font = `500 ${16 * S}px ${font}`;
+  ctx.fillStyle = color.textPlaceholder;
+  ctx.globalAlpha = 0.18;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.translate(W / 2, H / 2);
+  ctx.rotate(-Math.PI / 6);
+  const stepX = 260 * S;
+  const stepY = 110 * S;
+  // 旋轉後需涵蓋整頁對角線範圍
+  const span = Math.hypot(W, H) / 2;
+  for (let y = -span; y <= span; y += stepY) {
+    // 每一列錯開半格，避免排成直行
+    const offset = (Math.round(y / stepY) % 2) * (stepX / 2);
+    for (let x = -span; x <= span; x += stepX) ctx.fillText(WATERMARK_TEXT, x + offset, y);
+  }
+  ctx.restore();
+}
+
 /** 產生本人已簽署副本的 PDF */
 export async function buildSignedCopyPdf(form: EFormDoc, me: Signer): Promise<Uint8Array> {
   const layout = getSignLayout(form);
   if (!layout) throw new Error('此文件沒有可簽署的內容');
   const font = getComputedStyle(document.body).fontFamily;
   const signedDate = (me.signedAt ?? '').slice(0, 10);
+  const { watermark } = formOptions(form);
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -161,6 +185,8 @@ export async function buildSignedCopyPdf(form: EFormDoc, me: Signer): Promise<Ui
         ctx.fillText('（已簽署）', x, y + h / 2);
       }
     }
+
+    if (watermark) drawWatermark(ctx, font);
 
     const png = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
     const image = await pdf.embedPng(await png.arrayBuffer());

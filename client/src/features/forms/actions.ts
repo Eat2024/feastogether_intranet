@@ -5,11 +5,14 @@ import { redirect } from 'next/navigation';
 import { addExportRecord } from '@/features/export-history/store';
 import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
 import { getCurrentUser, getStaff } from './orgChart';
-import { deriveStatus, signedCount } from './status';
+import { normalizeSignerNote } from './detail/signerNote';
+import { validateResign } from './resign';
+import { deriveStatus, pendingCount, signedCount } from './status';
 import {
   getForm,
   insertForm,
   nextDocNumber,
+  todayStr,
   toSignerView,
   updateForm,
 } from './store';
@@ -85,6 +88,8 @@ export async function saveSigners(input: {
   /** 以 Email 加入、未列入組織架構的簽署人 */
   emailSigners: { email: string; name: string }[];
   deadline: { start: string | null; end: string | null };
+  /** 可選功能：匯出文件加浮水印、允許拒絕簽署 */
+  options: { watermark: boolean; allowReject: boolean };
   publish: boolean;
 }): Promise<ActionResult> {
   const form = getForm(input.id);
@@ -96,6 +101,10 @@ export async function saveSigners(input: {
   const emails = input.emailSigners.map((e) => ({ email: normalizeEmail(e.email), name: e.name.trim().slice(0, 50) }));
   if (emails.some((e) => !isValidEmail(e.email))) return { error: 'Email 格式不正確' };
   if (new Set(emails.map((e) => e.email)).size !== emails.length) return { error: 'Email 不可重複加入' };
+  if (typeof input.options?.watermark !== 'boolean' || typeof input.options?.allowReject !== 'boolean') {
+    return { error: '可選功能的設定不正確' };
+  }
+  const options = { watermark: input.options.watermark, allowReject: input.options.allowReject };
   if (input.publish) {
     const { start, end } = input.deadline;
     if (!start || !end) return { error: '請選擇簽署期間的開始日與結束日' };
@@ -120,13 +129,14 @@ export async function saveSigners(input: {
   }
 
   if (!input.publish) {
-    updateForm(form.id, { signers });
+    updateForm(form.id, { signers, options });
     revalidateLists();
     redirect('/forms?flash=saved');
   }
 
   updateForm(form.id, {
     signers,
+    options,
     status: 'active',
     startAt: input.deadline.start,
     endAt: input.deadline.end,
@@ -184,4 +194,56 @@ export async function getSignerCopy(input: {
     signerId: signer.id,
   });
   return { form: toSignerView(form, signer.id), signer };
+}
+
+/**
+ * 更新簽署人的備註（最多 30 字；空白表示清除）。
+ * TODO: 串接登入與權限後，限制只有文件建立人或管理者可以修改
+ */
+export async function updateSignerNote(input: {
+  formId: string;
+  signerId: string;
+  note: string;
+}): Promise<{ error: string } | { note: string }> {
+  const form = getForm(input.formId);
+  if (!form) return { error: '找不到此文件' };
+  const signer = form.signers.find((s) => s.id === input.signerId);
+  if (!signer) return { error: '找不到此簽署人' };
+  const result = normalizeSignerNote(input.note);
+  if ('error' in result) return result;
+
+  if (result.note) signer.note = result.note;
+  else delete signer.note;
+  revalidateLists();
+  return { note: result.note };
+}
+
+/**
+ * 補簽：文件到期後仍有人未簽署時，設定新的補簽期間與原因，重新開放未簽署者簽署。
+ * 已簽署、已拒絕的人不受影響；補簽期間到期後若仍有人未簽署，可再次補簽。
+ * TODO: 串接登入與權限後，限制只有文件建立人或管理者可以補簽；並通知未簽署者
+ */
+export async function reopenSigning(input: {
+  formId: string;
+  startAt: string;
+  endAt: string;
+  reason: string;
+}): Promise<{ error: string } | { pending: number }> {
+  const form = getForm(input.formId);
+  if (!form) return { error: '找不到此文件' };
+  if (deriveStatus(form) !== 'expired') return { error: '只有已到期且仍有人未簽署的文件可以補簽' };
+  const result = validateResign(input, todayStr());
+  if ('error' in result) return result;
+
+  const me = getCurrentUser();
+  form.resigns = [
+    ...(form.resigns ?? []),
+    {
+      ...result,
+      createdAt: nowStr(),
+      createdBy: { name: me.name, employeeNo: me.employeeNo },
+    },
+  ];
+  revalidateLists();
+  return { pending: pendingCount(form) };
 }

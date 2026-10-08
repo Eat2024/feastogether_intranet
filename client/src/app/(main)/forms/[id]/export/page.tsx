@@ -10,7 +10,7 @@ import {
   parseExportQuery,
 } from '@/features/forms/export/exportQuery';
 import { getDeptName } from '@/features/forms/orgChart';
-import { FORM_STATUS_META, getProgress } from '@/features/forms/status';
+import { FORM_STATUS_META, getProgress, periodText } from '@/features/forms/status';
 import { getForm } from '@/features/forms/store';
 import { PAGE_SIZE, pageHrefs, paginate, parsePage } from '@/lib/paginate';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
@@ -65,7 +65,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
         title={`匯出「${form.name}」`}
         description={[
           form.docNumber,
-          `簽署期間 ${form.startAt ?? '—'} ～ ${form.endAt ?? '不限'}`,
+          `簽署期間 ${periodText(form)}`,
           `${statusMeta.label}（${progress.signed}/${progress.total} 已簽署）`,
         ]
           .filter(Boolean)

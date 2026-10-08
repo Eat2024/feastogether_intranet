@@ -1,7 +1,7 @@
 import SortableHeaderCell from '@/components/SortableHeaderCell';
 import SignProgressButton from './MySignProgressDialog';
 import { nextSortState } from '@/lib/tableSort';
-import { FORM_STATUS_META } from '@/features/forms/status';
+import { FORM_STATUS_META, signingPeriod } from '@/features/forms/status';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Paper from '@mui/material/Paper';
@@ -21,13 +21,14 @@ import { daysUntil, type MySignTab, type MySignTask } from './tasks';
 // 剩餘天數 ≤ 此值時標示「即將到期」
 const DUE_SOON_DAYS = 3;
 
-function DueDate({ date, today }: { date: string | null; today: Date }) {
+function DueDate({ date, today, resign }: { date: string | null; today: Date; resign?: boolean }) {
   // 待簽署的文件都已發起，未設結束日即不限期
   if (!date) return <>不限</>;
   const days = daysUntil(date, today);
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       {date}
+      {resign && <Chip size="small" variant="soft" color="info" label="補簽" />}
       {days < 0 && <Chip size="small" variant="soft" color="error" label="已逾期" />}
       {days >= 0 && days <= DUE_SOON_DAYS && (
         <Chip size="small" variant="soft" color="warning" label="即將到期" />
@@ -98,10 +99,14 @@ export default function MySignTable({
   const columnsByTab: Record<MySignTab, Column[]> = {
     pending: [
       ...common,
+      // 補簽中顯示補簽期間
       { header: '開始時間',
-      sortKey: 'startAt', nowrap: true, cell: ({ form }) => form.startAt },
+      sortKey: 'startAt', nowrap: true, cell: ({ form }) => signingPeriod(form).startAt },
       { header: '結束時間',
-      sortKey: 'endAt', nowrap: true, cell: ({ form }) => <DueDate date={form.endAt} today={today} /> },
+      sortKey: 'endAt', nowrap: true, cell: ({ form }) => {
+        const { endAt, resign } = signingPeriod(form);
+        return <DueDate date={endAt} today={today} resign={!!resign} />;
+      } },
       initiator,
       {
         header: '操作',

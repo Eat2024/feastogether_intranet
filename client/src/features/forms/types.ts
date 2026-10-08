@@ -1,7 +1,8 @@
 export type DocType = "online" | "upload";
 
 /** 簽署狀態；completed 由簽署人全數完成推導而來，不直接存 */
-export type FormStatus = "draft" | "active" | "completed" | "stopped";
+/** 文件狀態；completed、expired 由 deriveStatus() 推導，不會寫入 store */
+export type FormStatus = "draft" | "active" | "expired" | "completed" | "stopped";
 
 export type Signer = {
   /** 組織架構的同仁為員工編號；以 Email 加入者為 `email:` 前綴＋email */
@@ -26,6 +27,8 @@ export type Signer = {
   signatureIds?: Record<number, string>;
   /** 簽署時同意的電子簽名使用條款 */
   consent?: { version: string; agreedAt: string };
+  /** 管理端記錄的備註（最多 30 字，見 signerNote.ts）；屬內部紀錄，不提供給簽署人本人 */
+  note?: string;
 };
 
 export type Employee = {
@@ -79,4 +82,20 @@ export type EFormDoc = {
   createdBy: Employee;
   /** 上傳文件的設定（線上建立的舊資料沒有） */
   upload?: UploadInfo;
+  /** 補簽紀錄（依時間先後）；最後一筆的期間為目前的簽署期間 */
+  resigns?: ResignRound[];
+  /** 可選功能（浮水印、拒絕簽署）；未設定時見 options.ts 的預設值 */
+  options?: { watermark: boolean; allowReject: boolean };
+};
+
+/** 一次補簽：到期後仍有人未簽署時，重新開放未簽署者在新期間內簽署 */
+export type ResignRound = {
+  /** 補簽期間（YYYY/MM/DD） */
+  startAt: string;
+  endAt: string;
+  /** 設定時間（YYYY/MM/DD HH:mm） */
+  createdAt: string;
+  /** 補簽原因與設定人：寫入時必填；簽署人視角（toSignerView）會移除 */
+  reason?: string;
+  createdBy?: Employee;
 };

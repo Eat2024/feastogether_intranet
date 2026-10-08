@@ -1,7 +1,7 @@
 // 產生簽署紀錄清單的 Excel 檔（僅供伺服器端使用）
 import { color } from '@/theme/tokens';
 import ExcelJS from 'exceljs';
-import { getProgress } from '../status';
+import { getProgress, periodText } from '../status';
 import type { EFormDoc } from '../types';
 import { describeScope, FIELDS, type ExportQuery, type ExportRow } from './exportQuery';
 
@@ -48,7 +48,7 @@ export async function buildSignerXlsx(
     ['文件名稱', form.name],
     ['文件編號', form.docNumber ?? ''],
     ['建立人', `${form.createdBy.name}（${form.createdBy.employeeNo}）`],
-    ['簽署期間', `${form.startAt ?? '—'} ～ ${form.endAt ?? '不限'}`],
+    ['簽署期間', periodText(form)],
     ['簽署進度', `已簽署 ${progress.signed}／待簽署 ${progress.pending}／已拒絕 ${progress.rejected}（共 ${progress.total} 人）`],
     ['匯出範圍', describeScope(query, deptNames)],
     ['匯出筆數', String(rows.length)],

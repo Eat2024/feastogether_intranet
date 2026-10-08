@@ -2,6 +2,7 @@
 
 import ConfirmDialog from '@/components/ConfirmDialog';
 import StepFlow from '@/components/StepFlow';
+import { formOptions } from '@/features/forms/options';
 import { getSignLayout, signFields } from '@/features/forms/signLayout';
 import type { EFormDoc, Signer, UploadField } from '@/features/forms/types';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
@@ -226,16 +227,19 @@ export default function SignFlow({ form, me, today }: { form: EFormDoc; me: Sign
                       : `還有 ${fields.length - signedCount} 個簽名欄位尚未簽名。`}
                 </Typography>
               )}
-              <Button
-                size="large"
-                variant="outlined"
-                color="error"
-                fullWidth
-                disabled={busy}
-                onClick={() => setRejectOpen(true)}
-              >
-                拒絕簽署
-              </Button>
+              {/* 發起人可在設定簽署時關閉拒絕簽署；server 端也會再檢查 */}
+              {formOptions(form).allowReject && (
+                <Button
+                  size="large"
+                  variant="outlined"
+                  color="error"
+                  fullWidth
+                  disabled={busy}
+                  onClick={() => setRejectOpen(true)}
+                >
+                  拒絕簽署
+                </Button>
+              )}
             </Stack>
           </Stack>
         </Paper>

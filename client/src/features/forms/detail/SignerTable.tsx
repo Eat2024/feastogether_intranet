@@ -22,6 +22,7 @@ import { useState, useTransition } from 'react';
 import { notifySigners } from '../actions';
 import type { Signer } from '../types';
 import ExportSignerCopyButton from './ExportSignerCopyButton';
+import SignerNoteCell from './SignerNoteCell';
 import type { SignerRowData, SignerSort, SignerSortKey } from './signerQuery';
 
 const STATUS_META: Record<Signer['status'], { label: string; color: ChipProps['color'] }> = {
@@ -37,6 +38,7 @@ const COLUMNS: { key?: SignerSortKey; label: string }[] = [
   { key: 'time', label: '簽署／拒絕時間' },
   { label: '拒絕原因' },
   { key: 'notify', label: '通知紀錄' },
+  { label: '備註' },
   { label: '操作' },
 ];
 
@@ -182,6 +184,9 @@ export default function SignerTable({
                       ) : (
                         '—'
                       )}
+                    </TableCell>
+                    <TableCell sx={{ minWidth: 240 }}>
+                      <SignerNoteCell formId={formId} signerId={s.id} signerName={s.name} note={s.note} />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <TooltipIconButton

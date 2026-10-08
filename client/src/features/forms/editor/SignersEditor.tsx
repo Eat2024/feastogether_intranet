@@ -3,17 +3,33 @@
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useState, useTransition } from 'react';
 import { saveSigners } from '../actions';
+import { formOptions, WATERMARK_TEXT, type FormOptions } from '../options';
 import type { EFormDoc, OrgDept } from '../types';
 import DeadlineRangePicker from './DeadlineRangePicker';
 import EmailSignerInput, { type EmailSigner } from './EmailSignerInput';
 import StaffTreePicker from './StaffTreePicker';
 
 const DEADLINE_REQUIRED = '請選擇簽署期間的開始日與結束日';
+
+const OPTION_ITEMS: { key: keyof FormOptions; label: string; description: string }[] = [
+  {
+    key: 'watermark',
+    label: '匯出文件加上浮水印',
+    description: `下載或匯出的已簽署文件（PDF）每一頁都會加上「${WATERMARK_TEXT}」浮水印。`,
+  },
+  {
+    key: 'allowReject',
+    label: '開放拒絕簽署',
+    description: '簽署人可以選擇拒絕簽署並填寫原因；取消勾選後，簽署人只能簽署。',
+  },
+];
 
 /** 設定簽署人員與簽署期間（流程第二步） */
 export default function SignersEditor({
@@ -41,6 +57,7 @@ export default function SignersEditor({
     start: null,
     end: null,
   });
+  const [options, setOptions] = useState<FormOptions>(() => formOptions(form));
   const [error, setError] = useState<string>();
   const [deadlineError, setDeadlineError] = useState<string>();
   const [pendingAction, setPendingAction] = useState<'save' | 'publish' | null>(
@@ -64,6 +81,7 @@ export default function SignersEditor({
         signerIds: [...selected],
         emailSigners,
         deadline,
+        options,
         publish,
       });
       if (result?.error) {
@@ -134,6 +152,39 @@ export default function SignersEditor({
                   ? `已選擇：${deadline.start ?? '（請選擇開始日）'} ～ ${deadline.end ?? '（請選擇結束日）'}`
                   : '請選擇開始日與結束日，簽署人需在此期間內完成簽署。')}
             </Typography>
+          </Box>
+
+          <Box>
+            <Typography variant="subheading" component="div" sx={{ mb: 1 }}>
+              可選功能
+            </Typography>
+            <Stack spacing={1}>
+              {OPTION_ITEMS.map((item) => (
+                <FormControlLabel
+                  key={item.key}
+                  sx={{ alignItems: 'flex-start', mx: 0 }}
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={options[item.key]}
+                      disabled={busy}
+                      onChange={(e) => setOptions((prev) => ({ ...prev, [item.key]: e.target.checked }))}
+                      sx={{ mt: -0.5 }}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="content" component="div">
+                        {item.label}
+                      </Typography>
+                      <Typography variant="helper" component="div">
+                        {item.description}
+                      </Typography>
+                    </Box>
+                  }
+                />
+              ))}
+            </Stack>
           </Box>
         </Stack>
       </Paper>

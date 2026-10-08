@@ -59,5 +59,11 @@ export function toClientForm(form: EFormDoc, viewerId?: string): EFormDoc {
 
 /** 簽署人視角：只保留本人的簽署紀錄，不傳出其他簽署人的姓名與狀態（整體進度請用 getProgress） */
 export function toSignerView(form: EFormDoc, viewerId: string): EFormDoc {
-  return { ...form, signers: form.signers.filter((s) => s.id === viewerId) };
+  return {
+    ...form,
+    // 備註是管理端的內部紀錄，不讓簽署人本人看到
+    signers: form.signers.filter((s) => s.id === viewerId).map((s) => ({ ...s, note: undefined })),
+    // 補簽只提供期間，原因與設定人屬內部資訊
+    resigns: form.resigns?.map(({ startAt, endAt, createdAt }) => ({ startAt, endAt, createdAt })),
+  };
 }

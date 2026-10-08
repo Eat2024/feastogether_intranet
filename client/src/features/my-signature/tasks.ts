@@ -1,4 +1,4 @@
-import { getProgress, type FormProgress } from '@/features/forms/status';
+import { getProgress, signingPeriod, type FormProgress } from '@/features/forms/status';
 import { getSignBlock } from './sign/eligibility';
 import type { EFormDoc, Signer } from '@/features/forms/types';
 
@@ -35,10 +35,10 @@ export function getMySignTasks(
   });
 
   return {
-    // 只有簽署中的文件能簽；已停止的文件不再列為待簽署
+    // 簽署中的文件可以簽；已到期的仍列出（顯示已逾期，等待補簽）；已停止的文件不再列為待簽署
     pending: tasks
-      .filter((t) => t.me.status === 'pending' && t.progress.status === 'active')
-      .sort((a, b) => (a.form.endAt ?? '').localeCompare(b.form.endAt ?? '')),
+      .filter((t) => t.me.status === 'pending' && (t.progress.status === 'active' || t.progress.status === 'expired'))
+      .sort((a, b) => (signingPeriod(a.form).endAt ?? '').localeCompare(signingPeriod(b.form).endAt ?? '')),
     signed: tasks
       .filter((t) => t.me.status === 'signed')
       .sort((a, b) => (b.me.signedAt ?? '').localeCompare(a.me.signedAt ?? '')),

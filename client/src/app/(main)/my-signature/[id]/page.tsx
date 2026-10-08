@@ -1,5 +1,6 @@
 import PageHeader from '@/components/PageHeader';
 import { getCurrentUserId } from '@/features/forms/orgChart';
+import { signingPeriod } from '@/features/forms/status';
 import { getForm, toSignerView, todayStr } from '@/features/forms/store';
 import DownloadSignedCopyButton from '@/features/my-signature/sign/DownloadSignedCopyButton';
 import { getSignBlock } from '@/features/my-signature/sign/eligibility';
@@ -25,6 +26,7 @@ export default async function SignDocumentPage({
   const block = getSignBlock(stored, storedMe, new Date());
   const form = toSignerView(stored, userId);
   const me = form.signers[0];
+  const period = signingPeriod(form);
 
   return (
     <>
@@ -33,7 +35,7 @@ export default async function SignDocumentPage({
         description={[
           form.docNumber,
           `發起人 ${form.createdBy.name}（${form.createdBy.employeeNo}）`,
-          `簽署期限 ${form.endAt ?? '不限'}`,
+          `${period.resign ? '補簽期限' : '簽署期限'} ${period.endAt ?? '不限'}`,
         ]
           .filter(Boolean)
           .join('・')}

@@ -9,6 +9,7 @@ import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
 import Box from '@mui/material/Box';
 import DeleteFormButton from './DeleteFormButton';
+import ResignButton from './ResignButton';
 import StopSigningButton from './StopSigningButton';
 import { deriveStatus, signedCount } from './status';
 import type { EFormDoc } from './types';
@@ -50,6 +51,8 @@ export default function RowActions({ form }: { form: EFormDoc }) {
         href={`/forms/${form.id}/edit`}
         disabled={signed !== 0 || status === 'stopped'}
       />
+      {/* 到期後仍有人未簽署時，可設定補簽期間重新開放 */}
+      <ResignButton form={form} disabled={status !== 'expired'} />
       <StopSigningButton form={form} disabled={status !== 'active'} />
       <DeleteFormButton form={form} disabled={signed !== 0} />
     </Box>

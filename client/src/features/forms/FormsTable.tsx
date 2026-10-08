@@ -13,6 +13,7 @@ import {
   FORM_STATUS_META,
   deriveStatus,
   signedCount,
+  signingPeriod,
 } from './status';
 import SortableHeaderCell from '@/components/SortableHeaderCell';
 import RowActions from './RowActions';
@@ -77,6 +78,7 @@ export default function FormsTable({
           ) : (
             forms.map((form) => {
               const status = FORM_STATUS_META[deriveStatus(form)];
+              const { resign } = signingPeriod(form);
               const signed = signedCount(form);
               const total = form.signers.length;
               return (
@@ -89,8 +91,16 @@ export default function FormsTable({
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     {form.startAt ?? '—'}
                   </TableCell>
+                  {/* 補簽中顯示補簽結束日，並附上原本的結束日 */}
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    {form.endAt ?? (form.startAt ? '不限' : '—')}
+                    {resign ? (
+                      <>
+                        <Typography variant="content">{resign.endAt}</Typography>
+                        <Typography variant="helper">補簽・原 {form.endAt ?? '不限'}</Typography>
+                      </>
+                    ) : (
+                      form.endAt ?? (form.startAt ? '不限' : '—')
+                    )}
                   </TableCell>
                   <TableCell>
                     <Chip

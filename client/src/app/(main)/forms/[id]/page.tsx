@@ -13,7 +13,8 @@ import {
   STATUS_TABS,
 } from '@/features/forms/detail/signerQuery';
 import { getDeptName } from '@/features/forms/orgChart';
-import { FORM_STATUS_META, getProgress, signedCount } from '@/features/forms/status';
+import { FORM_STATUS_META, getProgress, periodText, signedCount } from '@/features/forms/status';
+import { formOptions } from '@/features/forms/options';
 import StopSigningButton from '@/features/forms/StopSigningButton';
 import { getForm, toClientForm } from '@/features/forms/store';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
@@ -56,6 +57,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
   // 發起人檢視：簽名圖檔不需要傳給畫面
   const form = toClientForm(stored);
   const progress = getProgress(form);
+  const options = formOptions(form);
   const statusMeta = FORM_STATUS_META[progress.status];
   const query = parseSignerQuery(await searchParams);
   const counts = countByStatus(form);
@@ -79,7 +81,10 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
         description={[
           form.docNumber,
           `建立人 ${form.createdBy.name}（${form.createdBy.employeeNo}）`,
-          `簽署期間 ${form.startAt ?? '—'} ～ ${form.endAt ?? '不限'}`,
+          `簽署期間 ${periodText(form)}`,
+          // 可選功能：只列出與預設不同的設定
+          options.watermark && '匯出文件加浮水印',
+          !options.allowReject && '不開放拒絕簽署',
         ]
           .filter(Boolean)
           .join('・')}

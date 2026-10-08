@@ -1,5 +1,5 @@
 import { nextSortState, parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
-import { deriveStatus, signedCount } from './status';
+import { deriveStatus, signedCount, signingPeriod } from './status';
 import type { EFormDoc, FormStatus } from './types';
 
 export const SORT_KEYS = ['name', 'docNumber', 'startAt', 'endAt', 'status', 'progress', 'createdBy'] as const;
@@ -7,7 +7,7 @@ export type SortKey = (typeof SORT_KEYS)[number];
 export type SortState = Sort<SortKey>;
 
 // 文件狀態依流程先後排序
-export const STATUS_ORDER: Record<FormStatus, number> = { draft: 0, active: 1, completed: 2, stopped: 3 };
+export const STATUS_ORDER: Record<FormStatus, number> = { draft: 0, active: 1, expired: 2, completed: 3, stopped: 4 };
 
 /** 各欄的排序值；null 表示沒有值，不論升冪或降冪都排在最後 */
 const SORT_VALUE: Record<SortKey, (f: EFormDoc) => SortValue> = {
@@ -15,7 +15,8 @@ const SORT_VALUE: Record<SortKey, (f: EFormDoc) => SortValue> = {
   docNumber: (f) => f.docNumber,
   startAt: (f) => f.startAt,
   // 已發起但未設結束日（不限）視為最晚；尚未發起才是無值
-  endAt: (f) => f.endAt ?? (f.startAt ? '\uffff' : null),
+  // 依目前的簽署期間（補簽中為補簽結束日）
+  endAt: (f) => signingPeriod(f).endAt ?? (f.startAt ? '\uffff' : null),
   status: (f) => STATUS_ORDER[deriveStatus(f)],
   // 依完成比例，再依已簽人數；沒有簽署人視為無值
   progress: (f) => (f.signers.length ? [signedCount(f) / f.signers.length, signedCount(f)] : null),
@@ -33,7 +34,7 @@ export function sortForms(forms: EFormDoc[], sort: SortState): EFormDoc[] {
 
 export const nextSort = nextSortState<SortKey>;
 
-export const FORM_STATUSES = ['draft', 'active', 'completed', 'stopped'] as const satisfies readonly FormStatus[];
+export const FORM_STATUSES = ['draft', 'active', 'expired', 'completed', 'stopped'] as const satisfies readonly FormStatus[];
 
 /** 列表的搜尋與篩選條件（記在網址上；日期為 YYYY-MM-DD，null 表示不限） */
 export type FormFilters = {
@@ -72,7 +73,7 @@ const iso = (d: string) => d.replaceAll('/', '-');
  * 篩選：
  * - 關鍵字：文件名稱、建立人姓名或員工編號包含關鍵字（不分大小寫）
  * - 狀態：符合任一勾選的文件狀態
- * - 簽署期間：與指定日期區間有重疊（未設結束日視為不限）；尚未發起的草稿沒有簽署期間，不會列出
+ * - 簽署期間：與指定日期區間有重疊（未設結束日視為不限；補簽中以補簽結束日為準）；尚未發起的草稿沒有簽署期間，不會列出
  */
 export function filterForms(forms: EFormDoc[], filters: FormFilters): EFormDoc[] {
   const q = filters.query.toLowerCase();
@@ -86,7 +87,8 @@ export function filterForms(forms: EFormDoc[], filters: FormFilters): EFormDoc[]
     if (filters.from || filters.to) {
       if (!f.startAt) return false;
       if (filters.to && iso(f.startAt) > filters.to) return false;
-      if (filters.from && f.endAt && iso(f.endAt) < filters.from) return false;
+      const endAt = signingPeriod(f).endAt;
+      if (filters.from && endAt && iso(endAt) < filters.from) return false;
     }
     return true;
   });

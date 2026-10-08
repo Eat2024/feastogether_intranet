@@ -7,6 +7,7 @@ import type { Signer } from '@/features/forms/types';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { isValidSignatureId } from '@/lib/signatureQr';
+import { formOptions } from '@/features/forms/options';
 import { getSignBlock } from './sign/eligibility';
 import { SIGN_TERMS_VERSION } from './sign/terms';
 
@@ -82,6 +83,7 @@ export async function signDocument(input: {
 export async function rejectDocument(input: { formId: string; reason: string }): Promise<ActionResult> {
   const found = findMe(input.formId);
   if ('error' in found) return found;
+  if (!formOptions(found.form).allowReject) return { error: '此文件不開放拒絕簽署' };
   const reason = input.reason.trim();
 
   Object.assign(found.signer, {

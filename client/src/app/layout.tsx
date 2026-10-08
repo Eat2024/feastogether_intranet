@@ -12,7 +12,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="zh-Hant-TW">
+    // 瀏覽器擴充功能（如沉浸式翻譯）會在 React 載入前替 <html> 加屬性，造成 hydration 警告；
+    // suppressHydrationWarning 只忽略 <html> 本身的屬性差異，不影響子元素的檢查
+    <html lang="zh-Hant-TW" suppressHydrationWarning>
       <body>
         <AppRouterCacheProvider options={{ enableCssLayer: true }}>
           <ThemeProvider theme={theme}>

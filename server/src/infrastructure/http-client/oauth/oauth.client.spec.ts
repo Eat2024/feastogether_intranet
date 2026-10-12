@@ -142,7 +142,7 @@ describe('OauthClient', () => {
 
     expect(info).toEqual({
       sub: 'synthetic-sub-0001',
-      employeeNumber: null,
+      userNumber: null,
       name: null,
       email: null,
     });

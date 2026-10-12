@@ -14,13 +14,11 @@ import { ConfigService } from '@nestjs/config';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import configPath from '#app/config/config.path';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
-import { API_KEYS } from '#app/features/auth/api-keys';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { Public } from '#app/framework/decorators/public.decorator';
 import { isDevLoginAllowed } from '#app/framework/auth-mode';
 import { AuthThrottlerGuard } from '#app/framework/guards/auth-throttler.guard';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
-import { RegisterApi } from '#app/framework/decorators/register-api.decorator';
 import {
   clearAuthCookie,
   clearOauthTxCookie,
@@ -48,8 +46,7 @@ export class AuthController {
   @Get(configPath.AUTH_LOGIN_OPTIONS)
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
-    summary:
-      '登入頁可用入口（OAuth 目前停用；devLogin：DEVMOD 開發者登入）',
+    summary: '登入頁可用入口（OAuth 目前停用；devLogin：DEVMOD 開發者登入）',
   })
   loginOptions() {
     return {
@@ -95,9 +92,8 @@ export class AuthController {
   }
 
   @Get('me')
-  @RegisterApi({ key: API_KEYS.AUTH_ME, name: '登入者導覽', permissions: [] })
   @ApiOperation({
-    summary: '取得目前登入者資料、角色與導覽',
+    summary: '取得目前登入員工資料',
   })
   me(@Req() req: AuthedRequest) {
     return this.authService.getMe(

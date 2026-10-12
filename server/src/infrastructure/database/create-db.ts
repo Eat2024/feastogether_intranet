@@ -3,7 +3,7 @@
 // 已部署環境（NODE_ENV=production / staging）一律拒絕：正式庫由部署流程建立。
 //
 // CLI：pnpm -C server db:create
-//      pnpm -C server db:setup（依序 db:create → migration:run → seed:rbac）
+//      pnpm -C server db:setup（依序 db:create → migration:run）
 import mysql from 'mysql2/promise';
 import type { MysqlConnectionOptions } from 'typeorm/driver/mysql/MysqlConnectionOptions';
 import { AppEnvironment } from '#app/config/app.environment';

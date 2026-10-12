@@ -3,11 +3,9 @@ import { AppException } from '#app/common/errors/app.exception';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { SESSION_SOURCE } from '#app/features/auth/auth.constants';
 import type { OauthCallbackDto } from '#app/features/auth/dto/oauth-callback.dto';
-import { sanitizeRedirectTo } from '#app/features/auth/helpers/redirect-to';
 import { encryptSecret } from '#app/features/auth/helpers/secret-crypto';
 import { OauthClient } from '#app/infrastructure/http-client/oauth/oauth.client';
 import { OauthConfig } from '#app/infrastructure/http-client/oauth/oauth.config';
-import { ApiAuthorizationService } from './api-authorization.service';
 import { AuthSessionService } from './auth-session.service';
 import { AuthService, type AuthSession } from './auth.service';
 import { OauthIdentityService } from './oauth-identity.service';
@@ -40,7 +38,6 @@ export class OauthLoginService {
     private readonly transactions: OauthTransactionService,
     private readonly identities: OauthIdentityService,
     private readonly sessions: AuthSessionService,
-    private readonly authorization: ApiAuthorizationService,
     private readonly authService: AuthService,
   ) {}
 
@@ -50,7 +47,7 @@ export class OauthLoginService {
     const authorizationUrl = await this.client.buildAuthorizationUrl(challenge);
     const browserToken = await this.transactions.start(
       challenge,
-      sanitizeRedirectTo(redirectTo),
+      redirectTo || '/',
     );
     return { authorizationUrl, browserToken };
   }
@@ -79,7 +76,7 @@ export class OauthLoginService {
     );
     const user = await this.identities.resolve({
       sub: tokens.sub,
-      employeeNumber: info.employeeNumber,
+      userNumber: info.userNumber,
       name: info.name,
     });
 
@@ -91,8 +88,7 @@ export class OauthLoginService {
         this.config.encryptionKey,
       ),
     });
-    await this.authorization.rememberUser(Number(user.id));
-    const session = await this.authService.buildSession(user);
+    const session = this.authService.buildSession(user);
     return {
       accessToken: sessionToken,
       session,

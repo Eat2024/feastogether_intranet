@@ -7,13 +7,14 @@
 - NestJS 11、Fastify、TypeScript、TypeORM 0.3、MySQL 8.4、Redis 7。
 - HTTP server 入口為 `src/main.ts`；background worker 入口為 `src/worker.ts`，共用 `InfrastructureModule`。
 - `src/features/`以 feature 分層；預設走 `Controller → Service → Repository`，DTO 用 `class-validator`，entity/DTO 由 mapper 轉換。
+- Repository 由 `MysqlModule` 統一註冊與匯出，不自行注入 `DataSource`；Service 負責取得或開啟交易的 `EntityManager` 後傳入 Repository。
 - `src/framework/` 放 guard/filter/interceptor/decorator 等橫切關注點；`src/infrastructure/` 放 DB、Redis、HTTP client 與 logging。
 - `app.module.ts` 只組合 InfrastructureModule、FrameworkModule 與 FeatureModule；新 feature 在 `features/feature.module.ts` 註冊。
 - queue processor、scheduler 與其 worker-only module 只在 `worker.module.ts` 註冊，避免 HTTP process 重複消費或排程。
 
 ## 必須遵守
 
-- 每個 endpoint 都要明確標註 `@Public()` 或 `@RegisterApi(...)`；不可繞過全域 default-deny 授權。
+- 全域 guard 對所有未標 `@Public()` 的 endpoint 預設驗證員工 session；`@Public()` 入口必須自行負責適用的 pre-session 驗證。
 - Controller 只處理 HTTP 邊界並回傳 DTO，不直接回傳 TypeORM entity，不重複包裝全域 interceptor 的 response envelope。
 - 跨目錄 import 使用 `#app/*`，同 feature 近距離可用相對路徑；避免 `../../` 以上深層路徑。
 - 業務 entity 繼承 `AuditableEntity`，DB 欄位用 snake_case、TS property 用 camelCase，並於 entity/欄位加繁體中文 comment。

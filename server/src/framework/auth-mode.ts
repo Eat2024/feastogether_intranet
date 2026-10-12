@@ -4,7 +4,7 @@ import { AppEnvironment } from '#app/config/app.environment';
 
 // ── 開發者登入（DEVMOD）──
 // 本機沒有統一登入可串接時，.env 設 DEVMOD=true 即可在登入頁以「開發者登入」直接取得
-// 超級管理員 session。等同免密碼取得最高權限，故在已部署環境（production / staging）
+// 一般測試使用者 session。這仍等同免密碼登入，故在已部署環境（production / staging）
 // 一律不開放；誤設時開機即失敗（assertDevModeSafe），不靜默忽略。
 
 /** 是否開放開發者登入（DEVMOD=true 且非 production / staging）。 */
@@ -16,7 +16,7 @@ export function isDevLoginAllowed(config: ConfigService): boolean {
 export function assertDevModeSafe(config: ConfigService): void {
   if (isDevModeOn(config) && isDeployedEnvironment(config)) {
     throw new Error(
-      'DEVMOD=true 不可用於 production / staging（開發者登入會簽發超級管理員 session）',
+      'DEVMOD=true 不可用於 production / staging（開發者登入會簽發免密碼 session）',
     );
   }
 }

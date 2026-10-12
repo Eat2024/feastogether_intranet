@@ -3,7 +3,8 @@ import type { EntityManager } from 'typeorm';
 import { AppException } from '#app/common/errors/app.exception';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
-import { AuthUser } from '#app/features/auth/entities/auth-user.entity';
+import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import { User } from '#app/features/users/entities/user.entity';
 import {
   isDuplicateEntryError,
   OauthIdentityRepository,
@@ -12,7 +13,7 @@ import {
 /** 已驗證的外部身分（sub 來自已驗證 ID token、其餘來自 UserInfo）；只接受驗證後資料。 */
 export interface VerifiedOauthProfile {
   sub: string;
-  employeeNumber: string | null;
+  userNumber: string | null;
   name: string | null;
 }
 
@@ -21,21 +22,21 @@ const MAX_ATTEMPTS = 2;
 
 /**
  * OAuth 身分 ↔ 本地帳號對應（一律以已驗證員編對照）：
- * 1. 以 UserInfo 的 employee_number 找 auth_users.person_empid；找到即為該使用者
- *    （含 seed:rbac 以 SUPER_ADMIN_EMPID 預建、已綁 ADMIN 的初始管理員）。
- * 2. 找不到 → 建立無角色帳號。
- * 全程在同一 MySQL 交易內並鎖定使用者列；並發建帳由 person_empid 唯一約束仲裁，衝突重跑一次。
- * 不覆寫 role／isActive／description／部門職稱；只更新姓名、最後登入時間與 oauth_sub（記最近一次 sub，非識別鍵）。
+ * 1. 以上游 UserInfo 的 employee_number 找 users.empid。
+ * 2. 找不到 → 建立一般 User。
+ * 全程在同一 MySQL 交易內並鎖定員工列；並發建立由 empid 唯一約束仲裁，衝突重跑一次。
+ * 既有資料只更新受信任姓名與最後登入時間，不保存 oauth_sub。
  */
 @Injectable()
 export class OauthIdentityService {
   constructor(
     private readonly repo: OauthIdentityRepository,
     private readonly logger: AppLoggerService,
+    private readonly mysql: MysqlService,
   ) {}
 
-  async resolve(profile: VerifiedOauthProfile): Promise<AuthUser> {
-    const empId = profile.employeeNumber;
+  async resolve(profile: VerifiedOauthProfile): Promise<User> {
+    const empId = profile.userNumber;
     if (!empId) {
       throw new AppException(
         AppErrorCode.OAUTH_RESPONSE_INVALID,
@@ -45,7 +46,7 @@ export class OauthIdentityService {
     }
     for (let attempt = 1; ; attempt += 1) {
       try {
-        return await this.repo.transaction((manager) =>
+        return await this.mysql.transaction((manager) =>
           this.findOrCreate(empId, profile, manager),
         );
       } catch (error) {
@@ -61,7 +62,7 @@ export class OauthIdentityService {
     empId: string,
     profile: VerifiedOauthProfile,
     manager: EntityManager,
-  ): Promise<AuthUser> {
+  ): Promise<User> {
     const existing = await this.repo.findUserByEmpIdForUpdate(empId, manager);
     if (!existing) return this.createUser(empId, profile, manager);
     if (existing.deletedAt || !existing.isActive) {
@@ -72,9 +73,8 @@ export class OauthIdentityService {
       );
     }
     // 只更新姓名、最後登入時間與最近一次 sub；姓名缺值不清空既有資料（FR-007）。
-    existing.personName = profile.name ?? existing.personName;
+    existing.name = profile.name ?? existing.name;
     existing.lastLoginAt = new Date();
-    existing.oauthSub = profile.sub;
     return this.repo.saveUser(existing, manager);
   }
 
@@ -82,20 +82,19 @@ export class OauthIdentityService {
     empId: string,
     profile: VerifiedOauthProfile,
     manager: EntityManager,
-  ): Promise<AuthUser> {
+  ): Promise<User> {
     const user = await this.repo.createUser(
       {
-        personEmpid: empId,
-        personName: profile.name ?? empId,
+        empid: empId,
+        name: profile.name ?? empId,
         lastLoginAt: new Date(),
-        oauthSub: profile.sub,
       },
       manager,
     );
     this.logger.info({
       context: OauthIdentityService.name,
       event: 'oauth.identity_created',
-      message: '新員工首次 OAuth 登入建立無角色帳號',
+      message: '新員工首次 OAuth 登入建立員工帳號',
       metadata: { userId: user.id },
     });
     return user;

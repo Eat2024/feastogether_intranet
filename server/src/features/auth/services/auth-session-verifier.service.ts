@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
+import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { isSessionUsable, parseSessionRecord } from './auth-session.service';
 
 interface JwtPayload {
@@ -24,6 +26,8 @@ export class AuthSessionVerifierService {
     private readonly redisService: RedisService,
     private readonly appLogger: AppLoggerService,
     private readonly config: ConfigService,
+    private readonly users: UserRepository,
+    private readonly mysql: MysqlService,
   ) {}
 
   /**
@@ -44,9 +48,14 @@ export class AuthSessionVerifierService {
       );
       // 只認目前格式的 session；已移除的登入方式留下的舊 session、
       // 以及 DEVMOD 已關閉時的開發者 session 一律無效。
-      return isSessionUsable(parseSessionRecord(session), this.config)
-        ? verified
-        : null;
+      if (!isSessionUsable(parseSessionRecord(session), this.config)) {
+        return null;
+      }
+      const user = await this.users.findById(
+        verified.userId,
+        this.mysql.getManager(),
+      );
+      return user?.isActive && !user.deletedAt ? verified : null;
     } catch (error) {
       this.appLogger.warn({
         context: AuthSessionVerifierService.name,

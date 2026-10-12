@@ -6,21 +6,23 @@
 
 圖中為維持可讀性只列主要欄位；完整欄位、可空性、索引與語意以 [internal-electronic-signature-data-dictionary.md](./internal-electronic-signature-data-dictionary.md) 為準。
 
+所有 `DATE` 與 `DATETIME(6)` 欄位均建立專屬單欄索引；ER 圖不逐一標記這 39 個索引，以資料字典與正式 migration 為準，既有複合索引不取代此要求。
+
 ```mermaid
 erDiagram
     direction LR
 
     hrDepartments o|--o{ hrDepartments : "包含下層部門"
-    hrDepartments o|--o{ employees : "包含員工"
-    employees ||--o{ esignDocuments : "建立文件"
-    employees ||--o{ esignSigners : "擔任簽署人"
+    hrDepartments o|--o{ users : "包含員工"
+    users ||--o{ esignDocuments : "建立文件"
+    users o|--o{ esignSigners : "擔任內部簽署人"
     esignDocuments ||--o{ esignDocumentFields : "配置簽署欄位"
     esignDocuments ||--o{ esignSigners : "指定簽署人"
     esignSigners ||--o| esignSignatureRecords : "完成簽署"
     esignDocuments o|--o{ esignFileObjects : "保存文件檔案"
     esignSignatureRecords o|--o{ esignFileObjects : "保存簽署產物"
     esignDocuments ||--o{ esignAuditEvents : "產生稽核事件"
-    employees o|--o{ esignAuditEvents : "執行操作"
+    users o|--o{ esignAuditEvents : "執行操作"
     esignSigners o|--o{ esignAuditEvents : "關聯簽署事件"
     esignDocuments ||--o| esignVerificationRecords : "產生驗證紀錄"
     esignVerificationRecords o|--o{ esignFileObjects : "保存驗證產物"
@@ -39,7 +41,7 @@ erDiagram
         datetime deleted_at
     }
 
-    employees["employees 員工與登入主體"] {
+    users["users 員工與登入主體"] {
         bigint id PK
         string empid UK
         string name
@@ -57,9 +59,11 @@ erDiagram
         uuid doc_number UK
         string title
         string status
-        bigint created_by_employee_id FK
+        bigint created_by_user_id FK
         datetime sign_start_at
         datetime sign_end_at
+        bool watermark_enabled
+        bool allow_reject
         json signing_payload_json
         string signing_payload_sha256
         datetime completed_at
@@ -80,7 +84,9 @@ erDiagram
     esignSigners["esign_signers 簽署人"] {
         bigint id PK
         bigint document_id FK
-        bigint employee_id FK
+        string signer_type
+        bigint user_id FK
+        string email
         string empid_snapshot
         string name_snapshot
         string department_snapshot
@@ -120,9 +126,9 @@ erDiagram
         bigint id PK
         bigint document_id FK
         bigint signer_id FK
-        bigint actor_employee_id FK
+        bigint actor_user_id FK
         string event_type
-        datetime occurred_at_utc
+        datetime occurred_at
         string previous_event_hash
         string event_hash UK
         string request_id
@@ -147,7 +153,7 @@ erDiagram
         bigint document_id FK
         string filter_type
         int target_count
-        bigint notified_by_employee_id FK
+        bigint notified_by_user_id FK
         datetime created_at
     }
 
@@ -165,7 +171,7 @@ erDiagram
         bigint id PK
         string export_type
         bigint document_id FK
-        bigint created_by_employee_id FK
+        bigint created_by_user_id FK
         string status
         string scope_description
         int record_count
@@ -181,4 +187,4 @@ erDiagram
 - QR Code 只包含 `/verify/{public_id}` 驗證網址，不包含完整 manifest、員工個資或簽名圖檔。
 - PDF、簽名圖檔、manifest、QR Code 與匯出檔案存放於 private object storage；MySQL 的 `esign_file_objects` 只保存 object key、hash 及必要 metadata。
 - `esign_signature_records`、`esign_audit_events` 與 `esign_verification_records` 屬證據資料，不提供一般管理後台修改或刪除。
-- 第一階段不建立 `auth_users`、identity binding、RBAC、provider、session 或 document version 資料表；單一 issuer 驗證完成後直接以員工編號對應 `employees.empid`。
+- 第一階段不建立 `auth_users`、identity binding、RBAC、provider、session 或 document version 資料表；單一 issuer 驗證完成後直接以員工編號對應 `users.empid`。

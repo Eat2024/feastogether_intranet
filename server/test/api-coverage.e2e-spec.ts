@@ -1,42 +1,30 @@
-import { Test } from '@nestjs/testing';
+import request from 'supertest';
 import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
-import { AppModule } from '#app/app.module';
-import { configureApp } from '#app/bootstrap/app.bootstrap';
-import { ApiRegistryService } from '#app/features/auth/services/api-registry.service';
+  closeSecurityE2eApp,
+  createSecurityE2eApp,
+  type SecurityE2eContext,
+} from './security-e2e.helper';
 
-/**
- * CI gate（FR-032）：每個 route 必須恰好命中 @Public 或 @RegisterApi 其一。
- * app.init() 本身就會跑 onApplicationBootstrap → assertNoShadowApi；
- * 此處檢查實際 route 的分類結果，違反即讓 CI build 失敗。
- */
-describe('API coverage (shadow API gate)', () => {
-  let app: NestFastifyApplication;
-  let registry: ApiRegistryService;
+describe('runtime API coverage', () => {
+  let ctx: SecurityE2eContext;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = moduleRef.createNestApplication<NestFastifyApplication>(
-      new FastifyAdapter(),
-    );
-    configureApp(app);
-    await app.init();
-    await app.getHttpAdapter().getInstance().ready();
-    registry = app.get(ApiRegistryService);
+    ctx = await createSecurityE2eApp();
   });
 
-  afterAll(async () => {
-    await app?.close();
+  afterAll(async () => closeSecurityE2eApp(ctx));
+
+  it('health 是明確 Public 例外且不需要 RBAC seed', async () => {
+    await request(ctx.server).get('/api/health').expect(200);
   });
 
-  it('每個 route 恰好被分類一次（@Public 或 @RegisterApi）', () => {
-    for (const route of registry.collectRoutes()) {
-      const classified = route.isPublic !== !!route.register; // XOR
-      expect(classified).toBe(true);
-    }
+  it.each([
+    '/api/roles',
+    '/api/users',
+    '/api/auth/me',
+    '/api/auth/oauth/start',
+    '/api/auth/oauth/callback',
+  ])('%s 在正式 runtime 不存在', async (path) => {
+    await request(ctx.server).get(path).expect(404);
   });
 });

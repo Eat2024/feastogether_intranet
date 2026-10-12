@@ -1,17 +1,5 @@
-export const ADMIN_ROLE_CODE = 'ADMIN';
-
-export function isAdminRole(role: {
-  roleCode: string;
-  isAdmin: boolean;
-}): boolean {
-  return role.isAdmin === true || role.roleCode === ADMIN_ROLE_CODE;
-}
-
 /** 登入 JWT 與 Redis token 的存活秒數（兩者一致，到期同步失效）。 */
 export const AUTH_TOKEN_TTL_SECONDS = 24 * 60 * 60;
-
-/** 使用者授權快照的 Redis 存活秒數。 */
-export const AUTHORIZATION_CACHE_TTL_SECONDS = 24 * 60 * 60;
 
 /**
  * 登入 token 的 HttpOnly cookie 名稱（前端 JS 讀不到，防 XSS 竊取）。
@@ -57,53 +45,6 @@ export type UpstreamLogoutStatus =
 /** 上游登出未確認時的固定提示文案（spec FR-013）。 */
 export const OAUTH_LOGOUT_UNCONFIRMED_MESSAGE =
   '系統已登出，統一登入登出尚未確認';
-
-/** 權限層級動作固定欄序：view → createEdit → delete → printExport。 */
-export const ACTION_ORDER = [
-  'view',
-  'createEdit',
-  'delete',
-  'printExport',
-] as const;
-
-export type PermissionAction = (typeof ACTION_ORDER)[number];
-
-/** 動作短標籤（層級欄位 label，與 permissionName 全名區分）。 */
-export const ACTION_LABEL: Record<PermissionAction, string> = {
-  view: '檢視',
-  createEdit: '新增/編輯',
-  delete: '刪除',
-  printExport: '列印/匯出',
-};
-
-export const AUDIT_ACTION = {
-  ROLE_CREATED: 'role_created',
-  ROLE_UPDATED: 'role_updated',
-  ROLE_PERMISSIONS_UPDATED: 'role_permissions_updated',
-  ROLE_REORDERED: 'role_reordered',
-  ROLE_DELETED: 'role_deleted',
-  USER_ROLE_UPDATED: 'user_role_updated',
-  USER_STATUS_UPDATED: 'user_status_updated',
-} as const;
-export type AuditAction = (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION];
-
-/** 稽核目標型別（audit_logs.entity_type / audit_log_targets.target_type）。 */
-export const AUDIT_ENTITY = {
-  ROLE: 'role',
-  USER: 'user',
-  ROLE_COLLECTION: 'role_collection',
-} as const;
-
-/** 稽核查詢目標種類。 */
-export const AUDIT_TARGET_KIND = {
-  PRIMARY: 'primary',
-  ASSOCIATED: 'associated',
-} as const;
-
-/** 集合層級稽核固定 ID。 */
-export const AUDIT_COLLECTION_ID = {
-  ALL: 'all',
-} as const;
 
 // ── 032 認證端點速率限制（防密碼暴力破解）──
 // 兩個視窗同時生效：短視窗擋單機高速猜測，長視窗擋壓在短視窗閾值下的持續嘗試。

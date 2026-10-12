@@ -1,19 +1,18 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AppException } from '#app/common/errors/app.exception';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { AppException } from '#app/common/errors/app.exception';
 import {
-  ADMIN_ROLE_CODE,
   DEV_LOGIN_EMPID,
   DEV_LOGIN_NAME,
   SESSION_SOURCE,
 } from '#app/features/auth/auth.constants';
-import { AuthUser } from '#app/features/auth/entities/auth-user.entity';
+import { User } from '#app/features/users/entities/user.entity';
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { isDuplicateEntryError } from '#app/features/auth/repositories/oauth-identity.repository';
 import { assertDevModeSafe, isDevLoginAllowed } from '#app/framework/auth-mode';
-import { MysqlEntityService } from '#app/infrastructure/database/mysql/mysql.entity.service';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
-import { ApiAuthorizationService } from './api-authorization.service';
+import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { AuthSessionService } from './auth-session.service';
 import { AuthService, type AuthSession } from './auth.service';
 
@@ -22,27 +21,20 @@ export interface DevLoginResult {
   session: AuthSession;
 }
 
-/**
- * 開發者登入（DEVMOD）：本機沒有統一登入可串接時，直接以固定的開發者帳號
- * （DEV_LOGIN_EMPID，綁 ADMIN 角色）簽發 session。之後 AuthGuard、RBAC、/me、
- * 稽核皆與正式登入走同一條路徑，差別只在身分不經上游驗證。
- * 僅 DEVMOD=true 且非 production / staging 時開放；已部署環境誤設即開機失敗。
- */
 @Injectable()
 export class DevLoginService {
   constructor(
     private readonly config: ConfigService,
-    private readonly db: MysqlEntityService,
+    private readonly users: UserRepository,
     private readonly sessions: AuthSessionService,
-    private readonly authorization: ApiAuthorizationService,
     private readonly authService: AuthService,
     private readonly logger: AppLoggerService,
+    private readonly mysql: MysqlService,
   ) {
     assertDevModeSafe(config);
   }
 
   async login(): Promise<DevLoginResult> {
-    // 未開放時回 404：不讓外界知道有這個端點。
     if (!isDevLoginAllowed(this.config)) {
       throw new AppException(
         AppErrorCode.NOT_FOUND,
@@ -50,64 +42,44 @@ export class DevLoginService {
         HttpStatus.NOT_FOUND,
       );
     }
-
     const user = await this.ensureDevUser();
     const accessToken = await this.sessions.issue(Number(user.id), {
       source: SESSION_SOURCE.DEV,
       encryptedRefreshToken: null,
     });
-    await this.authorization.rememberUser(Number(user.id));
     this.logger.warn({
       context: DevLoginService.name,
       event: 'auth.dev_login',
-      message: '開發者登入（DEVMOD）已簽發超級管理員 session',
+      message: '開發者登入已簽發一般員工 session',
       metadata: { userId: user.id },
     });
-    return { accessToken, session: await this.authService.buildSession(user) };
+    return { accessToken, session: this.authService.buildSession(user) };
   }
 
-  /**
-   * 建立或沿用開發者帳號，並確保其為啟用中的 ADMIN（被停用、軟刪或改過角色都會還原）。
-   * 並發首次建帳由 person_empid 唯一約束仲裁，衝突時重讀一次。
-   */
-  private async ensureDevUser(): Promise<AuthUser> {
-    const adminRole = await this.db.authRole.findOne({
-      where: { roleCode: ADMIN_ROLE_CODE },
-    });
-    if (!adminRole) {
-      throw new AppException(
-        AppErrorCode.INTERNAL_ERROR,
-        '尚未建立 ADMIN 角色，請先執行 pnpm -C server seed:rbac',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-
+  private async ensureDevUser(): Promise<User> {
     try {
-      return await this.saveDevUser(Number(adminRole.id));
+      return await this.saveDevUser();
     } catch (error) {
       if (!isDuplicateEntryError(error)) throw error;
-      return this.saveDevUser(Number(adminRole.id));
+      return this.saveDevUser();
     }
   }
 
-  private async saveDevUser(adminRoleId: number): Promise<AuthUser> {
-    const existing = await this.db.authUser.findOne({
-      where: { personEmpid: DEV_LOGIN_EMPID },
-      withDeleted: true,
-    });
+  private async saveDevUser(): Promise<User> {
+    const manager = this.mysql.getManager();
+    const existing = await this.users.findByEmpid(DEV_LOGIN_EMPID, manager);
     if (existing?.deletedAt) {
-      await this.db.authUser.restore({ id: existing.id });
+      await this.users.restore(Number(existing.id), manager);
     }
     const user =
       existing ??
-      this.db.authUser.create({
-        personEmpid: DEV_LOGIN_EMPID,
-        personName: DEV_LOGIN_NAME,
-      });
-    user.roleId = adminRoleId;
+      this.users.create(
+        { empid: DEV_LOGIN_EMPID, name: DEV_LOGIN_NAME },
+        manager,
+      );
     user.isActive = true;
     user.deletedAt = undefined;
     user.lastLoginAt = new Date();
-    return this.db.authUser.save(user);
+    return this.users.save(user, manager);
   }
 }

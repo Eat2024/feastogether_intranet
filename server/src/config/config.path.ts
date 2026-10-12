@@ -2,8 +2,6 @@
 export default {
   HEALTH: 'health',
   AUTH: 'auth',
-  ROLES: 'roles',
-  USERS: 'users',
   // ── 038 饗賓 OAuth 登入：POST /auth/oauth/start、POST /auth/oauth/callback ──
   AUTH_OAUTH: 'auth/oauth',
   AUTH_OAUTH_START: 'start',

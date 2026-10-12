@@ -11,7 +11,7 @@ import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.opti
 
 /**
  * e2e 全套件啟動前跑一次：確保 feastogether_intranet_test 存在並套用目前啟用的 migration。
- * Auth/RBAC/Audit 目前停用，因此不載入其 migration，也不執行 RBAC seed。
+ * 套用 Spec 1 的乾淨 baseline migration；不需要任何 RBAC seed。
  * 走 jest(ts-jest) 的 #app 解析（與 e2e 測試一致），不依賴 ts-node CLI。
  * fail-closed：DB 名非 feastogether_intranet_test* 一律中止，e2e 僅可對測試 DB 執行。
  */

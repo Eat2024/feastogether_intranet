@@ -13,7 +13,7 @@
 --   - append-only 的 log 表（通知紀錄、匯出紀錄）只有 created_at，不給 UPDATE
 --   - 狀態欄位一律 VARCHAR + 註解列舉值，不用 MySQL 原生 ENUM（方便未來擴充值不用改 schema）
 --   - 本檔僅供產生 DDL 參考，尚未實際執行；正式套用前請先確認目標資料庫與既有
---     hr_employees / hr_departments 是否已存在（見檔案末段說明）
+--     users / hr_departments 是否已存在（見檔案末段說明）
 -- =============================================================================
 
 SET NAMES utf8mb4;
@@ -21,7 +21,7 @@ SET time_zone = '+08:00';
 
 -- -----------------------------------------------------------------------------
 -- 參考表（若平台已有由人易/NUEIP 同步的員工與組織架構主檔，請略過這兩張，
--- 並把下方 esign_signers.employee_id / esign_document_fields 等 FK 改接既有表）
+-- 並把下方 esign_signers.user_id / esign_document_fields 等 FK 改接既有表）
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS hr_departments (
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS hr_departments (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='組織架構樹（對應組織架構圖 JSON：department_name/children/startdate/stopdate）';
 
-CREATE TABLE IF NOT EXISTS hr_employees (
+CREATE TABLE IF NOT EXISTS users (
   id              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
   empid           VARCHAR(32)      NOT NULL COMMENT '員工工號',
   name            VARCHAR(100)     NOT NULL COMMENT '姓名',
@@ -56,10 +56,10 @@ CREATE TABLE IF NOT EXISTS hr_employees (
   created_by      VARCHAR(64)      NULL,
   updated_by      VARCHAR(64)      NULL,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_hr_employees_empid (empid),
-  KEY idx_hr_employees_department (department_id),
-  KEY idx_hr_employees_active (is_active),
-  CONSTRAINT fk_hr_employees_department
+  UNIQUE KEY uq_users_empid (empid),
+  KEY idx_users_department (department_id),
+  KEY idx_users_active (is_active),
+  CONSTRAINT fk_users_department
     FOREIGN KEY (department_id) REFERENCES hr_departments (id)
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='員工主檔（人資系統同步，非本登入快取 auth_users）';
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS esign_documents (
   sign_end_date                 DATETIME        NULL     COMMENT '簽署期間結束時間；精度至分鐘，應用層選日期時預設帶入當日 23:59:59',
   initiated_at                  DATETIME(6)     NULL     COMMENT '發起簽署時間（由草稿轉為簽署中）',
   first_signed_at               DATETIME(6)     NULL     COMMENT '第一位簽署人完成簽署的時間；非 NULL 即代表文件內容鎖定、不可再編輯',
-  first_signed_user             VARCHAR(32)     NULL     COMMENT '第一位完成簽署者的員編（對應 esign_signers.employee_empid）',
+  first_signed_user             VARCHAR(32)     NULL     COMMENT '第一位完成簽署者的員編（對應 users.empid）',
   completed_at                  DATETIME(6)     NULL     COMMENT '全部簽署完成時間',
   stopped_at                    DATETIME(6)     NULL     COMMENT '停止簽署時間',
   stop_reason                   VARCHAR(500)    NULL     COMMENT '停止簽署原因',
@@ -141,8 +141,8 @@ CREATE TABLE IF NOT EXISTS esign_signers (
   id                          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   document_id                 BIGINT UNSIGNED NOT NULL COMMENT 'FK→esign_documents.id',
 
-  signer_type                 VARCHAR(20)     NOT NULL COMMENT '簽署人來源：employee(組織架構內部同仁)|email(以 Email 新增之外部/未建檔人員)|mobile(以手機號碼新增，無 Email 的外部人員)',
-  singer_id              VARCHAR(32)     NULL     COMMENT '簽署人 employee id index, mobile & email 型為 NULL',
+  signer_type                 VARCHAR(20)     NOT NULL COMMENT '簽署人來源：user(組織架構內部同仁)|email(以 Email 新增之外部/未建檔人員)|mobile(以手機號碼新增，無 Email 的外部人員)',
+  user_id                     BIGINT UNSIGNED NULL     COMMENT '內部簽署使用者 ID；email 與 mobile 型為 NULL',
   display_name                VARCHAR(100)    NOT NULL COMMENT '簽署人姓名',
   department_name_snapshot    VARCHAR(150)    NULL     COMMENT '部門快照，簽署時當下人的部門, 外部為 null',
   email                       VARCHAR(255)    NULL     COMMENT '通知用 Email；signer_type=email 時必填',
@@ -165,19 +165,19 @@ CREATE TABLE IF NOT EXISTS esign_signers (
 
   -- 避免同一人被重複加入同一份文件（NULL 在 MySQL UNIQUE 索引中視為互不相等，
   -- 所以非該類型的 rows 對應欄位均為 NULL，不會互相衝突）
-  UNIQUE KEY uq_esign_signers_doc_employee (document_id, employee_id),
+  UNIQUE KEY uq_esign_signers_doc_user (document_id, user_id),
   UNIQUE KEY uq_esign_signers_doc_email (document_id, email),
   UNIQUE KEY uq_esign_signers_doc_mobile (document_id, mobile_number),
 
   KEY idx_esign_signers_document (document_id),
-  KEY idx_esign_signers_employee_status (employee_id, status), -- 支撐「我的電子簽」待簽署/已簽署/已拒絕頁籤
+  KEY idx_esign_signers_user_status (user_id, status), -- 支撐「我的電子簽」待簽署/已簽署/已拒絕頁籤
   KEY idx_esign_signers_status (status),
 
   CONSTRAINT fk_esign_signers_document
     FOREIGN KEY (document_id) REFERENCES esign_documents (id)
     ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT fk_esign_signers_employee
-    FOREIGN KEY (employee_id) REFERENCES hr_employees (id)
+  CONSTRAINT fk_esign_signers_user
+    FOREIGN KEY (user_id) REFERENCES users (id)
     ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='電子簽文件之簽署人與簽署狀態';
 

@@ -41,7 +41,7 @@ export class Configuration {
 /** 預設成功情境的合成身分（一望即知為假）。 */
 export const DEFAULT_STUB_IDENTITY = {
   sub: 'synthetic-sub-0001',
-  employeeNumber: 'SYN0001',
+  userNumber: 'SYN0001',
   name: '測試員一號',
   email: 'syn0001@example.com',
   refreshToken: 'synthetic-refresh-token',
@@ -69,7 +69,7 @@ export function userInfoOf(identity: Partial<StubIdentity>) {
   const merged = { ...DEFAULT_STUB_IDENTITY, ...identity };
   return {
     sub: merged.sub,
-    employee_number: merged.employeeNumber,
+    employee_number: merged.userNumber,
     name: merged.name,
     email: merged.email,
     email_verified: false,

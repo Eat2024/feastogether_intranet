@@ -37,7 +37,7 @@ export interface OauthTokens {
 /** UserInfo 中本系統需要的欄位（sub 與員編皆為不透明字串，不轉數字）。 */
 export interface OauthUserInfo {
   sub: string;
-  employeeNumber: string | null;
+  userNumber: string | null;
   name: string | null;
   email: string | null;
 }
@@ -132,7 +132,8 @@ export class OauthClient {
       );
       return {
         sub: info.sub,
-        employeeNumber: stringOrNull(info.employee_number),
+        // 上游契約仍使用既定的 employee_number claim；系統內部統一命名為 User。
+        userNumber: stringOrNull(info.employee_number),
         name: stringOrNull(info.name),
         email: stringOrNull(info.email),
       };

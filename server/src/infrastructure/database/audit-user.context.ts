@@ -27,12 +27,14 @@ export const CLS_AUDIT_USER_ID = 'auditUserId';
  * `cls.isActive()` 的判斷 MUST NOT 省略：CLS 未啟動時直接 `cls.get()` 會拋錯，
  * 而 worker／排程／CLI 本來就跑在沒有請求上下文的地方。
  */
-export function clsUserId(cls: ClsService): string | undefined {
-  return cls.isActive() ? cls.get<string>(CLS_AUDIT_USER_ID) : undefined;
+export function clsUserId(cls: ClsService): number | undefined {
+  if (!cls.isActive()) return undefined;
+  const value = Number(cls.get<string | number>(CLS_AUDIT_USER_ID));
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
 /** 登入人 id；取不到即以 401 中斷（操作人須綁登入身分的寫入端點用）。 */
-export function requireClsUserId(cls: ClsService): string {
+export function requireClsUserId(cls: ClsService): number {
   const userId = clsUserId(cls);
   if (!userId) {
     throw new AppException(

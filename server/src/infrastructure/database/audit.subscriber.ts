@@ -6,7 +6,7 @@ import {
   InsertEvent,
   UpdateEvent,
 } from 'typeorm';
-import { AuditableEntity } from './auditable.entity';
+import { UserAuditableEntity } from './user-auditable.entity';
 import { MYSQL_MAIN } from './mysql/mysql.tokens';
 import { clsUserId } from './audit-user.context';
 
@@ -21,20 +21,20 @@ export class AuditSubscriber implements EntitySubscriberInterface {
 
   beforeInsert(event: InsertEvent<unknown>): void {
     const entity = event.entity;
-    if (!(entity instanceof AuditableEntity)) return;
+    if (!(entity instanceof UserAuditableEntity)) return;
 
     const userId = clsUserId(this.cls);
     if (userId) {
-      entity.createdBy = userId;
-      entity.updatedBy = userId;
+      entity.createdByUserId = userId;
+      entity.updatedByUserId = userId;
     }
   }
 
   beforeUpdate(event: UpdateEvent<unknown>): void {
     const entity = event.entity;
-    if (!(entity instanceof AuditableEntity)) return;
+    if (!(entity instanceof UserAuditableEntity)) return;
 
     const userId = clsUserId(this.cls);
-    if (userId) entity.updatedBy = userId;
+    if (userId) entity.updatedByUserId = userId;
   }
 }

@@ -1,10 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import { MYSQL_MAIN } from './mysql.tokens';
 
 /**
- * 提供原生 query / transaction 的低階存取。
- * 一般 CRUD 請注入 MysqlModule 提供的 entity repository provider。
+ * 提供 EntityManager、原生 query 與 transaction 的低階存取。
+ * Service 負責取得 manager 或開啟交易，再傳給 repository。
  */
 @Injectable()
 export class MysqlService {
@@ -24,9 +24,18 @@ export class MysqlService {
   }
 
   /**
-   * 取得目前的 DataSource（需要 transaction / queryRunner 時使用）
-   * @returns
+   * 取得非交易查詢使用的 EntityManager。
    */
+  getManager(): EntityManager {
+    return this.db.manager;
+  }
+
+  /** 由 Service 定義交易邊界。 */
+  transaction<T>(run: (manager: EntityManager) => Promise<T>): Promise<T> {
+    return this.db.transaction(run);
+  }
+
+  /** 需要 QueryRunner 等 DataSource 能力時使用。 */
   getDataSource(): DataSource {
     return this.db;
   }

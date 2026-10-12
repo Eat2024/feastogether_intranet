@@ -16,6 +16,7 @@ export abstract class BaseEntity {
   @CreateDateColumn({
     name: 'created_at',
     type: 'datetime',
+    precision: 6,
     comment: '建立時間',
   })
   createdAt!: Date;

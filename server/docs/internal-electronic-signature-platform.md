@@ -1,12 +1,14 @@
 # 公司內部一般電子簽章平台技術設計建議
 
 > 文件狀態：規劃中
-> 適用範圍：饗賓內部員工使用的一般電子簽章平台
+> 適用範圍：饗賓內部員工，以及以 Email 受邀簽署之面試錄取人員等外部對象
 > 最後更新：2026-10-08
 
 ## 1. 目的
 
 本文件定義公司內部一般電子簽章平台的法律定位、技術要求、證據保存方式、安全控制與分階段實作方向，作為後端 API、資料庫、檔案儲存、背景工作及前端簽署流程的共同依據。
+
+> 目前 Spec 1 僅完成舊 RBAC 清理、dormant SSO/session 去耦與 12-table schema baseline。WebView token login、正式 SSO 入口、電子簽 API 與跨列狀態機尚未實作；下文相關內容是後續階段設計要求，不代表現況已有可用功能。
 
 本系統預計採用下列方式建立電子簽署證據鏈：
 
@@ -24,7 +26,7 @@
 
 ### 2.1 目標定位
 
-本系統的第一階段目標是建立符合《電子簽章法》定義、可提出完整證據鏈的「一般電子簽章平台」。
+本系統的第一階段目標是建立符合《電子簽章法》定義、可提出完整證據鏈的「一般電子簽章平台」，簽署人包含公司內部員工及以 Email 受邀、尚未具員工身分的面試錄取人員等外部對象。
 
 依《電子簽章法》第 2 條，電子簽章應能達成：
 
@@ -67,13 +69,15 @@
 
 帳號登入只是身分驗證手段，不應單獨視為電子簽章。身分驗證結果必須與特定文件版本、明確的簽署操作及稽核事件綁定。
 
+Email 外部簽署人不建立為公司員工，也不得僅以 client 傳入的姓名或 Email 認定身分。外部簽署人的邀請、Email 控制權驗證、連結或驗證碼期限、重放防護及簽署前驗證必須由後續功能規格定義，並與特定文件及簽署人指派綁定。Stage 1 不支援以手機號碼加入之外部簽署人。
+
 系統不得保存密碼、OTP 明碼、access token、refresh token 或 session cookie。僅保存驗證方式、驗證結果、事件識別碼及必要的安全中繼資料。
 
 #### 3.1.1 員工主檔與系統帳號合併
 
-本系統以公司內網 WebView 形式提供，所有可登入電子簽系統的使用者都必須是公司員工，不另外維護獨立的本地使用者主檔。因此正式資料模型應將原規劃的 `auth_users` 與 `hr_employees` 合併為單一 `employees` 表，並以 `employees.id` 作為本系統 principal ID。
+本系統以公司內網 WebView 形式提供，所有可透過內網或 SSO 登入完整電子簽系統的使用者都必須是公司員工，不另外維護獨立的本地使用者主檔。因此正式資料模型應將原規劃的 `auth_users` 與 `hr_users` 合併為單一 `users` 表，並以 `users.id` 作為本系統 principal ID。Email 外部簽署人僅能存取被指派的文件與必要簽署流程，不視為可登入完整系統的本地使用者。
 
-`employees` 至少應包含：
+`users` 至少應包含：
 
 ```text
 id
@@ -82,32 +86,27 @@ name
 person_status
 is_active
 department_id
-department_code
 department_name
 title_name
-role_id
-description
 last_login_at
 created_at
 updated_at
 deleted_at
-created_by
-updated_by
 ```
 
-其中 `empid` 為公司員工編號並具唯一約束；`role_id` 連結電子簽系統 RBAC。`is_active` 同時代表員工在職及可登入本系統，不另外建立語意重複的帳號啟用欄位。當 `is_active = false` 時，server 必須拒絕建立新 session，並撤銷該員工既有 session；員工資料仍須保留，以維持歷史文件、簽署及稽核紀錄的關聯。
+其中 `empid` 為公司員工編號並具唯一約束。`is_active` 同時代表員工在職及可登入本系統，不另外建立語意重複的帳號啟用欄位。當 `is_active = false` 時，server 必須拒絕建立新 session，並撤銷該員工既有 session；員工資料仍須保留，以維持歷史文件、簽署及稽核紀錄的關聯。
 
-姓名、在職狀態、部門及職稱等欄位由公司身分／HR 來源維護；角色及本地備註由電子簽系統維護。同步時必須採欄位白名單更新，不得以外部 profile 整列覆蓋 `role_id`、`description` 或其他本地管理欄位。
+姓名、在職狀態、部門及職稱等欄位由公司身分／HR 來源維護。同步時必須採欄位白名單更新，不得以外部 profile 整列覆蓋本地流程狀態或歷史快照。本系統 Stage 1 不建立 role、permission 或本地員工管理備註。
 
-文件建立人、管理操作人、session 與 JWT `sub` 均使用 `employees.id`。內部簽署人的 `esign_signers.employee_id` 亦應連結 `employees.id`，但簽署紀錄仍須保存員編、姓名、部門與職稱快照，避免人員資料異動後改變歷史證據。
+文件建立人、管理操作人、session 與 JWT `sub` 均使用 `users.id`。內部簽署人的 `esign_signers.user_id` 亦應連結 `users.id`，但簽署紀錄仍須保存員編、姓名、部門與職稱快照，避免人員資料異動後改變歷史證據。
 
 #### 3.1.2 第一階段單一 issuer 身分對應
 
-第一階段只串接一個公司內網 issuer，不建立 `employee_auth_identities` 或 `auth_identity_providers` 資料表。Server 完整驗證 token 後，直接以 token 內受信任且必填的員工編號 claim 對應 `employees.empid`；不得使用姓名、Email 或部門推測身分。
+第一階段只串接一個公司內網 issuer，不建立 `user_auth_identities` 或 `auth_identity_providers` 資料表。Server 完整驗證 token 後，直接以 token 內受信任且必填的員工編號 claim 對應 `users.empid`；不得使用姓名、Email 或部門推測身分。
 
 受信任 provider 的 protocol、issuer、audience、允許演算法、JWKS／introspection 位置及員工編號 claim mapping 應由 server 的受控設定管理。不得依未驗證 token 或一般資料庫內容動態信任 issuer，也不得向任意 `iss` 執行 discovery。client secret、驗證私密資料及 introspection credential 必須存放於 secret manager 或等效受控環境，不得存入一般業務資料表。
 
-此簡化方案的前提是員工編號在公司內唯一、不可任意變更，且不會重新配發給另一人。未來正式增加第二個 issuer 時，應先新增外部身分綁定資料模型，再開放新 provider，不得直接把不同 issuer 的 `subject` 塞入 `employees` 單一欄位。
+此簡化方案的前提是員工編號在公司內唯一、不可任意變更，且不會重新配發給另一人。未來正式增加第二個 issuer 時，應先新增外部身分綁定資料模型，再開放新 provider，不得直接把不同 issuer 的 `subject` 塞入 `users` 單一欄位。
 
 ### 3.2 文件版本綁定
 
@@ -201,15 +200,15 @@ sequenceDiagram
     Auth->>IdP: 驗證 JWT、introspection 或交換 launch code
     Auth->>Auth: 驗證 provider、issuer、audience、期限及必要 claims
     Auth->>Auth: 取得已驗證的員工編號 claim
-    Auth->>DB: 依 employees.empid 載入員工
-    Auth->>Auth: 檢查 employee.is_active = true
+    Auth->>DB: 依 users.empid 載入員工
+    Auth->>Auth: 檢查 user.is_active = true
     Auth->>Redis: 建立電子簽本地 session
     Auth-->>WebView: 設定 HttpOnly、Secure session cookie
 ```
 
 每個 provider 應有獨立且固定的驗證設定。JWT 至少驗證簽章、允許演算法、`iss`、`aud`、`exp`、`nbf`、`iat` 及必要的 `sub`、員編 claim；不透明 token 則應由 server 對受信任端點執行 introspection。若使用一次性 launch token／code，應驗證 `jti` 或等效識別碼並防止重放。
 
-驗證完成後，以已驗證且必填的員工編號 claim 查找 `employees.empid`，並依受信任 profile 或 HR API 建立／更新員工。員工編號缺失、格式錯誤、查無有效員工或 `is_active = false` 時均拒絕建立 session。
+驗證完成後，以已驗證且必填的員工編號 claim 查找 `users.empid`，並依受信任 profile 或 HR API 建立／更新員工。員工編號缺失、格式錯誤、查無有效員工或 `is_active = false` 時均拒絕建立 session。
 
 電子簽系統必須簽發自己的短效 session，不得將上游 token 直接當成本系統長期 session。Redis session 僅保存員工 ID、來源 provider、必要的上游 session 識別碼、驗證時間及到期時間，不保存原始 token；本地 session 到期時間不得晚於上游憑證或 session 的有效期限。若上游支援 back-channel logout，應依上游 session ID 撤銷對應的本地 session。
 
@@ -291,7 +290,7 @@ document_version_id
 signer_id
 actor_type
 event_type
-occurred_at_utc
+occurred_at
 authentication_method
 authentication_event_id
 source_ip
@@ -415,7 +414,7 @@ documents/{document_uuid}/
 
 - 蒐集目的及必要欄位最小化。
 - 告知資料類別、利用期間、地區、對象與方式。
-- 文件層級 RBAC／ABAC。
+- 由 server 依文件建立人、指定簽署人、文件狀態與操作目的逐項驗證資源授權，不依賴通用 RBAC。
 - 建立人、簽署人、管理者、稽核人員與維運人員職責分離。
 - 敏感欄位遮罩及最小揭露。
 - 日誌不記錄文件全文、簽名圖片、cookie、token 或 OTP。
@@ -450,7 +449,7 @@ Controller 只處理 HTTP 邊界；文件狀態、簽署資格、版本鎖定與
 
 現有 schema 可作為業務草稿，但正式實作前至少需要補足下列概念：
 
-- `employees`：合併員工主檔與本系統 principal、角色及登入狀態；取代獨立的 `auth_users` 與 `hr_employees`。
+- `users`：合併員工主檔與本系統 principal、在職及登入狀態；取代獨立的 `auth_users` 與 `hr_users`，不包含通用角色或 permission。
 - `esign_document_versions`：不可變文件版本與 hash。
 - `esign_signing_consents`：電子形式告知及簽署意圖版本。
 - `esign_identity_verifications`：簽署前身分驗證結果。
@@ -505,8 +504,8 @@ Controller 只處理 HTTP 邊界；文件狀態、簽署資格、版本鎖定與
 ### 身分與授權
 
 - [ ] 帳號可唯一對應員工。
-- [ ] `auth_users` 與 `hr_employees` 已合併為單一員工 principal，沒有重複身分主檔。
-- [ ] 已驗證 token 必須包含唯一員工編號，並只以該員編對應 `employees.empid`。
+- [ ] `auth_users` 與 `hr_users` 已合併為單一員工 principal，沒有重複身分主檔。
+- [ ] 已驗證 token 必須包含唯一員工編號，並只以該員編對應 `users.empid`。
 - [ ] 受信任 provider 由 server 設定白名單管理，不依 token 內容動態信任 issuer。
 - [ ] SSO token 不經 URL query 傳遞，原始 token 不進入 DB、session 或 log。
 - [ ] 本地 session 不晚於上游憑證／session 到期，員工停用時會撤銷既有 session。

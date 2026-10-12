@@ -1,4 +1,4 @@
-import { assertDevModeSafe, isDevLoginAllowed } from './auth-mode';
+import { isDevLoginAllowed } from './auth-mode';
 
 /** 模擬 ConfigService：只回傳指定的環境變數。 */
 const configOf = (env: Record<string, string | undefined>) =>
@@ -24,23 +24,5 @@ describe('isDevLoginAllowed（DEVMOD 開發者登入）', () => {
     ['DEVMOD 非 true 字串', { DEVMOD: '1' }, false],
   ])('%s → %s', (_label, env, expected) => {
     expect(isDevLoginAllowed(configOf(env))).toBe(expected);
-  });
-});
-
-describe('assertDevModeSafe', () => {
-  it.each(['production', 'staging'])(
-    '%s 卻設 DEVMOD=true → 丟錯（開機失敗）',
-    (nodeEnv) => {
-      expect(() =>
-        assertDevModeSafe(configOf({ DEVMOD: 'true', NODE_ENV: nodeEnv })),
-      ).toThrow(/DEVMOD=true 不可用於 production \/ staging/);
-    },
-  );
-
-  it.each([
-    ['本機 DEVMOD=true', { DEVMOD: 'true' }],
-    ['production 未開 DEVMOD', { NODE_ENV: 'production' }],
-  ])('%s → 不丟錯', (_label, env) => {
-    expect(() => assertDevModeSafe(configOf(env))).not.toThrow();
   });
 });

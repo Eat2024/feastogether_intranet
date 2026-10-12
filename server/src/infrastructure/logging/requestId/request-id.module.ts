@@ -27,7 +27,7 @@ type ResponseHeaderWriter = Parameters<typeof bindRequestIdToResponse>[1];
         // 由 x-request-id（驗證/normalize）或新 UUID 產生 request id
         generateId: true,
         idGenerator: (req: RequestWithHeaders) => requestIdFromHeaders(req),
-        // 鏡射到 CLS requestId key 並回寫 X-Request-Id；同時擷取 IP/UA 供 RBAC 稽核。
+        // 鏡射到 CLS requestId key 並回寫 X-Request-Id；同時擷取 IP/UA 供安全稽核。
         setup: (cls, req: FastifyRequest, res: ResponseHeaderWriter) => {
           bindRequestIdToResponse(cls, res);
           // trustProxy=1（app.bootstrap），req.ip 取信任代理填的 client IP（不手動讀 XFF，避免偽造）

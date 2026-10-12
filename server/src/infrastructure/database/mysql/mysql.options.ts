@@ -2,6 +2,19 @@
 // 連線設定單一事實來源：app provider 與 migration CLI 共用，避免兩邊漂移。
 // Nest runtime 由 provider 傳入 ConfigService 讀取器；CLI/seed 直接 import 時才 fallback 到 process.env。
 import type { DataSourceOptions } from 'typeorm';
+import { Department } from '#app/features/users/entities/department.entity';
+import { User } from '#app/features/users/entities/user.entity';
+import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
+import { EsignDocumentField } from '#app/features/esign/entities/esign-document-field.entity';
+import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
+import { EsignExportJob } from '#app/features/esign/entities/esign-export-job.entity';
+import { EsignFileObject } from '#app/features/esign/entities/esign-file-object.entity';
+import { EsignNotificationBatch } from '#app/features/esign/entities/esign-notification-batch.entity';
+import { EsignNotificationLog } from '#app/features/esign/entities/esign-notification-log.entity';
+import { EsignSignatureRecord } from '#app/features/esign/entities/esign-signature-record.entity';
+import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
+import { EsignVerificationRecord } from '#app/features/esign/entities/esign-verification-record.entity';
+import { InitialEsignSchema1791763200000 } from '#app/infrastructure/database/migrations/1791763200000-InitialEsignSchema';
 
 export type EnvReader = (key: string) => string | undefined;
 
@@ -49,10 +62,21 @@ export function buildMysqlOptions(
     logging: false,
     charset: 'utf8mb4',
 
-    // Auth/RBAC/Audit 尚未啟用：保留 entity 與 migration 原始碼，但不交給
-    // runtime 或 TypeORM CLI 載入，避免此階段建立 auth 相關資料表。
-    entities: [],
-    migrations: [],
+    entities: [
+      Department,
+      User,
+      EsignDocument,
+      EsignDocumentField,
+      EsignSigner,
+      EsignSignatureRecord,
+      EsignFileObject,
+      EsignAuditEvent,
+      EsignVerificationRecord,
+      EsignNotificationBatch,
+      EsignNotificationLog,
+      EsignExportJob,
+    ],
+    migrations: [InitialEsignSchema1791763200000],
 
     extra: {
       connectionLimit: Number(env(readEnv, 'DB_MYSQL_POOL_MAX', '10')),

@@ -34,6 +34,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "node --conditions=development --env-file-if-exists=.env.test ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json --runInBand --forceExit",
     "test:e2e:security": "node --conditions=development --env-file-if-exists=.env.test ./node_modules/jest/bin/jest.js --config ./test/jest-e2e-security.json --runInBand --forceExit",
+    "test:schema": "node --conditions=development --env-file-if-exists=.env.test ./node_modules/jest/bin/jest.js --config ./test/jest-schema.json --runInBand --forceExit",
     "typeorm": "node --env-file=.env --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js -d src/infrastructure/database/mysql/data-source.ts",
     "db:create": "node --env-file=.env --conditions=development -r ts-node/register src/infrastructure/database/create-db.ts",
     "db:setup": "pnpm db:create && pnpm migration:run",
@@ -42,8 +43,7 @@
     "migration:run": "pnpm typeorm migration:run",
     "migration:revert": "pnpm typeorm migration:revert",
     "migration:generate": "node --env-file=.env --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js migration:generate -d src/infrastructure/database/mysql/data-source.ts src/infrastructure/database/migrations/Migration",
-    "migration:create": "node --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js migration:create src/infrastructure/database/migrations/Migration",
-    "seed:rbac": "node --env-file=.env --conditions=development -r ts-node/register src/infrastructure/database/seeds/rbac.seed.ts"
+    "migration:create": "node --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js migration:create src/infrastructure/database/migrations/Migration"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

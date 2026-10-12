@@ -37,11 +37,19 @@ describe('buildMysqlOptions', () => {
     });
   });
 
-  it('Auth 尚未啟用時不註冊 entity 或 migration', () => {
+  it('明確註冊 12 個 Spec 1 entities 與單一 baseline migration', () => {
     const options = buildMysqlOptions(readEnv);
 
-    expect(options.entities).toEqual([]);
-    expect(options.migrations).toEqual([]);
+    expect(options.entities).toHaveLength(12);
+    expect(options.migrations).toHaveLength(1);
+    expect(
+      (options.entities as Array<{ name: string }>).map(
+        (entity) => entity.name,
+      ),
+    ).toEqual(expect.arrayContaining(['Department', 'User', 'EsignDocument']));
+    expect((options.migrations as Array<{ name: string }>)[0]?.name).toBe(
+      'InitialEsignSchema1791763200000',
+    );
   });
 
   it('未設定 SSL env 時不帶 ssl 選項', () => {

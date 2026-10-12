@@ -3,7 +3,7 @@ import { normalizeSchemaDump } from './dump-schema';
 describe('normalizeSchemaDump（schema:dump）', () => {
   it('拿掉 AUTO_INCREMENT 計數，避免隨資料變動產生無意義的 diff', () => {
     const raw =
-      'CREATE TABLE `auth_roles` (\n  `id` bigint NOT NULL AUTO_INCREMENT\n) ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4;\n';
+      'CREATE TABLE `example_records` (\n  `id` bigint NOT NULL AUTO_INCREMENT\n) ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4;\n';
 
     const out = normalizeSchemaDump(raw);
 

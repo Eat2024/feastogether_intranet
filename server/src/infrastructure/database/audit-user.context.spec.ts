@@ -14,8 +14,8 @@ describe('audit-user.context', () => {
       expect(clsUserId(inactive)).toBeUndefined();
     });
 
-    it('CLS 有登入者 → 回 userId', () => {
-      expect(clsUserId(loggedIn)).toBe('9001');
+    it('CLS 有登入者 → 回 user id number', () => {
+      expect(clsUserId(loggedIn)).toBe(9001);
     });
   });
 
@@ -24,8 +24,8 @@ describe('audit-user.context', () => {
       expect(() => requireClsUserId(inactive)).toThrow(AppException);
     });
 
-    it('CLS 有登入者 → 回 userId', () => {
-      expect(requireClsUserId(loggedIn)).toBe('9001');
+    it('CLS 有登入者 → 回 user id number', () => {
+      expect(requireClsUserId(loggedIn)).toBe(9001);
     });
   });
 });

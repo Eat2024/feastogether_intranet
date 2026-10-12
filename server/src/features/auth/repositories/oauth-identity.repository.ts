@@ -1,7 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
-import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { AuthUser } from '#app/features/auth/entities/auth-user.entity';
+import { Injectable } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
+import { User } from '#app/features/users/entities/user.entity';
 
 /** MySQL 唯一鍵衝突的 driver 錯誤碼（並發建帳時由 person_empid 唯一約束仲裁）。 */
 const MYSQL_DUPLICATE_ENTRY = 'ER_DUP_ENTRY';
@@ -19,38 +18,27 @@ export function isDuplicateEntryError(error: unknown): boolean {
  */
 @Injectable()
 export class OauthIdentityRepository {
-  constructor(@Inject(MYSQL_MAIN) private readonly ds: DataSource) {}
-
-  transaction<T>(run: (manager: EntityManager) => Promise<T>): Promise<T> {
-    return this.ds.transaction(run);
-  }
-
   /** 以員編鎖定使用者列（FOR UPDATE）；person_empid 有唯一索引，至多一筆。 */
   findUserByEmpIdForUpdate(
     empId: string,
     manager: EntityManager,
-  ): Promise<AuthUser | null> {
-    return manager.findOne(AuthUser, {
-      where: { personEmpid: empId },
+  ): Promise<User | null> {
+    return manager.findOne(User, {
+      where: { empid: empId },
       withDeleted: true,
       lock: { mode: 'pessimistic_write' },
     });
   }
 
   /** save(entity 實例) 才會觸發稽核欄自動填值。 */
-  saveUser(user: AuthUser, manager: EntityManager): Promise<AuthUser> {
+  saveUser(user: User, manager: EntityManager): Promise<User> {
     return manager.save(user);
   }
 
   createUser(
-    fields: Pick<
-      AuthUser,
-      'personEmpid' | 'personName' | 'lastLoginAt' | 'oauthSub'
-    >,
+    fields: Pick<User, 'empid' | 'name' | 'lastLoginAt'>,
     manager: EntityManager,
-  ): Promise<AuthUser> {
-    return manager.save(
-      manager.create(AuthUser, { ...fields, isActive: true }),
-    );
+  ): Promise<User> {
+    return manager.save(manager.create(User, { ...fields, isActive: true }));
   }
 }

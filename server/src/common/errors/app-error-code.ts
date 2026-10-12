@@ -4,26 +4,12 @@
 export const AppErrorCode = {
   /** DTO / ValidationPipe 驗證失敗（泛用） */
   INVALID_REQUEST: 'INVALID_REQUEST',
-  /** permissionIds 含不存在 / 停用的 permission（FR-008） */
-  INVALID_PERMISSION_IDS: 'INVALID_PERMISSION_IDS',
-  /** 指派 / 操作指向不存在或停用角色 */
-  INVALID_ROLE_ID: 'INVALID_ROLE_ID',
-  /** 對 ADMIN 角色更名 / 刪除 / 清空權限（FR-006） */
-  ADMIN_ROLE_LOCKED: 'ADMIN_ROLE_LOCKED',
-  /** 刪除仍有使用者綁定的角色（FR-007） */
-  ROLE_HAS_USERS: 'ROLE_HAS_USERS',
-  /** 新增 / 改名時角色名稱與其他啟用中角色重複（須唯一） */
-  DUPLICATE_ROLE_NAME: 'DUPLICATE_ROLE_NAME',
   /** 未帶 / 無效 / 已撤銷 token */
   UNAUTHORIZED: 'UNAUTHORIZED',
-  /** 權限不足（AuthGuard default-deny：角色無對應權限） */
+  /** 已通過身分驗證，但不允許操作特定業務資源 */
   FORBIDDEN: 'FORBIDDEN',
   /** 資源不存在 */
   NOT_FOUND: 'NOT_FOUND',
-  /** 操作的角色不存在 */
-  ROLE_NOT_FOUND: 'ROLE_NOT_FOUND',
-  /** 操作的使用者不存在（P2） */
-  USER_NOT_FOUND: 'USER_NOT_FOUND',
   /** 員工查詢或匯入失敗，不透露上游員工狀態。 */
   STAFF_LOOKUP_FAILED: 'STAFF_LOOKUP_FAILED',
   /** 登入身分無效（使用者不存在、已停用或 session 已失效） */

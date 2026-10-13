@@ -45,6 +45,7 @@ export default async function MySignaturePage({ searchParams }: PageProps<'/my-s
     <>
       <PageHeader
         title="我的電子簽"
+        hideTitleWhenEmbedded
         description="查看需要你簽署的文件，並追蹤已簽署與已拒絕的紀錄。"
       />
       <Stack spacing={2}>

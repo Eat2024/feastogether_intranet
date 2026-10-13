@@ -35,6 +35,7 @@ import {
 import { Public } from '#app/framework/decorators/public.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import {
+  EmbedOriginsView,
   WebviewLaunchView,
   WebviewSessionDto,
 } from '../dto/webview-launch.dto';
@@ -79,6 +80,21 @@ export class AuthController {
       );
     }
     return this.authService.createWebviewLaunch(matched[1]);
+  }
+
+  /**
+   * 電子簽前端被主平台 iframe 嵌入時，只接受這些 origin 的 postMessage（並只對它們送訊息）。
+   * 與 bridge 的 frame-ancestors 同一份清單；origin 不是機密（CSP header 本來就會揭露）。
+   */
+  @Public()
+  @Get(configPath.AUTH_EMBED_ORIGINS)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: '取得可嵌入電子簽並以 postMessage 溝通的主平台 origin',
+  })
+  @ApiResponse({ status: HttpStatus.OK, type: EmbedOriginsView })
+  getEmbedOrigins(): EmbedOriginsView {
+    return { origins: this.trustedOrigins() };
   }
 
   @Public()
@@ -195,25 +211,12 @@ export class AuthController {
   }
 
   private frameAncestors(): string {
-    const configured =
-      this.config.get<string>('AUTH_TRUSTED_ORIGINS') ||
-      this.config.get<string>('CORS_ORIGIN') ||
-      '';
-    const origins = configured
-      .split(',')
-      .map((value) => value.trim())
-      .filter((value) => {
-        try {
-          const url = new URL(value);
-          return (
-            (url.protocol === 'https:' || url.protocol === 'http:') &&
-            url.origin === value
-          );
-        } catch {
-          return false;
-        }
-      });
-    return ["'self'", ...origins].join(' ');
+    return ["'self'", ...this.trustedOrigins()].join(' ');
+  }
+
+  private trustedOrigins(): string[] {
+    const configured = this.config.get<string>('AUTH_TRUSTED_ORIGINS') || '';
+    return configured ? configured.split(',').map((value) => value.trim()) : [];
   }
 
   private errorPage(message: string): string {

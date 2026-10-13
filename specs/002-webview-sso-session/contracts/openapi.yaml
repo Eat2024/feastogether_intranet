@@ -63,6 +63,31 @@ paths:
           content:
             text/html:
               schema: { type: string }
+  /auth/embed-origins:
+    get:
+      operationId: getEmbedOrigins
+      summary: 取得可嵌入電子簽並以 postMessage 溝通的主平台 origin（見 embed-postmessage.md）
+      security: []
+      responses:
+        "200":
+          description: AUTH_TRUSTED_ORIGINS 設定的 origin；未設定時為空清單
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    required: [origins]
+                    properties:
+                      origins:
+                        type: array
+                        items: { type: string, format: uri }
   /auth/session:
     post:
       operationId: createWebviewSession

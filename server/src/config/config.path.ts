@@ -12,4 +12,6 @@ export default {
   AUTH_WEBVIEW_LAUNCHES: 'webview-launches',
   AUTH_WEBVIEW: 'webview',
   AUTH_SESSION: 'session',
+  // GET /auth/embed-origins：可嵌入電子簽並以 postMessage 溝通的主平台 origin（取自 AUTH_TRUSTED_ORIGINS）
+  AUTH_EMBED_ORIGINS: 'embed-origins',
 } as const;

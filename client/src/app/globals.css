@@ -1,1 +1,9 @@
 @layer theme, base, mui, components, utilities;
+
+/* 被入口網 iframe 嵌入時隱藏的區塊（側邊欄、與入口網選單重複的導覽），改由入口網選單切換頁面。
+   data-embedded 由 app/layout.tsx 在繪製前設定；新分頁開啟時不隱藏。 */
+@layer components {
+  html[data-embedded] .hide-when-embedded {
+    display: none;
+  }
+}

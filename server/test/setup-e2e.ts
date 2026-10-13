@@ -47,6 +47,7 @@ const {
   ).toString('base64');
 }
 process.env.CORS_ORIGIN ??= 'http://localhost:3000';
+process.env.AUTH_TRUSTED_ORIGINS ??= 'http://localhost:3000';
 
 const originalServerAddress = SupertestTest.prototype.serverAddress;
 SupertestTest.prototype.serverAddress = function serverAddressV6Loopback(

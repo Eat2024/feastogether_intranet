@@ -4,7 +4,7 @@ import { AUTH_COOKIE_NAME } from '../auth.constants';
 import { AuthController } from './auth.controller';
 
 describe('AuthController WebView boundary', () => {
-  const setup = () => {
+  const setup = (env: Record<string, string> = {}) => {
     const auth = {
       createWebviewLaunch: jest.fn().mockResolvedValue({ launchUrl: 'url' }),
       activateWebviewSession: jest.fn().mockResolvedValue('s'.repeat(43)),
@@ -13,7 +13,7 @@ describe('AuthController WebView boundary', () => {
     };
     const config = {
       get: jest.fn((key: string) =>
-        key === 'NODE_ENV' ? 'development' : undefined,
+        key === 'NODE_ENV' ? 'development' : env[key],
       ),
     };
     return {
@@ -85,6 +85,36 @@ describe('AuthController WebView boundary', () => {
       expect.objectContaining({ httpOnly: true, maxAge: 28_800 }),
     );
     expect(response.redirect).toHaveBeenCalledWith('/', HttpStatus.SEE_OTHER);
+  });
+
+  it('embed-origins 回傳 AUTH_TRUSTED_ORIGINS 設定的 origin', () => {
+    const { controller } = setup({
+      AUTH_TRUSTED_ORIGINS:
+        ' https://portal.example.test , http://localhost:8080 ',
+    });
+    expect(controller.getEmbedOrigins()).toEqual({
+      origins: ['https://portal.example.test', 'http://localhost:8080'],
+    });
+  });
+
+  it('embed-origins 未設 AUTH_TRUSTED_ORIGINS 時回傳空清單', () => {
+    expect(setup().controller.getEmbedOrigins()).toEqual({ origins: [] });
+  });
+
+  it('bridge 的 frame-ancestors 與 embed-origins 使用同一份清單', () => {
+    const { controller } = setup({
+      AUTH_TRUSTED_ORIGINS: 'http://localhost:8080',
+    });
+    const response = reply();
+    controller.getWebviewBridge(
+      { code: 'a'.repeat(43) },
+      response as unknown as FastifyReply,
+    );
+    const headers = response.header.mock.calls as Array<[string, string]>;
+    const csp = headers.find(
+      ([name]) => name === 'Content-Security-Policy',
+    )?.[1];
+    expect(csp).toContain("frame-ancestors 'self' http://localhost:8080");
   });
 
   it('DELETE session 先清 cookie，再由 AuthService 冪等撤銷', async () => {

@@ -11,7 +11,8 @@ export const metadata: Metadata = { title: '新增電子簽文件' };
 export default function NewFormPage() {
   return (
     <>
-      <Box>
+      {/* 嵌入入口網時隱藏：入口網已有「電子簽列表」選單 */}
+      <Box className="hide-when-embedded">
         <Button
           variant="text"
           startIcon={<ArrowBackRoundedIcon />}
@@ -23,6 +24,7 @@ export default function NewFormPage() {
 
       <PageHeader
         title="新增電子簽文件"
+        hideTitleWhenEmbedded
         description="上傳 Word／PDF 文件，逐頁預覽並指定簽名要落在哪裡。"
       />
       <StepFlow steps={CREATE_STEPS} activeIndex={0} />

@@ -30,6 +30,8 @@ export default function SideNav({ isAdmin }: { isAdmin: boolean }) {
   return (
     <Drawer
       variant="permanent"
+      // 被入口網 iframe 嵌入時由 globals.css 隱藏（見 app/layout.tsx 的 data-embedded）
+      className="hide-when-embedded"
       sx={{
         width: SIDE_NAV_WIDTH,
         flexShrink: 0,

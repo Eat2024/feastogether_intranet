@@ -46,6 +46,71 @@ describe('FeastogetherHrService', () => {
     });
   });
 
+  it('lookupEligibleStaff 只接受唯一完整員編精確相符的合格資料', async () => {
+    const { service, client } = build();
+    const exact = {
+      person_empid: '00123',
+      person_name: '王小明',
+      person_status: 1,
+      person_status_name: '正式',
+      department_id: 'D001',
+      department_name: '資訊部',
+      title: '工程師',
+      ignored: '不應參與身分判斷',
+    };
+    client.get.mockResolvedValue([
+      { ...exact, person_empid: '9900123' },
+      exact,
+    ]);
+    const result = await service.lookupEligibleStaff('00123');
+    expect(result).toMatchObject({
+      person_empid: '00123',
+      person_name: '王小明',
+    });
+    expect(result).not.toHaveProperty('ignored');
+  });
+
+  it.each([
+    { rows: [] },
+    { rows: [null] },
+    {
+      rows: [
+        {
+          person_empid: '00123',
+          person_name: '王小明',
+          person_status: 1,
+          person_status_name: '正式',
+        },
+        {
+          person_empid: '00123',
+          person_name: '王小明',
+          person_status: 1,
+          person_status_name: '正式',
+        },
+      ],
+    },
+    {
+      rows: [
+        {
+          person_empid: '00123',
+          person_name: '',
+          person_status: 1,
+          person_status_name: '正式',
+        },
+      ],
+    },
+  ])(
+    'lookupEligibleStaff 對零筆、多筆或格式錯誤 fail closed',
+    async ({ rows }) => {
+      const { service, client } = build();
+      client.get.mockResolvedValue(rows);
+      await expect(service.lookupEligibleStaff('00123')).rejects.toMatchObject({
+        code: AppErrorCode.AUTH_EXCHANGE_FAILED,
+        status: 401,
+      });
+    },
+  );
+
   it('getShift：帶 Bearer token + 日期區間 query', async () => {
     const { service, client } = build();
     client.get.mockResolvedValue([]);

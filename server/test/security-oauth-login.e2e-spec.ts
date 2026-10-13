@@ -1,21 +1,18 @@
 import { randomBytes } from 'node:crypto';
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
-import { AuthLogoutService } from '#app/features/auth/services/auth-logout.service';
-import { AuthSessionVerifierService } from '#app/features/auth/services/auth-session-verifier.service';
-import { AuthSessionService } from '#app/features/auth/services/auth-session.service';
 import { AuthService } from '#app/features/auth/services/auth.service';
 import { OauthIdentityService } from '#app/features/auth/services/oauth-identity.service';
 import { OauthLoginService } from '#app/features/auth/services/oauth-login.service';
 import { OauthTransactionService } from '#app/features/auth/services/oauth-transaction.service';
 import { InfrastructureModule } from '#app/infrastructure/infrastructure.module';
 import { OauthModule } from '#app/infrastructure/http-client/oauth/oauth.module';
+import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
+import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import { FrameworkModule } from '#app/framework/framework.module';
 import * as oidcStub from './stubs/openid-client.stub';
 
@@ -24,31 +21,38 @@ import * as oidcStub from './stubs/openid-client.stub';
     FrameworkModule,
     InfrastructureModule,
     OauthModule,
-    JwtModule.registerAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET'),
-        signOptions: { algorithm: 'HS256' },
-        verifyOptions: { algorithms: ['HS256'] },
-      }),
-    }),
+    FeastogetherModule,
   ],
   providers: [
     OauthIdentityService,
     OauthTransactionService,
-    AuthSessionService,
-    AuthSessionVerifierService,
+    {
+      provide: RedisService,
+      useValue: {
+        set: (key: string, value: string) => {
+          oauthTransactions.set(key, value);
+          return Promise.resolve('OK');
+        },
+        getDel: (key: string) => {
+          const value = oauthTransactions.get(key) ?? null;
+          oauthTransactions.delete(key);
+          return Promise.resolve(value);
+        },
+      },
+    },
     AuthService,
-    AuthLogoutService,
     OauthLoginService,
   ],
 })
 class AuthTestingModule {}
 
+const oauthTransactions = new Map<string, string>();
+
 describe('dormant SSO/session testing module', () => {
   const empid = 'SYN-SPEC1';
 
   beforeAll(() => {
+    oauthTransactions.clear();
     process.env.OAUTH_ISSUER = 'https://auth.example.com';
     process.env.OAUTH_CLIENT_ID = 'spec1-client';
     process.env.OAUTH_CLIENT_SECRET = 'synthetic-secret';
@@ -73,8 +77,7 @@ describe('dormant SSO/session testing module', () => {
     const dataSource = testingModule.get<DataSource>(MYSQL_MAIN);
     try {
       const login = testingModule.get(OauthLoginService);
-      const verifier = testingModule.get(AuthSessionVerifierService);
-      const logout = testingModule.get(AuthLogoutService);
+      const auth = testingModule.get(AuthService);
       const userRepository = testingModule.get(UserRepository);
 
       const started = await login.start('/documents');
@@ -90,7 +93,7 @@ describe('dormant SSO/session testing module', () => {
       );
       expect(completed.session.user.empId).toBe(empid);
       await expect(
-        verifier.verifySessionToken(completed.accessToken),
+        auth.verifySessionToken(completed.accessToken),
       ).resolves.toMatchObject({ userId: completed.session.user.id });
 
       await expect(
@@ -100,18 +103,20 @@ describe('dormant SSO/session testing module', () => {
         ),
       ).rejects.toMatchObject({ code: AppErrorCode.OAUTH_TRANSACTION_INVALID });
 
-      await expect(logout.logout(completed.accessToken)).resolves.toMatchObject(
-        {
-          localLogout: 'completed',
-        },
-      );
+      await expect(auth.logout(completed.accessToken)).resolves.toMatchObject({
+        localLogout: 'completed',
+      });
       await expect(
-        verifier.verifySessionToken(completed.accessToken),
+        auth.verifySessionToken(completed.accessToken),
       ).resolves.toBeNull();
 
       const user = await userRepository.findByEmpid(empid, dataSource.manager);
       expect(user).toMatchObject({ empid, isActive: true });
     } finally {
+      await dataSource.query(
+        'DELETE FROM auth_sessions WHERE user_id = (SELECT id FROM users WHERE empid = ?)',
+        [empid],
+      );
       await dataSource.query('DELETE FROM users WHERE empid = ?', [empid]);
       await testingModule.close();
     }

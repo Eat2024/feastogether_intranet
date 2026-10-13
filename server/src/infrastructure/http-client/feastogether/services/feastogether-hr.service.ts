@@ -2,6 +2,8 @@ import { AppException } from '#app/common/errors/app.exception';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { StaffLookupDto } from '../types/staff-lookup.dto';
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { FeastogetherClient } from '../feastogether.client';
 import { mapFeastogetherUpstreamError } from '../feastogether-error.util';
 import {
@@ -36,6 +38,31 @@ export class FeastogetherHrService {
     } catch {
       throw staffLookupError();
     }
+  }
+
+  /** 只接受唯一、完整員編精確相符且欄位格式合法的試用／正式員工。 */
+  async lookupEligibleStaff(empId: string): Promise<StaffLookupDto> {
+    const results = await this.lookupStaff(empId);
+    if (!Array.isArray(results)) throw staffRejectedError();
+
+    const valid: StaffLookupDto[] = [];
+    for (const result of results as unknown[]) {
+      if (!result || typeof result !== 'object' || Array.isArray(result)) {
+        throw staffRejectedError();
+      }
+      const dto = plainToInstance(StaffLookupDto, result, {
+        excludeExtraneousValues: false,
+      });
+      const errors = await validate(dto, {
+        whitelist: true,
+        forbidNonWhitelisted: false,
+        forbidUnknownValues: true,
+      });
+      if (errors.length > 0) throw staffRejectedError();
+      if (dto.person_empid === empId) valid.push(dto);
+    }
+    if (valid.length !== 1) throw staffRejectedError();
+    return valid[0];
   }
 
   /** 准考證（依日期區間）。 */
@@ -91,5 +118,13 @@ export function staffLookupError(): AppException {
     AppErrorCode.STAFF_LOOKUP_FAILED,
     '系統有錯，請詢問IT部門',
     HttpStatus.BAD_GATEWAY,
+  );
+}
+
+function staffRejectedError(): AppException {
+  return new AppException(
+    AppErrorCode.AUTH_EXCHANGE_FAILED,
+    '無法完成登入交換',
+    HttpStatus.UNAUTHORIZED,
   );
 }

@@ -2,18 +2,18 @@
 
 > 文件狀態：規劃中
 > 對應模型：[internal-electronic-signature-er-model.md](./internal-electronic-signature-er-model.md)
-> 範圍：第一階段 12 張 MySQL 資料表，不包含 RBAC、identity binding、provider、session 與 document version table。
+> 範圍：第一階段 12 張電子簽業務資料表，加上 Spec 2 的 `auth_sessions`；不包含 RBAC、identity binding、provider 與 document version table。
 
 ## 1. 共通規則
 
 - 所有 `datetime` 欄位以 UTC 寫入 MySQL，API／UI 邊界才轉換為台北時間。
-- 所有 `DATE` 與 `DATETIME(6)` 欄位都必須建立專屬單欄索引；即使欄位已出現在複合索引中，也不得省略該單欄索引。
+- 12 張電子簽業務表的所有 `DATE` 與 `DATETIME(6)` 欄位都必須建立專屬單欄索引；`auth_sessions` 依認證查詢條件使用下節列出的複合索引。
 - 所有 SHA-256 欄位保存 64 字元小寫十六進位字串，不接受 client 傳入值作為最終可信結果，必須由 server 對實際持久化內容重新計算。
 - `signing_payload_json` 與 `manifest_json` 在計算 hash 前必須使用固定 canonicalization 規則，避免 JSON 欄位順序、空白或序列化差異造成不同摘要。
 - PDF、簽名圖檔、manifest、QR Code 與匯出檔案存放於 private object storage；MySQL 只保存 object key、hash、大小、MIME type 與狀態。
 - `deleted_at` 僅供一般業務資料軟刪除。簽署證據、稽核事件與驗證紀錄不可透過一般後台刪除。
 - `created_by_user_id`、`updated_by_user_id` 為 NULL 時代表由系統、同步程序或 worker 執行。
-- 登入 session、SSO transaction、nonce、launch code 與 `jti` 重放防護存放於 Redis，不在本文件定義 MySQL table。
+- WebView launch 重放防護與本地登入 session 以 MySQL `auth_sessions` 為唯一權威來源；Redis 不參與此認證流程。
 - SSO 僅以已驗證的員工編號對應 `users.empid`；本 schema 不保存 `oauth_sub` 或其他 provider identity binding。
 - 外部簽署 Email 在寫入前只做 `trim + lowercase`，並使用大小寫不敏感欄位與 `(document_id, email)` 唯一鍵防重；不得因此建立假 User。
 - `esign_signature_records`、`esign_audit_events` 的正式 repository 只提供 insert/query；`esign_verification_records` 只額外提供窄化 revoke，不提供一般 update/delete/soft-delete。
@@ -41,7 +41,7 @@
 
 ### 2.2 `users`
 
-合併原 `hr_users` 與登入 principal 的員工主檔。`users.id` 同時作為 JWT `sub`、Redis session 的員工 ID、文件建立人、簽署人及稽核操作人識別碼。
+合併原 `hr_users` 與登入 principal 的員工主檔。主平台 JWT `sub` 承載 `empid`；驗證成功後以 `users.id` 作為 MySQL session、文件建立人、簽署人及稽核操作人識別碼。
 
 | 欄位              | 型別         | 必填 | 鍵值／索引                      | 說明                                                                    |
 | ----------------- | ------------ | ---: | ------------------------------- | ----------------------------------------------------------------------- |
@@ -49,7 +49,7 @@
 | `empid`           | VARCHAR(32)  |   是 | UNIQUE                          | 公司員工編號，供 HR／SSO 對應；不可用姓名或 Email 取代。                |
 | `name`            | VARCHAR(100) |   是 |                                 | 員工姓名，由受信任 HR／SSO 來源同步。                                   |
 | `person_status`   | VARCHAR(50)  |   否 | INDEX                           | 上游人員狀態原始語意，例如試用、正式、離職。                            |
-| `is_active`       | TINYINT(1)   |   是 | INDEX，預設 1                   | 在職且可登入本系統。設為 0 時拒絕新 session 並撤銷既有 Redis sessions。 |
+| `is_active`       | TINYINT(1)   |   是 | INDEX，預設 1                   | 是否允許登入本系統；建立及驗證 session 時必須為 1。Spec 2 不包含上游狀態變更後的主動撤銷。 |
 | `department_id`   | BIGINT       |   否 | FK → `hr_departments.id`、INDEX | 所屬部門。                                                              |
 | `department_name` | VARCHAR(150) |   否 |                                 | 部門名稱冗餘顯示值，避免列表查詢每次 JOIN；不是歷史簽署快照。           |
 | `title_name`      | VARCHAR(100) |   否 |                                 | 目前職稱。                                                              |
@@ -57,6 +57,30 @@
 | `created_at`      | DATETIME(6)  |   是 | INDEX                           | 首次建立員工資料時間。                                                  |
 | `updated_at`      | DATETIME(6)  |   是 | INDEX                           | 最近一次同步或本地更新時間。                                            |
 | `deleted_at`      | DATETIME(6)  |   否 | INDEX                           | 軟刪除時間。一般離職只應設定 `is_active = 0`，不得刪除歷史簽署人。      |
+
+### 2.3 `auth_sessions`
+
+WebView JWT 防重放、待啟動 code 與本地員工 session 的單一 MySQL 權威。原始 JWT、`jti`、launch code 與 cookie token 均不落庫，只保存 SHA-256 摘要；認證流程不得 soft-delete 紀錄。
+
+| 欄位                   | 型別        | 必填 | 鍵值／索引                                  | 說明 |
+| ---------------------- | ----------- | ---: | ------------------------------------------- | ---- |
+| `id`                   | BIGINT UNSIGNED | 是 | PK | 認證流程流水號。 |
+| `user_id`              | BIGINT      | 否 | FK → `users.id`、複合 INDEX | FGAPI 與 User 查驗完成後綁定。 |
+| `source`               | VARCHAR(20) | 是 | 無 | 認證來源；目前 WebView 流程明確寫入 `webview`。 |
+| `status`               | VARCHAR(20) | 是 | 複合 INDEX | `validating`、`pending`、`active`、`failed` 或 `revoked`。 |
+| `source_jti_hash`      | CHAR(64)    | 是 | UNIQUE | `SHA-256(issuer + NUL + jti)`。 |
+| `launch_code_hash`     | CHAR(64)    | 否 | UNIQUE | 60 秒一次性啟動碼摘要。 |
+| `session_token_hash`   | CHAR(64)    | 否 | UNIQUE | 8 小時不透明 cookie token 摘要。 |
+| `assertion_expires_at` | DATETIME(3) | 是 | | 上游 JWT 最後有效時間。 |
+| `launch_expires_at`    | DATETIME(3) | 否 | `(status, launch_expires_at)` | 啟動碼到期時間。 |
+| `verified_at`          | DATETIME(3) | 否 | | 員工查驗完成時間。 |
+| `activated_at`         | DATETIME(3) | 否 | | code 成功消耗時間。 |
+| `expires_at`           | DATETIME(3) | 否 | `(status, expires_at)` | 本地 session 固定到期時間，不滑動延長。 |
+| `revoked_at`           | DATETIME(3) | 否 | | 主動登出撤銷時間。 |
+| `failure_code`         | VARCHAR(50) | 否 | | 不含個資與憑證的失敗分類。 |
+| `created_at`           | DATETIME(6) | 是 | `(user_id, created_at)` | 建立時間。 |
+| `updated_at`           | DATETIME(6) | 是 | | 最近狀態變更時間。 |
+| `deleted_at`           | DATETIME(6) | 否 | INDEX | 基底欄位；認證流程不得使用。 |
 
 ## 3. 電子簽核心
 

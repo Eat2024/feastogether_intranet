@@ -30,6 +30,23 @@
 // 迴歸鎖:test/e2e-env-isolation.e2e-spec.ts「supertest 埠號防撞」兩測試。
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-require-imports */
 const SupertestTest: any = require('supertest/lib/test');
+const {
+  generateKeyPairSync,
+}: typeof import('node:crypto') = require('node:crypto');
+
+{
+  const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  process.env.WEBVIEW_JWT_ISSUER = 'e2e-main-platform';
+  process.env.WEBVIEW_JWT_AUDIENCE = 'e2e-esign';
+  process.env.WEBVIEW_LAUNCH_ORIGIN = 'http://localhost:3001';
+  process.env.WEBVIEW_JWT_PUBLIC_KEY_B64 = Buffer.from(
+    pair.publicKey.export({ type: 'spki', format: 'pem' }),
+  ).toString('base64');
+  process.env.WEBVIEW_TEST_PRIVATE_KEY_B64 = Buffer.from(
+    pair.privateKey.export({ type: 'pkcs8', format: 'pem' }),
+  ).toString('base64');
+}
+process.env.CORS_ORIGIN ??= 'http://localhost:3000';
 
 const originalServerAddress = SupertestTest.prototype.serverAddress;
 SupertestTest.prototype.serverAddress = function serverAddressV6Loopback(

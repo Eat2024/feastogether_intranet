@@ -83,6 +83,8 @@ export class FeastogetherClient {
     if (options.token) headers.Authorization = `Bearer ${options.token}`;
 
     const url = `${this.config.baseUrl}${path}`;
+    const safePath = path.split('?', 1)[0];
+    const isStaffLookup = safePath === '/api/v1/hr/staff_lookup';
     try {
       const response =
         method === 'get'
@@ -106,21 +108,23 @@ export class FeastogetherClient {
       // 故保留可觀測欄位，但不得寫入可能含 token、密碼或個資的原始 body/message。
       this.safeWarn({
         event: 'feastogether.request_failed',
-        message: `饗賓 API ${method.toUpperCase()} ${path} 失敗`,
+        message: `饗賓 API ${method.toUpperCase()} ${safePath} 失敗`,
         context: FeastogetherClient.name,
         metadata: {
           method,
-          path,
+          path: safePath,
           status,
           errorType: getErrorType(error),
           ...(body !== undefined ? { requestBody: maskSensitive(body) } : {}),
-          responseBody: maskSensitive(responseBody),
+          ...(!isStaffLookup
+            ? { responseBody: maskSensitive(responseBody) }
+            : {}),
         },
       });
       throw new FeastogetherApiError(
         status,
         responseBody,
-        `饗賓 API ${method.toUpperCase()} ${path} ${status ? '失敗' : '連線失敗'}`,
+        `饗賓 API ${method.toUpperCase()} ${safePath} ${status ? '失敗' : '連線失敗'}`,
       );
     }
   }
@@ -131,26 +135,28 @@ export class FeastogetherClient {
     path: string,
     requestBody: unknown,
   ): T {
+    const safePath = path.split('?', 1)[0];
+    const isStaffLookup = safePath === '/api/v1/hr/staff_lookup';
     if (payload && typeof payload === 'object' && 'success' in payload) {
       if (payload.success === false) {
         this.safeWarn({
           event: 'feastogether.request_failed',
-          message: `饗賓 API ${method.toUpperCase()} ${path} 回傳 success=false`,
+          message: `饗賓 API ${method.toUpperCase()} ${safePath} 回傳 success=false`,
           context: FeastogetherClient.name,
           metadata: {
             method,
-            path,
+            path: safePath,
             upstreamCode: payload.code,
             ...(requestBody !== undefined
               ? { requestBody: maskSensitive(requestBody) }
               : {}),
-            responseBody: maskSensitive(payload),
+            ...(!isStaffLookup ? { responseBody: maskSensitive(payload) } : {}),
           },
         });
         throw new FeastogetherApiError(
           null,
           payload,
-          `饗賓 API ${method.toUpperCase()} ${path} 回傳 success=false`,
+          `饗賓 API ${method.toUpperCase()} ${safePath} 回傳 success=false`,
         );
       }
       return payload.data;

@@ -20,6 +20,7 @@ describe('SEC-05 HTTP 安全標頭 (US4)', () => {
     }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
+      { bodyParser: false },
     );
     configureApp(app);
     await registerFastifyPlugins(app);

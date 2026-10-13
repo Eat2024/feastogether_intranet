@@ -1,12 +1,8 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { SESSION_SOURCE } from '#app/features/auth/auth.constants';
 import type { OauthCallbackDto } from '#app/features/auth/dto/oauth-callback.dto';
-import { encryptSecret } from '#app/features/auth/helpers/secret-crypto';
 import { OauthClient } from '#app/infrastructure/http-client/oauth/oauth.client';
-import { OauthConfig } from '#app/infrastructure/http-client/oauth/oauth.config';
-import { AuthSessionService } from './auth-session.service';
 import { AuthService, type AuthSession } from './auth.service';
 import { OauthIdentityService } from './oauth-identity.service';
 import { OauthTransactionService } from './oauth-transaction.service';
@@ -33,11 +29,9 @@ export interface OauthCallbackResult {
 @Injectable()
 export class OauthLoginService {
   constructor(
-    private readonly config: OauthConfig,
     private readonly client: OauthClient,
     private readonly transactions: OauthTransactionService,
     private readonly identities: OauthIdentityService,
-    private readonly sessions: AuthSessionService,
     private readonly authService: AuthService,
   ) {}
 
@@ -63,13 +57,6 @@ export class OauthLoginService {
       { code, state: dto.state, iss: dto.iss },
       claimed.challenge,
     );
-    if (!tokens.refreshToken) {
-      throw new AppException(
-        AppErrorCode.OAUTH_UNAVAILABLE,
-        '統一登入未提供登出所需憑證，暫不開放此登入方式',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
-    }
     const info = await this.client.fetchUserInfo(
       tokens.accessToken,
       tokens.sub,
@@ -81,14 +68,9 @@ export class OauthLoginService {
     });
 
     // 本系統拿到 OAuth Server 給的 AT 後會轉成自己認得的 AT
-    const sessionToken = await this.sessions.issue(Number(user.id), {
-      source: SESSION_SOURCE.OAUTH,
-      encryptedRefreshToken: encryptSecret(
-        tokens.refreshToken,
-        this.config.encryptionKey,
-      ),
-    });
-    const session = this.authService.buildSession(user);
+    const issued = await this.authService.issueSession(Number(user.id));
+    const sessionToken = issued.token;
+    const session = this.authService.buildSession(user, issued.expiresAt);
     return {
       accessToken: sessionToken,
       session,

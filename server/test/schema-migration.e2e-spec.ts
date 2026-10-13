@@ -5,6 +5,7 @@ import { withSchemaTestDatabase } from '#app/infrastructure/database/test/schema
 const BUSINESS_TABLES = [
   'hr_departments',
   'users',
+  'auth_sessions',
   'esign_documents',
   'esign_document_fields',
   'esign_signers',
@@ -22,10 +23,10 @@ const optionsFor = (database: string) =>
     key === 'DB_MYSQL_DB' ? database : process.env[key],
   );
 
-describe('initial e-sign schema migration', () => {
+describe('e-sign schema migrations', () => {
   jest.setTimeout(60_000);
 
-  it('apply → 12 tables/39 time indexes/no legacy → revert → reapply without drift', async () => {
+  it('第二支 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const dataSource = new DataSource(optionsFor(database));
       await dataSource.initialize();
@@ -33,15 +34,31 @@ describe('initial e-sign schema migration', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(39);
+        expect(first.timeColumns).toHaveLength(48);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
+        expect(first.authSessionIndexes).toEqual(
+          expect.arrayContaining([
+            'uq_auth_sessions_source_jti_hash',
+            'uq_auth_sessions_launch_code_hash',
+            'uq_auth_sessions_session_token_hash',
+            'idx_auth_sessions_status_launch_expires_at',
+            'idx_auth_sessions_status_expires_at',
+            'idx_auth_sessions_user_created_at',
+            'idx_auth_sessions_deleted_at',
+          ]),
+        );
+        expect(await authSessionForeignKeys(dataSource, database)).toEqual([
+          'fk_auth_sessions_user',
+        ]);
         expect(
           (await dataSource.driver.createSchemaBuilder().log()).upQueries,
         ).toEqual([]);
 
         await dataSource.undoLastMigration();
-        expect(await listBusinessTables(dataSource, database)).toEqual([]);
+        expect(await listBusinessTables(dataSource, database)).toEqual(
+          BUSINESS_TABLES.filter((table) => table !== 'auth_sessions'),
+        );
 
         await dataSource.runMigrations();
         expect(await schemaSnapshot(dataSource, database)).toEqual(first);
@@ -73,6 +90,7 @@ async function schemaSnapshot(dataSource: DataSource, database: string) {
   );
   const missingTimeIndexes: string[] = [];
   for (const column of timeColumns) {
+    if (column.TABLE_NAME === 'auth_sessions') continue;
     const expectedName = `idx_${column.TABLE_NAME}_${column.COLUMN_NAME}`;
     const rows = await dataSource.query<Array<{ count: number }>>(
       `SELECT COUNT(*) count FROM information_schema.statistics
@@ -87,7 +105,7 @@ async function schemaSnapshot(dataSource: DataSource, database: string) {
   const legacyRows = await dataSource.query<Array<{ TABLE_NAME: string }>>(
     `SELECT TABLE_NAME FROM information_schema.tables
       WHERE table_schema = ? AND (
-        TABLE_NAME LIKE 'auth\\_%' OR TABLE_NAME IN ('roles','permissions','audit_logs','audit_log_targets')
+        (TABLE_NAME LIKE 'auth\\_%' AND TABLE_NAME <> 'auth_sessions') OR TABLE_NAME IN ('roles','permissions','audit_logs','audit_log_targets')
       ) ORDER BY TABLE_NAME`,
     [database],
   );
@@ -96,5 +114,29 @@ async function schemaSnapshot(dataSource: DataSource, database: string) {
     timeColumns,
     missingTimeIndexes,
     legacyTables: legacyRows.map((row) => row.TABLE_NAME),
+    authSessionIndexes: await authSessionIndexes(dataSource, database),
   };
+}
+
+async function authSessionIndexes(dataSource: DataSource, database: string) {
+  const rows = await dataSource.query<Array<{ INDEX_NAME: string }>>(
+    `SELECT DISTINCT INDEX_NAME FROM information_schema.statistics
+      WHERE table_schema = ? AND table_name = 'auth_sessions'
+      ORDER BY INDEX_NAME`,
+    [database],
+  );
+  return rows.map((row) => row.INDEX_NAME);
+}
+
+async function authSessionForeignKeys(
+  dataSource: DataSource,
+  database: string,
+) {
+  const rows = await dataSource.query<Array<{ CONSTRAINT_NAME: string }>>(
+    `SELECT CONSTRAINT_NAME FROM information_schema.referential_constraints
+      WHERE constraint_schema = ? AND table_name = 'auth_sessions'
+      ORDER BY CONSTRAINT_NAME`,
+    [database],
+  );
+  return rows.map((row) => row.CONSTRAINT_NAME);
 }

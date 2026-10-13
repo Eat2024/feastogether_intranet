@@ -14,9 +14,9 @@ import { AppException } from '#app/common/errors/app.exception';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import {
-  AuthSessionVerifierService,
+  AuthService,
   type VerifiedIdentity,
-} from '#app/features/auth/services/auth-session-verifier.service';
+} from '#app/features/auth/services/auth.service';
 
 interface JwtPayload {
   sub: string;
@@ -29,7 +29,7 @@ interface AuthenticatedRequest extends FastifyRequest {
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
-    private readonly sessions: AuthSessionVerifierService,
+    private readonly sessions: AuthService,
     private readonly cls: ClsService,
     private readonly reflector: Reflector,
   ) {}

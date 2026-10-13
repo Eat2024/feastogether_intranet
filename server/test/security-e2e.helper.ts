@@ -25,6 +25,7 @@ export async function createSecurityE2eApp(
   ).compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(
     new FastifyAdapter(),
+    { bodyParser: false },
   );
   configureApp(app);
   await registerFastifyPlugins(app);

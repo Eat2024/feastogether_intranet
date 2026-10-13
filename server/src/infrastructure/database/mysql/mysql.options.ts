@@ -4,6 +4,7 @@
 import type { DataSourceOptions } from 'typeorm';
 import { Department } from '#app/features/users/entities/department.entity';
 import { User } from '#app/features/users/entities/user.entity';
+import { AuthSession } from '#app/features/auth/entities/auth-session.entity';
 import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
 import { EsignDocumentField } from '#app/features/esign/entities/esign-document-field.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
@@ -15,6 +16,7 @@ import { EsignSignatureRecord } from '#app/features/esign/entities/esign-signatu
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
 import { EsignVerificationRecord } from '#app/features/esign/entities/esign-verification-record.entity';
 import { InitialEsignSchema1791763200000 } from '#app/infrastructure/database/migrations/1791763200000-InitialEsignSchema';
+import { CreateAuthSessions1791849600000 } from '#app/infrastructure/database/migrations/1791849600000-CreateAuthSessions';
 
 export type EnvReader = (key: string) => string | undefined;
 
@@ -65,6 +67,7 @@ export function buildMysqlOptions(
     entities: [
       Department,
       User,
+      AuthSession,
       EsignDocument,
       EsignDocumentField,
       EsignSigner,
@@ -76,7 +79,10 @@ export function buildMysqlOptions(
       EsignNotificationLog,
       EsignExportJob,
     ],
-    migrations: [InitialEsignSchema1791763200000],
+    migrations: [
+      InitialEsignSchema1791763200000,
+      CreateAuthSessions1791849600000,
+    ],
 
     extra: {
       connectionLimit: Number(env(readEnv, 'DB_MYSQL_POOL_MAX', '10')),

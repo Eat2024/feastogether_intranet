@@ -12,6 +12,18 @@ export class UserRepository {
     return manager.findOne(User, { where: { empid }, withDeleted: true });
   }
 
+  findByEmpidForUpdate(
+    empid: string,
+    manager: EntityManager,
+  ): Promise<User | null> {
+    return manager
+      .createQueryBuilder(User, 'user')
+      .withDeleted()
+      .setLock('pessimistic_write')
+      .where('user.empid = :empid', { empid })
+      .getOne();
+  }
+
   create(fields: DeepPartial<User>, manager: EntityManager): User {
     return manager.create(User, fields);
   }

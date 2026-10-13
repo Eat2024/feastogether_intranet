@@ -92,6 +92,31 @@ describe('FeastogetherClient logging', () => {
     );
   });
 
+  it('staff lookup 失敗不記 query、員編或 response 個資', async () => {
+    const { client, http, logger } = build();
+    http.get.mockReturnValue(
+      throwError(() => ({
+        isAxiosError: true,
+        name: 'AxiosError',
+        response: { status: 503, data: { person_name: '王小明' } },
+      })),
+    );
+    await expect(
+      client.get('/api/v1/hr/staff_lookup?person_empid=00123'),
+    ).rejects.toBeInstanceOf(FeastogetherApiError);
+    expect(logger.warn).toHaveBeenCalledWith({
+      event: 'feastogether.request_failed',
+      message: '饗賓 API GET /api/v1/hr/staff_lookup 失敗',
+      context: FeastogetherClient.name,
+      metadata: {
+        method: 'get',
+        path: '/api/v1/hr/staff_lookup',
+        status: 503,
+        errorType: 'AxiosError',
+      },
+    });
+  });
+
   it('success=false 記錄 upstream code 與遮罩後的 response body', async () => {
     const { client, http, logger } = build();
     const upstreamBody = {

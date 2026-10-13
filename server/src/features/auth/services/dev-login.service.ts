@@ -5,7 +5,6 @@ import { AppException } from '#app/common/errors/app.exception';
 import {
   DEV_LOGIN_EMPID,
   DEV_LOGIN_NAME,
-  SESSION_SOURCE,
 } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
@@ -13,7 +12,6 @@ import { isDuplicateEntryError } from '#app/features/auth/repositories/oauth-ide
 import { assertDevModeSafe, isDevLoginAllowed } from '#app/framework/auth-mode';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
-import { AuthSessionService } from './auth-session.service';
 import { AuthService, type AuthSession } from './auth.service';
 
 export interface DevLoginResult {
@@ -26,7 +24,6 @@ export class DevLoginService {
   constructor(
     private readonly config: ConfigService,
     private readonly users: UserRepository,
-    private readonly sessions: AuthSessionService,
     private readonly authService: AuthService,
     private readonly logger: AppLoggerService,
     private readonly mysql: MysqlService,
@@ -43,17 +40,17 @@ export class DevLoginService {
       );
     }
     const user = await this.ensureDevUser();
-    const accessToken = await this.sessions.issue(Number(user.id), {
-      source: SESSION_SOURCE.DEV,
-      encryptedRefreshToken: null,
-    });
+    const issued = await this.authService.issueSession(Number(user.id));
     this.logger.warn({
       context: DevLoginService.name,
       event: 'auth.dev_login',
       message: '開發者登入已簽發一般員工 session',
       metadata: { userId: user.id },
     });
-    return { accessToken, session: this.authService.buildSession(user) };
+    return {
+      accessToken: issued.token,
+      session: this.authService.buildSession(user, issued.expiresAt),
+    };
   }
 
   private async ensureDevUser(): Promise<User> {

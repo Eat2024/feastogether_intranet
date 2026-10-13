@@ -1,22 +1,17 @@
-/** 登入 JWT 與 Redis token 的存活秒數（兩者一致，到期同步失效）。 */
-export const AUTH_TOKEN_TTL_SECONDS = 24 * 60 * 60;
-
 /**
  * 登入 token 的 HttpOnly cookie 名稱（前端 JS 讀不到，防 XSS 竊取）。
  * 須與 client/src/proxy.ts 一致。localhost 的 cookie 不分 port，同機器上的
  * 各專案請用不同名稱，避免互相覆蓋。
  */
-export const AUTH_COOKIE_NAME = 'NEST_SEED_AUTH_TOKEN';
+export const AUTH_COOKIE_NAME = 'FT_ESIGN_SESSION';
 
-// ── 登入（饗賓 OAuth 統一登入；本機另有 DEVMOD 開發者登入）──
+export const WEBVIEW_LAUNCH_TTL_SECONDS = 60;
+export const WEBVIEW_SESSION_TTL_SECONDS = 8 * 60 * 60;
+export const WEBVIEW_JWT_MAX_TTL_SECONDS = 120;
+export const WEBVIEW_JWT_CLOCK_TOLERANCE_SECONDS = 30;
+export const WEBVIEW_JWT_TYPE = 'FT-ESIGN-LAUNCH+JWT';
 
-/** session 來源：統一登入，或 DEVMOD 開發者登入（無上游 token）。 */
-export const SESSION_SOURCE = {
-  OAUTH: 'oauth',
-  DEV: 'dev',
-} as const;
-export type SessionSource =
-  (typeof SESSION_SOURCE)[keyof typeof SESSION_SOURCE];
+// ── 未註冊於正式 runtime 的既有 OAuth／DEVMOD 測試能力 ──
 
 /** 開發者登入使用的固定帳號（與真實員工區隔，稽核與帳號管理一眼可辨）。 */
 export const DEV_LOGIN_EMPID = 'dev-admin';
@@ -30,21 +25,6 @@ export const OAUTH_TX_TTL_SECONDS = 10 * 60;
 
 /** 對上游 OAuth Server 每次 HTTP 請求（Discovery／token／UserInfo／logout）的逾時秒數。 */
 export const OAUTH_HTTP_TIMEOUT_SECONDS = 5;
-
-/** 上游 logout 結果；本地登出一律完成，上游只如實回報（FR-013）。 */
-export const UPSTREAM_LOGOUT = {
-  CONFIRMED: 'confirmed',
-  UNCONFIRMED: 'unconfirmed',
-  NOT_ATTEMPTED: 'not_attempted',
-  /** 開發者登入沒有上游可登出 */
-  NOT_APPLICABLE: 'not_applicable',
-} as const;
-export type UpstreamLogoutStatus =
-  (typeof UPSTREAM_LOGOUT)[keyof typeof UPSTREAM_LOGOUT];
-
-/** 上游登出未確認時的固定提示文案（spec FR-013）。 */
-export const OAUTH_LOGOUT_UNCONFIRMED_MESSAGE =
-  '系統已登出，統一登入登出尚未確認';
 
 // ── 032 認證端點速率限制（防密碼暴力破解）──
 // 兩個視窗同時生效：短視窗擋單機高速猜測，長視窗擋壓在短視窗閾值下的持續嘗試。

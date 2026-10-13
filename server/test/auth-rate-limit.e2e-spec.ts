@@ -34,6 +34,7 @@ describe('auth rate limit e2e (032)', () => {
     }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       createFastifyAdapter(),
+      { bodyParser: false },
     );
     configureApp(app);
     await registerFastifyPlugins(app);

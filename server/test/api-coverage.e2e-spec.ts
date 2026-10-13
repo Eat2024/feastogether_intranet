@@ -27,4 +27,15 @@ describe('runtime API coverage', () => {
   ])('%s 在正式 runtime 不存在', async (path) => {
     await request(ctx.server).get(path).expect(404);
   });
+
+  it('Spec 2 WebView 與 session routes 已註冊', async () => {
+    await request(ctx.server).post('/api/auth/webview-launches').expect(401);
+    await request(ctx.server).get('/api/auth/webview').expect(400);
+    await request(ctx.server).post('/api/auth/session').expect(400);
+    await request(ctx.server).get('/api/auth/session').expect(401);
+    await request(ctx.server)
+      .delete('/api/auth/session')
+      .set('Origin', 'http://localhost:3000')
+      .expect(200);
+  });
 });

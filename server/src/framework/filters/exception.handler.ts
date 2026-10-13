@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { apiErrorEnvelope } from '#app/common/http/api-error-response';
-import { getRequestUrl } from '#app/framework/http/request.context';
+import { getRequestPath } from '#app/framework/http/request.context';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 
 interface HttpErrorResponse {
@@ -58,7 +58,7 @@ export class ExceptionHandler implements ExceptionFilter {
         context: ExceptionHandler.name,
         metadata: {
           method: request.method,
-          path: getRequestUrl(request),
+          path: getRequestPath(request),
           statusCode: status,
           stack: err?.stack,
         },

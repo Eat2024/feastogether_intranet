@@ -1,5 +1,6 @@
 import {
   IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
@@ -13,13 +14,14 @@ export class StaffLookupDto {
   @MaxLength(32)
   person_empid!: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(100)
-  person_name!: string | null;
+  person_name!: string;
 
   @IsOptional()
   @IsString()
+  @Matches(/^[A-Za-z0-9_-]+$/)
   @MaxLength(50)
   department_id!: string | null;
 

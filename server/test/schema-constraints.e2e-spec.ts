@@ -30,6 +30,20 @@ describe('e-sign schema database constraints', () => {
           ds,
           `INSERT INTO users (empid,name) VALUES ('E001','重複')`,
         );
+        await ds.query(
+          `INSERT INTO auth_sessions (user_id,status,source,source_jti_hash,assertion_expires_at)
+            VALUES (1,'validating','webview','${'a'.repeat(64)}',NOW(3))`,
+        );
+        await expectRejected(
+          ds,
+          `INSERT INTO auth_sessions (status,source_jti_hash,assertion_expires_at)
+            VALUES ('validating','${'a'.repeat(64)}',NOW(3))`,
+        );
+        await expectRejected(
+          ds,
+          `INSERT INTO auth_sessions (status,source_jti_hash,assertion_expires_at)
+            VALUES ('unknown','${'b'.repeat(64)}',NOW(3))`,
+        );
 
         await ds.query(
           `INSERT INTO esign_documents (doc_number,title,created_by_user_id) VALUES ('00000000-0000-0000-0000-000000000003','聘書',1)`,
@@ -89,6 +103,7 @@ describe('e-sign schema database constraints', () => {
           [database],
         );
         expect(checks.map(({ CONSTRAINT_NAME }) => CONSTRAINT_NAME)).toEqual([
+          'chk_auth_sessions_status',
           'chk_esign_file_objects_owner',
           'chk_esign_signers_identity',
         ]);

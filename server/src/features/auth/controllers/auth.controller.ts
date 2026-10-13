@@ -1,104 +1,225 @@
+import { randomBytes } from 'node:crypto';
 import {
+  Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import {
+  ApiBody,
+  ApiBearerAuth,
+  ApiCookieAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import configPath from '#app/config/config.path';
+import { AppException } from '#app/common/errors/app.exception';
+import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
+import configPath from '#app/config/config.path';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
-import { Public } from '#app/framework/decorators/public.decorator';
-import { isDevLoginAllowed } from '#app/framework/auth-mode';
-import { AuthThrottlerGuard } from '#app/framework/guards/auth-throttler.guard';
-import { OriginGuard } from '#app/framework/guards/origin.guard';
 import {
   clearAuthCookie,
-  clearOauthTxCookie,
   setAuthCookie,
 } from '#app/features/auth/helpers/auth-cookie';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AuthLogoutService } from '#app/features/auth/services/auth-logout.service';
-import { DevLoginService } from '#app/features/auth/services/dev-login.service';
+import { Public } from '#app/framework/decorators/public.decorator';
+import { OriginGuard } from '#app/framework/guards/origin.guard';
+import {
+  EmbedOriginsView,
+  WebviewLaunchView,
+  WebviewSessionDto,
+} from '../dto/webview-launch.dto';
+import { AuthService } from '../services/auth.service';
 
-/** AuthGuard 通過後 req.user.id（JWT sub）；cookies 由 @fastify/cookie 注入。 */
 type AuthedRequest = FastifyRequest & { user?: { id: string } };
 
-/** 認證 API：登入入口、開發者登入（DEVMOD）、登出與登入者資料。 */
 @ApiTags('auth')
 @Controller(configPath.AUTH)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly logoutService: AuthLogoutService,
-    private readonly devLoginService: DevLoginService,
     private readonly config: ConfigService,
   ) {}
 
   @Public()
-  @Get(configPath.AUTH_LOGIN_OPTIONS)
+  @Post(configPath.AUTH_WEBVIEW_LAUNCHES)
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({
-    summary: '登入頁可用入口（OAuth 目前停用；devLogin：DEVMOD 開發者登入）',
-  })
-  loginOptions() {
-    return {
-      oauth: false,
-      devLogin: isDevLoginAllowed(this.config),
-    };
-  }
-
-  /** DEVMOD 開發者登入：未開放時回 404（見 DevLoginService）。 */
-  @Public()
-  @UseGuards(OriginGuard, AuthThrottlerGuard)
-  @Post(configPath.AUTH_DEV_LOGIN)
-  @HttpCode(HttpStatus.OK)
-  @Header('Cache-Control', 'no-store')
-  @ApiOperation({
-    summary:
-      '開發者登入（僅 DEVMOD=true 且非 production / staging；以超級管理員登入）',
-  })
-  async devLogin(@Res({ passthrough: true }) reply: FastifyReply) {
-    const { accessToken, session } = await this.devLoginService.login();
-    setAuthCookie(reply, this.config, accessToken);
-    return session;
+  @ApiBearerAuth('launchBearer')
+  @ApiOperation({ summary: '以主平台 JWT 建立一次性 WebView 啟動網址' })
+  @ApiResponse({ status: HttpStatus.CREATED, type: WebviewLaunchView })
+  createWebviewLaunch(
+    @Req() request: FastifyRequest,
+  ): Promise<WebviewLaunchView> {
+    const authorization = request.headers.authorization;
+    const matched =
+      typeof authorization === 'string'
+        ? /^Bearer ([^\s]+)$/.exec(authorization)
+        : null;
+    if (authorization === undefined) {
+      throw new AppException(
+        AppErrorCode.AUTH_EXCHANGE_FAILED,
+        '無法完成登入交換',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    if (!matched) {
+      throw new AppException(
+        AppErrorCode.INVALID_REQUEST,
+        '請求格式錯誤',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.authService.createWebviewLaunch(matched[1]);
   }
 
   /**
-   * 登出改為 Public＋Origin 防護（038）：過期／已撤銷的使用者也要能清 cookie 回登入頁，
-   * 不能被「需有效登入」擋成無法登出。只撤 cookie 所屬的 session，不接受 body 指定。
+   * 電子簽前端被主平台 iframe 嵌入時，只接受這些 origin 的 postMessage（並只對它們送訊息）。
+   * 與 bridge 的 frame-ancestors 同一份清單；origin 不是機密（CSP header 本來就會揭露）。
    */
   @Public()
-  @UseGuards(OriginGuard)
-  @Post('logout')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '登出（撤銷本機 session）' })
-  async logout(
-    @Req() req: FastifyRequest,
-    @Res({ passthrough: true }) reply: FastifyReply,
-  ) {
-    const token = cookieTokenFromMap(req.cookies, AUTH_COOKIE_NAME);
-    // 先清 cookie：即使本地撤銷失敗回 503，瀏覽器仍能退出（但回應不宣稱憑證已失效）。
-    clearAuthCookie(reply);
-    clearOauthTxCookie(reply);
-    return this.logoutService.logout(token);
+  @Get(configPath.AUTH_EMBED_ORIGINS)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: '取得可嵌入電子簽並以 postMessage 溝通的主平台 origin',
+  })
+  @ApiResponse({ status: HttpStatus.OK, type: EmbedOriginsView })
+  getEmbedOrigins(): EmbedOriginsView {
+    return { origins: this.trustedOrigins() };
   }
 
-  @Get('me')
-  @ApiOperation({
-    summary: '取得目前登入員工資料',
-  })
-  me(@Req() req: AuthedRequest) {
-    return this.authService.getMe(
-      Number(req.user?.id),
-      cookieTokenFromMap(req.cookies, AUTH_COOKIE_NAME),
+  @Public()
+  @Get(configPath.AUTH_WEBVIEW)
+  @ApiOperation({ summary: '取得唯讀 WebView 自動提交頁' })
+  getWebviewBridge(@Query() query: unknown, @Res() reply: FastifyReply): void {
+    this.setBridgeHeaders(reply);
+    const code = this.credentialFromObject(query);
+    if (!code) {
+      reply
+        .status(HttpStatus.BAD_REQUEST)
+        .type('text/html; charset=utf-8')
+        .send(this.errorPage('啟動連結格式錯誤'));
+      return;
+    }
+    const nonce = randomBytes(18).toString('base64');
+    reply.header(
+      'Content-Security-Policy',
+      `default-src 'none'; script-src 'nonce-${nonce}'; form-action 'self'; base-uri 'none'; frame-ancestors ${this.frameAncestors()}`,
     );
+    reply
+      .status(HttpStatus.OK)
+      .type('text/html; charset=utf-8')
+      .send(this.renderWebviewBridge(code, nonce));
+  }
+
+  @Public()
+  @Post(configPath.AUTH_SESSION)
+  @ApiBody({ type: WebviewSessionDto })
+  @ApiOperation({ summary: '消耗一次性啟動碼並建立員工 Session' })
+  async createSession(
+    @Body() body: unknown,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    this.setBridgeHeaders(reply);
+    const code = this.credentialFromObject(body);
+    if (!code) {
+      reply
+        .status(HttpStatus.BAD_REQUEST)
+        .type('text/html; charset=utf-8')
+        .send(this.errorPage('啟動連結格式錯誤'));
+      return;
+    }
+    try {
+      const token = await this.authService.activateWebviewSession(code);
+      setAuthCookie(reply, this.config, token);
+      reply.redirect('/', HttpStatus.SEE_OTHER);
+    } catch (error) {
+      const status =
+        error instanceof AppException
+          ? error.getStatus()
+          : HttpStatus.SERVICE_UNAVAILABLE;
+      reply
+        .status(status)
+        .type('text/html; charset=utf-8')
+        .send(
+          this.errorPage(
+            status === 503 ? '登入服務暫時無法使用' : '啟動連結無效或已到期',
+          ),
+        );
+    }
+  }
+
+  @Get(configPath.AUTH_SESSION)
+  @Header('Cache-Control', 'no-store')
+  @ApiCookieAuth('sessionCookie')
+  @ApiOperation({ summary: '取得目前電子簽員工 Session' })
+  getSession(@Req() request: AuthedRequest) {
+    return this.authService.getMe(
+      Number(request.user?.id),
+      cookieTokenFromMap(request.cookies, AUTH_COOKIE_NAME),
+    );
+  }
+
+  @Public()
+  @UseGuards(OriginGuard)
+  @Delete(configPath.AUTH_SESSION)
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: '登出並撤銷目前本地 Session' })
+  async deleteSession(
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const token = cookieTokenFromMap(request.cookies, AUTH_COOKIE_NAME);
+    clearAuthCookie(reply);
+    return this.authService.logout(token);
+  }
+
+  private credentialFromObject(value: unknown): string | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length !== 1 || entries[0][0] !== 'code') return null;
+    const code = entries[0][1];
+    return typeof code === 'string' && /^[A-Za-z0-9_-]{43}$/.test(code)
+      ? code
+      : null;
+  }
+
+  private setBridgeHeaders(reply: FastifyReply): void {
+    reply.header('Cache-Control', 'no-store');
+    reply.header('Referrer-Policy', 'no-referrer');
+  }
+
+  private renderWebviewBridge(code: string, nonce: string): string {
+    return (
+      '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>進入電子簽</title></head>' +
+      '<body><form id="launch" method="post" action="/api/auth/session">' +
+      `<input type="hidden" name="code" value="${code}">` +
+      '<button type="submit">電子簽系統啟動</button></form>' +
+      `<script nonce="${nonce}">document.getElementById('launch').submit()</script></body></html>`
+    );
+  }
+
+  private frameAncestors(): string {
+    return ["'self'", ...this.trustedOrigins()].join(' ');
+  }
+
+  private trustedOrigins(): string[] {
+    const configured = this.config.get<string>('AUTH_TRUSTED_ORIGINS') || '';
+    return configured ? configured.split(',').map((value) => value.trim()) : [];
+  }
+
+  private errorPage(message: string): string {
+    return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>無法進入電子簽</title></head><body><p>${message}</p></body></html>`;
   }
 }

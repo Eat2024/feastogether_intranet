@@ -32,6 +32,19 @@ const BODY_EXCLUDED_PATHS = [
   '/auth/oauth/callback',
   '/api/auth/oauth/start',
   '/api/auth/oauth/callback',
+  '/auth/webview-launches',
+  '/api/auth/webview-launches',
+  '/auth/session',
+  '/api/auth/session',
+];
+
+const QUERY_EXCLUDED_PATHS = [
+  '/auth/webview',
+  '/api/auth/webview',
+  '/auth/webview-launches',
+  '/api/auth/webview-launches',
+  '/auth/session',
+  '/api/auth/session',
 ];
 
 /**
@@ -72,8 +85,10 @@ export class HttpAccessLogInterceptor implements NestInterceptor {
       type: 'http_access',
       method: request.method,
       path: getRequestPath(request),
-      url: getRequestUrl(request),
-      query: this.cleanEmptyObject(request.query),
+      url: this.safeUrl(request),
+      query: this.shouldLogQuery(request)
+        ? this.cleanEmptyObject(request.query)
+        : undefined,
       statusCode,
       requestAt: new Date(startAt).toISOString(),
       responseAt: new Date(endAt).toISOString(),
@@ -85,6 +100,16 @@ export class HttpAccessLogInterceptor implements NestInterceptor {
         : undefined,
     };
     this.accessLogger.write(entry);
+  }
+
+  private shouldLogQuery(request: FastifyRequest): boolean {
+    return !QUERY_EXCLUDED_PATHS.includes(getRequestPath(request));
+  }
+
+  private safeUrl(request: FastifyRequest): string {
+    return this.shouldLogQuery(request)
+      ? getRequestUrl(request)
+      : getRequestPath(request);
   }
 
   private shouldLogRequestBody(request: FastifyRequest): boolean {

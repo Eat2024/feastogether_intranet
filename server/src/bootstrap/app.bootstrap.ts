@@ -1,4 +1,5 @@
 import fastifyCookie from '@fastify/cookie';
+import fastifyFormbody from '@fastify/formbody';
 import fastifyMultipart from '@fastify/multipart';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -26,6 +27,7 @@ export async function registerFastifyPlugins(
 ): Promise<void> {
   registerSecurityHeaders(app);
   await app.register(fastifyCookie);
+  await app.register(fastifyFormbody);
   // 單檔上限 10MB、一次最多 15 個檔案 part
   await app.register(fastifyMultipart, {
     limits: { fileSize: 10 * 1024 * 1024, files: 15 },
@@ -38,9 +40,11 @@ export async function registerFastifyPlugins(
  */
 function registerSecurityHeaders(app: NestFastifyApplication): void {
   const fastify = app.getHttpAdapter().getInstance();
-  fastify.addHook('onRequest', (_req, reply, done) => {
+  fastify.addHook('onRequest', (req, reply, done) => {
     void reply.header('X-Content-Type-Options', 'nosniff');
-    void reply.header('X-Frame-Options', 'DENY');
+    if (req.url.split('?', 1)[0] !== '/api/auth/webview') {
+      void reply.header('X-Frame-Options', 'DENY');
+    }
     done();
   });
 }
@@ -63,7 +67,7 @@ export async function createApp(): Promise<NestFastifyApplication> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     createFastifyAdapter(),
-    { bufferLogs: true },
+    { bufferLogs: true, bodyParser: false },
   );
 
   app.useLogger(app.get(Logger));
@@ -125,6 +129,11 @@ export function configureSwagger(
     .setTitle('API 文件')
     .setDescription('這是自動生成的 Swagger API 文件')
     .setVersion('1.0')
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      'launchBearer',
+    )
+    .addCookieAuth('FT_ESIGN_SESSION', undefined, 'sessionCookie')
     .build();
   const document = SwaggerModule.createDocument(app, config);
 

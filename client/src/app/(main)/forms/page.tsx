@@ -36,8 +36,11 @@ export default async function FormsPage({ searchParams }: PageProps<'/forms'>) {
 
   return (
     <>
+      {/* 嵌入入口網時隱藏標題與「新增電子簽文件」：入口網已有同名標題與「建立電子簽」選單 */}
       <PageHeader
         title="電子簽列表"
+        hideTitleWhenEmbedded
+        hideActionsWhenEmbedded
         description="建立內部電子簽文件、設定簽署人員並追蹤簽署進度；已有人簽署的文件將無法再修改內容。"
         actions={
           <Button

@@ -33,8 +33,10 @@ export const AppErrorCode = {
   OAUTH_RESPONSE_INVALID: 'OAUTH_RESPONSE_INVALID',
   /** OAuth 上游或設定尚未就緒 */
   OAUTH_UNAVAILABLE: 'OAUTH_UNAVAILABLE',
-  /** 無法確認本地 session 撤銷（Redis 不可用） */
-  AUTH_SESSION_UNAVAILABLE: 'AUTH_SESSION_UNAVAILABLE',
+  /** WebView launch assertion、員工資格或一次性 credential 驗證失敗。 */
+  AUTH_EXCHANGE_FAILED: 'AUTH_EXCHANGE_FAILED',
+  /** MySQL 無法安全建立或驗證認證狀態。 */
+  AUTH_DB_UNAVAILABLE: 'AUTH_DB_UNAVAILABLE',
   /** 未預期錯誤（既有 handler 預設） */
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;

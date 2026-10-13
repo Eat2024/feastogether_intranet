@@ -2,7 +2,6 @@ import { OauthLoginService } from './oauth-login.service';
 
 describe('OauthLoginService', () => {
   it('OAuth callback 發 session，不需要 authorization cache', async () => {
-    const config = { encryptionKey: Buffer.alloc(32) };
     const client = {
       exchangeCode: jest.fn().mockResolvedValue({
         accessToken: 'provider-at',
@@ -22,16 +21,17 @@ describe('OauthLoginService', () => {
     };
     const user = { id: 7, empid: '00123', name: '王小明' };
     const identities = { resolve: jest.fn().mockResolvedValue(user) };
-    const sessions = { issue: jest.fn().mockResolvedValue('local-jwt') };
     const auth = {
+      issueSession: jest.fn().mockResolvedValue({
+        token: 'local-token',
+        expiresAt: new Date('2026-01-01T08:00:00Z'),
+      }),
       buildSession: jest.fn().mockReturnValue({ user: { id: 7 } }),
     };
     const service = new OauthLoginService(
-      config as never,
       client as never,
       transactions as never,
       identities as never,
-      sessions as never,
       auth as never,
     );
 
@@ -41,13 +41,10 @@ describe('OauthLoginService', () => {
         'browser-token',
       ),
     ).resolves.toMatchObject({
-      accessToken: 'local-jwt',
+      accessToken: 'local-token',
       session: { user: { id: 7 } },
       redirectTo: '/documents',
     });
-    expect(sessions.issue).toHaveBeenCalledWith(
-      7,
-      expect.objectContaining({ source: 'oauth' }),
-    );
+    expect(auth.issueSession).toHaveBeenCalledWith(7);
   });
 });

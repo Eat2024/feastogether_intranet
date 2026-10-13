@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
-import { AuthSessionVerifierService } from '#app/features/auth/services/auth-session-verifier.service';
+import { AuthService } from '#app/features/auth/services/auth.service';
 import { IS_PUBLIC_KEY } from '#app/framework/decorators/public.decorator';
 import { CLS_AUDIT_USER_ID } from '#app/infrastructure/database/audit-user.context';
 import { AuthGuard } from './auth.guard';
@@ -30,7 +30,7 @@ describe('AuthGuard', () => {
       .mockResolvedValue({ token: 'token-1', userId: 7 });
     const sessions = {
       verifySessionToken,
-    } as unknown as AuthSessionVerifierService;
+    } as unknown as AuthService;
     const setAuditUserId = jest.fn();
     const cls = {
       isActive: jest.fn().mockReturnValue(true),
@@ -83,5 +83,16 @@ describe('AuthGuard', () => {
     await expect(
       guard.canActivate(createContext('invalid').context),
     ).rejects.toMatchObject({ code: AppErrorCode.UNAUTHORIZED });
+  });
+
+  it('MySQL session 驗證不可用時保留 503，不偽裝為 401', async () => {
+    const { guard, verifySessionToken } = createGuard();
+    verifySessionToken.mockRejectedValueOnce(
+      Object.assign(new Error('db unavailable'), { status: 503 }),
+    );
+
+    await expect(
+      guard.canActivate(createContext('a'.repeat(43)).context),
+    ).rejects.toMatchObject({ status: 503 });
   });
 });

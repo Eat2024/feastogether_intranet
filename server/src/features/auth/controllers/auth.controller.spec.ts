@@ -1,74 +1,134 @@
+import { HttpStatus } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import {
-  AUTH_COOKIE_NAME,
-  OAUTH_TX_COOKIE_NAME,
-} from '#app/features/auth/auth.constants';
+import { AUTH_COOKIE_NAME } from '../auth.constants';
 import { AuthController } from './auth.controller';
 
-describe('AuthController retained contract', () => {
-  const makeController = (env: Record<string, string> = {}) => {
+describe('AuthController WebView boundary', () => {
+  const setup = (env: Record<string, string> = {}) => {
     const auth = {
-      getMe: jest.fn().mockResolvedValue({
-        user: { id: 7, empId: '00123', name: '王小明' },
-      }),
+      createWebviewLaunch: jest.fn().mockResolvedValue({ launchUrl: 'url' }),
+      activateWebviewSession: jest.fn().mockResolvedValue('s'.repeat(43)),
+      getMe: jest.fn().mockResolvedValue({ user: { id: 7 } }),
+      logout: jest.fn().mockResolvedValue({ localLogout: 'completed' }),
     };
-    const logout = { logout: jest.fn().mockResolvedValue({}) };
-    const dev = {
-      login: jest.fn().mockResolvedValue({
-        accessToken: 'jwt',
-        session: { user: { id: 7 } },
-      }),
+    const config = {
+      get: jest.fn((key: string) =>
+        key === 'NODE_ENV' ? 'development' : env[key],
+      ),
     };
     return {
-      controller: new AuthController(
-        auth as never,
-        logout as never,
-        dev as never,
-        {
-          get: (key: string) => env[key],
-        } as never,
-      ),
+      controller: new AuthController(auth as never, config as never),
       auth,
-      logout,
-      dev,
     };
   };
 
-  it('login options 維持 OAuth 未啟用', () => {
-    expect(
-      makeController({ DEVMOD: 'true' }).controller.loginOptions(),
-    ).toEqual({ oauth: false, devLogin: true });
-  });
-
-  it('/me 回應不含 role、permission、navigation 或本地備註', async () => {
-    const { controller } = makeController();
-    const result = await controller.me({
-      user: { id: '7' },
-      cookies: { [AUTH_COOKIE_NAME]: 'token' },
-    } as unknown as FastifyRequest & { user: { id: string } });
-    expect(result).toEqual({
-      user: { id: 7, empId: '00123', name: '王小明' },
-    });
-    expect(result).not.toHaveProperty('role');
-    expect(result).not.toHaveProperty('permissions');
-    expect(result).not.toHaveProperty('navigation');
-    expect(result.user).not.toHaveProperty('description');
-  });
-
-  it('logout 清除兩個 cookie', async () => {
-    const { controller } = makeController();
-    const reply = { clearCookie: jest.fn() } as unknown as FastifyReply & {
-      clearCookie: jest.Mock;
+  const reply = () => {
+    const value = {
+      header: jest.fn(),
+      status: jest.fn(),
+      type: jest.fn(),
+      send: jest.fn(),
+      redirect: jest.fn(),
+      setCookie: jest.fn(),
+      clearCookie: jest.fn(),
     };
-    await controller.logout(
-      { cookies: { [AUTH_COOKIE_NAME]: 'token' } } as FastifyRequest,
-      reply,
+    value.header.mockReturnValue(value);
+    value.status.mockReturnValue(value);
+    value.type.mockReturnValue(value);
+    return value;
+  };
+
+  it('launch 只從 Authorization Bearer 取 JWT', async () => {
+    const { controller, auth } = setup();
+    await controller.createWebviewLaunch({
+      headers: { authorization: 'Bearer signed.jwt.value' },
+    } as FastifyRequest);
+    expect(auth.createWebviewLaunch).toHaveBeenCalledWith('signed.jwt.value');
+
+    expect(() =>
+      controller.createWebviewLaunch({ headers: {} } as FastifyRequest),
+    ).toThrow(expect.objectContaining({ status: HttpStatus.UNAUTHORIZED }));
+  });
+
+  it('GET bridge 不碰 service，固定同源 action 且保留手動按鈕', () => {
+    const { controller, auth } = setup();
+    const response = reply();
+    controller.getWebviewBridge(
+      { code: 'a'.repeat(43) },
+      response as unknown as FastifyReply,
     );
-    expect(reply.clearCookie).toHaveBeenCalledWith(AUTH_COOKIE_NAME, {
+    expect(auth.createWebviewLaunch).not.toHaveBeenCalled();
+    expect(auth.activateWebviewSession).not.toHaveBeenCalled();
+    expect(response.header).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    expect(response.header).toHaveBeenCalledWith(
+      'Referrer-Policy',
+      'no-referrer',
+    );
+    const html = response.send.mock.calls[0][0] as string;
+    expect(html).toContain('action="/api/auth/session"');
+    expect(html).toContain('<button type="submit">電子簽系統啟動</button>');
+    expect(html).not.toContain('http://');
+    expect(html).not.toContain('https://');
+  });
+
+  it('POST session 只接受單一 code 欄位並回固定 303', async () => {
+    const { controller, auth } = setup();
+    const response = reply();
+    await controller.createSession(
+      { code: 'a'.repeat(43) },
+      response as unknown as FastifyReply,
+    );
+    expect(auth.activateWebviewSession).toHaveBeenCalledWith('a'.repeat(43));
+    expect(response.setCookie).toHaveBeenCalledWith(
+      AUTH_COOKIE_NAME,
+      's'.repeat(43),
+      expect.objectContaining({ httpOnly: true, maxAge: 28_800 }),
+    );
+    expect(response.redirect).toHaveBeenCalledWith('/', HttpStatus.SEE_OTHER);
+  });
+
+  it('embed-origins 回傳 AUTH_TRUSTED_ORIGINS 設定的 origin', () => {
+    const { controller } = setup({
+      AUTH_TRUSTED_ORIGINS:
+        ' https://portal.example.test , http://localhost:8080 ',
+    });
+    expect(controller.getEmbedOrigins()).toEqual({
+      origins: ['https://portal.example.test', 'http://localhost:8080'],
+    });
+  });
+
+  it('embed-origins 未設 AUTH_TRUSTED_ORIGINS 時回傳空清單', () => {
+    expect(setup().controller.getEmbedOrigins()).toEqual({ origins: [] });
+  });
+
+  it('bridge 的 frame-ancestors 與 embed-origins 使用同一份清單', () => {
+    const { controller } = setup({
+      AUTH_TRUSTED_ORIGINS: 'http://localhost:8080',
+    });
+    const response = reply();
+    controller.getWebviewBridge(
+      { code: 'a'.repeat(43) },
+      response as unknown as FastifyReply,
+    );
+    const headers = response.header.mock.calls as Array<[string, string]>;
+    const csp = headers.find(
+      ([name]) => name === 'Content-Security-Policy',
+    )?.[1];
+    expect(csp).toContain("frame-ancestors 'self' http://localhost:8080");
+  });
+
+  it('DELETE session 先清 cookie，再由 AuthService 冪等撤銷', async () => {
+    const { controller, auth } = setup();
+    const response = reply();
+    await expect(
+      controller.deleteSession(
+        { cookies: { [AUTH_COOKIE_NAME]: 'a'.repeat(43) } } as FastifyRequest,
+        response as unknown as FastifyReply,
+      ),
+    ).resolves.toEqual({ localLogout: 'completed' });
+    expect(response.clearCookie).toHaveBeenCalledWith(AUTH_COOKIE_NAME, {
       path: '/',
     });
-    expect(reply.clearCookie).toHaveBeenCalledWith(OAUTH_TX_COOKIE_NAME, {
-      path: '/',
-    });
+    expect(auth.logout).toHaveBeenCalledWith('a'.repeat(43));
   });
 });

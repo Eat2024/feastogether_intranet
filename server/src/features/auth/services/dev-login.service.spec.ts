@@ -12,36 +12,40 @@ describe('DevLoginService', () => {
       save: jest.fn((value) => Promise.resolve(value)),
       restore: jest.fn(),
     };
-    const sessions = { issue: jest.fn().mockResolvedValue('dev-jwt') };
-    const auth = { buildSession: jest.fn((value) => ({ user: value })) };
+    const auth = {
+      issueSession: jest.fn().mockResolvedValue({
+        token: 'dev-token',
+        expiresAt: new Date('2026-01-01T08:00:00Z'),
+      }),
+      buildSession: jest.fn((value) => ({ user: value })),
+    };
     const logger = { warn: jest.fn() };
     const mysql = { getManager: jest.fn().mockReturnValue(manager) };
     return {
       service: new DevLoginService(
         config as never,
         users as never,
-        sessions as never,
         auth as never,
         logger as never,
         mysql as never,
       ),
       users,
-      sessions,
+      auth,
       manager,
     };
   };
 
   it('建立一般 synthetic User，不查或配置 ADMIN role/permission', async () => {
-    const { service, users, sessions, manager } = setup();
+    const { service, users, auth, manager } = setup();
     await expect(service.login()).resolves.toMatchObject({
-      accessToken: 'dev-jwt',
+      accessToken: 'dev-token',
     });
     expect(users.create).toHaveBeenCalledWith(
       expect.objectContaining({ empid: DEV_LOGIN_EMPID }),
       manager,
     );
     expect(users.create.mock.calls[0][0]).not.toHaveProperty('roleId');
-    expect(sessions.issue).toHaveBeenCalledWith(99, expect.any(Object));
+    expect(auth.issueSession).toHaveBeenCalledWith(99);
   });
 
   it.each(['production', 'staging'])('%s 環境 fail closed', (nodeEnv) => {

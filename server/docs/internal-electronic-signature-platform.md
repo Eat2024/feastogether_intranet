@@ -8,7 +8,7 @@
 
 本文件定義公司內部一般電子簽章平台的法律定位、技術要求、證據保存方式、安全控制與分階段實作方向，作為後端 API、資料庫、檔案儲存、背景工作及前端簽署流程的共同依據。
 
-> 目前 Spec 1 僅完成舊 RBAC 清理、dormant SSO/session 去耦與 12-table schema baseline。WebView token login、正式 SSO 入口、電子簽 API 與跨列狀態機尚未實作；下文相關內容是後續階段設計要求，不代表現況已有可用功能。
+> 目前 Spec 2 已完成 WebView JWT launch、FGAPI 員工查驗與 MySQL 本地 session；文件與簽署業務 API、簽署前重新驗證及跨列狀態機仍未實作。
 
 本系統預計採用下列方式建立電子簽署證據鏈：
 
@@ -98,13 +98,13 @@ deleted_at
 
 姓名、在職狀態、部門及職稱等欄位由公司身分／HR 來源維護。同步時必須採欄位白名單更新，不得以外部 profile 整列覆蓋本地流程狀態或歷史快照。本系統 Stage 1 不建立 role、permission 或本地員工管理備註。
 
-文件建立人、管理操作人、session 與 JWT `sub` 均使用 `users.id`。內部簽署人的 `esign_signers.user_id` 亦應連結 `users.id`，但簽署紀錄仍須保存員編、姓名、部門與職稱快照，避免人員資料異動後改變歷史證據。
+文件建立人、管理操作人與本地 session 均使用 `users.id`。主平台簽發的第一版 WebView JWT 以必填 `sub` 作為唯一使用者識別，其值直接為公司員工編號 `empid`，不另放重複的 `empid` claim；Server 驗證 JWT 與 FGAPI 後，再將 `sub` 對應為 `users.empid` 及 `users.id`。內部簽署人的 `esign_signers.user_id` 亦應連結 `users.id`，但簽署紀錄仍須保存員編、姓名、部門與職稱快照，避免人員資料異動後改變歷史證據。
 
 #### 3.1.2 第一階段單一 issuer 身分對應
 
-第一階段只串接一個公司內網 issuer，不建立 `user_auth_identities` 或 `auth_identity_providers` 資料表。Server 完整驗證 token 後，直接以 token 內受信任且必填的員工編號 claim 對應 `users.empid`；不得使用姓名、Email 或部門推測身分。
+第一階段只串接一個公司內網 issuer，不建立 `user_auth_identities` 或 `auth_identity_providers` 資料表。Server 完整驗證 token 後，直接以 token 內受信任且必填的 `sub` 作為員工編號，對應 `users.empid`；不得使用其他 claim、姓名、Email 或部門推測身分。
 
-受信任 provider 的 protocol、issuer、audience、允許演算法、JWKS／introspection 位置及員工編號 claim mapping 應由 server 的受控設定管理。不得依未驗證 token 或一般資料庫內容動態信任 issuer，也不得向任意 `iss` 執行 discovery。client secret、驗證私密資料及 introspection credential 必須存放於 secret manager 或等效受控環境，不得存入一般業務資料表。
+受信任 provider 的 protocol、issuer、audience、允許演算法及 JWKS／introspection 位置應由 server 的受控設定管理；第一版的員工編號 claim 固定為 `sub`，不提供動態 mapping。不得依未驗證 token 或一般資料庫內容動態信任 issuer，也不得向任意 `iss` 執行 discovery。client secret、驗證私密資料及 introspection credential 必須存放於 secret manager 或等效受控環境，不得存入一般業務資料表。
 
 此簡化方案的前提是員工編號在公司內唯一、不可任意變更，且不會重新配發給另一人。未來正式增加第二個 issuer 時，應先新增外部身分綁定資料模型，再開放新 provider，不得直接把不同 issuer 的 `subject` 塞入 `users` 單一欄位。
 
@@ -177,40 +177,44 @@ flowchart TD
 
 ### 4.1 WebView SSO 與本地 session
 
-公司內網以 WebView 開啟電子簽系統時，應將電子簽專用的短效 SSO token 傳至對應 provider 的 session endpoint，例如：
+主平台後端以私鑰簽發最長 2 分鐘、一次性的 RS256 JWT，並經 HTTPS POST 傳至電子簽：
 
 ```http
-POST /api/auth/sso/intranet/session
-Authorization: Bearer <sso-token>
+POST /api/auth/webview-launches
+Authorization: Bearer <launch-jwt>
 ```
 
-token 不得放在 URL query string，以免進入瀏覽紀錄、proxy log、監控資料或 referrer。若 WebView 無法設定 `Authorization` header，應改用短效且一次性的 launch code，並以 form POST 或其他不暴露於 URL 的方式傳送。
+JWT 只允許出現在此 Authorization header，不得放入 URL、cookie 或 request body。電子簽固定驗證 RS256、`typ`、issuer、單一 audience、`sub`、UUID v4 `jti`、`iat`、`nbf` 與 `exp`，以 MySQL unique 摘要原子 claim `jti` 後，再用 `sub` 的完整員編向 FGAPI 查驗唯一合格員工。驗證成功回傳最長 60 秒的一次性 `launchUrl`；URL 內的 code 不含身分資料。
 
 後端流程如下：
 
 ```mermaid
 sequenceDiagram
+    participant Platform as 主平台後端
     participant WebView as 公司內網 WebView
     participant Auth as 電子簽 Auth API
-    participant IdP as 公司身分服務
+    participant FGAPI as FGAPI
     participant DB as MySQL
-    participant Redis as Redis
 
-    WebView->>Auth: 提交 SSO token 或一次性 launch code
-    Auth->>IdP: 驗證 JWT、introspection 或交換 launch code
-    Auth->>Auth: 驗證 provider、issuer、audience、期限及必要 claims
-    Auth->>Auth: 取得已驗證的員工編號 claim
-    Auth->>DB: 依 users.empid 載入員工
-    Auth->>Auth: 檢查 user.is_active = true
-    Auth->>Redis: 建立電子簽本地 session
-    Auth-->>WebView: 設定 HttpOnly、Secure session cookie
+    Platform->>Auth: POST JWT 建立 launch
+    Auth->>Auth: 固定公鑰驗章與 claims 驗證
+    Auth->>DB: 原子 claim jti 摘要
+    Auth->>FGAPI: 以已驗證 sub 精確查詢員工
+    Auth->>DB: 建立或白名單更新 User，保存 code 摘要
+    Auth-->>Platform: 回傳固定 origin 的 launchUrl
+    Platform->>WebView: 以 launchUrl 開啟 WebView
+    WebView->>Auth: GET 唯讀 bridge
+    Auth-->>WebView: no-store 同源自動提交頁
+    WebView->>Auth: POST 一次性 code
+    Auth->>DB: 原子消耗 code，建立 8 小時 session
+    Auth-->>WebView: Set-Cookie 並 303 導向固定首頁
 ```
 
-每個 provider 應有獨立且固定的驗證設定。JWT 至少驗證簽章、允許演算法、`iss`、`aud`、`exp`、`nbf`、`iat` 及必要的 `sub`、員編 claim；不透明 token 則應由 server 對受信任端點執行 introspection。若使用一次性 launch token／code，應驗證 `jti` 或等效識別碼並防止重放。
+WebView 對 `launchUrl` 的 GET 只回傳同源 form bridge，不查詢、消耗或修改 DB。頁面自動將 code POST 至 `/api/auth/session`，並保留 JavaScript 無法執行時的手動按鈕；只有 POST 才原子消耗 code、設定 `FT_ESIGN_SESSION` HttpOnly cookie 並以 `303` 導向固定首頁 `/`。GET query 與 POST body 不得寫入 access log，兩個回應均使用 `Cache-Control: no-store` 與 `Referrer-Policy: no-referrer`。
 
-驗證完成後，以已驗證且必填的員工編號 claim 查找 `users.empid`，並依受信任 profile 或 HR API 建立／更新員工。員工編號缺失、格式錯誤、查無有效員工或 `is_active = false` 時均拒絕建立 session。
+MySQL `auth_sessions` 是 `jti` 防重放、launch code 與本地 session 的唯一權威來源；資料庫只保存三種 credential 的 SHA-256 摘要。Redis 不可用不得影響 launch 建立、code 消耗、session 驗證或登出。MySQL 不可用時則安全失敗，不發 code 或 cookie。
 
-電子簽系統必須簽發自己的短效 session，不得將上游 token 直接當成本系統長期 session。Redis session 僅保存員工 ID、來源 provider、必要的上游 session 識別碼、驗證時間及到期時間，不保存原始 token；本地 session 到期時間不得晚於上游憑證或 session 的有效期限。若上游支援 back-channel logout，應依上游 session ID 撤銷對應的本地 session。
+本地 session 使用獨立的 256-bit opaque token，固定最長 8 小時且不滑動延長。受保護請求只以 cookie token 摘要查詢有效 MySQL session，再確認 User 仍存在、未 soft-delete 且 `is_active = true`；不接受 client 另行宣告員編。`DELETE /api/auth/session` 原子撤銷 MySQL session 並清除 cookie，重複登出保持冪等。
 
 SSO 建立 session 只代表使用者可進入電子簽系統，不當然等於完成簽署前重新驗證。除非該次憑證足夠新、具可驗證的 `auth_time`／`acr`／`amr`、為短效一次性，且已綁定特定文件版本與摘要，否則簽署時仍須另外建立第 3.1 節所述的驗證事件。
 

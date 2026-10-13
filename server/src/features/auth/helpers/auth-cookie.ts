@@ -4,9 +4,9 @@ import type { FastifyReply } from 'fastify';
 import { AppEnvironment } from '#app/config/app.environment';
 import {
   AUTH_COOKIE_NAME,
-  AUTH_TOKEN_TTL_SECONDS,
   OAUTH_TX_COOKIE_NAME,
   OAUTH_TX_TTL_SECONDS,
+  WEBVIEW_SESSION_TTL_SECONDS,
 } from '#app/features/auth/auth.constants';
 
 /** 公開 HTTPS 環境（production／staging）一律 Secure；本機 http 開發不加。 */
@@ -25,7 +25,7 @@ function baseCookieOptions(config: ConfigService): CookieSerializeOptions {
   };
 }
 
-/** 寫入登入 cookie；Max-Age 與 JWT／Redis TTL 對齊（固定 24 小時）。 */
+/** 寫入 WebView 本地 session cookie；固定 8 小時且不滑動。 */
 export function setAuthCookie(
   reply: FastifyReply,
   config: ConfigService,
@@ -33,7 +33,7 @@ export function setAuthCookie(
 ): void {
   reply.setCookie(AUTH_COOKIE_NAME, token, {
     ...baseCookieOptions(config),
-    maxAge: AUTH_TOKEN_TTL_SECONDS,
+    maxAge: WEBVIEW_SESSION_TTL_SECONDS,
   });
 }
 

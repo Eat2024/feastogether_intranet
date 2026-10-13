@@ -1,0 +1,312 @@
+openapi: 3.1.0
+info:
+  title: WebView SSO 與員工 Session API
+  version: 1.0.0
+servers:
+  - url: /api
+paths:
+  /auth/webview-launches:
+    post:
+      operationId: createWebviewLaunch
+      summary: 主平台後端以 launch JWT 建立一次性 WebView URL
+      security:
+        - launchBearer: []
+      responses:
+        "201":
+          description: JWT、FGAPI 與 User 查驗成功，回傳短效 launch URL
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LaunchSuccess" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/ExchangeFailed" }
+        "502": { $ref: "#/components/responses/StaffLookupFailed" }
+        "503": { $ref: "#/components/responses/DatabaseUnavailable" }
+  /auth/webview:
+    get:
+      operationId: getWebviewLaunchBridge
+      summary: 取得唯讀的 WebView 自動 POST bridge
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: 電子簽簽發、最長 60 秒且只能使用一次的不透明 launch code
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+            pattern: "^[A-Za-z0-9_-]+$"
+      responses:
+        "200":
+          description: 回傳自動將 code POST 至同源 session resource 的 HTML；不讀寫 launch 狀態
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            Referrer-Policy:
+              schema: { type: string, const: no-referrer }
+            Content-Security-Policy:
+              description: 只允許 nonce script 與同源 form action，不允許第三方資源
+              schema: { type: string }
+          content:
+            text/html:
+              schema: { type: string }
+        "400":
+          description: 缺少或格式錯誤的 code；不設定 session cookie
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            Referrer-Policy:
+              schema: { type: string, const: no-referrer }
+          content:
+            text/html:
+              schema: { type: string }
+  /auth/embed-origins:
+    get:
+      operationId: getEmbedOrigins
+      summary: 取得可嵌入電子簽並以 postMessage 溝通的主平台 origin（見 embed-postmessage.md）
+      security: []
+      responses:
+        "200":
+          description: AUTH_TRUSTED_ORIGINS 設定的 origin；未設定時為空清單
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    required: [origins]
+                    properties:
+                      origins:
+                        type: array
+                        items: { type: string, format: uri }
+  /auth/session:
+    post:
+      operationId: createWebviewSession
+      summary: Bridge 以一次性 code 建立 WebView session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  minLength: 43
+                  maxLength: 43
+                  pattern: "^[A-Za-z0-9_-]+$"
+      responses:
+        "303":
+          description: 原子消耗 code、建立 session、設定 cookie 並導向固定首頁
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            Referrer-Policy:
+              schema: { type: string, const: no-referrer }
+            Set-Cookie:
+              description: FT_ESIGN_SESSION；HttpOnly、host-only、Path=/、Max-Age=28800
+              schema: { type: string }
+            Location:
+              schema: { type: string, const: "/" }
+        "400":
+          description: 缺少或格式錯誤的 code；不設定 session cookie
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            Referrer-Policy:
+              schema: { type: string, const: no-referrer }
+          content:
+            text/html:
+              schema: { type: string }
+        "401":
+          description: Code 無效、過期或已使用；回傳通用錯誤頁
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            Referrer-Policy:
+              schema: { type: string, const: no-referrer }
+          content:
+            text/html:
+              schema: { type: string }
+        "503":
+          description: MySQL 無法安全建立 session
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            Referrer-Policy:
+              schema: { type: string, const: no-referrer }
+          content:
+            text/html:
+              schema: { type: string }
+    get:
+      operationId: getCurrentSession
+      summary: 取得目前電子簽員工 session
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: 目前 session
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/DatabaseUnavailable" }
+    delete:
+      operationId: deleteCurrentSession
+      summary: 登出並撤銷目前本地 session
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      responses:
+        "200":
+          description: 登出完成（無 cookie、過期 cookie 或重複登出亦為冪等成功）
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            Set-Cookie:
+              description: 清除 FT_ESIGN_SESSION
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogoutSuccess" }
+        "403": { $ref: "#/components/responses/OriginRejected" }
+        "503": { $ref: "#/components/responses/DatabaseUnavailable" }
+components:
+  securitySchemes:
+    launchBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: RS256 FT-ESIGN-LAUNCH+JWT，只用於 POST /auth/webview-launches
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: FT_ESIGN_SESSION
+  parameters:
+    Origin:
+      name: Origin
+      in: header
+      required: true
+      schema: { type: string, format: uri }
+      description: 必須精確命中部署環境 allowlist
+  schemas:
+    LaunchView:
+      type: object
+      additionalProperties: false
+      required: [launchUrl, expiresAt]
+      properties:
+        launchUrl:
+          type: string
+          format: uri
+          description: 固定電子簽 origin 與 path，query 只含一次性 code
+        expiresAt: { type: string, format: date-time }
+    LaunchSuccess:
+      type: object
+      additionalProperties: false
+      required: [success, data, timestamp]
+      properties:
+        success: { type: boolean, const: true }
+        data: { $ref: "#/components/schemas/LaunchView" }
+        timestamp: { type: string, format: date-time }
+    UserView:
+      type: object
+      additionalProperties: false
+      required: [id, empId, name, departmentName, titleName, lastLoginAt]
+      properties:
+        id: { type: integer, minimum: 1 }
+        empId: { type: string, maxLength: 32 }
+        name: { type: string, maxLength: 100 }
+        departmentName: { type: [string, "null"], maxLength: 150 }
+        titleName: { type: [string, "null"], maxLength: 100 }
+        lastLoginAt: { type: [string, "null"], format: date-time }
+    SessionView:
+      type: object
+      additionalProperties: false
+      required: [user, expiresAt]
+      properties:
+        user: { $ref: "#/components/schemas/UserView" }
+        expiresAt: { type: string, format: date-time }
+    SessionSuccess:
+      type: object
+      additionalProperties: false
+      required: [success, data, timestamp]
+      properties:
+        success: { type: boolean, const: true }
+        data: { $ref: "#/components/schemas/SessionView" }
+        timestamp: { type: string, format: date-time }
+    LogoutSuccess:
+      type: object
+      additionalProperties: false
+      required: [success, data, timestamp]
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          additionalProperties: false
+          required: [localLogout]
+          properties:
+            localLogout: { type: string, const: completed }
+        timestamp: { type: string, format: date-time }
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [success, error, timestamp]
+      properties:
+        success: { type: boolean, const: false }
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message:
+              oneOf:
+                - { type: string }
+                - { type: array, items: { type: string } }
+        timestamp: { type: string, format: date-time }
+  responses:
+    InvalidRequest:
+      description: 請求格式錯誤
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ExchangeFailed:
+      description: 憑證、重放、員工資格或本地帳號無法通過
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unauthorized:
+      description: 本地 session 不存在、已到期、已撤銷或 User 不可用
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    OriginRejected:
+      description: Origin 不在 allowlist
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    StaffLookupFailed:
+      description: FGAPI 無法完成員工查驗
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    DatabaseUnavailable:
+      description: MySQL 無法安全建立或驗證 launch/session
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }

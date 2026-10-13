@@ -86,6 +86,61 @@ describe('HttpAccessLogInterceptor', () => {
     expect(getWrittenEntry(accessLogger).requestBody).toBeUndefined();
   });
 
+  it('WebView GET 不記 URL query，session POST 不記 body', async () => {
+    const first = makeInterceptor();
+    await lastValueFrom(
+      first.interceptor.intercept(
+        makeContext(
+          baseReq({
+            method: 'GET',
+            url: '/api/auth/webview?code=secret-code',
+            query: { code: 'secret-code' },
+          }),
+        ),
+        { handle: () => of({}) },
+      ),
+    );
+    expect(getWrittenEntry(first.accessLogger)).toMatchObject({
+      path: '/api/auth/webview',
+      url: '/api/auth/webview',
+      query: undefined,
+    });
+
+    const second = makeInterceptor();
+    await lastValueFrom(
+      second.interceptor.intercept(
+        makeContext(
+          baseReq({
+            url: '/api/auth/session',
+            body: { code: 'secret-code' },
+          }),
+        ),
+        { handle: () => of({}) },
+      ),
+    );
+    expect(getWrittenEntry(second.accessLogger).requestBody).toBeUndefined();
+  });
+
+  it('launch endpoint 即使收到惡意 JWT query 也只記固定 path', async () => {
+    const { interceptor, accessLogger } = makeInterceptor();
+    await lastValueFrom(
+      interceptor.intercept(
+        makeContext(
+          baseReq({
+            url: '/api/auth/webview-launches?token=raw-jwt',
+            query: { token: 'raw-jwt' },
+          }),
+        ),
+        { handle: () => of({}) },
+      ),
+    );
+    expect(getWrittenEntry(accessLogger)).toMatchObject({
+      path: '/api/auth/webview-launches',
+      url: '/api/auth/webview-launches',
+      query: undefined,
+    });
+  });
+
   it('錯誤路徑：非 HttpException → fallback 500 並重新拋出', async () => {
     const { interceptor, accessLogger } = makeInterceptor();
     const ctx = makeContext(baseReq(), 200);

@@ -1,10 +1,12 @@
 import type { ChipProps } from "@mui/material/Chip";
 import { daysUntil } from "@/lib/dates";
+import { remainingWalkIns } from "./sheet/rules";
 import type { DocType, EFormDoc, FormStatus, ResignRound } from "./types";
 
 export const DOC_TYPE_LABEL: Record<DocType, string> = {
   online: "線上建立",
   upload: "上傳文件",
+  sheet: "簽到表",
 };
 
 export const FORM_STATUS_META: Record<FormStatus, { label: string; color: ChipProps["color"] }> = {
@@ -52,9 +54,13 @@ export function periodText(form: EFormDoc) {
  */
 export function deriveStatus(form: EFormDoc, today: Date = new Date()): FormStatus {
   if (form.status !== "active") return form.status;
-  if (form.signers.length > 0 && pendingCount(form) === 0) return "completed";
   const { endAt } = signingPeriod(form);
-  return endAt && daysUntil(endAt, today) < 0 ? "expired" : "active";
+  const ended = !!endAt && daysUntil(endAt, today) < 0;
+  if (form.signers.length > 0 && pendingCount(form) === 0) {
+    // 簽到表還有空白列時，期限內仍開放名單外人員簽到
+    return !ended && remainingWalkIns(form) > 0 ? "active" : "completed";
+  }
+  return ended ? "expired" : "active";
 }
 
 /** 文件的整體簽署進度（簽署人看不到名單時，用來顯示進度與狀態） */

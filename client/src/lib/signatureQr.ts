@@ -11,3 +11,7 @@ export const isValidSignatureId = (id: string) => UUID_PATTERN.test(id);
 
 /** 簽名追蹤網址；origin 為系統網址（瀏覽器端可用 window.location.origin） */
 export const signatureVerifyUrl = (id: string, origin: string) => new URL(`/verify/${id}`, origin).toString();
+
+/** 整份文件的追蹤網址（簽到表頁尾 QR code 用）；TODO: 追蹤頁 /verify/doc/[id] 尚未實作 */
+export const documentVerifyUrl = (formId: string, origin: string) =>
+  new URL(`/verify/doc/${encodeURIComponent(formId)}`, origin).toString();

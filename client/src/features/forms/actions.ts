@@ -7,6 +7,8 @@ import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
 import { getCurrentUser, getStaff } from './orgChart';
 import { normalizeSignerNote } from './detail/signerNote';
 import { validateResign } from './resign';
+import { sheetExportData, type SheetExport } from './sheet/exportData';
+import { validateSheet } from './sheet/rules';
 import { deriveStatus, pendingCount, signedCount } from './status';
 import {
   getForm,
@@ -16,7 +18,7 @@ import {
   toSignerView,
   updateForm,
 } from './store';
-import type { EFormDoc, Signer, UploadInfo } from './types';
+import type { EFormDoc, SheetInfo, Signer, UploadInfo } from './types';
 
 /** 現在時間，格式 YYYY/MM/DD HH:mm */
 function nowStr() {
@@ -118,8 +120,9 @@ export async function saveSigners(input: {
     const prev = prevById.get(sid);
     if (prev) return [prev];
     const emp = getStaff(sid);
+    // 記下加入時的單位與職稱（簽到表顯示用）
     return emp
-      ? [{ id: emp.id, name: emp.name, employeeNo: emp.employeeNo, status: 'pending' as const }]
+      ? [{ id: emp.id, name: emp.name, employeeNo: emp.employeeNo, unit: emp.dept, title: emp.title, status: 'pending' as const }]
       : [];
   });
   for (const { email, name } of emails) {
@@ -246,4 +249,72 @@ export async function reopenSigning(input: {
   ];
   revalidateLists();
   return { pending: pendingCount(form) };
+}
+
+/**
+ * 新增或修改簽到表（流程第一步）：表頭欄位自行設定，表格依簽署名單自動產生。
+ */
+export async function saveSheetDocument(input: {
+  id?: string;
+  name: string;
+  sheet: SheetInfo;
+}): Promise<ActionResult> {
+  const name = typeof input.name === 'string' ? input.name.trim() : '';
+  if (!name) return { error: '請輸入文件名稱' };
+  const sheet = validateSheet(input.sheet);
+  if ('error' in sheet) return sheet;
+
+  if (input.id) {
+    const form = getForm(input.id);
+    if (!form) return { error: '找不到此文件' };
+    if (signedCount(form) > 0 || form.status === 'stopped') {
+      return { error: '此文件已有人簽署或已停止，無法再修改' };
+    }
+    if (form.signers.some((s) => s.walkIn) && sheet.walkInSlots < form.signers.filter((s) => s.walkIn).length) {
+      return { error: '空白列數不可少於已使用的列數' };
+    }
+    updateForm(form.id, { name, sheet, docType: 'sheet', upload: undefined });
+    revalidateLists();
+    if (form.status === 'draft') redirect(`/forms/${form.id}/signers`);
+    redirect('/forms?flash=updated');
+  }
+
+  const id = `f${Date.now()}`;
+  const me = getCurrentUser();
+  insertForm({
+    id,
+    name,
+    docNumber: nextDocNumber(),
+    docType: 'sheet',
+    status: 'draft',
+    startAt: null,
+    endAt: null,
+    signers: [],
+    createdBy: { name: me.name, employeeNo: me.employeeNo },
+    sheet,
+    // 簽到表不開放拒絕簽署
+    options: { watermark: false, allowReject: false },
+  });
+  revalidateLists();
+  redirect(`/forms/${id}/signers`);
+}
+
+/**
+ * 匯出整份簽到表所需的資料（含所有人的簽到簽名），每次呼叫都會記入匯出紀錄。
+ * TODO: 串接登入與權限後，限制只有文件建立人或管理者可以匯出
+ */
+export async function getSheetExport(input: { formId: string }): Promise<{ error: string } | SheetExport> {
+  const form = getForm(input.formId);
+  if (!form || form.docType !== 'sheet' || !form.sheet) return { error: '找不到此簽到表' };
+  if (form.status === 'draft') return { error: '簽到表尚未發起，沒有可匯出的資料' };
+  const data = sheetExportData(form);
+  addExportRecord({
+    kind: 'sheet',
+    formId: form.id,
+    formName: form.name,
+    docNumber: form.docNumber ?? null,
+    scope: `整份簽到表（應到 ${data.attendance.expected} 人；實到 ${data.attendance.actual} 人）`,
+    count: data.attendance.actual,
+  });
+  return data;
 }

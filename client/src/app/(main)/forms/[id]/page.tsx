@@ -15,6 +15,8 @@ import {
 import { getDeptName } from '@/features/forms/orgChart';
 import { FORM_STATUS_META, getProgress, periodText, signedCount } from '@/features/forms/status';
 import { formOptions } from '@/features/forms/options';
+import { remainingWalkIns } from '@/features/forms/sheet/rules';
+import SheetTools from '@/features/forms/sheet/SheetTools';
 import StopSigningButton from '@/features/forms/StopSigningButton';
 import { getForm, toClientForm } from '@/features/forms/store';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
@@ -129,6 +131,15 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
         </Stack>
       </Paper>
 
+      {stored.docType === 'sheet' && stored.sheet && (
+        <SheetTools
+          formId={id}
+          walkInSlots={stored.sheet.walkInSlots}
+          remaining={remainingWalkIns(stored)}
+          canWalkIn={progress.status === 'active' && remainingWalkIns(stored) > 0}
+        />
+      )}
+
       <Stack spacing={2}>
         <LinkTabs
           value={query.status}
@@ -153,6 +164,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
           sort={query.sort}
           sortHrefs={sortHrefs}
           canNotify={progress.status === 'active'}
+          isSheet={stored.docType === 'sheet'}
           pendingTotal={progress.pending}
           emptyText={query.q ? `找不到符合「${query.q}」的簽署人。` : '此分類沒有簽署人。'}
         />

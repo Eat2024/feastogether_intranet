@@ -83,7 +83,12 @@ export default function FormsTable({
               const total = form.signers.length;
               return (
                 <TableRow key={form.id} hover>
-                  <TableCell>{form.name}</TableCell>
+                  <TableCell>
+                    {form.name}
+                    {form.docType === 'sheet' && (
+                      <Chip size="small" variant="soft" label="簽到表" sx={{ ml: 1 }} />
+                    )}
+                  </TableCell>
                   {/* 草稿尚無編號、尚未發起時以「—」表示；已發起但未設結束日為「不限」 */}
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     {form.docNumber ?? '—'}

@@ -1,6 +1,7 @@
 // 文件資料的讀寫層（僅供伺服器端使用）。
 // 尚未串接 API：資料放在伺服器記憶體，以 MOCK_FORMS 為初始值，重新啟動伺服器即重置。
 // 串接 API 時只需替換本檔的函式實作，呼叫端不必改。
+import { sheetRows } from './sheet/rules';
 import { MOCK_FORMS } from './mock';
 import type { EFormDoc } from './types';
 
@@ -62,7 +63,14 @@ export function toSignerView(form: EFormDoc, viewerId: string): EFormDoc {
   return {
     ...form,
     // 備註是管理端的內部紀錄，不讓簽署人本人看到
-    signers: form.signers.filter((s) => s.id === viewerId).map((s) => ({ ...s, note: undefined })),
+    // 簽到表另外帶出本人的序號（其他列不提供）
+    signers: form.signers
+      .filter((s) => s.id === viewerId)
+      .map((s) => ({
+        ...s,
+        note: undefined,
+        rowNo: form.docType === 'sheet' ? sheetRows(form, { only: viewerId })[0]?.no : undefined,
+      })),
     // 補簽只提供期間，原因與設定人屬內部資訊
     resigns: form.resigns?.map(({ startAt, endAt, createdAt }) => ({ startAt, endAt, createdAt })),
   };

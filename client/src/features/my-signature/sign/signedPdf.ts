@@ -2,7 +2,10 @@
 // 尚無後端與原始 PDF 檔：每頁以示意版面繪製，並把本人的手寫簽名與日期疊在指定位置。
 // 串接後端後，應改由後端在原始 PDF 上合成並提供下載。
 // 以 canvas 繪製每頁再嵌入 PDF，可沿用網頁字型顯示中文（pdf-lib 內建字型不支援中文）。
-import { formOptions, WATERMARK_TEXT } from '@/features/forms/options';
+import { formOptions } from '@/features/forms/options';
+import type { SheetRow } from '@/features/forms/sheet/rules';
+import { A4_PT, drawWatermark, H, loadImage, S, W } from './pdfCanvas';
+import { buildSheetPdf } from './sheetPdf';
 import { FIELD_H_PCT, FIELD_W_PCT, getSignLayout } from '@/features/forms/signLayout';
 import type { EFormDoc, Signer } from '@/features/forms/types';
 import { color } from '@/theme/tokens';
@@ -10,20 +13,6 @@ import { signatureVerifyUrl } from '@/lib/signatureQr';
 import { PDFDocument } from 'pdf-lib';
 import QRCode from 'qrcode';
 
-// A4，150 dpi
-const W = 1240;
-const H = 1754;
-// 與網頁預覽相同的比例（預覽頁寬 460px）
-const S = W / 460;
-const A4_PT = { w: 595.28, h: 841.89 };
-
-const loadImage = (src: string) =>
-  new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
 
 function drawPage(
   ctx: CanvasRenderingContext2D,
@@ -87,28 +76,6 @@ function drawPage(
   );
   text('此為系統產生之示意副本', W / 2, H - 20 * S, 9, 400, color.textPlaceholder);
   ctx.textAlign = 'left';
-}
-
-/** 浮水印：斜向重複鋪滿整頁，淡灰色不遮蔽內容 */
-function drawWatermark(ctx: CanvasRenderingContext2D, font: string) {
-  ctx.save();
-  ctx.font = `500 ${16 * S}px ${font}`;
-  ctx.fillStyle = color.textPlaceholder;
-  ctx.globalAlpha = 0.18;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.translate(W / 2, H / 2);
-  ctx.rotate(-Math.PI / 6);
-  const stepX = 260 * S;
-  const stepY = 110 * S;
-  // 旋轉後需涵蓋整頁對角線範圍
-  const span = Math.hypot(W, H) / 2;
-  for (let y = -span; y <= span; y += stepY) {
-    // 每一列錯開半格，避免排成直行
-    const offset = (Math.round(y / stepY) % 2) * (stepX / 2);
-    for (let x = -span; x <= span; x += stepX) ctx.fillText(WATERMARK_TEXT, x + offset, y);
-  }
-  ctx.restore();
 }
 
 /** 產生本人已簽署副本的 PDF */
@@ -196,17 +163,8 @@ export async function buildSignedCopyPdf(form: EFormDoc, me: Signer): Promise<Ui
   return pdf.save();
 }
 
-/**
- * 觸發瀏覽器下載。
- * fileName 未指定時為「文件編號_文件名稱_已簽署.pdf」；有 password 時以 AES-256 加密，開啟檔案需輸入密碼。
- */
-export async function downloadSignedCopy(
-  form: EFormDoc,
-  me: Signer,
-  opts: { fileName?: string; password?: string } = {},
-) {
-  const { fileName, password } = opts;
-  let bytes = await buildSignedCopyPdf(form, me);
+/** 加密（選用）並觸發瀏覽器下載 */
+async function savePdf(bytes: Uint8Array, fileName: string, password?: string) {
   if (password) {
     // AES-256 需要 Web Crypto（crypto.subtle），只有 HTTPS 或 localhost 才有
     if (!window.isSecureContext) throw new Error('INSECURE_CONTEXT');
@@ -216,7 +174,34 @@ export async function downloadSignedCopy(
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = fileName ?? `${form.docNumber ?? form.id}_${form.name}_已簽署.pdf`;
+  a.download = fileName;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * 下載某位簽署人的已簽署副本。
+ * 簽到表的個人副本只含本人那一列；fileName 未指定時為「文件編號_文件名稱_已簽署.pdf」；
+ * 有 password 時以 AES-256 加密，開啟檔案需輸入密碼。
+ */
+export async function downloadSignedCopy(
+  form: EFormDoc,
+  me: Signer,
+  opts: { fileName?: string; password?: string } = {},
+) {
+  const bytes =
+    form.docType === 'sheet'
+      ? await buildSheetPdf(form, [{ no: me.rowNo ?? form.signers.find((s) => s.id === me.id)?.rowNo ?? 1, signer: me }])
+      : await buildSignedCopyPdf(form, me);
+  await savePdf(bytes, opts.fileName ?? `${form.docNumber ?? form.id}_${form.name}_已簽署.pdf`, opts.password);
+}
+
+/** 下載整份簽到表（含所有人的簽到與剩餘空白列） */
+export async function downloadSheet(
+  form: EFormDoc,
+  rows: SheetRow[],
+  attendance: { expected: number; actual: number },
+  fileName: string,
+) {
+  await savePdf(await buildSheetPdf(form, rows, { attendance, padLastPage: true }), fileName);
 }

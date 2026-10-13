@@ -1,6 +1,7 @@
 'use server';
 
 import { buildListExport } from '@/features/forms/export/listExport';
+import { sheetExportData, type SheetExport } from '@/features/forms/sheet/exportData';
 import { getForm, toSignerView } from '@/features/forms/store';
 import type { EFormDoc, Signer } from '@/features/forms/types';
 import officeCrypto from 'officecrypto-tool';
@@ -67,4 +68,15 @@ export async function getRedownloadCopy(input: {
     signer,
     fileName: `${form.docNumber ?? form.id}_${form.name}_${signer.name}${signer.employeeNo}_已簽署.pdf`,
   };
+}
+
+/** 重新下載整份簽到表所需的資料（以目前資料重新產生，PDF 在瀏覽器端產生） */
+export async function getRedownloadSheet(input: { recordId: string }): Promise<Fail | SheetExport> {
+  const loaded = loadRecord(input.recordId);
+  if ('error' in loaded) return loaded;
+  const { record, form } = loaded;
+  if (record.kind !== 'sheet' || form.docType !== 'sheet') return { error: '匯出紀錄類型不符' };
+  markRedownloaded(record);
+  revalidatePath('/export-history');
+  return sheetExportData(form);
 }

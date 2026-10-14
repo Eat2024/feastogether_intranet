@@ -25,6 +25,7 @@ export const dynamic = "force-dynamic";
 const TABS: { value: ExportKind; label: string; scopeLabel: string }[] = [
   { value: "list", label: "簽署紀錄清單 Excel", scopeLabel: "匯出範圍" },
   { value: "signerCopy", label: "已簽署文件 PDF", scopeLabel: "簽署人" },
+  { value: "sheet", label: "簽到表 PDF", scopeLabel: "匯出範圍" },
 ];
 
 const href = (tab: ExportKind, page = 1) => {

@@ -1,3 +1,4 @@
+import { SHEET_SIGN_FIELD_ID } from './sheet/rules';
 import type { EFormDoc, UploadField } from './types';
 
 // 欄位尺寸：上傳編輯器中為 108×46px、頁面寬 460px，這裡換算成頁面寬高的百分比，
@@ -25,6 +26,12 @@ export type SignLayout = {
 
 /** 簽署時的版面；沒有上傳文件設定（例如草稿）時回傳 null */
 export function getSignLayout(form: EFormDoc): SignLayout | null {
+  // 簽到表只有一個簽到格（版面由簽到表畫面與 PDF 自行處理，這裡只提供欄位）
+  if (form.docType === 'sheet') {
+    return form.sheet
+      ? { pageCount: 1, originalPages: 1, confirmPage: null, fields: [{ id: SHEET_SIGN_FIELD_ID, page: 1, x: 0, y: 0, type: 'sign' }] }
+      : null;
+  }
   const up = form.upload;
   if (!up || up.pages <= 0) return null;
   if (up.mode === 'confirmPage') {

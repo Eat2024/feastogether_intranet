@@ -1,4 +1,5 @@
-export type DocType = "online" | "upload";
+/** online：線上建立（舊資料）；upload：上傳文件；sheet：系統產生的簽到表 */
+export type DocType = "online" | "upload" | "sheet";
 
 /** 簽署狀態；completed 由簽署人全數完成推導而來，不直接存 */
 /** 文件狀態；completed、expired 由 deriveStatus() 推導，不會寫入 store */
@@ -29,6 +30,15 @@ export type Signer = {
   consent?: { version: string; agreedAt: string };
   /** 管理端記錄的備註（最多 30 字，見 signerNote.ts）；屬內部紀錄，不提供給簽署人本人 */
   note?: string;
+  /** 加入簽署時的單位（部門）與職稱快照（簽到表顯示用；以 Email 加入者沒有） */
+  unit?: string;
+  title?: string;
+  /** 簽到表：簽署人簽到時自行填寫的備註（見 sheet.ts） */
+  remark?: string;
+  /** 簽到表：未列在名單中、透過簽到連結使用空白列簽到 */
+  walkIn?: boolean;
+  /** 簽到表：在表上的序號。只有簽署人視角（toSignerView）會帶出，不寫入 store */
+  rowNo?: number;
 };
 
 export type Employee = {
@@ -41,6 +51,7 @@ export type Employee = {
 export type StaffMember = Employee & {
   id: string;
   dept: string;
+  title?: string;
 };
 
 /** 組織架構中的一個部門（選擇簽署人用）；total 為含所有子部門的人數 */
@@ -86,6 +97,20 @@ export type EFormDoc = {
   resigns?: ResignRound[];
   /** 可選功能（浮水印、拒絕簽署）；未設定時見 options.ts 的預設值 */
   options?: { watermark: boolean; allowReject: boolean };
+  /** 簽到表的設定（docType 為 sheet 時才有） */
+  sheet?: SheetInfo;
+};
+
+/** 簽到表：表頭可自行設定，表格欄位固定（序號、單位、職稱、姓名、簽到、簽到時間、備註） */
+export type SheetInfo = {
+  /** 表單標題，例如「教育訓練簽到表」 */
+  title: string;
+  /** 表單編號，例如 FT-2100-01-007-001（選填） */
+  formCode: string;
+  /** 表頭欄位（依順序兩欄排列）；「出席人數」由系統自動加上 */
+  fields: { label: string; value: string }[];
+  /** 保留給名單外人員簽到的空白列數 */
+  walkInSlots: number;
 };
 
 /** 一次補簽：到期後仍有人未簽署時，重新開放未簽署者在新期間內簽署 */

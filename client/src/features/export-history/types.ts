@@ -1,8 +1,8 @@
 import type { ExportQuery } from '@/features/forms/export/exportQuery';
 import type { Employee } from '@/features/forms/types';
 
-/** list：簽署紀錄清單（Excel）；signerCopy：個人已簽署文件（PDF） */
-export type ExportKind = 'list' | 'signerCopy';
+/** list：簽署紀錄清單（Excel）；signerCopy：個人已簽署文件（PDF）；sheet：整份簽到表（PDF） */
+export type ExportKind = 'list' | 'signerCopy' | 'sheet';
 
 export type ExportRecord = {
   id: string;

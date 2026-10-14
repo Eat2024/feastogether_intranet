@@ -51,6 +51,7 @@ export default function SignerTable({
   sort,
   sortHrefs,
   canNotify,
+  isSheet = false,
   pendingTotal,
   emptyText,
 }: {
@@ -62,10 +63,14 @@ export default function SignerTable({
   sortHrefs: Record<SignerSortKey, string>;
   /** 文件為簽署中才能通知 */
   canNotify: boolean;
+  /** 簽到表：多顯示簽署人自填的「簽到備註」，並標示名單外人員 */
+  isSheet?: boolean;
   /** 整份文件待簽署人數（「通知所有未簽署者」用） */
   pendingTotal: number;
   emptyText: string;
 }) {
+  // 簽到表不開放拒絕，「拒絕原因」欄改為顯示簽署人自填的簽到備註
+  const columns = isSheet ? COLUMNS.map((c) => (c.label === '拒絕原因' ? { label: '簽到備註' } : c)) : COLUMNS;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState<NotifyTarget | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -117,7 +122,7 @@ export default function SignerTable({
                   slotProps={{ input: { 'aria-label': '選取本頁所有待簽署者' } }}
                 />
               </TableCell>
-              {COLUMNS.map((c) =>
+              {columns.map((c) =>
                 c.key ? (
                   <SortableHeaderCell
                     key={c.label}
@@ -156,7 +161,10 @@ export default function SignerTable({
                       />
                     </TableCell>
                     <TableCell>
-                      <Typography variant="content">{s.name}</Typography>
+                      <Typography variant="content">
+                        {s.name}
+                        {s.walkIn && <Chip size="small" variant="soft" color="info" label="名單外" sx={{ ml: 1 }} />}
+                      </Typography>
                       <Typography variant="helper">{s.email ?? s.employeeNo}</Typography>
                     </TableCell>
                     <TableCell>{s.dept ?? '—'}</TableCell>
@@ -165,9 +173,9 @@ export default function SignerTable({
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{s.signedAt ?? s.rejectedAt ?? '—'}</TableCell>
                     <TableCell>
-                      {s.rejectReason ? (
+                      {(isSheet ? s.remark : s.rejectReason) ? (
                         <Typography variant="content" sx={{ minWidth: 200, overflowWrap: 'anywhere' }}>
-                          {s.rejectReason}
+                          {isSheet ? s.remark : s.rejectReason}
                         </Typography>
                       ) : (
                         '—'

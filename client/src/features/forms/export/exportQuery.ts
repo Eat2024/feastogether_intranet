@@ -25,11 +25,15 @@ export const FIELDS = [
   // 員工編號以文字匯出，保留開頭的 0
   { key: 'employeeNo', label: '員工編號', width: 14, value: (r) => r.employeeNo },
   { key: 'dept', label: '部門', width: 24, value: (r) => r.dept ?? '' },
+  { key: 'title', label: '職稱', width: 16, value: (r) => r.title ?? '' },
   { key: 'email', label: 'Email', width: 28, value: (r) => r.email ?? '' },
   { key: 'status', label: '狀態', width: 10, value: (r) => STATUS_LABEL[r.status] },
   { key: 'signedAt', label: '簽署時間', width: 18, value: (r) => r.signedAt ?? '' },
   { key: 'rejectedAt', label: '拒絕時間', width: 18, value: (r) => r.rejectedAt ?? '' },
   { key: 'rejectReason', label: '拒絕原因', width: 40, value: (r) => r.rejectReason ?? '' },
+  // 簽到表：簽署人簽到時自填的備註；名單外人員以空白列簽到
+  { key: 'remark', label: '簽到備註', width: 30, value: (r) => r.remark ?? '' },
+  { key: 'walkIn', label: '名單外', width: 10, value: (r) => (r.walkIn ? '是' : '') },
 ] as const satisfies readonly FieldDef[];
 
 export type FieldKey = (typeof FIELDS)[number]['key'];

@@ -66,7 +66,7 @@ function getCache() {
     const walk = (dept: OrgDept) => {
       deptIndex.set(dept.id, dept);
       for (const e of dept.employees) {
-        staff.set(e.id, { id: e.id, name: e.name, employeeNo: e.employeeNo ?? e.id, dept: dept.name });
+        staff.set(e.id, { id: e.id, name: e.name, employeeNo: e.employeeNo ?? e.id, dept: dept.name, title: e.title });
         staffDept.set(e.id, dept.id);
       }
       dept.children.forEach(walk);

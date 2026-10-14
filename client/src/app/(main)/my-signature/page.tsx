@@ -30,7 +30,11 @@ export default async function MySignaturePage({ searchParams }: PageProps<'/my-s
   const tasks = Object.fromEntries(
     Object.entries(allTasks).map(([tab, list]) => [
       tab,
-      list.map((t) => ({ ...t, form: toSignerView(t.form, userId) })),
+      list.map((t) => {
+        // me 也要用簽署人視角的資料（不含管理端備註，簽到表帶出序號）
+        const form = toSignerView(t.form, userId);
+        return { ...t, form, me: form.signers[0] ?? t.me };
+      }),
     ]),
   ) as typeof allTasks;
   const counts = {

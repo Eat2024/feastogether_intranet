@@ -159,7 +159,8 @@ export default function SignersEditor({
               可選功能
             </Typography>
             <Stack spacing={1}>
-              {OPTION_ITEMS.map((item) => (
+              {/* 簽到表不開放拒絕簽署 */}
+              {OPTION_ITEMS.filter((item) => form.docType !== 'sheet' || item.key !== 'allowReject').map((item) => (
                 <FormControlLabel
                   key={item.key}
                   sx={{ alignItems: 'flex-start', mx: 0 }}
@@ -200,7 +201,7 @@ export default function SignersEditor({
           href={`/forms/${form.id}/edit`}
           disabled={busy}
         >
-          上一步，回到上傳文件
+          {form.docType === 'sheet' ? '上一步，回到簽到表資訊' : '上一步，回到上傳文件'}
         </Button>
         <Button
           size="large"

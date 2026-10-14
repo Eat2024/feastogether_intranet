@@ -13,6 +13,8 @@ export const DEFAULT_FORM_OPTIONS: FormOptions = { watermark: false, allowReject
 /** 浮水印文字 */
 export const WATERMARK_TEXT = '饗賓集團 內部文件 請勿外流';
 
-export function formOptions(form: Pick<EFormDoc, 'options'>): FormOptions {
-  return { ...DEFAULT_FORM_OPTIONS, ...form.options };
+export function formOptions(form: Pick<EFormDoc, 'options' | 'docType'>): FormOptions {
+  const options = { ...DEFAULT_FORM_OPTIONS, ...form.options };
+  // 簽到表不開放拒絕簽署
+  return form.docType === 'sheet' ? { ...options, allowReject: false } : options;
 }

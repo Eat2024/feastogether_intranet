@@ -1,7 +1,7 @@
 import PageHeader from '@/components/PageHeader';
 import StepFlow from '@/components/StepFlow';
 import SignersEditor from '@/features/forms/editor/SignersEditor';
-import { CREATE_STEPS } from '@/features/forms/editor/steps';
+import { stepsOf } from '@/features/forms/editor/steps';
 import { getOrgTree } from '@/features/forms/orgChart';
 import { getForm } from '@/features/forms/store';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
@@ -31,7 +31,7 @@ export default async function FormSignersPage({
           返回電子簽列表
         </Button>
       </Box>
-      <StepFlow steps={CREATE_STEPS} activeIndex={1} />
+      <StepFlow steps={stepsOf(form.docType)} activeIndex={1} />
       <PageHeader
         title="設定簽署"
         description={`「${form.name}」${form.docNumber ? `（${form.docNumber}）` : ''}－ 為此文件指定需簽署的人員，並設定簽署期間。`}

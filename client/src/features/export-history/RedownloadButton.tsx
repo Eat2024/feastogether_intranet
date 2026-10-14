@@ -5,7 +5,7 @@ import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
 import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
 import { useState } from 'react';
-import { getRedownloadCopy, redownloadList } from './actions';
+import { getRedownloadCopy, getRedownloadSheet, redownloadList } from './actions';
 import type { ExportKind } from './types';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -36,6 +36,11 @@ export default function RedownloadButton({ recordId, kind }: { recordId: string;
         const res = await redownloadList({ recordId });
         if ('error' in res) return setError(res.error);
         saveBlob(new Blob([base64ToBytes(res.base64)], { type: XLSX_MIME }), res.fileName);
+      } else if (kind === 'sheet') {
+        const res = await getRedownloadSheet({ recordId });
+        if ('error' in res) return setError(res.error);
+        const { downloadSheet } = await import('@/features/my-signature/sign/signedPdf');
+        await downloadSheet(res.form, res.rows, res.attendance, res.fileName);
       } else {
         const res = await getRedownloadCopy({ recordId });
         if ('error' in res) return setError(res.error);

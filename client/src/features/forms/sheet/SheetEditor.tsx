@@ -1,10 +1,6 @@
 'use client';
 
-import TooltipIconButton from '@/components/TooltipIconButton';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
-import ArrowDownwardRoundedIcon from '@mui/icons-material/ArrowDownwardRounded';
-import ArrowUpwardRoundedIcon from '@mui/icons-material/ArrowUpwardRounded';
-import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -12,19 +8,18 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import { saveSheetDocument } from '../actions';
 import type { EFormDoc, SheetInfo } from '../types';
 import {
   DEFAULT_SHEET,
   SHEET_CODE_MAX,
   SHEET_FIELDS_MAX,
-  SHEET_LABEL_MAX,
   SHEET_TITLE_MAX,
-  SHEET_VALUE_MAX,
   SHEET_WALK_IN_MAX,
   validateSheet,
 } from './rules';
+import SheetFieldList, { type SheetFieldItem } from './SheetFieldList';
 import SheetView from './SheetView';
 
 // 預覽時示意用的列數
@@ -33,21 +28,29 @@ const PREVIEW_ROWS = 3;
 /** 新增／編輯簽到表（流程第一步）：設定表頭欄位，表格會依簽署名單自動產生 */
 export default function SheetEditor({ form, locked = false }: { form?: EFormDoc; locked?: boolean }) {
   const [name, setName] = useState(form?.name ?? '');
-  const [sheet, setSheet] = useState<SheetInfo>(() => form?.sheet ?? DEFAULT_SHEET);
+  const initial = form?.sheet ?? DEFAULT_SHEET;
+  const [meta, setMeta] = useState<Omit<SheetInfo, 'fields'>>(() => ({
+    title: initial.title,
+    formCode: initial.formCode,
+    walkInSlots: initial.walkInSlots,
+  }));
+  // 表頭欄位另外加上 id，拖曳排序時才能正確辨識每一列
+  const nextId = useRef(initial.fields.length);
+  const [fieldItems, setFieldItems] = useState<SheetFieldItem[]>(() =>
+    initial.fields.map((f, i) => ({ id: `field-${i}`, ...f })),
+  );
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
   const disabled = locked || pending;
 
-  const update = (patch: Partial<SheetInfo>) => {
-    setSheet((prev) => ({ ...prev, ...patch }));
+  const sheet: SheetInfo = { ...meta, fields: fieldItems.map(({ label, value }) => ({ label, value })) };
+  const update = (patch: Partial<Omit<SheetInfo, 'fields'>>) => {
+    setMeta((prev) => ({ ...prev, ...patch }));
     setError(undefined);
   };
-  const updateField = (index: number, patch: Partial<SheetInfo['fields'][number]>) =>
-    update({ fields: sheet.fields.map((f, i) => (i === index ? { ...f, ...patch } : f)) });
-  const moveField = (index: number, delta: -1 | 1) => {
-    const next = [...sheet.fields];
-    [next[index], next[index + delta]] = [next[index + delta], next[index]];
-    update({ fields: next });
+  const updateFields = (items: SheetFieldItem[]) => {
+    setFieldItems(items);
+    setError(undefined);
   };
 
   const submit = () => {
@@ -117,59 +120,17 @@ export default function SheetEditor({ form, locked = false }: { form?: EFormDoc;
               表頭欄位
             </Typography>
             <Typography variant="helper" component="div" sx={{ mb: 1.5 }}>
-              依順序以兩欄排列在表格上方；「出席人數」（應到／實到）由系統自動計算，不需另外新增。
+              拖曳左側把手可調整順序，依順序以兩欄排列在表格上方；「出席人數」（應到／實到）由系統自動計算，不需另外新增。
             </Typography>
-            <Stack spacing={1}>
-              {sheet.fields.map((f, i) => (
-                <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                  <TextField
-                    size="small"
-                    label="欄位名稱"
-                    value={f.label}
-                    disabled={disabled}
-                    onChange={(e) => updateField(i, { label: e.target.value })}
-                    slotProps={{ htmlInput: { maxLength: SHEET_LABEL_MAX } }}
-                    sx={{ width: 160, flexShrink: 0 }}
-                  />
-                  <TextField
-                    size="small"
-                    label="內容"
-                    fullWidth
-                    value={f.value}
-                    disabled={disabled}
-                    onChange={(e) => updateField(i, { value: e.target.value })}
-                    slotProps={{ htmlInput: { maxLength: SHEET_VALUE_MAX } }}
-                  />
-                  <TooltipIconButton
-                    label="上移"
-                    icon={<ArrowUpwardRoundedIcon fontSize="small" />}
-                    disabled={disabled || i === 0}
-                    onClick={() => moveField(i, -1)}
-                  />
-                  <TooltipIconButton
-                    label="下移"
-                    icon={<ArrowDownwardRoundedIcon fontSize="small" />}
-                    disabled={disabled || i === sheet.fields.length - 1}
-                    onClick={() => moveField(i, 1)}
-                  />
-                  <TooltipIconButton
-                    label={`刪除「${f.label || '未命名'}」`}
-                    icon={<DeleteOutlineRoundedIcon fontSize="small" />}
-                    color="error"
-                    disabled={disabled}
-                    onClick={() => update({ fields: sheet.fields.filter((_, j) => j !== i) })}
-                  />
-                </Box>
-              ))}
-            </Stack>
+            <SheetFieldList items={fieldItems} disabled={disabled} onChange={updateFields} />
             <Button
               size="small"
               startIcon={<AddRoundedIcon />}
               sx={{ mt: 1 }}
-              disabled={disabled || sheet.fields.length >= SHEET_FIELDS_MAX}
-              onClick={() => update({ fields: [...sheet.fields, { label: '', value: '' }] })}
+              disabled={disabled || fieldItems.length >= SHEET_FIELDS_MAX}
+              onClick={() => updateFields([...fieldItems, { id: `field-${nextId.current++}`, label: '', value: '' }])}
             >
-              新增欄位（{sheet.fields.length}/{SHEET_FIELDS_MAX}）
+              新增欄位（{fieldItems.length}/{SHEET_FIELDS_MAX}）
             </Button>
           </Box>
 

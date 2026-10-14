@@ -9,6 +9,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useState, useTransition } from 'react';
+import { ACTION_FAILED_MESSAGE, isNavigationError } from '@/lib/actionError';
 import { saveSigners } from '../actions';
 import { formOptions, WATERMARK_TEXT, type FormOptions } from '../options';
 import type { EFormDoc, OrgDept } from '../types';
@@ -76,17 +77,24 @@ export default function SignersEditor({
     if (missingDeadline) return;
     setPendingAction(publish ? 'publish' : 'save');
     startTransition(async () => {
-      const result = await saveSigners({
-        id: form.id,
-        signerIds: [...selected],
-        emailSigners,
-        deadline,
-        options,
-        publish,
-      });
-      if (result?.error) {
-        if (result.error === DEADLINE_REQUIRED) setDeadlineError(result.error);
-        else setError(result.error);
+      try {
+        const result = await saveSigners({
+          id: form.id,
+          signerIds: [...selected],
+          emailSigners,
+          deadline,
+          options,
+          publish,
+        });
+        if (result?.error) {
+          if (result.error === DEADLINE_REQUIRED) setDeadlineError(result.error);
+          else setError(result.error);
+          setPendingAction(null);
+        }
+      } catch (err) {
+        if (isNavigationError(err)) throw err;
+        // 非預期錯誤也要結束 loading，避免按鈕一直轉圈
+        setError(ACTION_FAILED_MESSAGE);
         setPendingAction(null);
       }
     });

@@ -35,6 +35,7 @@ export default async function NewFormPage({
 
       <PageHeader
         title="新增電子簽文件"
+        hideTitleWhenEmbedded
         description={
           isSheet
             ? "設定簽到表的表頭資訊，表格會依簽署名單自動產生，每位簽署人在自己那一列簽到。"

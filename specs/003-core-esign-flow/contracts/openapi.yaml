@@ -1,0 +1,881 @@
+openapi: 3.1.0
+info:
+  title: 核心電子簽端到端流程 API
+  version: 1.0.0
+  description: |
+    Spec 03 的最小 REST contract。內部 endpoint 使用 Spec 2 員工 session；
+    external endpoint 僅使用單一簽署人／單一文件的受限 cookie。
+    所有 POST/PUT/PATCH/DELETE 都必須通過 Server-side OriginGuard；缺少或不符的 browser write 回 403。
+servers:
+  - url: /api
+security:
+  - employeeSession: []
+
+paths:
+  /esign/signer-candidates:
+    get:
+      operationId: listSignerCandidates
+      summary: 查詢可指定的 active 內部員工
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 100 } }
+      responses:
+        "200":
+          description: 最小員工選擇資料
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignerCandidateListSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /esign/documents:
+    get:
+      operationId: listDocuments
+      summary: 列出目前員工建立或被指定的文件
+      parameters:
+        - name: role
+          in: query
+          schema: { type: string, enum: [created, assigned] }
+        - name: status
+          in: query
+          schema: { type: string, enum: [draft, active, finalizing, completed, stopped] }
+      responses:
+        "200":
+          description: 已裁切的文件清單
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentListSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createDraftDocument
+      summary: 上傳 PDF 並建立草稿
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [title, file]
+              properties:
+                title: { type: string, minLength: 1, maxLength: 200 }
+                file:
+                  type: string
+                  contentMediaType: application/pdf
+                  contentEncoding: binary
+      responses:
+        "201":
+          description: 已完成 PDF 儲存及草稿建立，僅回傳文件 ID；詳情另由 GET 取得
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentWriteSuccess" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { $ref: "#/components/responses/FileTooLarge" }
+
+  /esign/documents/{documentId}:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    get:
+      operationId: getDocument
+      summary: creator 取得文件管理詳情；assigned signer 改用 signing-task resource
+      responses:
+        "200":
+          description: creator 可見的文件、簽署人 snapshot 與狀態；不含簽名圖
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentDetailSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: updateDraftDocument
+      summary: 替換草稿標題或 PDF，僅 creator + draft
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: string, minLength: 1, maxLength: 200 }
+                file:
+                  type: string
+                  contentMediaType: application/pdf
+                  contentEncoding: binary
+              minProperties: 1
+      responses:
+        "200":
+          description: 草稿更新完成，僅回傳文件 ID；詳情另由 GET 取得
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentWriteSuccess" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+        "413": { $ref: "#/components/responses/FileTooLarge" }
+    delete:
+      operationId: deleteDraftDocument
+      summary: soft-delete creator 的草稿
+      responses:
+        "204": { description: 已刪除草稿 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+
+  /esign/documents/{documentId}/signers:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    put:
+      operationId: replaceDraftSigners
+      summary: 取代草稿簽署人，僅 creator + draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [signers]
+              properties:
+                signers:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    oneOf:
+                      - $ref: "#/components/schemas/InternalSignerInput"
+                      - $ref: "#/components/schemas/ExternalSignerInput"
+      responses:
+        "200":
+          description: 更新後的簽署人
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignerListSuccess" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+
+  /esign/documents/{documentId}/fields:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    put:
+      operationId: replaceDraftFields
+      summary: 取代草稿欄位，僅 creator + draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [fields]
+              properties:
+                fields:
+                  type: array
+                  maxItems: 200
+                  items: { $ref: "#/components/schemas/FieldInput" }
+      responses:
+        "200":
+          description: 更新後的欄位
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FieldListSuccess" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+
+  /esign/documents/{documentId}/initiations:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    post:
+      operationId: initiateDocument
+      summary: 同一交易儲存簽署人與欄位、驗證並發起文件
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [signers, fields, signStartAt, signEndAt]
+              properties:
+                signers:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    oneOf:
+                      - $ref: "#/components/schemas/InternalSignerInput"
+                      - $ref: "#/components/schemas/ExternalSignerInput"
+                fields:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items: { $ref: "#/components/schemas/InitiationFieldInput" }
+                signStartAt: { type: string, format: date-time }
+                signEndAt: { type: string, format: date-time }
+      responses:
+        "201":
+          description: 文件已固定並進入 active；外部邀請交由 worker 寄送
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentDetailSuccess" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+
+  /esign/documents/{documentId}/stoppages:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    post:
+      operationId: stopDocument
+      summary: creator 停止未完成 active 文件
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "201":
+          description: 已停止且保留原文件與證據
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentDetailSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+
+  /esign/documents/{documentId}/source-file:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    get:
+      operationId: downloadDocumentSourceFile
+      summary: creator、active 期間的 assigned signer，或已簽 signer 下載原 PDF；stopped 的 pending signer 不可讀取
+      responses:
+        "200": { $ref: "#/components/responses/PdfFile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /esign/documents/{documentId}/history:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    get:
+      operationId: getDocumentHistory
+      summary: creator 或該文件 signer 取得已裁切的不可變歷程
+      responses:
+        "200":
+          description: creator 可見文件層級事件；signer 只可見文件狀態與本人事件，不含其他人身分或簽名
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HistorySuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /esign/documents/{documentId}/completed-file:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    get:
+      operationId: downloadCompletedFile
+      summary: creator 或該文件 signer 下載已結案 PDF
+      responses:
+        "200": { $ref: "#/components/responses/PdfFile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+
+  /esign/signing-tasks:
+    get:
+      operationId: listMySigningTasks
+      summary: 列出目前員工的待簽／已簽任務
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, signed] }
+      responses:
+        "200":
+          description: 僅本人任務
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SigningTaskListSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /esign/signing-tasks/{signerPublicId}:
+    parameters:
+      - $ref: "#/components/parameters/SignerPublicId"
+    post:
+      operationId: openMySigningTask
+      summary: 開啟內部員工本人簽署任務，同 transaction 追加 document.opened audit
+      responses:
+        "200":
+          description: 僅本人 snapshot/欄位、文件 metadata 與整體計數
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SigningTaskSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /esign/signing-tasks/{signerPublicId}/source-file:
+    parameters:
+      - $ref: "#/components/parameters/SignerPublicId"
+    get:
+      operationId: downloadMySigningTaskSourceFile
+      summary: 下載本人被指定的固定 PDF
+      responses:
+        "200": { $ref: "#/components/responses/PdfFile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /esign/signing-tasks/{signerPublicId}/signatures:
+    parameters:
+      - $ref: "#/components/parameters/SignerPublicId"
+    post:
+      operationId: signMySigningTask
+      summary: 內部員工提交本人所有必要手寫簽名
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignatureSubmission" }
+      responses:
+        "201":
+          description: 成功簽署證據；完成 PDF 可能仍在 worker 產製
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignatureResultSuccess" }
+        "200":
+          description: 相同 request 重試時回傳已存在結果
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignatureResultSuccess" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+
+  /external-signature-invitations/{token}:
+    get:
+      operationId: getExternalInvitationBridge
+      summary: 取得將 invitation token POST 到同源 session resource 的唯讀 bridge
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string, minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]+$" }
+      responses:
+        "200":
+          description: 不驗證／消耗 token，只回 no-store HTML form bridge
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+            Referrer-Policy: { schema: { type: string, const: no-referrer } }
+            Content-Security-Policy: { schema: { type: string } }
+          content:
+            text/html: { schema: { type: string } }
+        "400": { description: token 格式無效，不回傳員工／文件資訊 }
+
+  /external-signature-session:
+    post:
+      operationId: createExternalSignatureSession
+      summary: 驗證 invitation 後設定單文件受限 HttpOnly cookie
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string, minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]+$" }
+      responses:
+        "303":
+          description: 導向不含 token 的 external signing page；token 本身不被消耗
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+            Referrer-Policy: { schema: { type: string, const: no-referrer } }
+            Set-Cookie: { schema: { type: string } }
+            Location: { schema: { type: string, pattern: "^/external-signatures/[0-9a-f-]{36}$" } }
+        "400": { description: token 格式無效 }
+        "401": { description: token 無效、過期、已簽署或文件已終止 }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    delete:
+      operationId: clearExternalSignatureSession
+      summary: 清除瀏覽器的 external access 與 receipt cookies
+      security: []
+      responses:
+        "204":
+          description: 無條件清除 cookie，重複操作仍成功
+          headers:
+            Set-Cookie: { schema: { type: string } }
+
+  /external-signing-task:
+    post:
+      operationId: openExternalSigningTask
+      summary: 開啟 external cookie 綁定的唯一簽署任務，同 transaction 追加 document.opened audit
+      security:
+        - externalAccess: []
+      responses:
+        "200":
+          description: 僅該 external signer 與其欄位
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SigningTaskSuccess" }
+        "401": { $ref: "#/components/responses/ExternalUnauthorized" }
+
+  /external-signing-task/source-file:
+    get:
+      operationId: downloadExternalSigningTaskSourceFile
+      summary: 下載 external cookie 綁定的固定 PDF
+      security:
+        - externalAccess: []
+      responses:
+        "200": { $ref: "#/components/responses/PdfFile" }
+        "401": { $ref: "#/components/responses/ExternalUnauthorized" }
+
+  /external-signing-task/signatures:
+    post:
+      operationId: signExternalSigningTask
+      summary: 外部簽署人提交所有必要手寫簽名
+      security:
+        - externalAccess: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignatureSubmission" }
+      responses:
+        "200":
+          description: 相同 requestId 與相同內容重送時，回傳原簽署結果並刷新 receipt cookie
+          headers:
+            Set-Cookie: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignatureResultSuccess" }
+        "201":
+          description: 成功簽署，清除 invitation access cookie 並設定 signer path-scoped 唯讀 receipt cookie
+          headers:
+            Set-Cookie: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignatureResultSuccess" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/ExternalUnauthorized" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+
+  /external-completions/{signerPublicId}:
+    parameters:
+      - $ref: "#/components/parameters/SignerPublicId"
+    get:
+      operationId: getExternalCompletion
+      summary: 外部已簽署人以 document-scoped receipt 查看完成或停止狀態
+      security:
+        - externalReceipt: []
+      responses:
+        "200":
+          description: 僅文件名稱、終止/處理狀態與完成時間；不回原 PDF、其他 signer 或簽名
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBase"
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        additionalProperties: false
+                        required: [title, status]
+                        properties:
+                          title: { type: string }
+                          status: { type: string, enum: [active, finalizing, completed, stopped] }
+                          completedAt: { type: [string, "null"], format: date-time }
+                          stoppedAt: { type: [string, "null"], format: date-time }
+        "401": { $ref: "#/components/responses/ExternalUnauthorized" }
+
+  /external-completions/{signerPublicId}/completed-file:
+    parameters:
+      - $ref: "#/components/parameters/SignerPublicId"
+    get:
+      operationId: downloadExternalCompletedFile
+      summary: 外部已簽署人以 receipt 下載已結案 PDF
+      security:
+        - externalReceipt: []
+      responses:
+        "200": { $ref: "#/components/responses/PdfFile" }
+        "401": { $ref: "#/components/responses/ExternalUnauthorized" }
+        "409": { $ref: "#/components/responses/StateConflict" }
+
+  /external-completions/{signerPublicId}/history:
+    parameters:
+      - $ref: "#/components/parameters/SignerPublicId"
+    get:
+      operationId: getExternalCompletionHistory
+      summary: 外部已簽署人以 receipt 查看文件狀態與本人歷程
+      security:
+        - externalReceipt: []
+      responses:
+        "200":
+          description: 只回文件狀態、本人開啟/簽署與系統完成/停止事件
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HistorySuccess" }
+        "401": { $ref: "#/components/responses/ExternalUnauthorized" }
+
+components:
+  securitySchemes:
+    employeeSession:
+      type: apiKey
+      in: cookie
+      name: FT_ESIGN_SESSION
+      description: Spec 2 員工 session
+    externalAccess:
+      type: apiKey
+      in: cookie
+      name: FT_ESIGN_EXTERNAL_ACCESS
+      description: 單一 external signer/document 的 invitation token；Server 每次重驗狀態與期限
+    externalReceipt:
+      type: apiKey
+      in: cookie
+      name: FT_ESIGN_EXTERNAL_RECEIPT
+      description: external signer 成功簽署後建立，以 signer public ID 限定 cookie path；文件終止 30 日後失效
+
+  parameters:
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[1-9][0-9]*$" }
+    SignerPublicId:
+      name: signerPublicId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    InvalidRequest:
+      description: 輸入、PDF、簽署人或欄位無效
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unauthorized:
+      description: 無有效員工 session
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ExternalUnauthorized:
+      description: 外部憑證無效、過期，或任務已終止；不區分具體原因
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: resource 不存在或 principal 無權存取
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    StateConflict:
+      description: 文件／簽署人狀態、期限、hash 或冪等結果不允許此操作
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    FileTooLarge:
+      description: PDF 超過 20 MiB
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unavailable:
+      description: MySQL 或必要私有儲存不可用，fail closed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    PdfFile:
+      description: 通過 resource-level authorization 後 stream PDF
+      headers:
+        Cache-Control: { schema: { type: string, const: "private, no-store" } }
+        X-Content-Type-Options: { schema: { type: string, const: nosniff } }
+      content:
+        application/pdf:
+          schema: { type: string, contentMediaType: application/pdf, contentEncoding: binary }
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [success, error]
+      properties:
+        success: { type: boolean, const: false }
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string, description: 繁體中文且不含敏感資料 }
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, reason]
+                properties:
+                  field: { type: string }
+                  reason: { type: string }
+
+    InternalSignerInput:
+      type: object
+      additionalProperties: false
+      required: [type, userId]
+      properties:
+        type: { type: string, const: user }
+        userId: { type: string, pattern: "^[1-9][0-9]*$" }
+    ExternalSignerInput:
+      type: object
+      additionalProperties: false
+      required: [type, name, email]
+      properties:
+        type: { type: string, const: email }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        email: { type: string, format: email, maxLength: 255 }
+    FieldInput:
+      type: object
+      additionalProperties: false
+      required: [signerPublicId, type, page, xPercent, yPercent, widthPercent, heightPercent, sortOrder]
+      properties:
+        signerPublicId: { type: string, format: uuid }
+        type: { type: string, enum: [signature, date] }
+        page: { type: integer, minimum: 1, maximum: 100 }
+        xPercent: { type: number, minimum: 0, exclusiveMaximum: 100 }
+        yPercent: { type: number, minimum: 0, exclusiveMaximum: 100 }
+        widthPercent: { type: number, exclusiveMinimum: 0, maximum: 100 }
+        heightPercent: { type: number, exclusiveMinimum: 0, maximum: 100 }
+        sortOrder: { type: integer, minimum: 0 }
+    InitiationFieldInput:
+      type: object
+      additionalProperties: false
+      required: [signerIndex, type, page, xPercent, yPercent, widthPercent, heightPercent, sortOrder]
+      properties:
+        signerIndex:
+          type: integer
+          minimum: 0
+          maximum: 49
+          description: 本次 signers 陣列的零起始索引，由後端對應新建簽署人
+        type: { type: string, enum: [signature, date] }
+        page: { type: integer, minimum: 1, maximum: 100 }
+        xPercent: { type: number, minimum: 0, exclusiveMaximum: 100 }
+        yPercent: { type: number, minimum: 0, exclusiveMaximum: 100 }
+        widthPercent: { type: number, exclusiveMinimum: 0, maximum: 100 }
+        heightPercent: { type: number, exclusiveMinimum: 0, maximum: 100 }
+        sortOrder: { type: integer, minimum: 0 }
+    SignatureSubmission:
+      type: object
+      additionalProperties: false
+      required: [requestId, consentVersion, accepted, signatures]
+      properties:
+        requestId: { type: string, format: uuid }
+        consentVersion: { type: string, minLength: 1, maxLength: 50 }
+        accepted: { type: boolean, const: true }
+        signatures:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [fieldId, pngDataUrl]
+            properties:
+              fieldId: { type: string, pattern: "^[1-9][0-9]*$" }
+              pngDataUrl:
+                type: string
+                maxLength: 400000
+                pattern: "^data:image/png;base64,"
+
+    DocumentSummary:
+      type: object
+      additionalProperties: false
+      required: [id, docNumber, title, status, createdAt, pendingCount, signedCount]
+      properties:
+        id: { type: string }
+        docNumber: { type: string, format: uuid }
+        title: { type: string }
+        status: { type: string, enum: [draft, active, finalizing, completed, stopped] }
+        createdAt: { type: string, format: date-time }
+        initiatedAt: { type: [string, "null"], format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+        stoppedAt: { type: [string, "null"], format: date-time }
+        pendingCount: { type: integer, minimum: 0 }
+        signedCount: { type: integer, minimum: 0 }
+    DocumentDetail:
+      allOf:
+        - $ref: "#/components/schemas/DocumentSummary"
+        - type: object
+          properties:
+            sourceFile:
+              type: object
+              required: [fileName, size, pageCount, sha256]
+              properties:
+                fileName: { type: string }
+                size: { type: integer }
+                pageCount: { type: integer }
+                sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+            signStartAt: { type: [string, "null"], format: date-time }
+            signEndAt: { type: [string, "null"], format: date-time }
+            stopReason: { type: [string, "null"] }
+            signers:
+              type: array
+              items: { $ref: "#/components/schemas/SignerView" }
+            fields:
+              type: array
+              items: { $ref: "#/components/schemas/FieldView" }
+    SignerView:
+      type: object
+      additionalProperties: false
+      required: [publicId, type, name, status]
+      properties:
+        publicId: { type: string, format: uuid }
+        type: { type: string, enum: [user, email] }
+        name: { type: string }
+        employeeNo: { type: [string, "null"] }
+        department: { type: [string, "null"] }
+        title: { type: [string, "null"] }
+        email: { type: [string, "null"], format: email }
+        status: { type: string, enum: [pending, signed] }
+        signedAt: { type: [string, "null"], format: date-time }
+        invitationDelivery: { type: [string, "null"], enum: [pending, delivered, failed, null] }
+    FieldView:
+      allOf:
+        - $ref: "#/components/schemas/FieldInput"
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string }
+    SigningTask:
+      type: object
+      additionalProperties: false
+      required: [signerPublicId, document, signer, fields, consent, pendingCount, signedCount]
+      properties:
+        signerPublicId: { type: string, format: uuid }
+        document: { $ref: "#/components/schemas/DocumentSummary" }
+        signer: { $ref: "#/components/schemas/SignerView" }
+        fields:
+          type: array
+          items: { $ref: "#/components/schemas/FieldView" }
+        consent:
+          type: object
+          additionalProperties: false
+          required: [version, text, sha256]
+          properties:
+            version: { type: string }
+            text: { type: string }
+            sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        pendingCount: { type: integer }
+        signedCount: { type: integer }
+    SignatureResult:
+      type: object
+      additionalProperties: false
+      required: [signerPublicId, signedAt, documentStatus]
+      properties:
+        signerPublicId: { type: string, format: uuid }
+        signedAt: { type: string, format: date-time }
+        documentStatus: { type: string, enum: [active, finalizing, completed] }
+
+    SuccessBase:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean, const: true }
+    DocumentListSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties: { data: { type: array, items: { $ref: "#/components/schemas/DocumentSummary" } } }
+    DocumentDetailSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties: { data: { $ref: "#/components/schemas/DocumentDetail" } }
+    DocumentWriteSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              additionalProperties: false
+              required: [id]
+              properties:
+                id: { type: string }
+    SignerListSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties: { data: { type: array, items: { $ref: "#/components/schemas/SignerView" } } }
+    FieldListSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties: { data: { type: array, items: { $ref: "#/components/schemas/FieldView" } } }
+    SigningTaskListSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties: { data: { type: array, items: { $ref: "#/components/schemas/SigningTask" } } }
+    SigningTaskSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties: { data: { $ref: "#/components/schemas/SigningTask" } }
+    SignatureResultSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties: { data: { $ref: "#/components/schemas/SignatureResult" } }
+    SignerCandidateListSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, employeeNo, name]
+                properties:
+                  id: { type: string }
+                  employeeNo: { type: string }
+                  name: { type: string }
+                  department: { type: [string, "null"] }
+                  title: { type: [string, "null"] }
+    HistorySuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [type, occurredAt]
+                properties:
+                  type: { type: string }
+                  occurredAt: { type: string, format: date-time }
+                  actor: { type: [string, "null"], description: 裁切後的「建立人／本人／系統」類別 }
+                  reason: { type: [string, "null"], description: 只對 creator 或符合規格的歷程關係揭露 }

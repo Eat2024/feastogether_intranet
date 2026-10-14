@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   Entity,
   Index,
@@ -10,6 +11,14 @@ import { AuditableEntity } from '#app/infrastructure/database/auditable.entity';
 import { User } from '#app/features/users/entities/user.entity';
 
 @Entity({ name: 'esign_documents', comment: '電子簽文件' })
+@Check(
+  'chk_esign_documents_status',
+  "`status` IN ('draft','active','finalizing','completed','stopped')",
+)
+@Check(
+  'chk_esign_documents_sign_period',
+  '(`sign_start_at` IS NULL AND `sign_end_at` IS NULL) OR (`sign_start_at` IS NOT NULL AND `sign_end_at` IS NOT NULL AND `sign_start_at` < `sign_end_at`)',
+)
 @Index('uq_esign_documents_doc_number', ['docNumber'], { unique: true })
 @Index('idx_esign_documents_creator_status_updated_id', [
   'createdByUserId',
@@ -22,6 +31,9 @@ import { User } from '#app/features/users/entities/user.entity';
 @Index('idx_esign_documents_initiated_at', ['initiatedAt'])
 @Index('idx_esign_documents_completed_at', ['completedAt'])
 @Index('idx_esign_documents_stopped_at', ['stoppedAt'])
+@Index('idx_esign_documents_finalization_lease_expires_at', [
+  'finalizationLeaseExpiresAt',
+])
 @Index('idx_esign_documents_created_at', ['createdAt'])
 @Index('idx_esign_documents_updated_at', ['updatedAt'])
 @Index('idx_esign_documents_deleted_at', ['deletedAt'])
@@ -138,6 +150,26 @@ export class EsignDocument extends AuditableEntity {
   stopReason?: string;
 
   @Column({
+    name: 'finalization_lease_token',
+    type: 'char',
+    length: 36,
+    charset: 'ascii',
+    collation: 'ascii_bin',
+    nullable: true,
+    comment: '完成檔案 worker lease UUID',
+  })
+  finalizationLeaseToken?: string;
+
+  @Column({
+    name: 'finalization_lease_expires_at',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    comment: '完成檔案 worker lease 到期時間',
+  })
+  finalizationLeaseExpiresAt?: Date;
+
+  @Column({
     name: 'watermark_enabled',
     type: 'boolean',
     default: false,
@@ -148,7 +180,7 @@ export class EsignDocument extends AuditableEntity {
   @Column({
     name: 'allow_reject',
     type: 'boolean',
-    default: true,
+    default: false,
     comment: '是否允許拒絕簽署',
   })
   allowReject!: boolean;

@@ -2,10 +2,17 @@ import type { ExecutionContext } from '@nestjs/common';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { OriginGuard } from './origin.guard';
 
-const contextWithOrigin = (origin?: string): ExecutionContext =>
+const contextWithOrigin = (
+  origin?: string,
+  url = '/api/auth/session',
+): ExecutionContext =>
   ({
     switchToHttp: () => ({
-      getRequest: () => ({ headers: origin === undefined ? {} : { origin } }),
+      getRequest: () => ({
+        headers: origin === undefined ? {} : { origin },
+        method: 'POST',
+        url,
+      }),
     }),
   }) as unknown as ExecutionContext;
 
@@ -62,5 +69,20 @@ describe('OriginGuard', () => {
     expect(
       makeGuard('http://localhost:3000').canActivate(contextWithOrigin()),
     ).toBe(true);
+  });
+
+  it('Spec 03 cookie write 未帶 Origin → 在進入 service 前拒絕', () => {
+    expect(() =>
+      makeGuard('http://localhost:3000').canActivate(
+        contextWithOrigin(undefined, '/api/external-signature-session'),
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: AppErrorCode.CSRF_ORIGIN_REJECTED }),
+    );
+    expect(() =>
+      makeGuard('http://localhost:3000').canActivate(
+        contextWithOrigin(undefined, '/api/esign/documents/1/initiations'),
+      ),
+    ).toThrow();
   });
 });

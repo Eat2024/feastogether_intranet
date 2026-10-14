@@ -12,5 +12,9 @@ export function getRequestUrl(request: UrlSource | FastifyRequest): string {
 }
 
 export function getRequestPath(request: UrlSource | FastifyRequest): string {
-  return getRequestUrl(request).split('?')[0] || '/';
+  const path = getRequestUrl(request).split('?')[0] || '/';
+  return path.replace(
+    /^(\/api)?\/external-signature-invitations\/[^/]+$/,
+    '$1/external-signature-invitations/:token',
+  );
 }

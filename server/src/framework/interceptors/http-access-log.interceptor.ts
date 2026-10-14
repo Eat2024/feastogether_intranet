@@ -36,6 +36,10 @@ const BODY_EXCLUDED_PATHS = [
   '/api/auth/webview-launches',
   '/auth/session',
   '/api/auth/session',
+  '/external-signature-session',
+  '/api/external-signature-session',
+  '/external-signing-task/signatures',
+  '/api/external-signing-task/signatures',
 ];
 
 const QUERY_EXCLUDED_PATHS = [
@@ -45,6 +49,8 @@ const QUERY_EXCLUDED_PATHS = [
   '/api/auth/webview-launches',
   '/auth/session',
   '/api/auth/session',
+  '/external-signature-invitations/:token',
+  '/api/external-signature-invitations/:token',
 ];
 
 /**
@@ -113,6 +119,13 @@ export class HttpAccessLogInterceptor implements NestInterceptor {
   }
 
   private shouldLogRequestBody(request: FastifyRequest): boolean {
+    // 原子發起請求包含完整簽署人名單，不寫入姓名／Email 等個資。
+    if (
+      /^(\/api)?\/esign\/documents\/[^/]+\/initiations\/?$/.test(
+        getRequestPath(request),
+      )
+    )
+      return false;
     const body = request.body;
     if (!body || typeof body !== 'object') return false;
     if (Object.keys(body).length === 0) return false;

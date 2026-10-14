@@ -48,4 +48,85 @@ describe('runtime API coverage', () => {
     expect(Array.isArray(body.data.origins)).toBe(true);
     expect(body.data.origins).toContain('http://localhost:3000');
   });
+
+  it.each([
+    ['GET', '/api/esign/signer-candidates'],
+    ['GET', '/api/esign/documents'],
+    ['POST', '/api/esign/documents'],
+    ['GET', '/api/esign/documents/1'],
+    ['PATCH', '/api/esign/documents/1'],
+    ['DELETE', '/api/esign/documents/1'],
+    ['PUT', '/api/esign/documents/1/signers'],
+    ['PUT', '/api/esign/documents/1/fields'],
+    ['POST', '/api/esign/documents/1/initiations'],
+    ['POST', '/api/esign/documents/1/stoppages'],
+    ['GET', '/api/esign/documents/1/source-file'],
+    ['GET', '/api/esign/documents/1/history'],
+    ['GET', '/api/esign/documents/1/completed-file'],
+    ['GET', '/api/esign/signing-tasks'],
+    ['POST', '/api/esign/signing-tasks/550e8400-e29b-41d4-a716-446655440000'],
+    [
+      'GET',
+      '/api/esign/signing-tasks/550e8400-e29b-41d4-a716-446655440000/source-file',
+    ],
+    [
+      'POST',
+      '/api/esign/signing-tasks/550e8400-e29b-41d4-a716-446655440000/signatures',
+    ],
+  ] as const)(
+    '%s %s 已註冊且受 employee session 保護',
+    async (method, path) => {
+      const response = await request(ctx.server)
+        [method.toLowerCase() as 'get'](path)
+        .set('Origin', 'http://localhost:3000');
+      expect(response.status).toBe(401);
+      expect(response.body).toMatchObject({
+        success: false,
+        error: { code: 'UNAUTHORIZED' },
+      });
+    },
+  );
+
+  it('6 個 external invitation/task operations 已註冊且維持公開憑證邊界', async () => {
+    const token = 'A'.repeat(43);
+    await request(ctx.server)
+      .get(`/api/external-signature-invitations/${token}`)
+      .expect(200)
+      .expect('Cache-Control', 'no-store');
+    await request(ctx.server)
+      .post('/api/external-signature-session')
+      .set('Origin', 'http://localhost:3000')
+      .type('form')
+      .send({ token })
+      .expect(401);
+    await request(ctx.server)
+      .delete('/api/external-signature-session')
+      .set('Origin', 'http://localhost:3000')
+      .expect(204);
+    await request(ctx.server)
+      .post('/api/external-signing-task')
+      .set('Origin', 'http://localhost:3000')
+      .expect(401);
+    await request(ctx.server)
+      .get('/api/external-signing-task/source-file')
+      .expect(401);
+    await request(ctx.server)
+      .post('/api/external-signing-task/signatures')
+      .set('Origin', 'http://localhost:3000')
+      .send({})
+      .expect(400);
+  });
+
+  it('3 個 external completion operations 已註冊且只接受 receipt', async () => {
+    const signerPublicId = '550e8400-e29b-41d4-a716-446655440000';
+    await request(ctx.server)
+      .get(`/api/external-completions/${signerPublicId}`)
+      .expect(401);
+    await request(ctx.server)
+      .get(`/api/external-completions/${signerPublicId}/completed-file`)
+      .expect(401);
+    await request(ctx.server)
+      .get(`/api/external-completions/${signerPublicId}/history`)
+      .expect(401);
+  });
 });

@@ -28,9 +28,9 @@ export async function registerFastifyPlugins(
   registerSecurityHeaders(app);
   await app.register(fastifyCookie);
   await app.register(fastifyFormbody);
-  // 單檔上限 10MB、一次最多 15 個檔案 part
+  // Spec 03：單一 PDF 上限 20 MiB；其他文字欄位仍由 DTO 驗證。
   await app.register(fastifyMultipart, {
-    limits: { fileSize: 10 * 1024 * 1024, files: 15 },
+    limits: { fileSize: 20 * 1024 * 1024, files: 1 },
   });
 }
 
@@ -79,6 +79,7 @@ export function configureApp(app: NestFastifyApplication): void {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+      forbidNonWhitelisted: true,
       transform: true,
       exceptionFactory: validationExceptionFactory,
     }),

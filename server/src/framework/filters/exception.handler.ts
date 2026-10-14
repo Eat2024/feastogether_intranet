@@ -54,13 +54,14 @@ export class ExceptionHandler implements ExceptionFilter {
       const err = exception instanceof Error ? exception : undefined;
       this.logger.error({
         event: 'http.unhandled_exception',
-        message: err?.message ?? String(exception),
+        message: err?.name ?? 'UnknownError',
         context: ExceptionHandler.name,
         metadata: {
           method: request.method,
           path: getRequestPath(request),
           statusCode: status,
-          stack: err?.stack,
+          // Error stack 第一行包含原始 message，可能夾帶 provider response 或憑證。
+          stack: err?.stack?.split('\n').slice(1).join('\n'),
         },
       });
     }
@@ -83,7 +84,7 @@ export class ExceptionHandler implements ExceptionFilter {
       return message.filter((item): item is string => typeof item === 'string');
     }
 
-    return 'Internal Server Error';
+    return '系統發生未預期錯誤';
   }
 
   private toErrorCode(error: unknown): string {

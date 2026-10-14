@@ -48,6 +48,15 @@ const {
 }
 process.env.CORS_ORIGIN ??= 'http://localhost:3000';
 process.env.AUTH_TRUSTED_ORIGINS ??= 'http://localhost:3000';
+process.env.NODE_ENV ??= 'test';
+process.env.ESIGN_STORAGE_DRIVER ??= 'local';
+process.env.ESIGN_STORAGE_ROOT ??= '/tmp/feastogether-intranet-esign-test';
+process.env.ESIGN_MAIL_DRIVER ??= 'fake';
+process.env.EXTERNAL_SIGNING_ORIGIN ??= 'http://localhost:3000';
+process.env.ESIGN_INVITATION_ENCRYPTION_KEY_B64 ??= Buffer.alloc(
+  32,
+  'e2e',
+).toString('base64');
 
 const originalServerAddress = SupertestTest.prototype.serverAddress;
 SupertestTest.prototype.serverAddress = function serverAddressV6Loopback(

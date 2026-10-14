@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   Entity,
   Index,
@@ -9,8 +10,15 @@ import {
 import { UserAuditableEntity } from '#app/infrastructure/database/user-auditable.entity';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from './esign-document.entity';
+import { EsignSigner } from './esign-signer.entity';
 
 @Entity({ name: 'esign_document_fields', comment: '文件簽署欄位' })
+@Check('chk_esign_document_fields_type', "`field_type` IN ('signature','date')")
+@Check('chk_esign_document_fields_page', '`page_number` >= 1')
+@Check(
+  'chk_esign_document_fields_bounds',
+  '`x_percent` >= 0 AND `x_percent` < 100 AND `y_percent` >= 0 AND `y_percent` < 100 AND `width_percent` > 0 AND `height_percent` > 0 AND `x_percent` + `width_percent` <= 100 AND `y_percent` + `height_percent` <= 100',
+)
 @Index('idx_esign_document_fields_doc_page_sort_id', [
   'documentId',
   'pageNumber',
@@ -18,6 +26,7 @@ import { EsignDocument } from './esign-document.entity';
   'id',
 ])
 @Index('idx_esign_document_fields_created_at', ['createdAt'])
+@Index('idx_esign_document_fields_signer_id', ['signerId'])
 @Index('idx_esign_document_fields_updated_at', ['updatedAt'])
 @Index('idx_esign_document_fields_deleted_at', ['deletedAt'])
 export class EsignDocumentField extends UserAuditableEntity {
@@ -33,6 +42,21 @@ export class EsignDocumentField extends UserAuditableEntity {
     foreignKeyConstraintName: 'fk_esign_document_fields_document',
   })
   document?: EsignDocument;
+
+  @Column({
+    name: 'signer_id',
+    type: 'bigint',
+    nullable: true,
+    comment: '欄位所屬簽署人 ID',
+  })
+  signerId?: number;
+
+  @ManyToOne(() => EsignSigner, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'signer_id',
+    foreignKeyConstraintName: 'fk_esign_document_fields_signer',
+  })
+  signer?: EsignSigner;
 
   @Column({
     name: 'field_type',
@@ -68,20 +92,18 @@ export class EsignDocumentField extends UserAuditableEntity {
     type: 'decimal',
     precision: 6,
     scale: 3,
-    nullable: true,
     comment: '寬度百分比',
   })
-  widthPercent?: string;
+  widthPercent!: string;
 
   @Column({
     name: 'height_percent',
     type: 'decimal',
     precision: 6,
     scale: 3,
-    nullable: true,
     comment: '高度百分比',
   })
-  heightPercent?: string;
+  heightPercent!: string;
 
   @Column({ name: 'sort_order', type: 'int', default: 0, comment: '排序' })
   sortOrder!: number;

@@ -5,6 +5,11 @@ import { AuthSessionRepository } from '#app/features/auth/repositories/auth-sess
 import { AuditEventRepository } from '#app/features/esign/repositories/audit-event.repository';
 import { SignatureRecordRepository } from '#app/features/esign/repositories/signature-record.repository';
 import { VerificationRecordRepository } from '#app/features/esign/repositories/verification-record.repository';
+import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
+import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
+import { DocumentFieldRepository } from '#app/features/esign/repositories/document-field.repository';
+import { FileObjectRepository } from '#app/features/esign/repositories/file-object.repository';
+import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlLifecycleService } from './mysql-lifecycle.service';
 import { MysqlProvider } from './mysql.provider';
@@ -17,6 +22,11 @@ const repositories = [
   AuditEventRepository,
   SignatureRecordRepository,
   VerificationRecordRepository,
+  DocumentRepository,
+  SignerRepository,
+  DocumentFieldRepository,
+  FileObjectRepository,
+  NotificationRepository,
 ];
 
 @Module({

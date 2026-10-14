@@ -85,6 +85,25 @@ describe('HttpAccessLogInterceptor', () => {
     await lastValueFrom(interceptor.intercept(ctx, { handle: () => of({}) }));
     expect(getWrittenEntry(accessLogger).requestBody).toBeUndefined();
   });
+  it.each([
+    '/api/esign/documents/9/initiations',
+    '/esign/documents/9/initiations',
+  ])('發起名單不寫入 access log：%s', async (url) => {
+    const { interceptor, accessLogger } = makeInterceptor();
+    await lastValueFrom(
+      interceptor.intercept(
+        makeContext(
+          baseReq({
+            url,
+            body: { signers: [{ name: '測試', email: 'test@example.test' }] },
+          }),
+          201,
+        ),
+        { handle: () => of({}) },
+      ),
+    );
+    expect(getWrittenEntry(accessLogger).requestBody).toBeUndefined();
+  });
 
   it('WebView GET 不記 URL query，session POST 不記 body', async () => {
     const first = makeInterceptor();

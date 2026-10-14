@@ -9,5 +9,6 @@ overrides:
 # 禁止目前不需要的 optional dependency install scripts。
 allowBuilds:
   '@scarf/scarf': false
+  msgpackr-extract: false
   sharp: false
   unrs-resolver: false

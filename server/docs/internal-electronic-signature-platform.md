@@ -2,7 +2,7 @@
 
 > 文件狀態：規劃中
 > 適用範圍：饗賓內部員工，以及以 Email 受邀簽署之面試錄取人員等外部對象
-> 最後更新：2026-10-08
+> 最後更新：2026-10-12
 
 ## 1. 目的
 
@@ -14,7 +14,7 @@
 
 - 公司帳號與員工資料辨識簽署人。
 - 簽署前重新驗證或多因素驗證。
-- 將簽署行為綁定到特定文件版本及 SHA-256 摘要。
+- 將簽署行為綁定到發起後不可變的特定文件及 SHA-256 摘要。
 - 保存明確的簽署意圖與電子形式告知紀錄。
 - 使用不可任意修改的稽核事件保存完整歷程。
 - 封存最終 PDF、稽核紀錄及驗證資訊。
@@ -48,7 +48,7 @@
 
 ### 2.3 一般電子簽章與數位簽章的邊界
 
-一般電子簽章的法律效果需依個案證據判斷。本系統應以完整、可驗證的證據鏈證明簽署人、簽署意圖、文件版本及文件完整性。
+一般電子簽章的法律效果需依個案證據判斷。本系統應以完整、可驗證的證據鏈證明簽署人、簽署意圖、實際簽署文件及文件完整性。
 
 若未來需要《電子簽章法》第 6 條所定「推定為本人親自簽名或蓋章」的較強效果，應讓每位簽署人使用主管機關許可之憑證機構所簽發、仍在有效期間及使用範圍內的憑證完成數位簽章。屆時可保留自建平台及流程，但簽署步驟需串接合格憑證或遠端簽署服務。
 
@@ -67,7 +67,7 @@
 - 簽署前重新驗證、MFA、OTP 或 WebAuthn。
 - 驗證成功時間及不可重複使用的 authentication event ID。
 
-帳號登入只是身分驗證手段，不應單獨視為電子簽章。身分驗證結果必須與特定文件版本、明確的簽署操作及稽核事件綁定。
+帳號登入只是身分驗證手段，不應單獨視為電子簽章。身分驗證結果必須與特定不可變文件、明確的簽署操作及稽核事件綁定。
 
 Email 外部簽署人不建立為公司員工，也不得僅以 client 傳入的姓名或 Email 認定身分。外部簽署人的邀請、Email 控制權驗證、連結或驗證碼期限、重放防護及簽署前驗證必須由後續功能規格定義，並與特定文件及簽署人指派綁定。Stage 1 不支援以手機號碼加入之外部簽署人。
 
@@ -108,13 +108,14 @@ deleted_at
 
 此簡化方案的前提是員工編號在公司內唯一、不可任意變更，且不會重新配發給另一人。未來正式增加第二個 issuer 時，應先新增外部身分綁定資料模型，再開放新 provider，不得直接把不同 issuer 的 `subject` 塞入 `users` 單一欄位。
 
-### 3.2 文件版本綁定
+### 3.2 文件綁定與發起後鎖定
 
-每次簽署前，必須針對實際呈現給簽署人的文件版本計算 SHA-256。簽署紀錄至少應包含：
+第一階段將每筆電子簽文件視為一次獨立且不可變的簽署流程，不建立同一文件下的 v1、v2、v3 或 `esign_document_versions`。文件在 `draft` 階段可修改；由 `draft` 進入 `in_progress` 時，server 必須在同一交易中驗證並固定原始 PDF、文件標題、簽署人、簽署欄位、簽署期間、簽署選項、適用條款版本及 canonical signing payload，並對實際持久化內容計算 SHA-256。
+
+每次簽署前，必須驗證實際呈現的文件與發起時固定的摘要一致。簽署紀錄至少應包含：
 
 ```text
 document_id
-document_version_id
 document_sha256
 signer_id
 consent_version
@@ -122,7 +123,7 @@ authentication_event_id
 signed_at
 ```
 
-文件內容、簽署欄位、簽署順序、適用條款或附件若有實質變更，應建立新版本並重新計算 hash。舊版本的簽署不得自動沿用到新版本。
+文件進入 `in_progress` 後，不得修改或覆寫內容、簽署人、簽署欄位或其他已固定的 signing payload。若發起後發現錯誤，建立人應停止原流程並建立一份具有新文件編號與新摘要的獨立文件，所有簽署人重新完成簽署；既有簽署結果不得沿用，原文件、簽署結果與稽核紀錄亦不得刪除或改寫。第一階段不建立新舊文件間的版本關聯。
 
 ### 3.3 明確的簽署意圖
 
@@ -134,7 +135,7 @@ signed_at
 
 - 簽署提示文案與版本。
 - 電子簽署條款與版本。
-- 文件名稱、文件版本及 SHA-256。
+- 文件名稱、文件編號及 SHA-256。
 - 同意或拒絕結果。
 - 簽署操作及時間。
 - 當次身分驗證方式與結果。
@@ -158,12 +159,12 @@ signed_at
 
 ```mermaid
 flowchart TD
-    createDocument[建立文件] --> createVersion[建立不可變文件版本]
-    createVersion --> calculateHash[計算文件 SHA-256]
-    calculateHash --> assignSigners[指定簽署人與資格]
-    assignSigners --> notifySigner[通知簽署人]
+    createDocument[建立文件草稿] --> assignSigners[指定簽署人與資格]
+    assignSigners --> initiateDocument[發起並鎖定文件]
+    initiateDocument --> calculateHash[計算文件 SHA-256]
+    calculateHash --> notifySigner[通知簽署人]
     notifySigner --> authenticate[公司帳號登入與簽署前驗證]
-    authenticate --> showDocument[呈現固定文件版本]
+    authenticate --> showDocument[呈現已鎖定文件]
     showDocument --> captureIntent[確認電子形式與簽署意圖]
     captureIntent --> submitSignature[提交簽署或拒絕]
     submitSignature --> appendAudit[寫入不可變稽核事件]
@@ -216,7 +217,7 @@ MySQL `auth_sessions` 是 `jti` 防重放、launch code 與本地 session 的唯
 
 本地 session 使用獨立的 256-bit opaque token，固定最長 8 小時且不滑動延長。受保護請求只以 cookie token 摘要查詢有效 MySQL session，再確認 User 仍存在、未 soft-delete 且 `is_active = true`；不接受 client 另行宣告員編。`DELETE /api/auth/session` 原子撤銷 MySQL session 並清除 cookie，重複登出保持冪等。
 
-SSO 建立 session 只代表使用者可進入電子簽系統，不當然等於完成簽署前重新驗證。除非該次憑證足夠新、具可驗證的 `auth_time`／`acr`／`amr`、為短效一次性，且已綁定特定文件版本與摘要，否則簽署時仍須另外建立第 3.1 節所述的驗證事件。
+SSO 建立 session 只代表使用者可進入電子簽系統，不當然等於完成簽署前重新驗證。除非該次憑證足夠新、具可驗證的 `auth_time`／`acr`／`amr`、為短效一次性，且已綁定特定文件與摘要，否則簽署時仍須另外建立第 3.1 節所述的驗證事件。
 
 ## 5. 文件完整性與防竄改
 
@@ -226,7 +227,7 @@ SSO 建立 session 只代表使用者可進入電子簽系統，不當然等於�
 
 ```text
 original_file_sha256
-document_version_sha256
+document_sha256
 signing_input_sha256
 signed_file_sha256
 final_file_sha256
@@ -236,11 +237,11 @@ manifest_sha256
 
 所有 hash 應在 server 端針對實際持久化的位元內容計算，不可信任 client 傳入的 hash。
 
-### 5.2 不可變版本
+### 5.2 不可變文件
 
-- 已發布的文件版本不可原地覆寫。
-- 已有簽署紀錄的版本不可更換內容或附件。
-- 修改文件時建立新版本，並重新進行必要的簽署流程。
+- 已發起的文件不可原地覆寫。
+- 已發起或已有簽署紀錄的文件不可更換內容、簽署人、欄位或附件。
+- 發起後發現錯誤時停止原流程，另建獨立文件並重新進行完整簽署流程；不沿用既有簽署。
 - 完成文件應使用物件版本控制、WORM 或 object lock 等機制防止覆寫。
 - 資料庫中的 object key、hash、版本與物件儲存內容應定期核對。
 
@@ -251,7 +252,7 @@ manifest_sha256
 ```text
 event_hash = SHA256(
   previous_event_hash
-  + document_version_sha256
+  + document_sha256
   + signer_id
   + event_type
   + occurred_at
@@ -267,8 +268,7 @@ event_hash = SHA256(
 
 ```text
 document_created
-document_version_created
-document_published
+document_initiated
 signer_assigned
 signer_notified
 document_opened
@@ -290,7 +290,6 @@ verification_failed
 ```text
 event_id
 document_id
-document_version_id
 signer_id
 actor_type
 event_type
@@ -335,9 +334,6 @@ IP 與 user agent 僅能作為輔助證據，不應單獨用來確認簽署人�
 documents/{document_uuid}/
 ├── original/
 │   └── source.pdf
-├── versions/
-│   ├── v1.pdf
-│   └── v2.pdf
 ├── final/
 │   └── completed.pdf
 └── evidence/
@@ -354,7 +350,6 @@ documents/{document_uuid}/
 ```json
 {
   "documentId": "文件 UUID",
-  "documentVersion": 2,
   "originalHash": "SHA-256",
   "finalHash": "SHA-256",
   "auditTrailHash": "SHA-256",
@@ -376,6 +371,24 @@ documents/{document_uuid}/
 ## 8. 檔案儲存
 
 正式文件不應放在 `client/public`、應用程式容器映像或 MySQL BLOB。應存放於 private object storage，例如公司內部 S3、MinIO 或具備等效控管的儲存服務。
+
+### 8.1 Spec 03 已實作的 runtime 邊界
+
+Spec 03 以 `PrivateFileStorage` 作為唯一檔案邊界。local 與 automated test 使用不對外公開的本機目錄；UAT 使用 HTTP server 與 worker 共用、跨重啟保留的 private persistent volume；production 固定使用啟用 Block Public Access 的 private S3。S3 認證只使用 runtime IAM role／AWS SDK default credential chain，不新增 access key 環境變數。任何必要 driver、bucket、region、volume 或權限缺失均在啟動或操作時 fail closed，production 不得 fallback 至 local。API 不回傳 bucket URL 或 presigned URL，所有 PDF 仍須經 resource-level authorization 後由 server 串流。
+
+外部邀請郵件使用 `InvitationMailSender`：local 經 SMTP 投遞 Mailpit、automated test 使用 in-memory fake、UAT 使用 SES sandbox、production 使用已移出 sandbox 的 SES。UAT 的 sender 與測試收件人須在相同 region 完成驗證；production 使用已驗證 sender/domain。郵件只包含文件名稱、建立人、台北截止時間及 opaque invitation URL，不附 PDF、不列出其他簽署人，也不提供催簽或完成通知。
+
+HTTP process 只註冊 BullMQ producer；獨立 worker 才載入 invitation、finalization 與 maintenance processors。MySQL transaction 與 constraint 是業務權威，Redis/BullMQ 只負責喚醒、重試與每 30 秒 reconciliation。Queue payload 只放 `notificationLogId` 或 `documentId`，不得包含 Email、token、PDF、PNG 或 cookie；Redis 暫時不可用不回滾已成立的 MySQL 簽署結果，恢復後由 maintenance 依 DB 現況收斂。
+
+相關設定與 migration：
+
+- migration：`1791936000000-CoreEsignFlow.ts`，可 run/revert/run；entity、migration 與 `schema.sql` 同步維護。
+- storage：`ESIGN_STORAGE_DRIVER`、`ESIGN_STORAGE_ROOT`、`ESIGN_S3_BUCKET`、`AWS_REGION`。
+- mail：`ESIGN_MAIL_DRIVER`、`SMTP_*`、`SES_FROM`。
+- external access：`EXTERNAL_SIGNING_ORIGIN`、`ESIGN_INVITATION_ENCRYPTION_KEY_B64`。
+- queue：沿用 `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_DB`，不新增第二套 Redis 設定。
+
+Spec 03 的正式範圍只含建立/發起、內外部簽署、完成 PDF、自動結案、手動停止與到期停止。不含拒簽/退回、補簽、催簽、完成通知、一般匯出、QR 公開驗證、文件版本、證據包、PAdES-LT/LTA 或長期封存；repository 內保留的原型檔案或預留 schema 不代表這些功能已正式開放。
 
 資料庫僅保存：
 
@@ -433,7 +446,7 @@ documents/{document_uuid}/
 
 ```text
 server/src/features/esign/
-├── documents/        # 文件、版本與發布
+├── documents/        # 文件草稿、發起鎖定與狀態
 ├── signers/          # 簽署人、資格與簽署狀態
 ├── signing/          # 簽署指令、同意與拒絕
 ├── audit/            # append-only 稽核事件
@@ -447,14 +460,14 @@ server/src/infrastructure/
 └── timestamp/        # RFC 3161 TSA adapter
 ```
 
-Controller 只處理 HTTP 邊界；文件狀態、簽署資格、版本鎖定與完成條件應由 domain/service 層驗證。最終 PDF、證據包、通知、hash 對帳與時間戳記適合交由 worker 執行。
+Controller 只處理 HTTP 邊界；文件狀態、簽署資格、發起後鎖定與完成條件應由 domain/service 層驗證。最終 PDF、證據包、通知、hash 對帳與時間戳記適合交由 worker 執行。
 
 ## 12. 資料模型補充方向
 
 現有 schema 可作為業務草稿，但正式實作前至少需要補足下列概念：
 
 - `users`：合併員工主檔與本系統 principal、在職及登入狀態；取代獨立的 `auth_users` 與 `hr_users`，不包含通用角色或 permission。
-- `esign_document_versions`：不可變文件版本與 hash。
+- `esign_documents`：每筆代表一次獨立且不可變的簽署流程；第一階段不另建文件版本表。
 - `esign_signing_consents`：電子形式告知及簽署意圖版本。
 - `esign_identity_verifications`：簽署前身分驗證結果。
 - `esign_audit_events`：不可變稽核事件及 hash chain。
@@ -463,33 +476,76 @@ Controller 只處理 HTTP 邊界；文件狀態、簽署資格、版本鎖定與
 
 是否新增或調整資料表，需在功能規格確認後，以 TypeORM entity、migration、測試與 `schema.sql` 同步實作；本文件本身不授權直接建立 migration。
 
-## 13. 分階段實作
+## 13. Spec 實作路線圖
 
-### Phase 1：可驗證的一般電子簽章
+以下順序描述預定功能邊界；每一份 Spec 仍須在進入實作前完成 specify、clarify、plan 與 tasks。後續 Spec 不得回頭放寬第 3.2 節的不可變文件規則。
 
-- 文件不可變版本與 SHA-256。
-- 公司身分驗證及員工資格快照。
-- 員工／Auth 合併主檔與單一 issuer SSO 員編對應。
-- 內網 WebView SSO token 驗證及本地 session 建立。
-- 電子形式告知、反對與簽署意圖。
-- 簽署前重新驗證。
-- append-only audit event。
-- Private object storage。
-- 最終 PDF、manifest 與稽核報告。
-- 權限、下載稽核及保存期限。
+### Spec 2：WebView SSO 與正式身分驗證
 
-### Phase 2：強化封存與長期驗證
+- 由主平台私鑰簽發、電子簽以預先信任公鑰驗章的短效一次性 WebView JWT；第一版固定單一 issuer、audience、用途與 RS256 演算法。
+- WebView 以 HTTPS POST authorization header 提交 JWT，不使用 URL query；以必填 `sub` 作為唯一使用者識別，其值即為 `empid`，不另放重複的 `empid` claim，並驗證其餘必要 claims、2 分鐘有效期與一次性 `jti`，防止竄改、錯用與重放。
+- 以已驗證員工編號查詢 FGAPI，只有唯一精確且具第一版登入資格的員工可建立或白名單更新本地 `User`。
+- 建立最長 8 小時的電子簽本地 session，支援到期與主動登出；不得保存或重用上游原始 JWT。
+- 提供後續建立文件、資源授權與內部員工簽署可共同使用的可信員工 principal。
+- 定義測試與非正式環境如何安全建立 session，使後續功能能執行真實 guard、權限與 HTTP 驗證，不以 client 傳入的員工識別冒充身分。
+- 對過期、重放、錯誤 issuer／audience／claim、FGAPI 查無精確員工及跨 session 冒用採安全失敗與去敏感稽核。
+
+Spec 2 先處理內部員工 WebView 入口與通用 session，不處理離職後的事件通知、定期同步、立即停用或既有 session 主動撤銷。Email 外部簽署人的單一文件受限 session，以及綁定文件與摘要的簽署前驗證，隨實際簽署流程於 Spec 3 定義；兩者不得偽裝成完整員工 session。
+
+### Spec 3：核心電子簽端到端流程
+
+目標是在 Spec 2 的可信員工身分與 session 基礎上，完成一條簡單、可驗收的完整流程：建立文件、指定簽署人、發起並鎖定、簽署、產生完成 PDF、自動結案。
+
+- 建立、編輯及刪除尚未發起的 PDF 草稿。
+- 指定內部員工簽署人，或以姓名與正規化 Email 建立外部簽署人；外部簽署人不建立 `User`。
+- 在 PDF 上設定第一階段支援的簽名與日期欄位。
+- 發起時由 server 驗證必要資料、固定 canonical signing payload、計算實際持久化 PDF 的 SHA-256，並將文件切換為 `in_progress`。
+- `in_progress` 後鎖定 PDF、文件標題、簽署人、簽署欄位、簽署期間、簽署選項及適用條款版本。
+- 內部簽署人及具單一文件受限存取權的 Email 簽署人可閱讀文件、表達明確簽署意圖並完成簽署；Email 控制權必須經 server 驗證，不得只相信 client 宣告。
+- Email 外部簽署採獨立、限時且只綁定 signer／document 的 session；內部員工則使用 Spec 2 建立的正式員工 session。
+- 每次成功簽署保存文件摘要、簽署人快照、同意版本、驗證事件、簽署時間及最小必要 append-only 稽核事件。
+- 所有簽署人完成後產生最終 PDF，驗證必要產物成功後將文件切換為 `completed`。
+- 發起後發現錯誤時，只能停止原流程並建立新文件；不提供原地修改、文件版本、簽署沿用或新舊文件版本關聯。
+- 提供建立人與簽署人完成上述流程所需的最小列表、詳情及受控檔案存取。
+
+Spec 3 只涵蓋成功簽署主路徑及 Email 邀請所需的最小通知，不包含拒絕／退回、依序簽署、批次催簽、匯出、公開驗證、長期封存或數位憑證。
+
+### Spec 4：簽署前重新驗證
+
+- 依文件風險定義內部員工簽署前的重新驗證要求，不將一般登入直接視為完成簽署驗證。
+- 將驗證結果綁定特定簽署人、文件、文件摘要與短效一次性 authentication event。
+- 定義可接受的驗證新鮮度、驗證強度與過期條件。
+- 防止驗證事件跨文件、跨簽署人或重複使用，並保存必要且最小化的驗證證據。
+
+### Spec 5：簽署例外與通知營運
+
+- 允許文件依設定接受拒絕簽署，保存拒絕原因與終止狀態，不建立成功簽署紀錄。
+- 簽署開始／截止時間、逾期處理，以及文件停止後禁止繼續簽署。
+- 通知全部或僅待簽者、重新通知、每次通知批次與逐一發送結果。
+- 明確定義平行簽署；若未來需要依序簽署，必須另立需求，不預先實作。
+- 補強並發提交、重複操作及 worker 重試的一致性。
+
+### Spec 6：證據包、下載、匯出與公開驗證
+
+- 產生 canonical manifest、完整 audit trail 及人類可讀稽核報告。
+- 建立不可預測的公開驗證 ID 與 QR Code，重新驗證最終 PDF hash、manifest hash 及 audit chain。
+- 公開驗證只揭露最小必要資訊，不公開文件內容、完整員編、簽名圖片或未遮罩個資。
+- 受權限控管的完成 PDF 下載、下載稽核及選配浮水印。
+- 單一文件 PDF 與簽署紀錄清單匯出、背景工作狀態、匯出歷史及受控下載。
+- 驗證紀錄撤銷或取代時保留原紀錄並追加稽核事件。
+
+### Spec 7：強化封存與長期驗證
 
 - 平台憑證封存簽章。
 - RFC 3161 可信時間戳記。
 - PAdES-LT／LTA 評估與實作。
 - 憑證鏈、OCSP／CRL 與撤銷資料保存。
-- Object lock、備份及復原演練。
-- 第三方資安及個資稽核。
+- Object lock、備份、復原演練、保存期限及合法銷毀流程。
+- 第三方資安、個資與長期驗證稽核。
 
-### Phase 3：高風險文件數位簽章
+### Spec 8：高風險文件數位簽章
 
-- 盤點需要第 6 條推定效果的文件類型。
+- 盤點需要《電子簽章法》第 6 條推定效果的文件類型。
 - 串接主管機關許可的憑證機構或遠端簽署服務。
 - 讓簽署人以自己的私密金鑰完成簽章。
 - 建立憑證生命週期及失效／撤銷處理。
@@ -509,7 +565,7 @@ Controller 只處理 HTTP 邊界；文件狀態、簽署資格、版本鎖定與
 
 - [ ] 帳號可唯一對應員工。
 - [ ] `auth_users` 與 `hr_users` 已合併為單一員工 principal，沒有重複身分主檔。
-- [ ] 已驗證 token 必須包含唯一員工編號，並只以該員編對應 `users.empid`。
+- [ ] 已驗證 token 必須以 `sub` 承載唯一員工編號，並只以該值對應 `users.empid`。
 - [ ] 受信任 provider 由 server 設定白名單管理，不依 token 內容動態信任 issuer。
 - [ ] SSO token 不經 URL query 傳遞，原始 token 不進入 DB、session 或 log。
 - [ ] 本地 session 不晚於上游憑證／session 到期，員工停用時會撤銷既有 session。
@@ -520,8 +576,8 @@ Controller 只處理 HTTP 邊界；文件狀態、簽署資格、版本鎖定與
 
 ### 文件與證據
 
-- [ ] 每次簽署固定綁定文件版本與 SHA-256。
-- [ ] 已簽版本不可覆寫。
+- [ ] 每次簽署固定綁定特定不可變文件與 SHA-256。
+- [ ] 已發起及已簽文件不可覆寫；修正時以新文件重新發起且不沿用簽署。
 - [ ] 稽核紀錄為 append-only 並可偵測變更。
 - [ ] 可匯出最終 PDF、manifest 及完整 audit trail。
 - [ ] 能離線或透過獨立流程重新驗證證據包。

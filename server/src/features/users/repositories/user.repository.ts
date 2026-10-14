@@ -35,4 +35,21 @@ export class UserRepository {
   async restore(id: number, manager: EntityManager): Promise<void> {
     await manager.restore(User, { id });
   }
+
+  findActiveCandidates(query: string | undefined, manager: EntityManager) {
+    const builder = manager
+      .createQueryBuilder(User, 'user')
+      .where('user.is_active = :active', { active: true })
+      .andWhere('user.deleted_at IS NULL')
+      .orderBy('user.empid', 'ASC')
+      .addOrderBy('user.id', 'ASC')
+      .take(50);
+    const normalized = query?.trim();
+    if (normalized) {
+      builder.andWhere('(user.empid LIKE :query OR user.name LIKE :query)', {
+        query: `%${normalized.replace(/[\\%_]/g, '\\$&')}%`,
+      });
+    }
+    return builder.getMany();
+  }
 }

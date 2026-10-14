@@ -17,6 +17,7 @@ import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
 import { EsignVerificationRecord } from '#app/features/esign/entities/esign-verification-record.entity';
 import { InitialEsignSchema1791763200000 } from '#app/infrastructure/database/migrations/1791763200000-InitialEsignSchema';
 import { CreateAuthSessions1791849600000 } from '#app/infrastructure/database/migrations/1791849600000-CreateAuthSessions';
+import { CoreEsignFlow1791936000000 } from '#app/infrastructure/database/migrations/1791936000000-CoreEsignFlow';
 
 export type EnvReader = (key: string) => string | undefined;
 
@@ -82,6 +83,7 @@ export function buildMysqlOptions(
     migrations: [
       InitialEsignSchema1791763200000,
       CreateAuthSessions1791849600000,
+      CoreEsignFlow1791936000000,
     ],
 
     extra: {

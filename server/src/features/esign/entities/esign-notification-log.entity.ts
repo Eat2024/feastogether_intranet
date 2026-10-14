@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   Entity,
@@ -11,6 +12,11 @@ import { EsignNotificationBatch } from './esign-notification-batch.entity';
 import { EsignSigner } from './esign-signer.entity';
 
 @Entity({ name: 'esign_notification_logs', comment: '通知明細' })
+@Check('chk_esign_notification_logs_channel', "`channel` = 'email'")
+@Check(
+  'chk_esign_notification_logs_result',
+  "`result` IN ('pending','processing','delivered','failed')",
+)
 @Index(
   'uq_esign_notification_logs_batch_signer_channel',
   ['batchId', 'signerId', 'channel'],
@@ -21,6 +27,15 @@ import { EsignSigner } from './esign-signer.entity';
 @Index('idx_esign_notification_logs_result', ['result'])
 @Index('idx_esign_notification_logs_created_at', ['createdAt'])
 @Index('idx_esign_notification_logs_completed_at', ['completedAt'])
+@Index('idx_esign_notification_logs_next_attempt_at', ['nextAttemptAt'])
+@Index('idx_esign_notification_logs_processing_started_at', [
+  'processingStartedAt',
+])
+@Index('idx_esign_notification_logs_result_next_attempt_id', [
+  'result',
+  'nextAttemptAt',
+  'id',
+])
 export class EsignNotificationLog {
   @PrimaryGeneratedColumn({ type: 'bigint', comment: '通知明細流水號' })
   id!: number;
@@ -64,6 +79,33 @@ export class EsignNotificationLog {
     comment: '穩定錯誤碼',
   })
   errorCode?: string;
+
+  @Column({
+    name: 'attempt_count',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+    comment: '寄送嘗試次數',
+  })
+  attemptCount!: number;
+
+  @Column({
+    name: 'next_attempt_at',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    comment: '下次可重試時間',
+  })
+  nextAttemptAt?: Date;
+
+  @Column({
+    name: 'processing_started_at',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    comment: '本次處理開始時間',
+  })
+  processingStartedAt?: Date;
 
   @Column({
     name: 'completed_at',

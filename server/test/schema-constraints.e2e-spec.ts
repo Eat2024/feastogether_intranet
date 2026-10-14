@@ -54,47 +54,91 @@ describe('e-sign schema database constraints', () => {
           `SELECT watermark_enabled,allow_reject FROM esign_documents WHERE id=1`,
         );
         expect(Number(defaults[0]?.watermark_enabled)).toBe(0);
-        expect(Number(defaults[0]?.allow_reject)).toBe(1);
+        expect(Number(defaults[0]?.allow_reject)).toBe(0);
+        await expectRejected(
+          ds,
+          `UPDATE esign_documents SET status='unknown' WHERE id=1`,
+        );
+        await expectRejected(
+          ds,
+          `UPDATE esign_documents SET sign_start_at=NOW(6),sign_end_at=DATE_SUB(NOW(6), INTERVAL 1 SECOND) WHERE id=1`,
+        );
 
         await ds.query(
-          `INSERT INTO esign_signers (document_id,signer_type,user_id,empid_snapshot,name_snapshot) VALUES (1,'user',1,'E001','王小明')`,
+          `INSERT INTO esign_signers (public_id,document_id,signer_type,user_id,empid_snapshot,name_snapshot) VALUES ('00000000-0000-4000-8000-000000000001',1,'user',1,'E001','王小明')`,
         );
         await ds.query(
-          `INSERT INTO esign_signers (document_id,signer_type,email,name_snapshot) VALUES (1,'email','candidate@example.com','候選人')`,
+          `INSERT INTO esign_signers (public_id,document_id,signer_type,email,name_snapshot) VALUES ('00000000-0000-4000-8000-000000000002',1,'email','candidate@example.com','候選人')`,
         );
         await expectRejected(
           ds,
-          `INSERT INTO esign_signers (document_id,signer_type,name_snapshot) VALUES (1,'user','缺身分')`,
+          `INSERT INTO esign_signers (public_id,document_id,signer_type,name_snapshot) VALUES ('00000000-0000-4000-8000-000000000003',1,'user','缺身分')`,
         );
         await expectRejected(
           ds,
-          `INSERT INTO esign_signers (document_id,signer_type,user_id,email,empid_snapshot,name_snapshot) VALUES (1,'user',1,'x@example.com','E001','雙重身分')`,
+          `INSERT INTO esign_signers (public_id,document_id,signer_type,user_id,email,empid_snapshot,name_snapshot) VALUES ('00000000-0000-4000-8000-000000000004',1,'user',1,'x@example.com','E001','雙重身分')`,
         );
         await expectRejected(
           ds,
-          `INSERT INTO esign_signers (document_id,signer_type,email,name_snapshot) VALUES (1,'email','CANDIDATE@EXAMPLE.COM','重複候選人')`,
+          `INSERT INTO esign_signers (public_id,document_id,signer_type,email,name_snapshot) VALUES ('00000000-0000-4000-8000-000000000005',1,'email','CANDIDATE@EXAMPLE.COM','重複候選人')`,
         );
-        await ds.query(
+        await expectRejected(
+          ds,
           `UPDATE esign_signers SET status='rejected',rejected_at=NOW(6) WHERE id=1`,
+        );
+        await ds.query(
+          `UPDATE esign_signers SET status='signed',signed_at=NOW(6) WHERE id=1`,
         );
         const signerStates = await ds.query<Array<{ status: string }>>(
           `SELECT status FROM esign_signers WHERE document_id=1 ORDER BY id`,
         );
         expect(signerStates.map(({ status }) => status)).toEqual([
-          'rejected',
+          'signed',
           'pending',
         ]);
+
+        await ds.query(
+          `INSERT INTO esign_document_fields (document_id,signer_id,field_type,page_number,x_percent,y_percent,width_percent,height_percent)
+            VALUES (1,1,'signature',1,10,10,20,10)`,
+        );
+        await expectRejected(
+          ds,
+          `INSERT INTO esign_document_fields (document_id,signer_id,field_type,page_number,x_percent,y_percent,width_percent,height_percent)
+            VALUES (1,1,'signature',1,90,10,20,10)`,
+        );
 
         await expectRejected(
           ds,
           `INSERT INTO esign_signature_records (signer_id,document_sha256,signing_payload_sha256,consent_version,authentication_method,authentication_event_id,signed_at_utc) VALUES (999,'${'a'.repeat(64)}','${'b'.repeat(64)}','v1','INTRANET_SSO','auth-1',NOW(6))`,
         );
         await ds.query(
-          `INSERT INTO esign_notification_batches (document_id,filter_type,target_count) VALUES (1,'all',1)`,
+          `INSERT INTO esign_signature_records (signer_id,document_sha256,signing_payload_sha256,consent_version,authentication_method,authentication_event_id,signed_at_utc) VALUES (1,'${'a'.repeat(64)}','${'b'.repeat(64)}','v1','employee_session','auth-2',NOW(6))`,
+        );
+        await ds.query(
+          `INSERT INTO esign_notification_batches (document_id,filter_type,target_count) VALUES (1,'external_invitation',1)`,
+        );
+        await ds.query(
+          `INSERT INTO esign_notification_logs (batch_id,signer_id,channel,result) VALUES (1,2,'email','pending')`,
+        );
+        await expectRejected(
+          ds,
+          `INSERT INTO esign_notification_logs (batch_id,signer_id,channel,result) VALUES (1,1,'sms','pending')`,
         );
         await expectRejected(
           ds,
           `INSERT INTO esign_file_objects (file_purpose,object_key,mime_type,file_size,sha256) VALUES ('source_pdf','a','application/pdf',1,'${'a'.repeat(64)}')`,
+        );
+        await ds.query(
+          `INSERT INTO esign_file_objects (document_id,file_purpose,object_key,mime_type,file_size,sha256) VALUES (1,'source_pdf','source-a','application/pdf',1,'${'a'.repeat(64)}')`,
+        );
+        await ds.query(
+          `INSERT INTO esign_file_objects (signature_record_id,document_field_id,file_purpose,object_key,mime_type,file_size,sha256)
+            VALUES ((SELECT id FROM esign_signature_records WHERE signer_id=1),(SELECT id FROM esign_document_fields WHERE document_id=1 LIMIT 1),'signature_png','signature-a','image/png',1,'${'b'.repeat(64)}')`,
+        );
+        await expectRejected(
+          ds,
+          `INSERT INTO esign_file_objects (signature_record_id,file_purpose,object_key,mime_type,file_size,sha256)
+            VALUES ((SELECT id FROM esign_signature_records WHERE signer_id=1),'signature_png','signature-without-field','image/png',1,'${'b'.repeat(64)}')`,
         );
         const checks = await ds.query<Array<{ CONSTRAINT_NAME: string }>>(
           `SELECT CONSTRAINT_NAME FROM information_schema.table_constraints
@@ -104,8 +148,17 @@ describe('e-sign schema database constraints', () => {
         );
         expect(checks.map(({ CONSTRAINT_NAME }) => CONSTRAINT_NAME)).toEqual([
           'chk_auth_sessions_status',
+          'chk_esign_document_fields_bounds',
+          'chk_esign_document_fields_page',
+          'chk_esign_document_fields_type',
+          'chk_esign_documents_sign_period',
+          'chk_esign_documents_status',
           'chk_esign_file_objects_owner',
+          'chk_esign_file_objects_signature_field',
+          'chk_esign_notification_logs_channel',
+          'chk_esign_notification_logs_result',
           'chk_esign_signers_identity',
+          'chk_esign_signers_status',
         ]);
       } finally {
         await ds.destroy();

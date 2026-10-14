@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import type { FastifyRequest } from 'fastify';
 import { AppException } from '#app/common/errors/app.exception';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { getRequestPath } from '#app/framework/http/request.context';
 
 /**
  * 跨站請求防護：以 cookie 認證的異動端點（登入／登出等）可加掛本 guard。
@@ -25,12 +26,34 @@ export class OriginGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<FastifyRequest>();
     const origin = req.headers.origin;
-    if (origin === undefined) return true;
+    if (origin === undefined) {
+      if (this.requiresExplicitOrigin(req)) {
+        throw new AppException(
+          AppErrorCode.CSRF_ORIGIN_REJECTED,
+          '請求來源不允許',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      return true;
+    }
     if (this.allowedOrigins().includes(origin)) return true;
     throw new AppException(
       AppErrorCode.CSRF_ORIGIN_REJECTED,
       '請求來源不允許',
       HttpStatus.FORBIDDEN,
+    );
+  }
+
+  private requiresExplicitOrigin(request: FastifyRequest): boolean {
+    const path = getRequestPath(request);
+    return (
+      path.startsWith('/api/esign/') ||
+      path === '/api/esign' ||
+      path.startsWith('/api/external-signature') ||
+      path.startsWith('/api/external-signing-task') ||
+      path.startsWith('/esign/') ||
+      path.startsWith('/external-signature') ||
+      path.startsWith('/external-signing-task')
     );
   }
 

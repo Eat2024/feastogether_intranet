@@ -27,8 +27,14 @@
 ### III. 最小權限與資料最小化
 
 - API 回應與 Client props MUST 只包含完成當前操作必要的資料。
-- Token、cookie、OTP、簽名圖、文件內容與未遮罩個資 MUST NOT 進入 URL、log、
-  錯誤訊息或非必要的 Client payload。
+- JWT、access token、session token、cookie、OTP、簽名圖、文件內容與未遮罩個資
+  MUST NOT 進入 URL、log、錯誤訊息或非必要的 Client payload。
+- 唯一 URL 憑證例外是 feature spec 明確要求的外部 Email 簽署邀請。該邀請 MUST
+  使用不可預測且不含身分或文件內容的 opaque credential，MUST 綁定單一簽署人與
+  單一文件、具有期限且可撤銷，並在簽署完成、文件停止或期限到達後失效；邀請原值
+  MUST NOT 寫入 access log、application log、analytics、錯誤訊息或 Referrer。
+- 外部簽署邀請例外 MUST NOT 擴張為一般登入、內部員工 session、跨文件授權或可解碼
+  的身分 token；Server MUST 在每次授權時重新驗證邀請狀態與文件狀態。
 - 每個內部或公開 endpoint MUST 明確界定身分來源、允許操作與資料揭露範圍。
 - 檔案與簽署產物 MUST 存於受控儲存；資料庫只保存必要 metadata 與關聯。
 
@@ -97,4 +103,4 @@
   進入實作或交付。
 - Sync Impact Report 是修訂審查資料，commit 前 MUST 由審查者確認並移除。
 
-**Version**: 1.1.0 | **Ratified**: 2026-10-12 | **Last Amended**: 2026-10-12
+**Version**: 1.2.0 | **Ratified**: 2026-10-12 | **Last Amended**: 2026-10-12

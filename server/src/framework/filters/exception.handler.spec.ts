@@ -52,14 +52,14 @@ describe('ExceptionHandler', () => {
       },
     ];
     expect(entry.event).toBe('http.unhandled_exception');
-    expect(entry.metadata.stack).toBe(err.stack);
+    expect(entry.metadata.stack).not.toContain('boom');
     expect(entry.metadata.statusCode).toBe(500);
     expect(entry.metadata.path).toBe('/api/x');
     expect(sent.body).toMatchObject({
       success: false,
       error: {
         code: 'INTERNAL_ERROR',
-        message: 'Internal Server Error',
+        message: '系統發生未預期錯誤',
       },
     });
     expect(sent.body).toHaveProperty('timestamp');

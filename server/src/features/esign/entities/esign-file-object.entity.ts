@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { EsignDocument } from './esign-document.entity';
+import { EsignDocumentField } from './esign-document-field.entity';
 import { EsignExportJob } from './esign-export-job.entity';
 import { EsignSignatureRecord } from './esign-signature-record.entity';
 import { EsignVerificationRecord } from './esign-verification-record.entity';
@@ -19,8 +20,23 @@ import { EsignVerificationRecord } from './esign-verification-record.entity';
   'chk_esign_file_objects_owner',
   '`document_id` IS NOT NULL OR `signature_record_id` IS NOT NULL OR `verification_record_id` IS NOT NULL OR `export_job_id` IS NOT NULL',
 )
+@Check(
+  'chk_esign_file_objects_signature_field',
+  "(`file_purpose` = 'signature_png' AND `signature_record_id` IS NOT NULL AND `document_field_id` IS NOT NULL) OR (`file_purpose` <> 'signature_png' AND `document_field_id` IS NULL)",
+)
 @Index('idx_esign_file_objects_document_id', ['documentId'])
 @Index('idx_esign_file_objects_signature_record_id', ['signatureRecordId'])
+@Index('idx_esign_file_objects_document_field_id', ['documentFieldId'])
+@Index(
+  'uq_esign_file_objects_document_purpose',
+  ['documentId', 'filePurpose'],
+  { unique: true },
+)
+@Index(
+  'uq_esign_file_objects_signature_field_purpose',
+  ['signatureRecordId', 'documentFieldId', 'filePurpose'],
+  { unique: true },
+)
 @Index('idx_esign_file_objects_verification_record_id', [
   'verificationRecordId',
 ])
@@ -65,6 +81,24 @@ export class EsignFileObject {
     foreignKeyConstraintName: 'fk_esign_file_objects_signature',
   })
   signatureRecord?: EsignSignatureRecord;
+
+  @Column({
+    name: 'document_field_id',
+    type: 'bigint',
+    nullable: true,
+    comment: '簽名圖對應文件欄位 ID',
+  })
+  documentFieldId?: number;
+
+  @ManyToOne(() => EsignDocumentField, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({
+    name: 'document_field_id',
+    foreignKeyConstraintName: 'fk_esign_file_objects_document_field',
+  })
+  documentField?: EsignDocumentField;
 
   @Column({
     name: 'verification_record_id',

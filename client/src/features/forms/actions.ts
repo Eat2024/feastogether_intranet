@@ -6,6 +6,8 @@ import { addExportRecord } from '@/features/export-history/store';
 import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
 import { getCurrentUser, getStaff } from './orgChart';
 import { normalizeSignerNote } from './detail/signerNote';
+import { getStoredFile } from './files';
+import { isValidFieldBox } from './signLayout';
 import { validateResign } from './resign';
 import { sheetExportData, type SheetExport } from './sheet/exportData';
 import { validateSheet } from './sheet/rules';
@@ -48,8 +50,24 @@ export async function saveUploadDocument(input: {
   if (upload.mode === 'inline' && upload.fields.length === 0) {
     return { error: '請至少指定一個簽名位置，或改用系統簽署確認頁' };
   }
+  // 新文件必須上傳原始檔，頁數以伺服器讀出的為準；
+  // 舊資料（沒有原始檔）編輯時若沒重新上傳，沿用原本的示意頁數
+  let fileId: string | undefined;
+  if (upload.fileId || !input.id) {
+    const stored = getStoredFile(upload.fileId);
+    if (!stored) return { error: '找不到上傳的檔案，請重新上傳文件' };
+    if (upload.pages !== stored.pages) return { error: '文件頁數與上傳的檔案不符，請重新上傳文件' };
+    fileId = stored.id;
+  }
+  if (upload.fields.some((f) => f.page < 1 || f.page > upload.pages)) {
+    return { error: '簽名位置超出文件頁數，請重新指定' };
+  }
+  if (upload.fields.some((f) => (f.type !== 'sign' && f.type !== 'date') || !isValidFieldBox(f))) {
+    return { error: '欄位位置或大小不正確，請重新調整' };
+  }
   const cleanUpload: UploadInfo = {
     ...upload,
+    fileId,
     fields: upload.mode === 'inline' ? upload.fields : [],
   };
 

@@ -70,11 +70,16 @@ export type UploadField = {
   page: number;
   x: number;
   y: number;
+  /** 欄位寬、高（頁面寬高的百分比）；舊資料沒有時使用預設尺寸（見 signLayout.ts 的 fieldSize） */
+  w?: number;
+  h?: number;
   type: "sign" | "date";
 };
 
 export type UploadInfo = {
   fileName: string;
+  /** 伺服器保存的原始檔 id（見 files.ts）；舊資料或示意資料沒有 */
+  fileId?: string;
   pages: number;
   /** inline：在原文件上拖曳指定欄位；confirmPage：附加系統簽署確認頁 */
   mode: "inline" | "confirmPage";

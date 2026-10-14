@@ -38,7 +38,7 @@ export default async function NewFormPage({
         description={
           isSheet
             ? "設定簽到表的表頭資訊，表格會依簽署名單自動產生，每位簽署人在自己那一列簽到。"
-            : "上傳 Word／PDF 文件，逐頁預覽並指定簽名要落在哪裡。"
+            : "上傳 PDF 文件，逐頁預覽並指定簽名要落在哪裡。"
         }
       />
       <LinkTabs value={isSheet ? "sheet" : "upload"} tabs={TYPES} />

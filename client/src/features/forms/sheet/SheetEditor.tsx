@@ -9,6 +9,7 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useRef, useState, useTransition } from 'react';
+import { ACTION_FAILED_MESSAGE, isNavigationError } from '@/lib/actionError';
 import { saveSheetDocument } from '../actions';
 import type { EFormDoc, SheetInfo } from '../types';
 import {
@@ -58,8 +59,13 @@ export default function SheetEditor({ form, locked = false }: { form?: EFormDoc;
     const checked = validateSheet(sheet);
     if ('error' in checked) return setError(checked.error);
     startTransition(async () => {
-      const result = await saveSheetDocument({ id: form?.id, name, sheet: checked });
-      if (result?.error) setError(result.error);
+      try {
+        const result = await saveSheetDocument({ id: form?.id, name, sheet: checked });
+        if (result?.error) setError(result.error);
+      } catch (err) {
+        if (isNavigationError(err)) throw err;
+        setError(ACTION_FAILED_MESSAGE);
+      }
     });
   };
 

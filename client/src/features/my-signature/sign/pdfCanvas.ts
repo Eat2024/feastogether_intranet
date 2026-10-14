@@ -25,12 +25,14 @@ export function drawWatermark(ctx: CanvasRenderingContext2D, font: string) {
   ctx.globalAlpha = 0.18;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.translate(W / 2, H / 2);
+  // 依畫布實際尺寸鋪滿（非 A4 的原始文件頁面也適用）
+  const { width, height } = ctx.canvas;
+  ctx.translate(width / 2, height / 2);
   ctx.rotate(-Math.PI / 6);
   const stepX = 260 * S;
   const stepY = 110 * S;
   // 旋轉後需涵蓋整頁對角線範圍
-  const span = Math.hypot(W, H) / 2;
+  const span = Math.hypot(width, height) / 2;
   for (let y = -span; y <= span; y += stepY) {
     // 每一列錯開半格，避免排成直行
     const offset = (Math.round(y / stepY) % 2) * (stepX / 2);

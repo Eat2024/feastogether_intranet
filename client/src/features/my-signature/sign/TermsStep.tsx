@@ -17,17 +17,9 @@ const BOTTOM_TOLERANCE = 4;
 export default function TermsStep({
   docName,
   onAgree,
-  terms = SIGN_TERMS,
-  version = SIGN_TERMS_VERSION,
-  declineHref = '/my-signature',
 }: {
   docName: string;
   onAgree: () => void;
-  /** 條文與版本；後端文件使用伺服器提供的告知，未提供時為原型條款 */
-  terms?: string[];
-  version?: string;
-  /** 「不同意，返回」的去處；null 時不顯示（外部簽署人沒有可返回的內部頁面） */
-  declineHref?: string | null;
 }) {
   const [reachedBottom, setReachedBottom] = useState(false);
   const [agreed, setAgreed] = useState(false);
@@ -69,7 +61,7 @@ export default function TermsStep({
           }}
         >
           <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
-            {terms.map((term) => (
+            {SIGN_TERMS.map((term) => (
               <Typography
                 key={term}
                 component="li"
@@ -84,7 +76,7 @@ export default function TermsStep({
             — 條款結束 —
           </Typography>
         </Box>
-        <Typography variant="helper">條款版本：{version}</Typography>
+        <Typography variant="helper">條款版本：{SIGN_TERMS_VERSION}</Typography>
 
         <Box>
           <FormControlLabel
@@ -104,11 +96,9 @@ export default function TermsStep({
         </Box>
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-          {declineHref && (
-            <Button size="large" variant="outlined" href={declineHref}>
-              不同意，返回
-            </Button>
-          )}
+          <Button size="large" variant="outlined" href="/my-signature">
+            不同意，返回
+          </Button>
           <Button
             size="large"
             variant="contained"

@@ -4,7 +4,6 @@ import PageHeader from '@/components/PageHeader';
 import SearchField from '@/components/SearchField';
 import FormsFilterBar from '@/features/forms/FormsFilterBar';
 import FormsTable from '@/features/forms/FormsTable';
-import { listCreatedDocuments, toListForm } from '@/features/forms/serverApi';
 import { filterForms, formsHref, parseFilters, parseSort, sortForms } from '@/features/forms/sort';
 import { getForms, toClientForm } from '@/features/forms/store';
 import { PAGE_SIZE, pageHrefs, paginate, parsePage } from '@/lib/paginate';
@@ -32,9 +31,7 @@ export default async function FormsPage({ searchParams }: PageProps<'/forms'>) {
   const params = await searchParams;
   const sort = parseSort(params);
   const filters = parseFilters(params);
-  // 後端文件在前，再接仍在 mock store 的文件（簽到表與示意資料）
-  const documents = (await listCreatedDocuments()).map(toListForm);
-  const forms = sortForms(filterForms([...documents, ...getForms()], filters), sort);
+  const forms = sortForms(filterForms(getForms(), filters), sort);
   const { items, page, pageCount } = paginate(forms, parsePage(params.page), PAGE_SIZE);
 
   return (

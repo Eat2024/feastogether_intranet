@@ -15,7 +15,7 @@
 └── AGENTS.md               # repository 開發規範
 ```
 
-電子簽前端位於 `client/`；目前工作區的文件與簽署流程已部分串接 NestJS API，仍保留簽到表等 server-memory mock 資料。認證提供員工帳密登入與 WebView SSO，共用 MySQL 員工 session；認證限流與預留的 OAuth 交易使用 Redis。登入模組啟用不代表種子專案的 RBAC 或所有電子簽業務均已完成。
+電子簽前端位於 `client/`；本 PR 不包含前端串接，畫面仍沿用 server-memory mock 資料，API 串接由前端工程師處理。認證提供員工帳密登入與 WebView SSO，共用 MySQL 員工 session；認證限流與預留的 OAuth 交易使用 Redis。登入模組啟用不代表種子專案的 RBAC 或所有電子簽業務均已完成。
 
 ## 環境需求
 
@@ -58,12 +58,12 @@ client 請求 `/api/*` 時，`client/next.config.ts` 會代理到 `API_PROXY_TAR
 
 前後端更詳細的指令與約束請參考 [`client/AGENTS.md`](client/AGENTS.md) 與 [`server/AGENTS.md`](server/AGENTS.md)。
 
-## 電子簽登入與 session 過期
+## 電子簽後端登入
 
-員工頁面使用 `FT_ESIGN_SESSION` HttpOnly cookie。未登入或後端 API 回覆 401 時導向 `/login?expired=1`；重新登入後返回原本的站內頁面。403、網路故障及 5xx 不視為登入過期。尚未送出的編輯與簽名不會自動儲存或重送。
+後端提供 `POST /api/auth/login`，以既有 `FEASTOGETHER_BASE_URL`、`FEASTOGETHER_API_KEY` 呼叫饗賓 `/api/v1/staff/login`，核對員編後沿用 `/api/v1/hr/staff_lookup` 的資格檢查與本地帳號停用規則，再建立 MySQL session 並下發 `FT_ESIGN_SESSION` HttpOnly cookie。密碼僅即時轉送，上游 token 不入庫、不回傳瀏覽器，也不記錄登入 request/response body。
 
-`/login` 目前使用員工編號與密碼，呼叫 `POST /api/auth/login`。後端以既有 `FEASTOGETHER_BASE_URL`、`FEASTOGETHER_API_KEY` 代呼叫饗賓 `/api/v1/staff/login`，核對回傳員編後，沿用 `/api/v1/hr/staff_lookup` 的員工資格檢查與本地帳號停用規則，再建立 MySQL session。密碼僅即時轉送，上游 token 不入庫、不回傳瀏覽器，也不記錄登入 request/response body。錯誤帳密留在登入表單顯示訊息，不觸發過期重導。
+依 `server/.env.example` 設定饗賓 API 連線資訊；`AUTH_TRUSTED_ORIGINS` 須包含實際前端 origin。帳密登入不依賴 OAuth，不新增資料表或 migration；既有 WebView SSO 與外部簽署驗證保留。
 
-依 `server/.env.example` 設定既有饗賓 API 連線資訊；`AUTH_TRUSTED_ORIGINS` 須包含電子簽前端 origin。此登入不依賴 OAuth 設定，不新增資料表、migration 或開發者登入。原有入口網 WebView SSO 與外部簽署驗證保留；iframe 也可使用帳密登入頁。
+OAuth 後端入口保留供後續串接，啟用時須完整設定 `OAUTH_*` 並向上游註冊回呼網址。登入頁、OAuth 前端回呼、session 過期導向及電子簽畫面 API 串接均由前端工程師另行實作，本 PR 不包含這些前端變更。
 
-OAuth controller 與 `/oauth/callback` 保留供未來串接，登入頁暫不顯示 OAuth 按鈕。啟用時才需完整設定 `OAUTH_*` 並向上游註冊回呼網址；全部未設定時不影響帳密登入。
+Swagger 的前端用途為串接參考，不代表目前 client 已完成對應功能。

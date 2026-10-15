@@ -37,30 +37,7 @@ const nowStr = () => {
 };
 
 /** 簽署流程：同意授權條款 → 閱讀文件 → 逐一完成簽名 → 確認送出 */
-export default function SignFlow({
-  form,
-  me,
-  today,
-  terms,
-  pdfUrl,
-  declineHref,
-  onSign,
-}: {
-  form: EFormDoc;
-  me: Signer;
-  today: string;
-  /** 後端文件：伺服器提供的電子簽名告知與版本；未提供時使用原型條款 */
-  terms?: { version: string; items: string[] };
-  /** 原始 PDF 的網址（外部簽署人改由瀏覽器直接讀取） */
-  pdfUrl?: string;
-  /** 條款頁「不同意，返回」的去處；null 時不顯示 */
-  declineHref?: string | null;
-  /** 自訂送出簽名（外部簽署人由瀏覽器直接呼叫 API）；未提供時使用 signDocument */
-  onSign?: (input: {
-    signatures: Record<number, string>;
-    consent: { version: string };
-  }) => Promise<{ error: string } | undefined>;
-}) {
+export default function SignFlow({ form, me, today }: { form: EFormDoc; me: Signer; today: string }) {
   const layout = getSignLayout(form)!;
   const fields = signFields(layout);
   const fieldLabel = (f: UploadField) => {
@@ -108,9 +85,7 @@ export default function SignFlow({
     if (!consent) return;
     setPendingAction('sign');
     startTransition(async () => {
-      const result = onSign
-        ? await onSign({ signatures, consent })
-        : await signDocument({ formId: form.id, signatures, signatureIds, consent });
+      const result = await signDocument({ formId: form.id, signatures, signatureIds, consent });
       if (result?.error) {
         setError(result.error);
         setPendingAction(null);
@@ -137,11 +112,8 @@ export default function SignFlow({
         <StepFlow steps={SIGN_STEPS} activeIndex={0} />
         <TermsStep
           docName={form.name}
-          terms={terms?.items}
-          version={terms?.version}
-          declineHref={declineHref}
           onAgree={() => {
-            setConsent({ version: terms?.version ?? SIGN_TERMS_VERSION, agreedAt: nowStr() });
+            setConsent({ version: SIGN_TERMS_VERSION, agreedAt: nowStr() });
             window.scrollTo({ top: 0 });
           }}
         />
@@ -170,7 +142,6 @@ export default function SignFlow({
       >
         <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, minWidth: 0 }}>
           <DocumentViewer
-            pdfUrl={pdfUrl}
             form={form}
             signer={me}
             layout={layout}

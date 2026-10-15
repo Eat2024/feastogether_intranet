@@ -1,14 +1,10 @@
-import { esignRequest } from '@/lib/api/esign';
-import SessionExpiry from '@/features/auth/SessionExpiry';
 import Box from "@mui/material/Box";
 import SideNav from "@/components/SideNav";
 import { isAdmin } from "@/features/export-history/admin";
 
-export default async function MainLayout({ children }: LayoutProps<"/">) {
-  const session = await esignRequest<{ expiresAt: string }>('/auth/session');
+export default function MainLayout({ children }: LayoutProps<"/">) {
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
-      <SessionExpiry expiresAt={session.expiresAt} />
       <SideNav isAdmin={isAdmin()} />
       <Box
         component="main"

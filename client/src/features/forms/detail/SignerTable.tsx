@@ -161,9 +161,10 @@ export default function SignerTable({
                       />
                     </TableCell>
                     <TableCell>
-                      <Typography variant="content">
+                      {/* content variant 預設渲染成 <p>，裡面不能放 Chip（<div>），改用 div 包住姓名與標籤 */}
+                      <Typography variant="content" component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {s.name}
-                        {s.walkIn && <Chip size="small" variant="soft" color="info" label="名單外" sx={{ ml: 1 }} />}
+                        {s.walkIn && <Chip size="small" variant="soft" color="info" label="名單外" />}
                       </Typography>
                       <Typography variant="helper">{s.email ?? s.employeeNo}</Typography>
                     </TableCell>

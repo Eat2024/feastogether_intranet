@@ -1,12 +1,10 @@
 // 在瀏覽器端產生簽到表 PDF（示意用）：依公司簽到表版面繪製，每頁固定列數、每頁重複表頭，
-// 簽到格放手寫簽名，頁尾放整份文件的追蹤 QR code（個別簽名的識別碼請見 Excel 匯出）。
+// 簽到格放手寫簽名，頁尾放文件資訊與頁碼（簽到表不放追蹤 QR code）。
 import { formOptions } from '@/features/forms/options';
 import { SHEET_ROWS_PER_PAGE, SHEET_SIGN_FIELD_ID, type SheetRow } from '@/features/forms/sheet/rules';
 import type { EFormDoc } from '@/features/forms/types';
-import { documentVerifyUrl } from '@/lib/signatureQr';
 import { color } from '@/theme/tokens';
 import { PDFDocument } from 'pdf-lib';
-import QRCode from 'qrcode';
 import { A4_PT, drawWatermark, H, loadImage, W } from './pdfCanvas';
 
 const MARGIN_X = 90;
@@ -44,9 +42,6 @@ export async function buildSheetPdf(
     : sheet.fields;
 
   const pageCount = Math.max(1, Math.ceil(rows.length / SHEET_ROWS_PER_PAGE));
-  const qr = await loadImage(
-    await QRCode.toDataURL(documentVerifyUrl(form.id, window.location.origin), { margin: 0, width: 240 }),
-  );
   const signatures = new Map<string, HTMLImageElement>();
   for (const r of rows) {
     const sig = r.signer?.signatures?.[SHEET_SIGN_FIELD_ID];
@@ -181,11 +176,9 @@ export async function buildSheetPdf(
       y += rowH;
     }
 
-    // 頁尾：文件資訊、頁碼與整份文件的追蹤 QR code
-    const qrSize = 110;
+    // 頁尾：文件資訊與頁碼
     const footerY = H - FOOTER_H + 40;
-    ctx.drawImage(qr, W - MARGIN_X - qrSize, footerY, qrSize, qrSize);
-    text(`${form.docNumber ?? ''}　${form.name}`, MARGIN_X, footerY + 30, 22, { fill: color.textSubtitle, maxW: tableW - qrSize - 40 });
+    text(`${form.docNumber ?? ''}　${form.name}`, MARGIN_X, footerY + 30, 22, { fill: color.textSubtitle, maxW: tableW });
     text(`第 ${page + 1} / ${pageCount} 頁　此為系統產生之簽到表`, MARGIN_X, footerY + 70, 22, { fill: color.textPlaceholder });
 
     if (watermark) drawWatermark(ctx, font);

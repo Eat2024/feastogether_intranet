@@ -68,7 +68,13 @@ export default function MySignTable({
     {
       header: '文件名稱',
       sortKey: 'name',
-      cell: ({ form }) => form.name,
+      // 與電子簽列表相同：簽到表在名稱後加標籤
+      cell: ({ form }) => (
+        <>
+          {form.name}
+          {form.docType === 'sheet' && <Chip size="small" variant="soft" label="簽到表" sx={{ ml: 1 }} />}
+        </>
+      ),
     },
     {
       header: '文件編號',
@@ -78,9 +84,9 @@ export default function MySignTable({
     },
   ];
 
-  // 發起人一律放在「操作」左邊
+  // 建立人一律放在「操作」左邊
   const initiator: Column = {
-    header: '發起人',
+    header: '建立人',
       sortKey: 'initiator',
     nowrap: true,
     cell: ({ form }) => (

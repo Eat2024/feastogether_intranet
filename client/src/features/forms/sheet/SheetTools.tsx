@@ -83,6 +83,8 @@ export default function SheetTools({
           sx={{
             display: "flex",
             justifyContent: "space-between",
+            alignItems: "center",
+            gap: 2,
             flex: "1 1 auto",
             minWidth: 0,
           }}

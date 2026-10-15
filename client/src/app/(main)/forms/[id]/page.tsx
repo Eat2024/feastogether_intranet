@@ -56,7 +56,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
   // 草稿尚無簽署進度，請改用「編輯」或「發起簽署」
   if (stored.status === 'draft') redirect('/forms');
 
-  // 發起人檢視：簽名圖檔不需要傳給畫面
+  // 建立人檢視：簽名圖檔不需要傳給畫面
   const form = toClientForm(stored);
   const progress = getProgress(form);
   const options = formOptions(form);

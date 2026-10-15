@@ -138,9 +138,12 @@ export default function SheetSignFlow({
       </Typography>
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        <Button size="large" variant="outlined" href="/my-signature" disabled={pending}>
-          取消
-        </Button>
+        {/* 名單外人員簽到前，這份文件還不在他的「我的電子簽」中，不提供返回 */}
+        {!me.walkIn && (
+          <Button size="large" variant="outlined" href="/my-signature" disabled={pending}>
+            取消
+          </Button>
+        )}
         <Button
           size="large"
           variant="contained"

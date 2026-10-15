@@ -9,7 +9,10 @@ import { getSignBlock } from '@/features/my-signature/sign/eligibility';
 import ReadOnlyDocument from '@/features/my-signature/sign/ReadOnlyDocument';
 import SheetSignFlow from '@/features/my-signature/sign/SheetSignFlow';
 import SignFlow from '@/features/my-signature/sign/SignFlow';
+import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
@@ -23,10 +26,23 @@ export default async function SignDocumentPage({
   const userId = getCurrentUserId();
   if (!stored || stored.status === 'draft') notFound();
   let storedMe = stored.signers.find((s) => s.id === userId);
-  // 簽到表還有空白列時，名單外的同仁可透過簽到連結使用空白列簽到
-  if (!storedMe && stored.docType === 'sheet' && remainingWalkIns(stored) > 0) {
-    const staff = getStaff(userId);
-    if (staff) storedMe = walkInSigner(staff);
+  // 名單外的同仁開啟簽到表的簽到連結：還有空白列時可以簽到；沒有時說明原因，不顯示 404
+  const walkInStaff = !storedMe && stored.docType === 'sheet' ? getStaff(userId) : undefined;
+  if (walkInStaff) {
+    if (remainingWalkIns(stored) === 0) {
+      return (
+        <>
+          <PageHeader title={stored.name} description={stored.docNumber ?? undefined} />
+          <Alert severity="warning" variant="outlined">
+            {stored.sheet?.walkInSlots
+              ? '此簽到表的空白列已用完，無法再以名單外的身分簽到。'
+              : '此簽到表沒有開放名單外的人員簽到。'}
+            如需簽到，請聯絡建立人 {stored.createdBy.name}（{stored.createdBy.employeeNo}）。
+          </Alert>
+        </>
+      );
+    }
+    storedMe = walkInSigner(walkInStaff);
   }
   // 不是簽署人就當作不存在，不透露文件資訊
   if (!storedMe) notFound();
@@ -40,13 +56,25 @@ export default async function SignDocumentPage({
   // 名單外人員的序號為下一個空白列
   const rowNo = sheet ? (me.rowNo ?? stored.signers.length + 1) : 0;
 
+  // 返回時停在這份文件所屬的分頁（待簽署／已簽署／已拒絕）
+  const backHref =
+    me.status === 'signed' ? '/my-signature?tab=signed' : me.status === 'rejected' ? '/my-signature?tab=rejected' : '/my-signature';
+
   return (
     <>
+      {/* 名單外人員簽到前，這份文件還不在他的「我的電子簽」中，返回沒有意義，先不顯示 */}
+      {!walkInStaff && (
+        <Box>
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href={backHref}>
+            返回我的電子簽
+          </Button>
+        </Box>
+      )}
       <PageHeader
         title={form.name}
         description={[
           form.docNumber,
-          `發起人 ${form.createdBy.name}（${form.createdBy.employeeNo}）`,
+          `建立人 ${form.createdBy.name}（${form.createdBy.employeeNo}）`,
           `${period.resign ? '補簽期限' : '簽署期限'} ${period.endAt ?? '不限'}`,
         ]
           .filter(Boolean)

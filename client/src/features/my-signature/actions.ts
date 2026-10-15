@@ -96,7 +96,7 @@ export async function signDocument(input: {
   } satisfies Partial<Signer>);
   // 名單外人員使用空白列簽到：簽到完成才加入文件（加入前再確認仍有空白列）
   if (isNew) {
-    if (remainingWalkIns(form) === 0) return { error: '空白列已用完，無法簽到，請聯絡發起人' };
+    if (remainingWalkIns(form) === 0) return { error: '空白列已用完，無法簽到，請聯絡建立人' };
     form.signers.push(signer);
   }
   revalidateLists();

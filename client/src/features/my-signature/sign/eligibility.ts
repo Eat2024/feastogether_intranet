@@ -12,10 +12,10 @@ export function getSignBlock(form: EFormDoc, me: Signer, today: Date): string | 
   const { startAt, endAt, resign } = signingPeriod(form);
   const status = deriveStatus(form, today);
   if (status === 'expired') {
-    return `已超過簽署期限（${endAt}），無法簽署，如有需要請聯絡發起人 ${form.createdBy.name}。`;
+    return `已超過簽署期限（${endAt}），無法簽署，如有需要請聯絡建立人 ${form.createdBy.name}。`;
   }
   if (status !== 'active') return '此文件目前無法簽署。';
-  if (!getSignLayout(form)) return '此文件沒有可簽署的內容，請聯絡發起人。';
+  if (!getSignLayout(form)) return '此文件沒有可簽署的內容，請聯絡建立人。';
   if (startAt && daysUntil(startAt, today) > 0) {
     return `${resign ? '補簽' : '簽署'}期間自 ${startAt} 開始，目前尚無法簽署。`;
   }

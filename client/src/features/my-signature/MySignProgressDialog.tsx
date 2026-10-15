@@ -20,7 +20,7 @@ import { useState } from 'react';
 
 /**
  * 簽署人視角的簽署狀態：只顯示本人的簽署紀錄與文件整體進度，不列出其他簽署人。
- * （發起人看完整名單請至「電子簽列表」→ 檢視）
+ * （建立人看完整名單請至「電子簽列表」→ 檢視）
  */
 function MySignProgressDialog({
   form,

@@ -43,6 +43,11 @@ describe('esign schema metadata', () => {
     [EsignDocument, 'initiated_at', 'initiatedAt'],
     [EsignDocument, 'completed_at', 'completedAt'],
     [EsignDocument, 'stopped_at', 'stoppedAt'],
+    [
+      EsignDocument,
+      'finalization_lease_expires_at',
+      'finalizationLeaseExpiresAt',
+    ],
     [EsignDocument, 'created_at', 'createdAt'],
     [EsignDocument, 'updated_at', 'updatedAt'],
     [EsignDocument, 'deleted_at', 'deletedAt'],
@@ -51,6 +56,13 @@ describe('esign schema metadata', () => {
     [EsignDocumentField, 'deleted_at', 'deletedAt'],
     [EsignSigner, 'signed_at', 'signedAt'],
     [EsignSigner, 'rejected_at', 'rejectedAt'],
+    [EsignSigner, 'invitation_expires_at', 'invitationExpiresAt'],
+    [EsignSigner, 'invitation_delivered_at', 'invitationDeliveredAt'],
+    [
+      EsignSigner,
+      'completion_receipt_expires_at',
+      'completionReceiptExpiresAt',
+    ],
     [EsignSigner, 'created_at', 'createdAt'],
     [EsignSigner, 'updated_at', 'updatedAt'],
     [EsignSigner, 'deleted_at', 'deletedAt'],
@@ -65,6 +77,8 @@ describe('esign schema metadata', () => {
     [EsignNotificationBatch, 'created_at', 'createdAt'],
     [EsignNotificationLog, 'created_at', 'createdAt'],
     [EsignNotificationLog, 'completed_at', 'completedAt'],
+    [EsignNotificationLog, 'next_attempt_at', 'nextAttemptAt'],
+    [EsignNotificationLog, 'processing_started_at', 'processingStartedAt'],
     [EsignExportJob, 'created_at', 'createdAt'],
     [EsignExportJob, 'updated_at', 'updatedAt'],
     [EsignExportJob, 'completed_at', 'completedAt'],
@@ -101,7 +115,7 @@ describe('esign schema metadata', () => {
       )?.options;
 
     expect(column(EsignDocument, 'watermarkEnabled')?.default).toBe(false);
-    expect(column(EsignDocument, 'allowReject')?.default).toBe(true);
+    expect(column(EsignDocument, 'allowReject')?.default).toBe(false);
     expect(column(EsignDocumentField, 'xPercent')).toMatchObject({
       type: 'decimal',
       precision: 6,
@@ -109,6 +123,10 @@ describe('esign schema metadata', () => {
     });
     for (const [target, property] of [
       [EsignDocument, 'docNumber'],
+      [EsignDocument, 'finalizationLeaseToken'],
+      [EsignSigner, 'publicId'],
+      [EsignSigner, 'invitationTokenSha256'],
+      [EsignSigner, 'completionReceiptSha256'],
       [EsignSignatureRecord, 'documentSha256'],
       [EsignAuditEvent, 'eventHash'],
       [EsignVerificationRecord, 'publicId'],
@@ -118,6 +136,34 @@ describe('esign schema metadata', () => {
         collation: 'ascii_bin',
       });
     }
+  });
+
+  it('Spec 03 欄位關聯、冪等索引與狀態檢查已註冊', () => {
+    const indexNames = storage.indices.map((index) => index.name);
+    expect(indexNames).toEqual(
+      expect.arrayContaining([
+        'uq_esign_signers_public_id',
+        'uq_esign_signers_invitation_token_sha256',
+        'uq_esign_signers_completion_receipt_sha256',
+        'idx_esign_document_fields_signer_id',
+        'uq_esign_file_objects_document_purpose',
+        'uq_esign_file_objects_signature_field_purpose',
+        'idx_esign_notification_logs_result_next_attempt_id',
+      ]),
+    );
+
+    const checkNames = storage.checks.map((check) => check.name);
+    expect(checkNames).toEqual(
+      expect.arrayContaining([
+        'chk_esign_documents_status',
+        'chk_esign_documents_sign_period',
+        'chk_esign_signers_status',
+        'chk_esign_document_fields_bounds',
+        'chk_esign_file_objects_signature_field',
+        'chk_esign_notification_logs_channel',
+        'chk_esign_notification_logs_result',
+      ]),
+    );
   });
 
   it('所有 datetime 欄位使用 precision 6 且 column name 為 snake_case', () => {

@@ -11,14 +11,14 @@ export const WEBVIEW_JWT_MAX_TTL_SECONDS = 120;
 export const WEBVIEW_JWT_CLOCK_TOLERANCE_SECONDS = 30;
 export const WEBVIEW_JWT_TYPE = 'FT-ESIGN-LAUNCH+JWT';
 
-// ── 未註冊於正式 runtime 的既有 OAuth／DEVMOD 測試能力 ──
+// ── OAuth 登入與未啟用的 DEVMOD 測試能力 ──
 
 /** 開發者登入使用的固定帳號（與真實員工區隔，稽核與帳號管理一眼可辨）。 */
 export const DEV_LOGIN_EMPID = 'dev-admin';
 export const DEV_LOGIN_NAME = '開發者（DEVMOD）';
 
 /** OAuth 登入交易的瀏覽器綁定 cookie（HttpOnly；只存不透明隨機值，不存 state／nonce）。 */
-export const OAUTH_TX_COOKIE_NAME = 'NEST_SEED_OAUTH_TX';
+export const OAUTH_TX_COOKIE_NAME = 'FT_ESIGN_OAUTH_TX';
 
 /** 登入交易（state → nonce／redirectTo）在 Redis 的存活秒數。 */
 export const OAUTH_TX_TTL_SECONDS = 10 * 60;

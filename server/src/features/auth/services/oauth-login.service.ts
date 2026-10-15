@@ -4,6 +4,7 @@ import { AppErrorCode } from '#app/common/errors/app-error-code';
 import type { OauthCallbackDto } from '#app/features/auth/dto/oauth-callback.dto';
 import { OauthClient } from '#app/infrastructure/http-client/oauth/oauth.client';
 import { AuthService, type AuthSession } from './auth.service';
+import { safeLoginReturnPath } from '../helpers/login-return-path';
 import { OauthIdentityService } from './oauth-identity.service';
 import { OauthTransactionService } from './oauth-transaction.service';
 
@@ -23,7 +24,7 @@ export interface OauthCallbackResult {
  * 統一登入流程協調（US1）：
  * start → 產 state／nonce、存交易、回授權網址；
  * getAccessTokenAndUserInfo → 領取交易 → 換 token（套件驗簽／nonce／issuer／aud）→ UserInfo → 配對帳號 →
- * 發本系統 session（refresh token 加密後存 Redis 供主動登出）。
+ * 發本系統 session（上游 token 不持久保存）。
  * 任一步失敗不發 cookie；已交換的 token 只留在記憶體，失敗即丟棄、不代呼叫上游登出。
  */
 @Injectable()
@@ -41,7 +42,7 @@ export class OauthLoginService {
     const authorizationUrl = await this.client.buildAuthorizationUrl(challenge);
     const browserToken = await this.transactions.start(
       challenge,
-      redirectTo || '/',
+      safeLoginReturnPath(redirectTo),
     );
     return { authorizationUrl, browserToken };
   }

@@ -19,6 +19,7 @@ import { isDuplicateEntryError } from '#app/features/auth/repositories/oauth-ide
 import { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import { FeastogetherAuthService } from '#app/infrastructure/http-client/feastogether/services/feastogether-auth.service';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
 import type { StaffLookupDto } from '#app/infrastructure/http-client/feastogether/types/staff-lookup.dto';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
@@ -73,12 +74,38 @@ export class AuthService {
     private readonly mysql: MysqlService,
     private readonly hr: FeastogetherHrService,
     private readonly logger: AppLoggerService,
+    private readonly passwordAuth: FeastogetherAuthService,
   ) {
     const webviewConfig = this.getConfig(config);
     this.issuer = webviewConfig.iss;
     this.audience = webviewConfig.aud;
     this.publicKey = this.readPublicKey(webviewConfig.key);
     this.launchOrigin = webviewConfig.launch;
+  }
+
+  /** 帳密驗證後沿用 WebView 的員工資格與本地帳號規則，再發本系統 session。 */
+  async login(
+    empId: string,
+    password: string,
+  ): Promise<{ token: string; session: AuthSession }> {
+    await this.passwordAuth.authenticate(empId, password);
+    const staff = await this.hr.lookupEligibleStaff(empId);
+    const saveUser = () =>
+      this.mysql.transaction((manager) =>
+        this.findOrCreateUser(empId, staff, new Date(), manager),
+      );
+    let user: User;
+    try {
+      user = await saveUser();
+    } catch (error) {
+      if (!this.isUserCreationRace(error)) throw error;
+      user = await saveUser();
+    }
+    const issued = await this.issueSession(Number(user.id));
+    return {
+      token: issued.token,
+      session: this.buildSession(user, issued.expiresAt),
+    };
   }
 
   async createWebviewLaunch(token: string): Promise<WebviewLaunchView> {
@@ -209,7 +236,7 @@ export class AuthService {
     return { localLogout: 'completed' };
   }
 
-  /** 供未註冊於正式 runtime 的既有 OAuth／開發登入 service 共用同一 MySQL session。 */
+  /** 供 OAuth 登入共用同一 MySQL session；開發登入仍未註冊於 runtime。 */
   async issueSession(
     userId: number,
   ): Promise<{ token: string; expiresAt: Date }> {

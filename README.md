@@ -15,7 +15,7 @@
 └── AGENTS.md               # repository 開發規範
 ```
 
-目前電子簽畫面與業務邏輯已完整移入 `client/`。`server/` 保留種子專案的 OAuth/RBAC/Audit 原始碼，但這些模組、entities、repositories 與 migrations 目前均未註冊；現階段只啟用 MySQL、Redis、logging 與 health check 基礎架構，並提供尚未註冊業務 processor 的獨立 worker process。電子簽資料仍在 client 的 server-memory mock store，尚未串接 NestJS API 或 MySQL。
+電子簽前端位於 `client/`；本 PR 不包含前端串接，畫面仍沿用 server-memory mock 資料，API 串接由前端工程師處理。認證提供員工帳密登入與 WebView SSO，共用 MySQL 員工 session；認證限流與預留的 OAuth 交易使用 Redis。登入模組啟用不代表種子專案的 RBAC 或所有電子簽業務均已完成。
 
 ## 環境需求
 
@@ -57,3 +57,13 @@ client 請求 `/api/*` 時，`client/next.config.ts` 會代理到 `API_PROXY_TAR
 | `pnpm -C server db:setup` | 建立 DB 並套用目前已啟用的 migrations（現階段不包含 Auth/RBAC/Audit） |
 
 前後端更詳細的指令與約束請參考 [`client/AGENTS.md`](client/AGENTS.md) 與 [`server/AGENTS.md`](server/AGENTS.md)。
+
+## 電子簽後端登入
+
+後端提供 `POST /api/auth/login`，以既有 `FEASTOGETHER_BASE_URL`、`FEASTOGETHER_API_KEY` 呼叫饗賓 `/api/v1/staff/login`，核對員編後沿用 `/api/v1/hr/staff_lookup` 的資格檢查與本地帳號停用規則，再建立 MySQL session 並下發 `FT_ESIGN_SESSION` HttpOnly cookie。密碼僅即時轉送，上游 token 不入庫、不回傳瀏覽器，也不記錄登入 request/response body。
+
+依 `server/.env.example` 設定饗賓 API 連線資訊；`AUTH_TRUSTED_ORIGINS` 須包含實際前端 origin。帳密登入不依賴 OAuth，不新增資料表或 migration；既有 WebView SSO 與外部簽署驗證保留。
+
+OAuth 後端入口保留供後續串接，啟用時須完整設定 `OAUTH_*` 並向上游註冊回呼網址。登入頁、OAuth 前端回呼、session 過期導向及電子簽畫面 API 串接均由前端工程師另行實作，本 PR 不包含這些前端變更。
+
+Swagger 的前端用途為串接參考，不代表目前 client 已完成對應功能。

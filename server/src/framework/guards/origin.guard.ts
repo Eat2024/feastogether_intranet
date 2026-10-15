@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import type { FastifyRequest } from 'fastify';
 import { AppException } from '#app/common/errors/app.exception';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { getRequestPath } from '#app/framework/http/request.context';
 
 /**
  * 跨站請求防護：以 cookie 認證的異動端點（登入／登出等）可加掛本 guard。
@@ -25,12 +26,41 @@ export class OriginGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<FastifyRequest>();
     const origin = req.headers.origin;
-    if (origin === undefined) return true;
+    if (origin === undefined) {
+      if (this.requiresExplicitOrigin(req)) {
+        throw new AppException(
+          AppErrorCode.CSRF_ORIGIN_REJECTED,
+          '請求來源不允許',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      return true;
+    }
     if (this.allowedOrigins().includes(origin)) return true;
+    // 設定 Referrer-Policy: no-referrer 的同源頁面（外部簽署 bridge）送出表單時，瀏覽器依 Fetch 規範送 Origin: null；
+    // 以瀏覽器自動帶上、頁面無法偽造的 Sec-Fetch-Site 確認確實同源。沙箱與跨站 redirect 仍為 cross-site，照常拒絕
+    if (origin === 'null' && req.headers['sec-fetch-site'] === 'same-origin') {
+      return true;
+    }
     throw new AppException(
       AppErrorCode.CSRF_ORIGIN_REJECTED,
       '請求來源不允許',
       HttpStatus.FORBIDDEN,
+    );
+  }
+
+  private requiresExplicitOrigin(request: FastifyRequest): boolean {
+    const path = getRequestPath(request);
+    return (
+      path === '/api/auth/login' ||
+      path === '/auth/login' ||
+      path.startsWith('/api/esign/') ||
+      path === '/api/esign' ||
+      path.startsWith('/api/external-signature') ||
+      path.startsWith('/api/external-signing-task') ||
+      path.startsWith('/esign/') ||
+      path.startsWith('/external-signature') ||
+      path.startsWith('/external-signing-task')
     );
   }
 

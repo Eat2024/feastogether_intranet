@@ -2,7 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "(?:^|/)(?:security-headers|security-harness|security-oauth-login|security-webview-session)\\.e2e-spec\\.ts$",
+  "testRegex": "(?:^|/)(?:security-headers|security-harness|security-oauth-login|security-webview-session|security-core-esign-flow)\\.e2e-spec\\.ts$",
   "globalSetup": "<rootDir>/test/global-setup.ts",
   "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
   "transform": {

@@ -44,6 +44,9 @@ export class AuthGuard implements CanActivate {
     if (!token) throw this.unauthorized('Missing token');
     const identity = await this.sessions.verifySessionToken(token);
     if (!identity) throw this.unauthorized('Invalid, expired or revoked token');
+    if (!Number.isSafeInteger(identity.userId) || identity.userId < 1) {
+      throw this.unauthorized('登入身分無效，請重新登入');
+    }
 
     this.applyIdentity(req, identity);
     return true;

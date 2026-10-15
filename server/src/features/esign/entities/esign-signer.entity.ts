@@ -12,9 +12,10 @@ import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from './esign-document.entity';
 
 @Entity({ name: 'esign_signers', comment: '文件簽署人' })
+@Check('chk_esign_signers_status', "`status` IN ('pending','signed')")
 @Check(
   'chk_esign_signers_identity',
-  "(`signer_type` = 'user' AND `user_id` IS NOT NULL AND `email` IS NULL AND `empid_snapshot` IS NOT NULL) OR (`signer_type` = 'email' AND `user_id` IS NULL AND `email` IS NOT NULL AND `empid_snapshot` IS NULL)",
+  "(`signer_type` = 'user' AND `user_id` IS NOT NULL AND `email` IS NULL AND `empid_snapshot` IS NOT NULL AND `invitation_token_sha256` IS NULL AND `invitation_token_ciphertext` IS NULL AND `invitation_expires_at` IS NULL) OR (`signer_type` = 'email' AND `user_id` IS NULL AND `email` IS NOT NULL AND `empid_snapshot` IS NULL)",
 )
 @Index('uq_esign_signers_document_user', ['documentId', 'userId'], {
   unique: true,
@@ -22,6 +23,17 @@ import { EsignDocument } from './esign-document.entity';
 @Index('uq_esign_signers_document_email', ['documentId', 'email'], {
   unique: true,
 })
+@Index('uq_esign_signers_public_id', ['publicId'], { unique: true })
+@Index('uq_esign_signers_invitation_token_sha256', ['invitationTokenSha256'], {
+  unique: true,
+})
+@Index(
+  'uq_esign_signers_completion_receipt_sha256',
+  ['completionReceiptSha256'],
+  {
+    unique: true,
+  },
+)
 @Index('idx_esign_signers_user_status_document', [
   'userId',
   'status',
@@ -35,12 +47,27 @@ import { EsignDocument } from './esign-document.entity';
 ])
 @Index('idx_esign_signers_signed_at', ['signedAt'])
 @Index('idx_esign_signers_rejected_at', ['rejectedAt'])
+@Index('idx_esign_signers_invitation_expires_at', ['invitationExpiresAt'])
+@Index('idx_esign_signers_invitation_delivered_at', ['invitationDeliveredAt'])
+@Index('idx_esign_signers_completion_receipt_expires_at', [
+  'completionReceiptExpiresAt',
+])
 @Index('idx_esign_signers_created_at', ['createdAt'])
 @Index('idx_esign_signers_updated_at', ['updatedAt'])
 @Index('idx_esign_signers_deleted_at', ['deletedAt'])
 export class EsignSigner extends UserAuditableEntity {
   @PrimaryGeneratedColumn({ type: 'bigint', comment: '簽署人流水號' })
   id!: number;
+
+  @Column({
+    name: 'public_id',
+    type: 'char',
+    length: 36,
+    charset: 'ascii',
+    collation: 'ascii_bin',
+    comment: '對外顯示的 UUID v4',
+  })
+  publicId!: string;
 
   @Column({ name: 'document_id', type: 'bigint', comment: '文件 ID' })
   documentId!: number;
@@ -134,6 +161,63 @@ export class EsignSigner extends UserAuditableEntity {
     comment: '簽署時間',
   })
   signedAt?: Date;
+
+  @Column({
+    name: 'invitation_token_sha256',
+    type: 'char',
+    length: 64,
+    charset: 'ascii',
+    collation: 'ascii_bin',
+    nullable: true,
+    comment: '外部邀請 token SHA-256',
+  })
+  invitationTokenSha256?: string;
+
+  @Column({
+    name: 'invitation_token_ciphertext',
+    type: 'text',
+    nullable: true,
+    comment: '待寄送外部邀請 token 的 AES-256-GCM 密文',
+  })
+  invitationTokenCiphertext?: string;
+
+  @Column({
+    name: 'invitation_expires_at',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    comment: '外部邀請到期時間',
+  })
+  invitationExpiresAt?: Date;
+
+  @Column({
+    name: 'invitation_delivered_at',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    comment: '外部邀請寄送接受時間',
+  })
+  invitationDeliveredAt?: Date;
+
+  @Column({
+    name: 'completion_receipt_sha256',
+    type: 'char',
+    length: 64,
+    charset: 'ascii',
+    collation: 'ascii_bin',
+    nullable: true,
+    comment: '外部完成收據 token SHA-256',
+  })
+  completionReceiptSha256?: string;
+
+  @Column({
+    name: 'completion_receipt_expires_at',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    comment: '外部完成收據到期時間',
+  })
+  completionReceiptExpiresAt?: Date;
 
   @Column({
     name: 'rejected_at',

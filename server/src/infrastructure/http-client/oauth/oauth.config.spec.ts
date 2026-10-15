@@ -68,8 +68,10 @@ describe('OauthConfig', () => {
     expect(config.allowInsecure).toBe(true);
   });
 
-  it('完全未設定且未開 DEVMOD → 建構即失敗', () => {
-    expect(thrownBy(() => build({}))).toMatchObject(UNAVAILABLE);
+  it('完全未設定 → 保留 WebView SSO，OAuth 取設定時回 503', () => {
+    const config = build({});
+    expect(config.configured).toBe(false);
+    expect(thrownBy(() => config.issuer)).toMatchObject(UNAVAILABLE);
   });
 
   it('DEVMOD 開放且完全未設定 → 可開機、configured=false，取設定時才回 OAUTH_UNAVAILABLE', () => {
@@ -95,9 +97,7 @@ describe('OauthConfig', () => {
     expect(build({ ...validEnv(), DEVMOD: 'true' }).configured).toBe(true);
   });
 
-  it('production 即使 DEVMOD=true 也不放寬（完全未設定 → 建構失敗）', () => {
-    expect(
-      thrownBy(() => build({ DEVMOD: 'true', NODE_ENV: 'production' })),
-    ).toMatchObject(UNAVAILABLE);
+  it('production 未設定 OAuth 時仍可提供 WebView SSO', () => {
+    expect(build({ NODE_ENV: 'production' }).configured).toBe(false);
   });
 });

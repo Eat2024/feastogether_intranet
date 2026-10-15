@@ -23,7 +23,7 @@ describe('FeastogetherClient logging', () => {
     };
   };
 
-  it('HTTP 失敗時記錄遮罩後的 request／response body', async () => {
+  it('登入 HTTP 失敗不記錄 request／response body', async () => {
     const { client, http, logger } = build();
     const requestBody = {
       account_id: 'test-user',
@@ -60,15 +60,6 @@ describe('FeastogetherClient logging', () => {
         path: '/api/v1/staff/login',
         status: 503,
         errorType: 'AxiosError',
-        requestBody: {
-          account_id: 'test-user',
-          password: '***',
-          verification_code: '***',
-        },
-        responseBody: {
-          accessToken: '***',
-          password: '***',
-        },
       },
     });
   });
@@ -117,7 +108,7 @@ describe('FeastogetherClient logging', () => {
     });
   });
 
-  it('success=false 記錄 upstream code 與遮罩後的 response body', async () => {
+  it('登入 success=false 只記錄 upstream code，不記錄 body', async () => {
     const { client, http, logger } = build();
     const upstreamBody = {
       success: false,
@@ -141,7 +132,6 @@ describe('FeastogetherClient logging', () => {
         method: 'get',
         path: '/api/v1/staff/login',
         upstreamCode: 'INVALID_CREDENTIALS',
-        responseBody: upstreamBody,
       },
     });
   });

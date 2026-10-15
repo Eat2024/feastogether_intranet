@@ -26,7 +26,7 @@ const optionsFor = (database: string) =>
 describe('e-sign schema migrations', () => {
   jest.setTimeout(60_000);
 
-  it('第二支 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
+  it('Spec 03 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const dataSource = new DataSource(optionsFor(database));
       await dataSource.initialize();
@@ -34,7 +34,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(48);
+        expect(first.timeColumns).toHaveLength(54);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(
@@ -57,8 +57,11 @@ describe('e-sign schema migrations', () => {
 
         await dataSource.undoLastMigration();
         expect(await listBusinessTables(dataSource, database)).toEqual(
-          BUSINESS_TABLES.filter((table) => table !== 'auth_sessions'),
+          BUSINESS_TABLES,
         );
+        expect(
+          await hasColumn(dataSource, database, 'esign_signers', 'public_id'),
+        ).toBe(false);
 
         await dataSource.runMigrations();
         expect(await schemaSnapshot(dataSource, database)).toEqual(first);
@@ -77,6 +80,20 @@ async function listBusinessTables(dataSource: DataSource, database: string) {
     [database],
   );
   return rows.map((row) => row.TABLE_NAME);
+}
+
+async function hasColumn(
+  dataSource: DataSource,
+  database: string,
+  table: string,
+  column: string,
+) {
+  const rows = await dataSource.query<Array<{ count: number }>>(
+    `SELECT COUNT(*) count FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = ? AND column_name = ?`,
+    [database, table, column],
+  );
+  return Number(rows[0]?.count) === 1;
 }
 
 async function schemaSnapshot(dataSource: DataSource, database: string) {

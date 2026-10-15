@@ -76,6 +76,26 @@ describe('AuthGuard', () => {
     ).rejects.toMatchObject({ code: AppErrorCode.UNAUTHORIZED });
   });
 
+  it.each([
+    0,
+    -1,
+    1.5,
+    NaN,
+    Infinity,
+    Number.MAX_SAFE_INTEGER + 1,
+    '7',
+    undefined,
+  ])('拒絕無效使用者 ID %s，且不掛載身分或稽核使用者', async (userId) => {
+    const { guard, verifySessionToken, setAuditUserId } = createGuard();
+    const { context, request } = createContext('token-1');
+    verifySessionToken.mockResolvedValueOnce({ userId });
+    await expect(guard.canActivate(context)).rejects.toMatchObject({
+      code: AppErrorCode.UNAUTHORIZED,
+    });
+    expect(request.user).toBeUndefined();
+    expect(setAuditUserId).not.toHaveBeenCalled();
+  });
+
   it('無效、停用或 soft-deleted 員工 session 由 verifier fail closed', async () => {
     const { guard, verifySessionToken } = createGuard();
     verifySessionToken.mockResolvedValueOnce(null);

@@ -24,6 +24,18 @@ export const AppErrorCode = {
   EXTERNAL_AUTH_UNAVAILABLE: 'EXTERNAL_AUTH_UNAVAILABLE',
   /** 外部資料服務（饗賓 brand/department/hr/字典）不可用（003） */
   EATOGETHER_API_SERVICE_UNAVAILABLE: 'EATOGETHER_API_SERVICE_UNAVAILABLE',
+  /** 電子簽 PDF 格式、大小、加密或頁數不符合規格。 */
+  ESIGN_INVALID_PDF: 'ESIGN_INVALID_PDF',
+  /** 電子簽資源不存在或目前身分無權存取。 */
+  ESIGN_RESOURCE_NOT_FOUND: 'ESIGN_RESOURCE_NOT_FOUND',
+  /** 外部簽署憑證無效、過期或對應流程已終止。 */
+  ESIGN_EXTERNAL_UNAUTHORIZED: 'ESIGN_EXTERNAL_UNAUTHORIZED',
+  /** 電子簽文件或簽署人目前狀態不允許操作。 */
+  ESIGN_STATE_CONFLICT: 'ESIGN_STATE_CONFLICT',
+  /** 電子簽文件、payload 或檔案完整性驗證失敗。 */
+  ESIGN_INTEGRITY_FAILED: 'ESIGN_INTEGRITY_FAILED',
+  /** 電子簽必要的資料庫或私有儲存目前不可用。 */
+  ESIGN_UNAVAILABLE: 'ESIGN_UNAVAILABLE',
   // ── 038 饗賓 OAuth 登入 ──
   /** 登入交易無效、到期、已消耗或瀏覽器綁定不符；請重新發起登入 */
   OAUTH_TRANSACTION_INVALID: 'OAUTH_TRANSACTION_INVALID',

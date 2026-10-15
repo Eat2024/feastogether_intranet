@@ -86,25 +86,27 @@ WebView JWT 防重放、待啟動 code 與本地員工 session 的單一 MySQL �
 
 ### 3.1 `esign_documents`
 
-電子簽案件主檔。第一階段不建立版本表，因此文件進入 `in_progress` 後必須鎖定；任何實質修改都建立新文件。
+電子簽案件主檔。Spec 03 每筆文件代表一次獨立且不可變的簽署流程，不建立版本表。文件進入 `active` 後，PDF、標題、簽署人、簽署欄位、簽署期間、簽署選項、適用條款版本及 canonical signing payload 必須鎖定；發起後發現錯誤時停止原流程並建立具有新文件編號與新摘要的獨立文件，所有簽署人重新簽署，既有結果不得沿用，且不建立新舊文件間的版本關聯。
 
 | 欄位                     | 型別         | 必填 | 鍵值／索引             | 說明                                                                                                                |
 | ------------------------ | ------------ | ---: | ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `id`                     | BIGINT       |   是 | PK                     | 文件流水號。                                                                                                        |
 | `doc_number`             | CHAR(36)     |   是 | UNIQUE                 | 對外文件 UUID；建立後不可變更。                                                                                     |
 | `title`                  | VARCHAR(200) |   是 |                        | 文件顯示名稱。                                                                                                      |
-| `status`                 | VARCHAR(20)  |   是 | INDEX                  | 文件狀態：`draft`、`in_progress`、`completed`、`stopped`；`completed` 可包含已拒絕者，但不得仍有 `pending` 簽署人。 |
+| `status`                 | VARCHAR(20)  |   是 | INDEX                  | 文件狀態：`draft`、`active`、`finalizing`、`completed`、`stopped`；Spec 03 不產生拒簽結果。                         |
 | `created_by_user_id`     | BIGINT       |   是 | FK → `users.id`、INDEX | 文件建立人；也是第一階段通知、停止與匯出的權限判斷依據。                                                            |
-| `sign_start_at`          | DATETIME(6)  |   否 | INDEX                  | 可開始簽署的 UTC 時間；NULL 代表發起後立即開始。                                                                    |
-| `sign_end_at`            | DATETIME(6)  |   否 | INDEX                  | 簽署截止 UTC 時間；NULL 代表未設定截止時間。                                                                        |
-| `watermark_enabled`      | TINYINT(1)   |   是 | 預設 0                 | 是否在下載或匯出的已簽署 PDF 每一頁加入系統浮水印；不改寫原始檔。草稿階段可調整，進入 `in_progress` 後不可修改。    |
-| `allow_reject`           | TINYINT(1)   |   是 | 預設 1                 | 是否允許簽署人拒絕簽署。草稿階段可調整，進入 `in_progress` 後不可修改。                                             |
+| `sign_start_at`          | DATETIME(6)  |   否 | INDEX                  | 可開始簽署的 UTC 時間；草稿可為 NULL，發起時必填。                                                                  |
+| `sign_end_at`            | DATETIME(6)  |   否 | INDEX                  | 簽署截止 UTC 時間；草稿可為 NULL，發起時必填且晚於開始時間。                                                        |
+| `watermark_enabled`      | TINYINT(1)   |   是 | 預設 0                 | Spec 03 固定為 0，不接受 client 改寫。                                                                               |
+| `allow_reject`           | TINYINT(1)   |   是 | 預設 0                 | Spec 03 固定為 0，不提供拒簽。                                                                                       |
 | `signing_payload_json`   | JSON         |   否 |                        | 發起簽署時固定的 canonical payload，包含文件、欄位、簽署人、條款版本等必要參數；draft 階段可為 NULL。               |
 | `signing_payload_sha256` | CHAR(64)     |   否 | INDEX                  | Server 對 canonical `signing_payload_json` 計算的 SHA-256；進入 `in_progress` 後不可修改。                          |
-| `initiated_at`           | DATETIME(6)  |   否 | INDEX                  | 文件由 `draft` 轉為 `in_progress` 的時間。                                                                          |
-| `completed_at`           | DATETIME(6)  |   否 | INDEX                  | 所有簽署人均已簽署或拒絕，且最終文件產生完成的時間。                                                                |
+| `initiated_at`           | DATETIME(6)  |   否 | INDEX                  | 文件由 `draft` 轉為 `active` 的時間。                                                                                |
+| `completed_at`           | DATETIME(6)  |   否 | INDEX                  | 所有簽署人均已簽署，且完成 PDF 保存並驗證成功的時間。                                                               |
 | `stopped_at`             | DATETIME(6)  |   否 | INDEX                  | 文件停止簽署時間。                                                                                                  |
 | `stop_reason`            | VARCHAR(500) |   否 |                        | 停止簽署原因。                                                                                                      |
+| `finalization_lease_token` | CHAR(36)   |   否 |                        | 完成 PDF worker claim 使用的 UUID fencing token。                                                                   |
+| `finalization_lease_expires_at` | DATETIME(6) | 否 | INDEX              | 完成 PDF worker lease 到期 UTC 時間；只有過期 lease 可回收。                                                        |
 | `created_at`             | DATETIME(6)  |   是 | INDEX                  | 建立時間。                                                                                                          |
 | `updated_at`             | DATETIME(6)  |   是 | INDEX                  | 最近狀態或草稿內容更新時間。                                                                                        |
 | `deleted_at`             | DATETIME(6)  |   否 | INDEX                  | 草稿軟刪除時間；已進入簽署流程的文件不得由一般後台刪除。                                                            |
@@ -120,12 +122,13 @@ WebView JWT 防重放、待啟動 code 與本地員工 session 的單一 MySQL �
 | -------------------- | ------------ | ---: | -------------------------------- | ------------------------------------------------- |
 | `id`                 | BIGINT       |   是 | PK                               | 文件欄位流水號。                                  |
 | `document_id`        | BIGINT       |   是 | FK → `esign_documents.id`、INDEX | 所屬文件。                                        |
+| `signer_id`          | BIGINT       |   否 | FK → `esign_signers.id`、INDEX   | 欄位所屬簽署人；草稿可暫缺，發起前必須同文件且非 NULL。 |
 | `field_type`         | VARCHAR(20)  |   是 |                                  | 欄位類型；第一階段支援 `signature`、`date`。      |
 | `page_number`        | INT          |   是 | 複合 INDEX                       | PDF 頁碼，從 1 起算。                             |
 | `x_percent`          | DECIMAL(6,3) |   是 |                                  | 欄位左上角相對頁面寬度的 X 百分比。               |
 | `y_percent`          | DECIMAL(6,3) |   是 |                                  | 欄位左上角相對頁面高度的 Y 百分比。               |
-| `width_percent`      | DECIMAL(6,3) |   否 |                                  | 欄位寬度百分比。                                  |
-| `height_percent`     | DECIMAL(6,3) |   否 |                                  | 欄位高度百分比。                                  |
+| `width_percent`      | DECIMAL(6,3) |   是 |                                  | 欄位寬度百分比，必須大於 0 且不得超出頁面。       |
+| `height_percent`     | DECIMAL(6,3) |   是 |                                  | 欄位高度百分比，必須大於 0 且不得超出頁面。       |
 | `sort_order`         | INT          |   是 | 預設 0                           | 欄位顯示或處理順序。                              |
 | `created_at`         | DATETIME(6)  |   是 | INDEX                            | 建立時間。                                        |
 | `updated_at`         | DATETIME(6)  |   是 | INDEX                            | 最近更新時間；文件進入 `in_progress` 後不得更新。 |
@@ -135,11 +138,12 @@ WebView JWT 防重放、待啟動 code 與本地員工 session 的單一 MySQL �
 
 ### 3.3 `esign_signers`
 
-文件指定簽署人及目前簽署狀態，支援內部員工的「我的電子簽」查詢，以及尚未具員工身分之面試錄取人員等 Email 外部簽署人。員工資料快照用於保留簽署當時身分，不隨 HR 資料更新而改變。`signed` 與 `rejected` 都是終止狀態；拒絕者不產生成功簽署證據，但不阻止其他簽署人繼續。
+文件指定簽署人及目前簽署狀態，支援內部員工的「我的電子簽」查詢，以及尚未具員工身分之面試錄取人員等 Email 外部簽署人。員工資料快照用於保留簽署當時身分，不隨 HR 資料更新而改變。Spec 03 狀態只使用 `pending` 與 `signed`；既有拒簽欄位保留於基礎 schema，但本流程不讀寫。
 
 | 欄位                  | 型別         | 必填 | 鍵值／索引                | 說明                                                                                |
 | --------------------- | ------------ | ---: | ------------------------- | ----------------------------------------------------------------------------------- |
 | `id`                  | BIGINT       |   是 | PK                        | 簽署人指派流水號。                                                                  |
+| `public_id`           | CHAR(36)     |   是 | UNIQUE                    | 對 client route/DTO 使用的 UUID v4；本身不是授權憑證。                              |
 | `document_id`         | BIGINT       |   是 | FK → `esign_documents.id` | 所屬文件。                                                                          |
 | `signer_type`         | VARCHAR(20)  |   是 | INDEX                     | 簽署人類型：`user`（內部員工）或 `email`（Email 外部簽署人）。                      |
 | `user_id`             | BIGINT       |   否 | FK → `users.id`           | 被指定的內部員工；`signer_type = user` 時必填，外部簽署人為 NULL。                  |
@@ -148,8 +152,14 @@ WebView JWT 防重放、待啟動 code 與本地員工 session 的單一 MySQL �
 | `name_snapshot`       | VARCHAR(100) |   是 |                           | 發起簽署時的姓名快照。                                                              |
 | `department_snapshot` | VARCHAR(150) |   否 |                           | 發起簽署時的部門快照。                                                              |
 | `title_snapshot`      | VARCHAR(100) |   否 |                           | 發起簽署時的職稱快照。                                                              |
-| `status`              | VARCHAR(20)  |   是 | INDEX，預設 `pending`     | 狀態：`pending`、`signed`、`rejected`。                                             |
+| `status`              | VARCHAR(20)  |   是 | INDEX，預設 `pending`     | Spec 03 狀態：`pending`、`signed`。                                                  |
 | `signed_at`           | DATETIME(6)  |   否 | INDEX                     | 成功簽署時間，必須與成功的簽署證據紀錄一致。                                        |
+| `invitation_token_sha256` | CHAR(64) | 否 | UNIQUE                    | 外部邀請 opaque token 的 SHA-256；不保存明文。                                      |
+| `invitation_token_ciphertext` | TEXT | 否 |                          | 僅寄送待處理期間保留的 AES-256-GCM 密文；投遞成功後清除。                           |
+| `invitation_expires_at` | DATETIME(6) | 否 | INDEX                    | 外部邀請到期 UTC 時間。                                                             |
+| `invitation_delivered_at` | DATETIME(6) | 否 | INDEX                  | 郵件 provider 接受投遞的 UTC 時間。                                                 |
+| `completion_receipt_sha256` | CHAR(64) | 否 | UNIQUE                | 外部已簽署人唯讀 receipt token 的 SHA-256。                                          |
+| `completion_receipt_expires_at` | DATETIME(6) | 否 | INDEX             | 文件完成或停止後 30 日的 receipt 到期時間。                                         |
 | `rejected_at`         | DATETIME(6)  |   否 | INDEX                     | 拒絕簽署時間。                                                                      |
 | `reject_reason`       | VARCHAR(500) |   否 |                           | 拒絕原因。                                                                          |
 | `sort_order`          | INT          |   是 | 預設 0                    | 簽署人顯示或通知順序。                                                              |
@@ -167,7 +177,7 @@ UNIQUE (document_id, email)
 INDEX (user_id, status)
 ```
 
-每筆簽署人必須且只能使用一種識別方式：內部員工使用 `user_id`，Email 外部簽署人使用正規化 `email`。Email 大小寫差異不得繞過同一文件內的唯一性。Stage 1 不支援手機號碼簽署人。外部簽署人的邀請、身分驗證與重放防護由後續功能規格定義，不得只依 client 宣告的 Email 完成簽署。
+每筆簽署人必須且只能使用一種識別方式：內部員工使用 `user_id`，Email 外部簽署人使用正規化 `email`。Email 大小寫差異不得繞過同一文件內的唯一性。Spec 03 不支援手機號碼簽署人。外部邀請使用 32-byte CSPRNG opaque token，授權時以 digest、signer、document、狀態與期限共同驗證；token 明文不得進入 DB、log 或一般回應。
 
 ### 3.4 `esign_signature_records`
 
@@ -200,9 +210,10 @@ INDEX (user_id, status)
 | `id`                     | BIGINT       |   是 | PK                                          | 檔案 metadata 流水號。                                                                                                 |
 | `document_id`            | BIGINT       |   否 | FK → `esign_documents.id`、INDEX            | 所屬文件；跨文件清單匯出可為 NULL。                                                                                    |
 | `signature_record_id`    | BIGINT       |   否 | FK → `esign_signature_records.id`、INDEX    | 所屬簽署證據，例如簽名圖或個人簽署 PDF。                                                                               |
+| `document_field_id`      | BIGINT       |   否 | FK → `esign_document_fields.id`、INDEX      | `signature_png` 必填，用來保證每筆證據每個欄位只有一張簽名圖。                                                         |
 | `verification_record_id` | BIGINT       |   否 | FK → `esign_verification_records.id`、INDEX | 所屬驗證紀錄，例如 manifest 或 QR Code。                                                                               |
 | `export_job_id`          | BIGINT       |   否 | FK → `esign_export_jobs.id`、INDEX          | 產生此檔案的匯出工作。                                                                                                 |
-| `file_purpose`           | VARCHAR(30)  |   是 | INDEX                                       | 用途：`source_pdf`、`signature_image`、`signer_pdf`、`completed_pdf`、`manifest`、`audit_trail`、`qr_code`、`export`。 |
+| `file_purpose`           | VARCHAR(30)  |   是 | INDEX                                       | Spec 03 使用 `source_pdf`、`signature_png`、`completed_pdf`；其他值屬後續規格。                                        |
 | `object_key`             | VARCHAR(500) |   是 | UNIQUE                                      | Private bucket 內的物件 key；不得存永久公開 URL。                                                                      |
 | `object_version`         | VARCHAR(255) |   否 |                                             | Object storage version ID。                                                                                            |
 | `original_file_name`     | VARCHAR(255) |   否 |                                             | 上傳或產出時的人類可讀檔名；顯示前需處理不安全字元。                                                                   |
@@ -266,7 +277,7 @@ INDEX (document_id, occurred_at, id)
 | --------------------- | ----------- | ---: | -------------------------------- | -------------------------------------- |
 | `id`                  | BIGINT      |   是 | PK                               | 通知批次流水號。                       |
 | `document_id`         | BIGINT      |   是 | FK → `esign_documents.id`、INDEX | 被通知的文件。                         |
-| `filter_type`         | VARCHAR(20) |   是 |                                  | 通知對象：`all` 或 `pending`。         |
+| `filter_type`         | VARCHAR(20) |   是 |                                  | Spec 03 固定 `external_invitation`。  |
 | `target_count`        | INT         |   是 |                                  | 建立批次時實際展開的通知對象數量快照。 |
 | `notified_by_user_id` | BIGINT      |   否 | FK → `users.id`                  | 手動通知操作人；自動通知可為 NULL。    |
 | `created_at`          | DATETIME(6) |   是 | INDEX                            | 建立批次及排入 worker 的時間。         |
@@ -280,9 +291,12 @@ INDEX (document_id, occurred_at, id)
 | `id`           | BIGINT       |   是 | PK                                          | 通知明細流水號。                                         |
 | `batch_id`     | BIGINT       |   是 | FK → `esign_notification_batches.id`、INDEX | 所屬通知批次。                                           |
 | `signer_id`    | BIGINT       |   是 | FK → `esign_signers.id`、INDEX              | 通知對象。                                               |
-| `channel`      | VARCHAR(20)  |   是 |                                             | 通知管道，例如 `email`、`sms`、`intranet`。              |
-| `result`       | VARCHAR(20)  |   是 | INDEX，預設 `pending`                       | `pending`、`success`、`fail`、`unknown`。                |
+| `channel`      | VARCHAR(20)  |   是 |                                             | Spec 03 固定 `email`。                                   |
+| `result`       | VARCHAR(20)  |   是 | INDEX，預設 `pending`                       | `pending`、`processing`、`delivered`、`failed`。         |
 | `error_code`   | VARCHAR(100) |   否 |                                             | 發送失敗的穩定錯誤代碼，不保存包含個資的供應商完整回應。 |
+| `attempt_count` | INT         |   是 | 預設 0                                      | 已 claim 的寄送嘗試次數。                                |
+| `next_attempt_at` | DATETIME(6) | 否 | INDEX                                    | DB 權威的下次可重試時間。                                |
+| `processing_started_at` | DATETIME(6) | 否 | INDEX                             | CAS claim 開始時間，供 stale processing 回收。           |
 | `created_at`   | DATETIME(6)  |   是 | INDEX                                       | 明細建立時間。                                           |
 | `completed_at` | DATETIME(6)  |   否 | INDEX                                       | 供應商回覆成功、失敗或逾時判定時間。                     |
 
@@ -330,7 +344,7 @@ OR EXISTS esign_signers(
 esign_signers.user_id = currentUserId
 ```
 
-並以 `status` 篩選待簽、已簽或已拒絕。
+並以 `status` 篩選待簽或已簽。
 
 ### 通知與匯出
 
@@ -342,9 +356,8 @@ esign_signers.user_id = currentUserId
 
 ## 7. 狀態一致性
 
-- `esign_documents.status = completed` 前，所有 `esign_signers.status` 必須為 `signed` 或 `rejected`，不得仍有 `pending`；最終 PDF、verification record 及必要 file objects 必須已成功建立，且完成結果須明確保留每位簽署人的實際終止狀態。
+- `esign_documents.status = completed` 前，所有 `esign_signers.status` 必須為 `signed`，不得仍有 `pending`；完成 PDF 及必要 file objects 必須已成功建立並重讀驗證。
 - `esign_signers.status = signed` 時，必須存在唯一的 `esign_signature_records`。
-- `esign_signers.status = rejected` 時，`rejected_at` 必填且不得存在成功簽署紀錄。
 - `esign_verification_records.status = valid` 時，`manifest_sha256`、`final_pdf_sha256` 與 `audit_root_hash` 必須可重新驗證。
 - `esign_export_jobs.status = completed` 時，必須存在對應 `file_purpose = export` 的 `esign_file_objects`。
 - `users.is_active = 0` 時，不得建立新 session 或完成新簽署，但既有簽署與稽核資料必須保留。

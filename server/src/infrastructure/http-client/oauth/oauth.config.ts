@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { AppException } from '#app/common/errors/app.exception';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { parseAesKey } from '#app/features/auth/helpers/secret-crypto';
-import { isDevLoginAllowed } from '#app/framework/auth-mode';
 
 /** 允許以 http 對接的 issuer 主機（僅本機／測試 loopback；UAT 以上一律 https）。 */
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -20,9 +19,8 @@ const ENV = {
 
 /**
  * 饗賓 OAuth／OIDC 連線設定。建構時即完整驗證：缺值或格式錯誤直接讓應用啟動失敗
- * （不留半套設定上線）。唯一例外是 DEVMOD 開發者登入開放時，本機可完全不設定
- * 統一登入（configured=false，start／callback 取設定時回 OAUTH_UNAVAILABLE 503）；
- * 只設一半仍視為設定錯誤。網路不通不在本類別範圍（Discovery 於 OauthClient 延遲進行）。
+ * （不留半套設定上線）。完全未設定時保留 WebView SSO，OAuth 入口回 503；
+ * 只設一半仍視為設定錯誤。Discovery 於 OauthClient 延遲進行。
  */
 @Injectable()
 export class OauthConfig {
@@ -34,7 +32,7 @@ export class OauthConfig {
     const anySet = Object.values(ENV)
       .filter((key) => key !== ENV.redirectUri)
       .some((key) => !!config.get<string>(key));
-    this.configured = anySet || !isDevLoginAllowed(config);
+    this.configured = anySet;
     if (this.configured) this.assertComplete();
   }
 

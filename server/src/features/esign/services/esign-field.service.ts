@@ -9,8 +9,9 @@ import {
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 import type { FieldInputDto } from '../dto/field.dto';
+import type { EsignDocument } from '../entities/esign-document.entity';
+import type { EsignSigner } from '../entities/esign-signer.entity';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
-import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
@@ -21,7 +22,6 @@ import { PdfValidationService } from './pdf-validation.service';
 export class EsignFieldService {
   constructor(
     private readonly mysql: MysqlService,
-    private readonly documents: DocumentRepository,
     private readonly signers: SignerRepository,
     private readonly fields: DocumentFieldRepository,
     private readonly files: FileObjectRepository,
@@ -36,26 +36,30 @@ export class EsignFieldService {
     if (inputs.length > 200) {
       throw this.invalid('欄位數量不可超過 200 個');
     }
-    return this.mysql.transaction((manager) =>
-      this.replaceInTransaction(documentId, creatorUserId, inputs, manager),
-    );
+    return this.mysql.transaction(async (manager) => {
+      const document = await this.access.checkAndLockDraftDoc(
+        documentId,
+        creatorUserId,
+        manager,
+      );
+      const { fields } = await this.buildFields(
+        document,
+        creatorUserId,
+        inputs,
+        manager,
+      );
+      return fields;
+    });
   }
 
-  /** 沿用呼叫端交易；發起流程不得另開交易。 */
-  async replaceInTransaction(
-    documentId: number,
+  /** 沿用呼叫端交易；呼叫端須先鎖定文件並驗證建立人與草稿狀態。 */
+  async buildFields(
+    document: EsignDocument,
     creatorUserId: number,
     inputs: FieldInputDto[],
     manager: EntityManager,
   ) {
-    if (inputs.length > 200) throw this.invalid('欄位數量不可超過 200 個');
-
-    const document = await this.documents.findByIdForUpdate(
-      documentId,
-      manager,
-    );
-    this.access.checkEsignCreator(document, creatorUserId);
-    this.validation.checkStillDraft(document);
+    const documentId = document.id;
 
     const source = await this.files.findDocumentFile(
       documentId,
@@ -68,14 +72,50 @@ export class EsignFieldService {
     this.validation.assertSourceIntegrity(document, source, metadata.sha256);
 
     const signers = await this.signers.findByDocument(documentId, manager);
+    const replacements = this.build(
+      documentId,
+      creatorUserId,
+      inputs,
+      metadata.pageCount,
+      signers,
+      manager,
+    );
+
+    await this.fields.deleteDraftFields(documentId, manager);
+    const fields = await this.fields.save(replacements, manager);
+    // 沿用原本資料庫查詢的排序，確保簽署快照順序一致。
+    fields.sort(
+      (a, b) =>
+        a.pageNumber - b.pageNumber ||
+        a.sortOrder - b.sortOrder ||
+        Number(a.id) - Number(b.id),
+    );
+    return { fields, source, sourceMetadata: metadata };
+  }
+
+  /** 依 PDF 頁數驗證欄位並建立待寫入的 entity；呼叫端負責交易與寫入。 */
+  build(
+    documentId: number,
+    creatorUserId: number,
+    inputs: FieldInputDto[],
+    pageCount: number,
+    signers: EsignSigner[],
+    manager: EntityManager,
+  ) {
+    if (inputs.length > 200) throw this.invalid('欄位數量不可超過 200 個');
     const signerByPublicId = new Map(
       signers.map((signer) => [signer.publicId, signer]),
     );
-    const replacements = inputs.map((input) => {
-      const signer = signerByPublicId.get(input.signerPublicId);
-      if (!signer) throw this.invalid('欄位指定的簽署人不屬於本文件');
+    return inputs.map((input) => {
+      // 未帶簽署人的欄位存成未指派，由發起流程確認每個欄位都已指派。
+      const signer = input.signerPublicId
+        ? signerByPublicId.get(input.signerPublicId)
+        : undefined;
+      if (input.signerPublicId && !signer) {
+        throw this.invalid('欄位指定的簽署人不屬於本文件');
+      }
       if (
-        input.page > metadata.pageCount ||
+        input.page > pageCount ||
         input.xPercent + input.widthPercent > 100 ||
         input.yPercent + input.heightPercent > 100
       ) {
@@ -84,7 +124,7 @@ export class EsignFieldService {
       return this.fields.create(
         {
           documentId,
-          signerId: signer.id,
+          signerId: signer?.id,
           fieldType: input.type,
           pageNumber: input.page,
           xPercent: input.xPercent.toFixed(3),
@@ -98,9 +138,6 @@ export class EsignFieldService {
         manager,
       );
     });
-
-    await this.fields.deleteDraftFields(documentId, manager);
-    return this.fields.save(replacements, manager);
   }
 
   private invalid(message: string): AppException {

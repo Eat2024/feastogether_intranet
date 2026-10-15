@@ -17,7 +17,7 @@ Spec 03 沿用 Spec 01 建立的電子簽 schema，不建平行文件或證據�
 | `sign_end_at` | UTC；發起後不可變 |
 | `signing_payload_json` | 發起當下的 canonical payload；不含 token、cookie 或簽名 bytes |
 | `signing_payload_sha256` | canonical UTF-8 JSON 的 SHA-256 |
-| `allow_reject` / `watermark_enabled` | Spec 03 建檔固定為 false，不接受 Client 改寫 |
+| `allow_reject` / `watermark_enabled` | 建立草稿時為 false；發起時由 initiation API 的 `allowReject`、`watermark` 寫入，並納入 canonical payload 的 `options` |
 | `initiated_at` | 發起 transaction 的 Server UTC |
 | `completed_at` | final PDF 驗證並保存後的 Server UTC |
 | `stopped_at` / `stop_reason` | 手動或到期停止時寫入；不刪原資料 |
@@ -89,7 +89,7 @@ Existing unique constraints 維持：
 | --- | --- |
 | `id` | BIGINT PK |
 | `document_id` | FK → document |
-| `signer_id` | 新增 nullable FK → signer；發起前必須 non-null 且 signer.document_id 相同 |
+| `signer_id` | 新增 nullable FK → signer；草稿可為 NULL（先放欄位、後指定簽署人），取代簽署人時既有欄位改為 NULL 而非刪除；發起前必須 non-null 且 signer.document_id 相同 |
 | `field_type` | `signature \| date` |
 | `page_number` | 1 至 source PDF page count；Spec 03 不另外生成系統確認頁 |
 | `x_percent` / `y_percent` | `0 <= value < 100` |

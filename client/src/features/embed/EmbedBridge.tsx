@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
   EMBED_TARGET_PATHS,
@@ -38,9 +38,10 @@ async function checkSession(empid: string): Promise<SessionCheck> {
  */
 export default function EmbedBridge() {
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    if (window.self === window.top) return;
+    if (window.self === window.top || pathname === "/login" || pathname === "/oauth/callback") return;
 
     let active = true;
     let origins: string[] = [];
@@ -94,7 +95,7 @@ export default function EmbedBridge() {
       active = false;
       window.removeEventListener("message", onMessage);
     };
-  }, [router]);
+  }, [router, pathname]);
 
   return null;
 }

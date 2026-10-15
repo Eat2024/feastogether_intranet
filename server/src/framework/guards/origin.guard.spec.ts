@@ -5,11 +5,15 @@ import { OriginGuard } from './origin.guard';
 const contextWithOrigin = (
   origin?: string,
   url = '/api/auth/session',
+  extraHeaders: Record<string, string> = {},
 ): ExecutionContext =>
   ({
     switchToHttp: () => ({
       getRequest: () => ({
-        headers: origin === undefined ? {} : { origin },
+        headers: {
+          ...(origin === undefined ? {} : { origin }),
+          ...extraHeaders,
+        },
         method: 'POST',
         url,
       }),
@@ -45,6 +49,25 @@ describe('OriginGuard', () => {
     const guard = makeGuard('http://localhost:3000');
 
     expect(() => guard.canActivate(contextWithOrigin('null'))).toThrow();
+    expect(() =>
+      guard.canActivate(
+        contextWithOrigin('null', '/api/external-signature-session', {
+          'sec-fetch-site': 'cross-site',
+        }),
+      ),
+    ).toThrow();
+  });
+
+  it('no-referrer 的同源表單（Origin: null + Sec-Fetch-Site: same-origin）→ 放行', () => {
+    const guard = makeGuard('http://localhost:3000');
+
+    expect(
+      guard.canActivate(
+        contextWithOrigin('null', '/api/external-signature-session', {
+          'sec-fetch-site': 'same-origin',
+        }),
+      ),
+    ).toBe(true);
   });
 
   it('AUTH_TRUSTED_ORIGINS 優先於 CORS_ORIGIN；兩者皆空 → 帶 Origin 一律拒絕（fail closed）', () => {

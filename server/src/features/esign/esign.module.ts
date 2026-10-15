@@ -3,11 +3,13 @@ import { FileStorageModule } from '#app/infrastructure/file-storage/file-storage
 import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
 import { LoggingModule } from '#app/infrastructure/logging/logging.module';
 import { MailModule } from '#app/infrastructure/mail/mail.module';
+import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { EsignAccessPolicyService } from './services/esign-access-policy.service';
 import { EsignAuditService } from './services/esign-audit.service';
 import { EsignConsentService } from './services/esign-consent.service';
 import { EsignDocumentValidationService } from './services/esign-document-validation.service';
 import { EsignSignerService } from './services/esign-signer.service';
+import { EsignSignerCandidateService } from './services/esign-signer-candidate.service';
 import { EsignTokenService } from './services/esign-token.service';
 import { EsignViewMapper } from './services/esign-view.mapper';
 import { PdfValidationService } from './services/pdf-validation.service';
@@ -43,6 +45,7 @@ const esignServices = [
   EsignStoppageService,
   EsignCompletionAccessService,
   EsignSignerService,
+  EsignSignerCandidateService,
   EsignTokenService,
   EsignViewMapper,
   PdfValidationService,
@@ -54,6 +57,7 @@ const esignServices = [
     FileStorageModule,
     LoggingModule,
     MailModule,
+    FeastogetherModule,
     EsignQueueModule,
   ],
   providers: esignServices,

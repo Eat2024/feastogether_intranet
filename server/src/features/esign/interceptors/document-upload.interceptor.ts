@@ -14,7 +14,10 @@ export interface DocumentUpload {
   file?: { bytes: Buffer; originalFileName: string; contentType: string };
 }
 
-/** 僅供電子簽草稿上傳：解析 file/title，不建立資料、不驗證 PDF 業務內容。 */
+/** multipart 允許的文字欄位；fields 為 JSON 字串，由 DTO 解析與驗證。 */
+const TEXT_FIELDS = new Set(['title', 'fields']);
+
+/** 僅供電子簽草稿上傳：解析 file/title/fields，不建立資料、不驗證 PDF 業務內容。 */
 @Injectable()
 export class DocumentUploadInterceptor implements NestInterceptor {
   async intercept(context: ExecutionContext, next: CallHandler) {
@@ -43,7 +46,7 @@ export class DocumentUploadInterceptor implements NestInterceptor {
           contentType: part.mimetype,
         };
       } else if (typeof part.value === 'string') {
-        if (part.fieldname !== 'title') {
+        if (!TEXT_FIELDS.has(part.fieldname)) {
           throw this.invalid(`不支援的欄位：${part.fieldname}`);
         }
         fields[part.fieldname] = part.value;

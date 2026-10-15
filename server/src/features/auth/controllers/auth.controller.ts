@@ -33,6 +33,8 @@ import {
   setAuthCookie,
 } from '#app/features/auth/helpers/auth-cookie';
 import { Public } from '#app/framework/decorators/public.decorator';
+import { LoginDto } from '../dto/login.dto';
+import { AuthThrottlerGuard } from '#app/framework/guards/auth-throttler.guard';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import {
   EmbedOriginsView,
@@ -50,6 +52,24 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly config: ConfigService,
   ) {}
+
+  @Public()
+  @UseGuards(OriginGuard, AuthThrottlerGuard)
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: '以員工編號與密碼登入電子簽' })
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const { token, session } = await this.authService.login(
+      dto.empId,
+      dto.password,
+    );
+    setAuthCookie(reply, this.config, token);
+    return session;
+  }
 
   @Public()
   @Post(configPath.AUTH_WEBVIEW_LAUNCHES)

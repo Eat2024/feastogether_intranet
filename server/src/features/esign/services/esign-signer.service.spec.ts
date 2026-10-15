@@ -1,9 +1,13 @@
+import { EsignDocument } from '../entities/esign-document.entity';
+import { EsignAccessPolicyService } from './esign-access-policy.service';
+import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignSignerService } from './esign-signer.service';
+import { User } from '#app/features/users/entities/user.entity';
+import { EsignSigner } from '../entities/esign-signer.entity';
+import type { SignerInputDto } from '../dto/signer.dto';
 
 describe('EsignSignerService', () => {
   const service = new EsignSignerService(
-    {} as never,
-    {} as never,
     {} as never,
     {} as never,
     {} as never,
@@ -15,5 +19,253 @@ describe('EsignSignerService', () => {
     expect(service.normalizeEmail('  Candidate+HR@Example.COM ')).toBe(
       'candidate+hr@example.com',
     );
+  });
+
+  it('取代簽署人時保留草稿欄位，先解除指派再刪除舊簽署人', async () => {
+    const manager = {} as never;
+    const calls: string[] = [];
+    const document = Object.assign(new EsignDocument(), {
+      id: 3,
+      status: 'draft',
+      createdByUserId: 7,
+    });
+    const access = { checkAndLockDraftDoc: jest.fn() };
+    const signers = {
+      create: jest.fn((value: object) => value),
+      deleteDraftSigners: jest.fn(async () => {
+        calls.push('deleteDraftSigners');
+      }),
+      saveMany: jest.fn(async (values: object[]) => values),
+    };
+    const fields = {
+      unassignDraftFields: jest.fn(async () => {
+        calls.push('unassignDraftFields');
+      }),
+      deleteDraftFields: jest.fn(),
+    };
+    const replacing = new EsignSignerService(
+      {} as never,
+      signers as never,
+      fields as never,
+      {} as never,
+      access as never,
+    );
+
+    await replacing.updateSigners(
+      document,
+      7,
+      [{ type: 'email', name: '外部簽署人', email: 'Signer@Example.test' }],
+      manager,
+    );
+
+    expect(access.checkAndLockDraftDoc).not.toHaveBeenCalled();
+    expect(fields.unassignDraftFields).toHaveBeenCalledWith(3, 7, manager);
+    expect(fields.deleteDraftFields).not.toHaveBeenCalled();
+    expect(calls).toEqual(['unassignDraftFields', 'deleteDraftSigners']);
+  });
+
+  it.each([
+    { owner: 8, status: 'draft' },
+    { owner: 7, status: 'active' },
+  ])('獨立更新入口拒絕越權或非草稿：%p', async ({ owner, status }) => {
+    const manager = {};
+    const document = Object.assign(new EsignDocument(), {
+      id: 3,
+      createdByUserId: owner,
+      status,
+    });
+    const mysql = {
+      transaction: (run: (manager: object) => Promise<unknown>) => run(manager),
+    };
+    const documents = {
+      findByIdForUpdate: jest.fn().mockResolvedValue(document),
+    };
+    const service = new EsignSignerService(
+      mysql as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      new EsignAccessPolicyService(
+        new EsignDocumentValidationService(),
+        documents as never,
+      ),
+    );
+    const update = jest.spyOn(service, 'updateSigners');
+    await expect(
+      service.draftSave(3, 7, [
+        { type: 'email', name: '測試', email: 'test@example.test' },
+      ]),
+    ).rejects.toMatchObject({ status: owner !== 7 ? 404 : 409 });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('獨立更新入口先鎖定並驗證，再以同一交易更新', async () => {
+    const manager = {};
+    const document = Object.assign(new EsignDocument(), {
+      id: 3,
+      status: 'draft',
+      createdByUserId: 7,
+    });
+    const events: string[] = [];
+    const access = {
+      checkAndLockDraftDoc: jest.fn(() => {
+        events.push('lock');
+        return Promise.resolve(document);
+      }),
+    };
+    const service = new EsignSignerService(
+      {
+        transaction: (run: (manager: object) => Promise<unknown>) =>
+          run(manager),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      access as never,
+    );
+    const update = jest
+      .spyOn(service, 'updateSigners')
+      .mockImplementation(() => {
+        events.push('update');
+        return Promise.resolve([]);
+      });
+    const inputs = [
+      { type: 'email' as const, name: '測試', email: 'test@example.test' },
+    ];
+    await service.draftSave(3, 7, inputs);
+    expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(3, 7, manager);
+    expect(events).toEqual(['lock', 'update']);
+    expect(update).toHaveBeenCalledWith(document, 7, inputs, manager);
+  });
+});
+
+describe('簽署人批次查詢', () => {
+  const setup = (usersFound: User[] = []) => {
+    const manager = {} as never;
+    const document = Object.assign(new EsignDocument(), { id: 3 });
+    const users = {
+      findByIds: jest.fn(() => Promise.resolve(usersFound)),
+      findById: jest.fn(),
+    };
+    const fields = { unassignDraftFields: jest.fn() };
+    const signers = {
+      create: jest.fn((value: Partial<EsignSigner>) =>
+        Object.assign(new EsignSigner(), value),
+      ),
+      deleteDraftSigners: jest.fn(),
+      saveMany: jest.fn((values: EsignSigner[]) => Promise.resolve(values)),
+    };
+    const service = new EsignSignerService(
+      {} as never,
+      signers as never,
+      fields as never,
+      users as never,
+      {} as never,
+    );
+    const run = (inputs: SignerInputDto[]) =>
+      service.updateSigners(document, 7, inputs, manager);
+    return { run, users, fields, signers, manager };
+  };
+  const user = (id: number) =>
+    Object.assign(new User(), {
+      id,
+      empid: `EMP${id}`,
+      name: `員工${id}`,
+      isActive: true,
+    });
+
+  it('批次結果順序不同仍保留混合名單的原始順序與員工快照', async () => {
+    const { run, users, manager } = setup([user(2), user(1)]);
+    const result = await run([
+      { type: 'user', userId: '1' },
+      { type: 'email', name: ' 外部人員 ', email: ' External@Example.test ' },
+      { type: 'user', userId: '2' },
+    ]);
+    expect(users.findByIds).toHaveBeenCalledTimes(1);
+    expect(users.findByIds).toHaveBeenCalledWith([1, 2], manager);
+    expect(users.findById).not.toHaveBeenCalled();
+    expect(result).toMatchObject([
+      { userId: 1, empidSnapshot: 'EMP1', nameSnapshot: '員工1', sortOrder: 0 },
+      {
+        email: 'external@example.test',
+        nameSnapshot: '外部人員',
+        sortOrder: 1,
+      },
+      { userId: 2, empidSnapshot: 'EMP2', nameSnapshot: '員工2', sortOrder: 2 },
+    ]);
+  });
+
+  it('50 位內部員工只查詢一次', async () => {
+    const found = Array.from({ length: 50 }, (_, index) => user(index + 1));
+    const { run, users } = setup(found);
+    expect(
+      await run(found.map(({ id }) => ({ type: 'user', userId: String(id) }))),
+    ).toHaveLength(50);
+    expect(users.findByIds).toHaveBeenCalledTimes(1);
+    expect(users.findById).not.toHaveBeenCalled();
+  });
+
+  it('全為外部人員時不查使用者資料庫', async () => {
+    const { run, users } = setup();
+    await run([
+      { type: 'email', name: '外部人員', email: 'external@example.test' },
+    ]);
+    expect(users.findByIds).not.toHaveBeenCalled();
+  });
+
+  it.each<{ label: string; inputs: SignerInputDto[] }>([
+    {
+      label: '重複員工',
+      inputs: [
+        { type: 'user', userId: '1' },
+        { type: 'user', userId: '1' },
+      ],
+    },
+    {
+      label: '無效員工 ID',
+      inputs: [
+        { type: 'user', userId: '1' },
+        { type: 'user', userId: 'invalid' },
+      ],
+    },
+    {
+      label: '重複 Email',
+      inputs: [
+        { type: 'user', userId: '1' },
+        { type: 'email', name: 'A', email: 'A@example.test' },
+        { type: 'email', name: 'B', email: ' a@example.test ' },
+      ],
+    },
+    {
+      label: '無效 Email',
+      inputs: [
+        { type: 'user', userId: '1' },
+        { type: 'email', name: 'A', email: 'invalid' },
+      ],
+    },
+  ])('$label 在查詢前拒絕，不修改既有名單', async ({ inputs }) => {
+    const { run, users, fields, signers } = setup();
+    await expect(run(inputs)).rejects.toMatchObject({ status: 400 });
+    expect(users.findByIds).not.toHaveBeenCalled();
+    expect(fields.unassignDraftFields).not.toHaveBeenCalled();
+    expect(signers.deleteDraftSigners).not.toHaveBeenCalled();
+    expect(signers.saveMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: '不存在', found: [] },
+    { label: '停用', found: [Object.assign(user(1), { isActive: false })] },
+    {
+      label: '軟刪除',
+      found: [Object.assign(user(1), { deletedAt: new Date() })],
+    },
+  ])('員工$label仍拒絕，且不修改既有名單', async ({ found }) => {
+    const { run, fields, signers } = setup(found);
+    await expect(run([{ type: 'user', userId: '1' }])).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(fields.unassignDraftFields).not.toHaveBeenCalled();
+    expect(signers.deleteDraftSigners).not.toHaveBeenCalled();
+    expect(signers.saveMany).not.toHaveBeenCalled();
   });
 });

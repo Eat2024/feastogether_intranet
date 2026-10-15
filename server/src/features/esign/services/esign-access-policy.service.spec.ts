@@ -6,6 +6,7 @@ import { EsignDocumentValidationService } from './esign-document-validation.serv
 describe('EsignAccessPolicyService', () => {
   const policy = new EsignAccessPolicyService(
     new EsignDocumentValidationService(),
+    {} as never,
   );
   const now = new Date('2026-10-13T12:00:00.000Z');
   const document = () =>
@@ -16,6 +17,50 @@ describe('EsignAccessPolicyService', () => {
       signStartAt: new Date('2026-10-13T00:00:00.000Z'),
       signEndAt: new Date('2026-10-14T00:00:00.000Z'),
     });
+
+  describe('checkAndLockDraftDoc', () => {
+    const manager = {} as never;
+    const setup = (found: EsignDocument | null) => {
+      const documents = { findByIdForUpdate: jest.fn(async () => found) };
+      const locking = new EsignAccessPolicyService(
+        new EsignDocumentValidationService(),
+        documents as never,
+      );
+      return { locking, documents };
+    };
+    const draft = () =>
+      Object.assign(new EsignDocument(), {
+        id: 1,
+        createdByUserId: 10,
+        status: 'draft',
+      });
+
+    it('在呼叫端交易內鎖定並回傳本人草稿', async () => {
+      const doc = draft();
+      const { locking, documents } = setup(doc);
+      await expect(locking.checkAndLockDraftDoc(1, 10, manager)).resolves.toBe(
+        doc,
+      );
+      expect(documents.findByIdForUpdate).toHaveBeenCalledWith(1, manager);
+    });
+
+    it.each([
+      { name: '不存在', found: () => null, userId: 10 },
+      { name: '非建立人', found: draft, userId: 11 },
+    ])('$name 時回 404', async ({ found, userId }) => {
+      const { locking } = setup(found());
+      await expect(
+        locking.checkAndLockDraftDoc(1, userId, manager),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('已發起的文件回 409', async () => {
+      const { locking } = setup(Object.assign(draft(), { status: 'active' }));
+      await expect(
+        locking.checkAndLockDraftDoc(1, 10, manager),
+      ).rejects.toMatchObject({ status: 409 });
+    });
+  });
 
   it('creator 與 internal signer 越權統一為 404', () => {
     const doc = document();

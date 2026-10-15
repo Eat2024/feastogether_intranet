@@ -101,7 +101,7 @@ pnpm lint
 
 「發起簽署」只呼叫一次 `POST /api/esign/documents/:id/initiations`，body 必須同時包含 `signers`、`fields`、`signStartAt`、`signEndAt`。每個 field 使用 `signerIndex`（本次 signers 陣列從 0 開始的索引），不是尚未建立的 signerPublicId。後端在同一個 transaction 儲存名單、欄位、active 狀態、固定快照、稽核及通知待辦；任何步驟失敗皆回滾，commit 後才排寄信工作。不再支援只傳期間的舊發起請求。
 
-「儲存設定」不發起，仍使用草稿 `PUT .../signers` 與 `PUT .../fields`；這兩隻 API 保留供編輯草稿，不是發起流程的前置呼叫。
+「儲存設定」不發起，仍使用草稿 `PUT .../draftSave` 與 `PUT .../fields`；這兩隻 API 保留供編輯草稿，不是發起流程的前置呼叫。
 
 欄位編輯器使用本機隨應用程式部署的 PDF.js（`pdfjs-dist`，採支援既有 Node 20.19 執行環境的 5.4.624），不將文件傳往外部預覽服務。`/pdf-assets/*` 僅提供 worker、字型與解碼資產；文件仍經有權限檢查的 source-file API 讀取。
 

@@ -56,7 +56,7 @@ describe('runtime API coverage', () => {
     ['GET', '/api/esign/documents/1'],
     ['PATCH', '/api/esign/documents/1'],
     ['DELETE', '/api/esign/documents/1'],
-    ['PUT', '/api/esign/documents/1/signers'],
+    ['PUT', '/api/esign/documents/1/draftSave'],
     ['PUT', '/api/esign/documents/1/fields'],
     ['POST', '/api/esign/documents/1/initiations'],
     ['POST', '/api/esign/documents/1/stoppages'],

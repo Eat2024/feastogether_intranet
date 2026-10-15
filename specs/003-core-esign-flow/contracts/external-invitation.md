@@ -50,6 +50,7 @@ Content-Security-Policy: default-src 'none'; script-src 'nonce-<random>'; form-a
 X-Content-Type-Options: nosniff
 ```
 
+- Bridge 為 `no-referrer`，瀏覽器送出表單時依 Fetch 規範帶 `Origin: null`；OriginGuard 僅在同時帶有瀏覽器產生的 `Sec-Fetch-Site: same-origin` 時接受 `Origin: null`，沙箱與跨站來源仍拒絕。
 - GET 只做 token 字元與長度格式驗證及 HTML escaping，不搜尋 DB、不記開啟紀錄。
 - POST 驗證成功才 append `external_invitation.opened`；失敗對外使用相同錯誤，不揭露 Email/document/signer 是否存在。
 - Reverse proxy 與 application access log 必須將 invitation path 正規化成 `/api/external-signature-invitations/:token`，不記實際 segment。

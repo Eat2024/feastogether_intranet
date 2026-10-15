@@ -23,6 +23,19 @@ export class EsignDocumentSummaryDto {
   signedCount!: number;
 }
 
+export class EsignDocumentCreatorDto {
+  name!: string;
+  employeeNo!: string;
+}
+
+/** 文件列表項目：摘要再加上簽署期間與建立人（僅供員工 session 的列表使用） */
+export class EsignDocumentListItemDto extends EsignDocumentSummaryDto {
+  signStartAt!: string | null;
+  signEndAt!: string | null;
+  /** 建立人帳號不存在時為 null */
+  createdBy!: EsignDocumentCreatorDto | null;
+}
+
 export class EsignSourceFileDto {
   fileName!: string;
   size!: number;
@@ -45,7 +58,8 @@ export class EsignSignerViewDto {
 
 export class EsignFieldViewDto {
   id!: string;
-  signerPublicId!: string;
+  /** 草稿欄位尚未指派簽署人時為 null */
+  signerPublicId!: string | null;
   type!: EsignFieldType;
   page!: number;
   xPercent!: number;
@@ -56,6 +70,8 @@ export class EsignFieldViewDto {
 }
 
 export class EsignDocumentDetailDto extends EsignDocumentSummaryDto {
+  /** 建立人帳號不存在時為 null */
+  createdBy!: EsignDocumentCreatorDto | null;
   sourceFile?: EsignSourceFileDto;
   signStartAt!: string | null;
   signEndAt!: string | null;

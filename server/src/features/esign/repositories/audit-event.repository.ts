@@ -10,6 +10,8 @@ export class AuditEventRepository {
       where: { id: documentId },
       select: { id: true },
       lock: { mode: 'pessimistic_write' },
+      // 刪除草稿時同一交易先軟刪除再寫稽核，仍須鎖得到該文件
+      withDeleted: true,
     });
   }
 

@@ -3,6 +3,7 @@
 import TooltipIconButton from '@/components/TooltipIconButton';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
 import { useState } from 'react';
+import { downloadCompletedPdf, isBackendDocumentId } from '../api';
 import { getSignerCopy } from '../actions';
 
 /** 匯出某位簽署人的已簽署文件（PDF）；簽名圖檔點擊時才向伺服器取得 */
@@ -22,6 +23,12 @@ export default function ExportSignerCopyButton({
   const exportCopy = async () => {
     setBusy(true);
     try {
+      // 後端文件沒有個人簽署副本，改下載全員簽署完成的 PDF（完成前無法下載）
+      if (isBackendDocumentId(formId)) {
+        const result = await downloadCompletedPdf(formId, `電子簽文件${formId}_已完成.pdf`);
+        if (result) onError(result.error);
+        return;
+      }
       const res = await getSignerCopy({ formId, signerId });
       if ('error' in res) {
         onError(res.error);

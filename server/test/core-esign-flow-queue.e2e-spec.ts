@@ -123,7 +123,7 @@ describe('核心電子簽真實 queue e2e', () => {
 
     const signers = apiData<Array<{ publicId: string }>>(
       await request(ctx.server)
-        .put(`/api/esign/documents/${documentId}/signers`)
+        .put(`/api/esign/documents/${documentId}/draftSave`)
         .set('Cookie', creatorCookie)
         .set('Origin', 'http://localhost:3000')
         .send({
@@ -165,6 +165,8 @@ describe('核心電子簽真實 queue e2e', () => {
         fields: Array.from({ length: 1 }, (_, index) => ({ signerIndex: index, type: 'signature', page: 1, xPercent: 10, yPercent: 10 + index * 20, widthPercent: 25, heightPercent: 10, sortOrder: index })),
         signStartAt: new Date(Date.now() - 60_000).toISOString(),
         signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+        watermark: false,
+        allowReject: false,
       })
       .expect(201);
 

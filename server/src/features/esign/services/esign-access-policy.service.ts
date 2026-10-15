@@ -1,14 +1,37 @@
+import type { EntityManager } from 'typeorm';
 import { timingSafeEqual } from 'node:crypto';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
+import { DocumentRepository } from '../repositories/document.repository';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 
 @Injectable()
 export class EsignAccessPolicyService {
-  constructor(private readonly documents: EsignDocumentValidationService) {}
+  constructor(
+    private readonly documents: EsignDocumentValidationService,
+    private readonly documentRepository: DocumentRepository,
+  ) {}
+
+  /**
+   * 沿用呼叫端交易，以悲觀鎖鎖定文件並驗證建立人與草稿狀態。
+   * 鎖定持續到交易結束，期間其他請求無法發起、刪除或修改此文件。
+   */
+  async checkAndLockDraftDoc(
+    documentId: number,
+    userId: number,
+    manager: EntityManager,
+  ): Promise<EsignDocument> {
+    const document = await this.documentRepository.findByIdForUpdate(
+      documentId,
+      manager,
+    );
+    this.checkEsignCreator(document, userId);
+    this.documents.checkStillDraft(document);
+    return document;
+  }
 
   checkEsignCreator(
     document: EsignDocument | null,

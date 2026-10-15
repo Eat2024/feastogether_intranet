@@ -26,14 +26,22 @@ export function getMySignTasks(
   userId: string,
   today: Date,
 ): Record<MySignTab, MySignTask[]> {
-  const tasks: MySignTask[] = forms.flatMap((form) => {
+  return groupMySignTasks(collectMySignTasks(forms, userId, today));
+}
+
+/** 文件中需要我簽署的項目 */
+export function collectMySignTasks(forms: EFormDoc[], userId: string, today: Date): MySignTask[] {
+  return forms.flatMap((form) => {
     const me = form.signers.find((s) => s.id === userId);
     // 草稿尚未發起，不會出現在簽署人這裡
     return me && form.status !== 'draft'
       ? [{ form, me, progress: getProgress(form), signBlock: getSignBlock(form, me, today) }]
       : [];
   });
+}
 
+/** 分成三個分頁並各自排序 */
+export function groupMySignTasks(tasks: MySignTask[]): Record<MySignTab, MySignTask[]> {
   return {
     // 簽署中的文件可以簽；已到期的仍列出（顯示已逾期，等待補簽）；已停止的文件不再列為待簽署
     pending: tasks

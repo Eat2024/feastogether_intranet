@@ -16,6 +16,9 @@ paths:
     get:
       operationId: listSignerCandidates
       summary: 查詢可指定的 active 內部員工
+      description: |
+        先查本地 users。q 為完整八碼員編且本地查無時，改向饗賓人 API 查詢試用／正式員工，
+        比照登入流程建立本地帳號後回傳；查無或資格不符回傳空清單，已停用帳號不重新啟用。
       parameters:
         - { name: q, in: query, required: false, schema: { type: string, maxLength: 100 } }
       responses:
@@ -25,6 +28,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SignerCandidateListSuccess" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "502": { description: 饗賓人 API 查詢失敗 }
 
   /esign/documents:
     get:
@@ -46,7 +50,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       operationId: createDraftDocument
-      summary: 上傳 PDF 並建立草稿
+      summary: 上傳 PDF 並建立草稿，可一併帶入草稿欄位
       requestBody:
         required: true
         content:
@@ -61,6 +65,14 @@ paths:
                   type: string
                   contentMediaType: application/pdf
                   contentEncoding: binary
+                fields:
+                  type: string
+                  contentMediaType: application/json
+                  contentSchema:
+                    type: array
+                    maxItems: 200
+                    items: { $ref: "#/components/schemas/FieldPlacement" }
+                  description: 選填，JSON 字串；與 PDF、草稿同一交易寫入，任一不合法整筆不建立。建立當下尚無簽署人，欄位一律未指派
       responses:
         "201":
           description: 已完成 PDF 儲存及草稿建立，僅回傳文件 ID；詳情另由 GET 取得
@@ -87,7 +99,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       operationId: updateDraftDocument
-      summary: 替換草稿標題或 PDF，僅 creator + draft
+      summary: 替換草稿標題、PDF 或欄位，僅 creator + draft
       requestBody:
         required: true
         content:
@@ -101,6 +113,14 @@ paths:
                   type: string
                   contentMediaType: application/pdf
                   contentEncoding: binary
+                fields:
+                  type: string
+                  contentMediaType: application/json
+                  contentSchema:
+                    type: array
+                    maxItems: 200
+                    items: { $ref: "#/components/schemas/FieldPlacement" }
+                  description: 選填，JSON 字串；有帶時整批取代草稿欄位（一律未指派）。換 PDF 而未帶時清空欄位
               minProperties: 1
       responses:
         "200":
@@ -122,12 +142,12 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/StateConflict" }
 
-  /esign/documents/{documentId}/signers:
+  /esign/documents/{documentId}/draftSave:
     parameters:
       - $ref: "#/components/parameters/DocumentId"
     put:
       operationId: replaceDraftSigners
-      summary: 取代草稿簽署人，僅 creator + draft
+      summary: 取代草稿簽署人，僅 creator + draft；既有草稿欄位保留位置但解除指派
       requestBody:
         required: true
         content:
@@ -199,7 +219,7 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [signers, fields, signStartAt, signEndAt]
+              required: [signers, fields, signStartAt, signEndAt, watermark, allowReject]
               properties:
                 signers:
                   type: array
@@ -216,6 +236,12 @@ paths:
                   items: { $ref: "#/components/schemas/InitiationFieldInput" }
                 signStartAt: { type: string, format: date-time }
                 signEndAt: { type: string, format: date-time }
+                watermark:
+                  type: boolean
+                  description: 下載／匯出的已簽署 PDF 是否加上浮水印；寫入 esign_documents.watermark_enabled
+                allowReject:
+                  type: boolean
+                  description: 是否允許簽署人拒絕簽署；寫入 esign_documents.allow_reject
       responses:
         "201":
           description: 文件已固定並進入 active；外部邀請交由 worker 寄送
@@ -646,9 +672,25 @@ components:
     FieldInput:
       type: object
       additionalProperties: false
-      required: [signerPublicId, type, page, xPercent, yPercent, widthPercent, heightPercent, sortOrder]
+      required: [type, page, xPercent, yPercent, widthPercent, heightPercent, sortOrder]
       properties:
-        signerPublicId: { type: string, format: uuid }
+        signerPublicId:
+          type: [string, "null"]
+          format: uuid
+          description: 省略或 null 表示草稿欄位暫不指派；發起時仍須每個欄位都指派簽署人
+        type: { type: string, enum: [signature, date] }
+        page: { type: integer, minimum: 1, maximum: 100 }
+        xPercent: { type: number, minimum: 0, exclusiveMaximum: 100 }
+        yPercent: { type: number, minimum: 0, exclusiveMaximum: 100 }
+        widthPercent: { type: number, exclusiveMinimum: 0, maximum: 100 }
+        heightPercent: { type: number, exclusiveMinimum: 0, maximum: 100 }
+        sortOrder: { type: integer, minimum: 0 }
+    FieldPlacement:
+      type: object
+      additionalProperties: false
+      description: 草稿欄位位置（上傳 PDF 時一併帶入），不含簽署人
+      required: [type, page, xPercent, yPercent, widthPercent, heightPercent, sortOrder]
+      properties:
         type: { type: string, enum: [signature, date] }
         page: { type: integer, minimum: 1, maximum: 100 }
         xPercent: { type: number, minimum: 0, exclusiveMaximum: 100 }
@@ -711,11 +753,35 @@ components:
         stoppedAt: { type: [string, "null"], format: date-time }
         pendingCount: { type: integer, minimum: 0 }
         signedCount: { type: integer, minimum: 0 }
+    DocumentListItem:
+      description: 文件列表項目；摘要再加上簽署期間與建立人（僅員工 session 的列表回傳）
+      allOf:
+        - $ref: "#/components/schemas/DocumentSummary"
+        - type: object
+          required: [signStartAt, signEndAt, createdBy]
+          properties:
+            signStartAt: { type: [string, "null"], format: date-time }
+            signEndAt: { type: [string, "null"], format: date-time }
+            createdBy:
+              type: [object, "null"]
+              additionalProperties: false
+              required: [name, employeeNo]
+              properties:
+                name: { type: string }
+                employeeNo: { type: string }
     DocumentDetail:
       allOf:
         - $ref: "#/components/schemas/DocumentSummary"
         - type: object
           properties:
+            createdBy:
+              description: 建立人；帳號不存在時為 null
+              type: [object, "null"]
+              additionalProperties: false
+              required: [name, employeeNo]
+              properties:
+                name: { type: string }
+                employeeNo: { type: string }
             sourceFile:
               type: object
               required: [fileName, size, pageCount, sha256]
@@ -752,7 +818,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/FieldInput"
         - type: object
-          required: [id]
+          required: [id, signerPublicId]
           properties:
             id: { type: string }
     SigningTask:
@@ -761,7 +827,11 @@ components:
       required: [signerPublicId, document, signer, fields, consent, pendingCount, signedCount]
       properties:
         signerPublicId: { type: string, format: uuid }
-        document: { $ref: "#/components/schemas/DocumentSummary" }
+        document:
+          description: 內部簽署人的任務另含簽署期間與發起人（DocumentListItem）；外部簽署人只有摘要
+          anyOf:
+            - $ref: "#/components/schemas/DocumentListItem"
+            - $ref: "#/components/schemas/DocumentSummary"
         signer: { $ref: "#/components/schemas/SignerView" }
         fields:
           type: array
@@ -795,7 +865,7 @@ components:
         - $ref: "#/components/schemas/SuccessBase"
         - type: object
           required: [data]
-          properties: { data: { type: array, items: { $ref: "#/components/schemas/DocumentSummary" } } }
+          properties: { data: { type: array, items: { $ref: "#/components/schemas/DocumentListItem" } } }
     DocumentDetailSuccess:
       allOf:
         - $ref: "#/components/schemas/SuccessBase"

@@ -1,4 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { User } from '#app/features/users/entities/user.entity';
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   PRIVATE_FILE_STORAGE,
@@ -34,6 +36,7 @@ export class EsignDocumentQueryService {
     private readonly pdf: PdfValidationService,
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
+    private readonly users: UserRepository,
   ) { }
 
   async list(
@@ -69,10 +72,25 @@ export class EsignDocumentQueryService {
           right.updatedAt.getTime() - left.updatedAt.getTime() ||
           right.id - left.id,
       );
+    // 建立人：同一人只查一次
+    const creatorIds = [...new Set(documents.map((d) => d.createdByUserId))];
+    const creators = new Map(
+      (
+        await Promise.all(
+          creatorIds.map((id) => this.users.findById(id, manager)),
+        )
+      )
+        .filter((user): user is User => user !== null)
+        .map((user) => [user.id, user]),
+    );
     return Promise.all(
       documents.map(async (document) => {
         const signers = await this.signers.findByDocument(document.id, manager);
-        return this.mapper.documentSummary(document, this.count(signers));
+        return this.mapper.documentListItem(
+          document,
+          this.count(signers),
+          creators.get(document.createdByUserId),
+        );
       }),
     );
   }
@@ -81,10 +99,11 @@ export class EsignDocumentQueryService {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
     this.policy.checkEsignCreator(document, userId);
-    const [signers, fields, source] = await Promise.all([
+    const [signers, fields, source, creator] = await Promise.all([
       this.signers.findByDocument(documentId, manager),
       this.fields.findByDocument(documentId, manager),
       this.files.findDocumentFile(documentId, 'source_pdf', manager),
+      this.users.findById(document.createdByUserId, manager),
     ]);
     const logs = await this.notifications.findBySignerIds(
       signers.map((signer) => signer.id),
@@ -118,6 +137,7 @@ export class EsignDocumentQueryService {
       signStartAt: document.signStartAt?.toISOString() ?? null,
       signEndAt: document.signEndAt?.toISOString() ?? null,
       stopReason: document.stopReason ?? null,
+      createdBy: this.mapper.creator(creator),
       signers: signers.map((signer) =>
         this.mapper.signer(
           signer,
@@ -129,7 +149,7 @@ export class EsignDocumentQueryService {
       fields: fields.map((field) =>
         this.mapper.field(
           field,
-          signerPublicIds.get(field.signerId ?? -1) ?? '',
+          signerPublicIds.get(field.signerId ?? -1) ?? null,
         ),
       ),
     };

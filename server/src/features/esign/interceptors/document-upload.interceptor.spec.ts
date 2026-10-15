@@ -156,6 +156,69 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
       },
     });
   });
+  const placement = {
+    type: 'date',
+    page: 1,
+    xPercent: 10,
+    yPercent: 20,
+    widthPercent: 30,
+    heightPercent: 5,
+    sortOrder: 0,
+  };
+  const fieldsPart = (value: string) => ({ name: 'fields', value });
+  it('建立草稿可在同一個 multipart 帶入 fields JSON', async () => {
+    const response = await send([
+      title,
+      file,
+      fieldsPart(JSON.stringify([placement])),
+    ]);
+    expect(response.statusCode).toBe(201);
+    expect(drafts.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: title.value,
+        fields: [expect.objectContaining(placement)],
+      }),
+    );
+  });
+  it('修改可僅傳 fields，不要求標題或 PDF', async () => {
+    const response = await send(
+      [fieldsPart(JSON.stringify([placement]))],
+      'PATCH',
+    );
+    expect(response.statusCode).toBe(200);
+    expect(drafts.update).toHaveBeenCalledWith(9, 7, {
+      title: undefined,
+      file: undefined,
+      fields: [expect.objectContaining(placement)],
+    });
+  });
+  it.each([
+    ['不是 JSON', 'not-json'],
+    ['不是陣列', JSON.stringify(placement)],
+    ['頁碼不合法', JSON.stringify([{ ...placement, page: 0 }])],
+    ['欄位類型不合法', JSON.stringify([{ ...placement, type: 'stamp' }])],
+    [
+      '帶入簽署人',
+      JSON.stringify([
+        {
+          ...placement,
+          signerPublicId: 'c854d925-1d70-49dc-9c81-abf18409ae42',
+        },
+      ]),
+    ],
+    [
+      '超過 200 個',
+      JSON.stringify(Array.from({ length: 201 }, () => placement)),
+    ],
+  ])('fields %s 時由 DTO 拒絕', async (_case, value) => {
+    for (const method of ['POST', 'PATCH'] as const) {
+      const response = await send([title, file, fieldsPart(value)], method);
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ error: 'INVALID_REQUEST' });
+    }
+    expect(drafts.create).not.toHaveBeenCalled();
+    expect(drafts.update).not.toHaveBeenCalled();
+  });
   it.each([
     [[title], '請上傳 PDF 文件'],
     [[title, { ...file, name: 'unexpected' }], '不支援的欄位：unexpected'],

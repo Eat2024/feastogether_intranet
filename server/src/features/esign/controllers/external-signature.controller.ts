@@ -1,3 +1,4 @@
+import { ApiOperation } from '@nestjs/swagger';
 import { randomBytes } from 'node:crypto';
 import {
   Body,
@@ -46,6 +47,11 @@ export class ExternalSignatureController {
     private readonly completions: EsignCompletionAccessService,
   ) {}
 
+  @ApiOperation({
+    summary: '開啟外部簽署邀請確認頁',
+    description:
+      '回傳含開啟按鈕的 HTML 表單，此 GET 不建立簽署 session。\n\n前端使用：外部簽署人點擊 Email 邀請連結進入此後端頁面，再按按鈕送出 POST external-signature-session；不是 Next.js 頁面直接呼叫。',
+  })
   @Get('external-signature-invitations/:token')
   getBridge(@Param('token') token: string, @Res() reply: FastifyReply): void {
     if (!this.external.isTokenFormat(token)) {
@@ -74,6 +80,11 @@ export class ExternalSignatureController {
   }
 
   @UseGuards(OriginGuard)
+  @ApiOperation({
+    summary: '建立外部簽署存取 session',
+    description:
+      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁。\n\n前端使用：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
+  })
   @Post('external-signature-session')
   async createSession(
     @Body('token') token: string,
@@ -103,6 +114,11 @@ export class ExternalSignatureController {
   }
 
   @UseGuards(OriginGuard)
+  @ApiOperation({
+    summary: '清除外部簽署存取 cookie',
+    description:
+      '清除目前瀏覽器的外部簽署存取 cookie。\n\n前端使用：目前未找到前端呼叫；尚未接到畫面操作。',
+  })
   @Delete('external-signature-session')
   @HttpCode(HttpStatus.NO_CONTENT)
   clear(@Res({ passthrough: true }) reply: FastifyReply): void {
@@ -110,12 +126,22 @@ export class ExternalSignatureController {
   }
 
   @UseGuards(OriginGuard)
+  @ApiOperation({
+    summary: '開啟外部簽署任務',
+    description:
+      '以外部存取 cookie 驗證邀請，回傳任務並記錄開啟事件，不依賴員工登入。\n\n前端使用：/external-signatures/[signerPublicId] 的 ExternalSignFlow 載入時以瀏覽器 fetch 呼叫。',
+  })
   @Post('external-signing-task')
   @HttpCode(HttpStatus.OK)
   open(@Req() request: FastifyRequest) {
     return this.external.task(this.accessToken(request), true);
   }
 
+  @ApiOperation({
+    summary: '讀取外部簽署任務的原始 PDF',
+    description:
+      '以外部存取 cookie 驗證後回傳原始 PDF。\n\n前端使用：/external-signatures/[signerPublicId] 的 ExternalSignFlow 用來計算頁數，並交由 SignFlow 預覽文件。',
+  })
   @Get('external-signing-task/source-file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -136,6 +162,11 @@ export class ExternalSignatureController {
   }
 
   @UseGuards(OriginGuard)
+  @ApiOperation({
+    summary: '送出外部簽署人簽名',
+    description:
+      '以外部存取 cookie 驗證並提交同意紀錄與簽名；成功後清除存取 cookie，設定完成回執 cookie。\n\n前端使用：ExternalSignFlow 送出簽名時直接 fetch，成功後導向 /external-signatures/[signerPublicId]/completion。',
+  })
   @Post('external-signing-task/signatures')
   async sign(
     @Body() body: SignatureSubmissionDto,
@@ -177,6 +208,11 @@ export class ExternalSignatureController {
     return token;
   }
 
+  @ApiOperation({
+    summary: '查詢外部簽署完成狀態',
+    description:
+      '以完成回執 cookie 查詢文件狀態；不使用原邀請連結作為憑證。\n\n前端使用：/external-signatures/[signerPublicId]/completion 的 ExternalCompletion 載入時查詢，顯示等待其他人簽署、產檔中或完成等狀態。',
+  })
   @Get('external-completions/:signerPublicId')
   completionStatus(
     @Param('signerPublicId') signerPublicId: string,
@@ -188,6 +224,11 @@ export class ExternalSignatureController {
     );
   }
 
+  @ApiOperation({
+    summary: '下載外部簽署的完成 PDF',
+    description:
+      '以完成回執 cookie 驗證後下載全員簽署完成的 PDF；尚未產生時回傳狀態衝突。\n\n前端使用：ExternalCompletion 在文件完成後顯示「下載完成文件」連結，直接連到此 API。',
+  })
   @Get('external-completions/:signerPublicId/completed-file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -213,6 +254,11 @@ export class ExternalSignatureController {
       .send(file.bytes);
   }
 
+  @ApiOperation({
+    summary: '查詢外部簽署人可見的歷程',
+    description:
+      '以完成回執 cookie 驗證，回傳該簽署人可見的事件。\n\n前端使用：ExternalCompletion 載入時與完成狀態一起查詢，交由 SigningHistory 顯示。',
+  })
   @Get('external-completions/:signerPublicId/history')
   completionHistory(
     @Param('signerPublicId') signerPublicId: string,
@@ -225,6 +271,11 @@ export class ExternalSignatureController {
   }
 
   @UseGuards(OriginGuard)
+  @ApiOperation({
+    summary: '清除外部簽署完成回執 cookie',
+    description:
+      '清除目前瀏覽器對應簽署人的完成回執 cookie。\n\n前端使用：目前未找到前端呼叫；尚未接到畫面操作。',
+  })
   @Delete('external-completions/:signerPublicId/session')
   @HttpCode(HttpStatus.NO_CONTENT)
   clearReceipt(

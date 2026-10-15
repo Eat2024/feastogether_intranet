@@ -7,6 +7,7 @@ import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Snackbar from '@mui/material/Snackbar';
 import { useState } from 'react';
+import { downloadCompletedPdf, isBackendId } from '@/features/forms/api';
 
 /** 下載本人已簽署的副本；variant="icon" 用於表格操作欄 */
 export default function DownloadSignedCopyButton({
@@ -19,16 +20,22 @@ export default function DownloadSignedCopyButton({
   variant?: 'button' | 'icon';
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const download = async () => {
     setBusy(true);
     try {
+      // 後端文件：下載全員簽署完成的 PDF（完成前無法下載）
+      if (isBackendId(form.id)) {
+        const result = await downloadCompletedPdf(form.id, `${form.name}_已完成.pdf`);
+        if (result) setError(result.error);
+        return;
+      }
       // 產生 PDF 的套件較大，點擊時才載入
       const { downloadSignedCopy } = await import('./signedPdf');
       await downloadSignedCopy(form, me);
     } catch {
-      setError(true);
+      setError('下載失敗，請稍後再試');
     } finally {
       setBusy(false);
     }
@@ -50,13 +57,13 @@ export default function DownloadSignedCopyButton({
         </Button>
       )}
       <Snackbar
-        open={error}
+        open={error !== null}
         autoHideDuration={4000}
-        onClose={() => setError(false)}
+        onClose={() => setError(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="error" onClose={() => setError(false)}>
-          下載失敗，請稍後再試
+        <Alert severity="error" onClose={() => setError(null)}>
+          {error}
         </Alert>
       </Snackbar>
     </>

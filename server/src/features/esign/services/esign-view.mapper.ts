@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import type { User } from '#app/features/users/entities/user.entity';
 import { EsignDocumentField } from '../entities/esign-document-field.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignFileObject } from '../entities/esign-file-object.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
 import {
+  EsignDocumentCreatorDto,
+  EsignDocumentListItemDto,
   type EsignDocumentStatus,
   EsignDocumentSummaryDto,
   type EsignFieldType,
@@ -41,6 +44,25 @@ export class EsignViewMapper {
     };
   }
 
+  /** 列表項目：摘要再加上簽署期間與建立人 */
+  documentListItem(
+    document: EsignDocument,
+    counts: EsignSignerCounts,
+    creator: User | undefined,
+  ): EsignDocumentListItemDto {
+    return {
+      ...this.documentSummary(document, counts),
+      signStartAt: document.signStartAt?.toISOString() ?? null,
+      signEndAt: document.signEndAt?.toISOString() ?? null,
+      createdBy: this.creator(creator),
+    };
+  }
+
+  /** 建立人只給姓名與員編；帳號不存在時為 null */
+  creator(user: User | null | undefined): EsignDocumentCreatorDto | null {
+    return user ? { name: user.name, employeeNo: user.empid } : null;
+  }
+
   sourceFile(file: EsignFileObject, pageCount: number): EsignSourceFileDto {
     return {
       fileName: file.originalFileName ?? 'document.pdf',
@@ -68,7 +90,10 @@ export class EsignViewMapper {
     };
   }
 
-  field(field: EsignDocumentField, signerPublicId: string): EsignFieldViewDto {
+  field(
+    field: EsignDocumentField,
+    signerPublicId: string | null,
+  ): EsignFieldViewDto {
     return {
       id: String(field.id),
       signerPublicId,

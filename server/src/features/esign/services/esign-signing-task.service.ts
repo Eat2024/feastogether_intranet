@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   PRIVATE_FILE_STORAGE,
@@ -32,6 +33,7 @@ export class EsignSigningTaskService {
     private readonly audit: EsignAuditService,
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
+    private readonly users: UserRepository,
   ) {}
 
   async list(userId: number, status?: 'pending' | 'signed') {
@@ -113,9 +115,10 @@ export class EsignSigningTaskService {
     >,
     manager = this.mysql.getManager(),
   ) {
-    const [allSigners, allFields] = await Promise.all([
+    const [allSigners, allFields, creator] = await Promise.all([
       this.signers.findByDocument(document.id, manager),
       this.fields.findByDocument(document.id, manager),
+      this.users.findById(document.createdByUserId, manager),
     ]);
     const counts = {
       pendingCount: allSigners.filter((item) => item.status === 'pending')
@@ -124,7 +127,12 @@ export class EsignSigningTaskService {
     };
     return {
       signerPublicId: signer.publicId,
-      document: this.mapper.documentSummary(document, counts),
+      // 內部簽署人可看到簽署期間與發起人（外部簽署人的任務另由 external-access 裁切）
+      document: this.mapper.documentListItem(
+        document,
+        counts,
+        creator ?? undefined,
+      ),
       signer: this.mapper.signer(signer, null),
       fields: allFields
         .filter((field) => field.signerId === signer.id)

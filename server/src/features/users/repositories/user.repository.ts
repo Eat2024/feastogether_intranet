@@ -1,11 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { type DeepPartial, type EntityManager } from 'typeorm';
+import { In, type DeepPartial, type EntityManager } from 'typeorm';
 import { User } from '../entities/user.entity';
 
 @Injectable()
 export class UserRepository {
   findById(id: number, manager: EntityManager): Promise<User | null> {
     return manager.findOne(User, { where: { id }, withDeleted: true });
+  }
+
+  /** 包含軟刪除帳號，讓呼叫端統一判斷是否可指定為簽署人。 */
+  findByIds(ids: number[], manager: EntityManager): Promise<User[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return manager.find(User, { where: { id: In(ids) }, withDeleted: true });
   }
 
   findByEmpid(empid: string, manager: EntityManager): Promise<User | null> {

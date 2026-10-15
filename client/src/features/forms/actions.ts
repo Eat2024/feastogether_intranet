@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect, unstable_rethrow } from 'next/navigation';
 import { addExportRecord } from '@/features/export-history/store';
 import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
 import { getCurrentUser, getStaff } from './orgChart';
@@ -21,6 +21,18 @@ import {
   updateForm,
 } from './store';
 import type { EFormDoc, SheetInfo, Signer, UploadInfo } from './types';
+import { ACTION_FAILED_MESSAGE } from '@/lib/actionError';
+import { EsignApiError } from '@/lib/api/esign';
+import {
+  getDocument,
+  initiateDocument,
+  listSignerCandidates,
+  replaceFields,
+  replaceSigners,
+  deleteDraftDocument,
+  stopDocument,
+  type SignerInput,
+} from './serverApi';
 
 /** 現在時間，格式 YYYY/MM/DD HH:mm */
 function nowStr() {
@@ -113,7 +125,8 @@ export async function saveSigners(input: {
   publish: boolean;
 }): Promise<ActionResult> {
   const form = getForm(input.id);
-  if (!form) return { error: '找不到此文件' };
+  // 不在 mock store 的是後端文件
+  if (!form) return saveApiSigners(input);
   if (form.status !== 'draft') return { error: '此文件已發起簽署，無法再修改簽署設定' };
   if (input.signerIds.length + input.emailSigners.length === 0) {
     return { error: '請至少選擇一位需簽署人員' };
@@ -166,13 +179,149 @@ export async function saveSigners(input: {
   redirect(`/forms?flash=published&count=${signers.length}`);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 後端文件的設定簽署（畫面沿用 SignersEditor，由 saveSigners 轉呼叫）。
+ * 欄位位置以後端草稿為準；畫面沒有指定欄位簽署人的地方，只有一位簽署人時所有欄位都屬於他。
+ * 可選功能（浮水印、拒絕簽署）於發起時送出；暫存設定不保存。
+ */
+async function saveApiSigners(input: {
+  id: string;
+  signerIds: string[];
+  emailSigners: { email: string; name: string }[];
+  deadline: { start: string | null; end: string | null };
+  options: { watermark: boolean; allowReject: boolean };
+  publish: boolean;
+}): Promise<ActionResult> {
+  if (!/^[1-9][0-9]*$/.test(input.id)) return { error: '找不到此文件' };
+  const count = input.signerIds.length + input.emailSigners.length;
+  if (count === 0) return { error: '請至少選擇一位需簽署人員' };
+  if (count > 50) return { error: '簽署人不可超過 50 位' };
+  const emails = input.emailSigners.map((e) => ({ email: normalizeEmail(e.email), name: e.name.trim() }));
+  if (emails.some((e) => !isValidEmail(e.email))) return { error: 'Email 格式不正確' };
+  if (new Set(emails.map((e) => e.email)).size !== emails.length) return { error: 'Email 不可重複加入' };
+  if (typeof input.options?.watermark !== 'boolean' || typeof input.options?.allowReject !== 'boolean') {
+    return { error: '可選功能的設定不正確' };
+  }
+
+  let period: { signStartAt: string; signEndAt: string } | undefined;
+  if (input.publish) {
+    const { start, end } = input.deadline;
+    if (!start || !end) return { error: '請選擇簽署期間的開始日與結束日' };
+    // 日期格式 YYYY/MM/DD，字串比較即為日期先後
+    if (end < start) return { error: '結束日不能早於開始日' };
+    const startAt = new Date(`${start.replaceAll('/', '-')}T00:00:00+08:00`);
+    // 後端的簽署期間不含截止時間點，截止設為結束日隔天 00:00（台北），結束日當天仍可簽署
+    const endAt = new Date(new Date(`${end.replaceAll('/', '-')}T00:00:00+08:00`).getTime() + DAY_MS);
+    if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime())) return { error: '簽署期間不正確' };
+    if (endAt.getTime() <= Date.now()) return { error: '結束日不能早於今天' };
+    period = { signStartAt: startAt.toISOString(), signEndAt: endAt.toISOString() };
+  }
+
+  try {
+    // 組織架構的同仁以員工編號對應後端的 user id
+    const internal = await Promise.all(
+      input.signerIds.map(async (sid) => {
+        const staff = getStaff(sid);
+        const employeeNo = staff?.employeeNo ?? sid;
+        const candidates = await listSignerCandidates(employeeNo);
+        return { name: staff?.name ?? sid, candidate: candidates.find((c) => c.employeeNo === employeeNo) };
+      }),
+    );
+    const missing = internal.filter((s) => !s.candidate).map((s) => s.name);
+    if (missing.length > 0) {
+      return { error: `以下人員尚未在電子簽系統建立帳號，無法指定為簽署人：${missing.join('、')}` };
+    }
+    const signers: SignerInput[] = [
+      ...internal.flatMap((s) => (s.candidate ? [{ type: 'user' as const, userId: s.candidate.id }] : [])),
+      // 未填姓名時以 Email 作為姓名（後端姓名必填，上限 100 字）
+      ...emails.map((e) => ({ type: 'email' as const, email: e.email, name: (e.name || e.email).slice(0, 100) })),
+    ];
+
+    const document = await getDocument(input.id);
+    if (document.status !== 'draft') return { error: '此文件已發起簽署，無法再修改簽署設定' };
+    // 只取欄位位置送回後端（後端拒絕未定義的屬性）
+    const positions = document.fields.map((f) => ({
+      type: f.type,
+      page: f.page,
+      xPercent: f.xPercent,
+      yPercent: f.yPercent,
+      widthPercent: f.widthPercent,
+      heightPercent: f.heightPercent,
+      sortOrder: f.sortOrder,
+    }));
+    const single = signers.length === 1;
+
+    if (period) {
+      if (positions.length === 0) return { error: '此文件沒有簽名欄位，無法發起簽署' };
+      if (!single) return { error: '目前只支援一位簽署人發起簽署（多位簽署人需指定每個欄位由誰簽署）' };
+      if (!positions.some((p) => p.type === 'signature')) return { error: '每位簽署人至少需要一個簽名欄位' };
+      await initiateDocument(input.id, {
+        signers,
+        fields: positions.map((p) => ({ ...p, signerIndex: 0 })),
+        ...period,
+        watermark: input.options.watermark,
+        allowReject: input.options.allowReject,
+      });
+    } else {
+      // 取代簽署人會解除所有欄位的指派；只有一位簽署人時寫回指派
+      const saved = await replaceSigners(input.id, signers);
+      const signerPublicId = single ? (saved[0]?.publicId ?? null) : null;
+      await replaceFields(input.id, positions.map((p) => ({ ...p, signerPublicId })));
+    }
+  } catch (error) {
+    unstable_rethrow(error);
+    return { error: error instanceof EsignApiError ? error.message : ACTION_FAILED_MESSAGE };
+  }
+
+  revalidateLists();
+  redirect(input.publish ? `/forms?flash=published&count=${count}` : '/forms?flash=saved');
+}
+
+const BACKEND_ID = /^[1-9][0-9]*$/;
+
+/** 不在 mock store 的文件：後端文件（數字 id）目前沒有對應功能的 API，其餘視為找不到 */
+function notInMockStore(formId: string): { error: string } {
+  return { error: BACKEND_ID.test(formId) ? '正式電子簽流程尚未提供此功能' : '找不到此文件' };
+}
+
+// 確認視窗沒有填寫理由的欄位，先以固定理由送出（後端理由必填）
+const STOP_REASON = '建立人停止簽署';
+
+/** 停止簽署：後端文件呼叫停止 API；示意資料（mock store）維持原型尚未實作的狀態 */
+export async function stopSigning(input: { formId: string }): Promise<ActionResult> {
+  if (getForm(input.formId)) return undefined;
+  if (!BACKEND_ID.test(input.formId)) return { error: '找不到此文件' };
+  try {
+    await stopDocument(input.formId, STOP_REASON);
+  } catch (error) {
+    unstable_rethrow(error);
+    return { error: error instanceof EsignApiError ? error.message : ACTION_FAILED_MESSAGE };
+  }
+  revalidateLists();
+}
+
+/** 刪除文件：後端文件呼叫刪除 API（只限草稿）；示意資料（mock store）維持原型尚未實作的狀態 */
+export async function deleteDocument(input: { formId: string }): Promise<ActionResult> {
+  if (getForm(input.formId)) return undefined;
+  if (!BACKEND_ID.test(input.formId)) return { error: '找不到此文件' };
+  try {
+    await deleteDraftDocument(input.formId);
+  } catch (error) {
+    unstable_rethrow(error);
+    return { error: error instanceof EsignApiError ? error.message : ACTION_FAILED_MESSAGE };
+  }
+  revalidateLists();
+}
+
 /** 通知（提醒）簽署人；未指定 signerIds 時通知所有待簽署者。只會通知待簽署的人，回傳實際通知人數 */
 export async function notifySigners(input: {
   formId: string;
   signerIds?: string[];
 }): Promise<{ error: string } | { count: number }> {
   const form = getForm(input.formId);
-  if (!form) return { error: '找不到此文件' };
+  if (!form) return notInMockStore(input.formId);
   if (deriveStatus(form) !== 'active') return { error: '只有簽署中的文件可以通知簽署人' };
 
   const wanted = input.signerIds ? new Set(input.signerIds) : null;
@@ -201,7 +350,7 @@ export async function getSignerCopy(input: {
   signerId: string;
 }): Promise<{ error: string } | { form: EFormDoc; signer: Signer }> {
   const form = getForm(input.formId);
-  if (!form) return { error: '找不到此文件' };
+  if (!form) return notInMockStore(input.formId);
   const signer = form.signers.find((s) => s.id === input.signerId);
   if (!signer) return { error: '找不到此簽署人' };
   if (signer.status !== 'signed') return { error: '此簽署人尚未簽署，沒有可匯出的文件' };
@@ -227,7 +376,7 @@ export async function updateSignerNote(input: {
   note: string;
 }): Promise<{ error: string } | { note: string }> {
   const form = getForm(input.formId);
-  if (!form) return { error: '找不到此文件' };
+  if (!form) return notInMockStore(input.formId);
   const signer = form.signers.find((s) => s.id === input.signerId);
   if (!signer) return { error: '找不到此簽署人' };
   const result = normalizeSignerNote(input.note);

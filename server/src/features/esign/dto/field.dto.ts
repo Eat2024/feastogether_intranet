@@ -5,6 +5,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsOptional,
   IsUUID,
   Max,
   Min,
@@ -46,8 +47,10 @@ export class FieldPlacementDto {
 }
 
 export class FieldInputDto extends FieldPlacementDto {
+  /** 省略或 null 表示草稿欄位暫不指派；發起時仍要求每個欄位都有簽署人。 */
+  @IsOptional()
   @IsUUID('4')
-  signerPublicId!: string;
+  signerPublicId?: string | null;
 }
 
 export class ReplaceFieldsDto {

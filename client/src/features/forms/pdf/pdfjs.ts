@@ -1,3 +1,4 @@
+import { redirectExpiredSession } from '@/features/auth/navigation';
 // 在瀏覽器端用 pdf.js 讀取 PDF：取得實際頁數並把指定頁面畫成圖片（上傳預覽、簽署時閱讀原始文件）。
 // TODO: 串接後端後可改由後端轉檔（Word → PDF）並回傳預覽圖。
 import type { PDFDocumentProxy } from 'pdfjs-dist';
@@ -23,6 +24,7 @@ export async function openPdf(source: File | string): Promise<PDFDocumentProxy> 
   const pdfjs = await loadPdfjs();
   if (typeof source === 'string') {
     const res = await fetch(source, { cache: 'no-store' });
+    if (source.startsWith('/files/forms/') && redirectExpiredSession(res)) throw new Error('登入已失效');
     if (!res.ok) throw new Error(`無法取得文件（${res.status}）`);
     return pdfjs.getDocument({ data: new Uint8Array(await res.arrayBuffer()) }).promise;
   }

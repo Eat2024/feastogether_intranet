@@ -1,4 +1,3 @@
-import { Readable } from 'node:stream';
 import { EsignInitiationService } from './esign-initiation.service';
 
 describe('EsignInitiationService', () => {
@@ -56,17 +55,12 @@ describe('EsignInitiationService', () => {
       ),
     };
     const documents = {
-      findByIdForUpdate: jest.fn(async () => document),
       save: jest.fn(async (value: object) => value),
     };
     const signerRepository = {
       findByDocumentForUpdate: jest.fn(async () => signers),
       saveMany: jest.fn(async (value: object[]) => value),
     };
-    const fieldRepository = {
-      findByDocumentForUpdate: jest.fn(async () => fields),
-    };
-    const files = { findDocumentFile: jest.fn(async () => source) };
     const notifications = {
       createBatch: jest.fn((value: object) => value),
       saveBatch: jest.fn(async (value: object) => ({ id: 41, ...value })),
@@ -75,11 +69,7 @@ describe('EsignInitiationService', () => {
         values.map((value, index) => ({ id: 51 + index, ...value })),
       ),
     };
-    const access = { checkEsignCreator: jest.fn() };
-    const validation = {
-      checkStillDraft: jest.fn(),
-      assertSourceIntegrity: jest.fn(),
-    };
+    const access = { checkAndLockDraftDoc: jest.fn(async () => document) };
     const pdf = {
       validatePersistedPdf: jest.fn(async () => ({
         mimeType: 'application/pdf',
@@ -104,28 +94,26 @@ describe('EsignInitiationService', () => {
     };
     const audit = { append: jest.fn() };
     const jobs = { enqueueInvitations: jest.fn() };
-    const storage = {
-      openReadStream: jest.fn(async () => Readable.from([Buffer.from('pdf')])),
-    };
     const signerService = {
-      replaceInTransaction: jest.fn(() => Promise.resolve(signers)),
+      updateSigners: jest.fn(() => Promise.resolve(signers)),
     };
-    const fieldService = { replaceInTransaction: jest.fn() };
+    const fieldService = {
+      buildFields: jest.fn(async () => ({
+        fields,
+        source,
+        sourceMetadata: await pdf.validatePersistedPdf(),
+      })),
+    };
     const service = new EsignInitiationService(
       mysql as never,
       documents as never,
       signerRepository as never,
-      fieldRepository as never,
-      files as never,
       notifications as never,
       access as never,
-      validation as never,
-      pdf as never,
       consent as never,
       tokens as never,
       audit as never,
       jobs as never,
-      storage as never,
       signerService as never,
       fieldService as never,
     );
@@ -134,7 +122,7 @@ describe('EsignInitiationService', () => {
       signerService,
       fieldService,
       document,
-      documents,
+      access,
       notifications,
       jobs,
       tokens,
@@ -146,7 +134,7 @@ describe('EsignInitiationService', () => {
     const {
       service,
       document,
-      documents,
+      access,
       notifications,
       jobs,
       audit,
@@ -173,16 +161,18 @@ describe('EsignInitiationService', () => {
       ],
       signStartAt: start,
       signEndAt: end,
+      watermark: true,
+      allowReject: true,
     });
 
-    expect(signerService.replaceInTransaction).toHaveBeenCalledWith(
-      3,
+    expect(signerService.updateSigners).toHaveBeenCalledWith(
+      document,
       7,
       expect.any(Array),
       manager,
     );
-    expect(fieldService.replaceInTransaction).toHaveBeenCalledWith(
-      3,
+    expect(fieldService.buildFields).toHaveBeenCalledWith(
+      document,
       7,
       expect.arrayContaining([
         expect.objectContaining({
@@ -191,8 +181,15 @@ describe('EsignInitiationService', () => {
       ]),
       manager,
     );
-    expect(documents.findByIdForUpdate).toHaveBeenCalledWith(3, manager);
+    expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(3, 7, manager);
     expect(document.status).toBe('active');
+    expect(document).toMatchObject({
+      watermarkEnabled: true,
+      allowReject: true,
+      signingPayloadJson: {
+        options: { parallelSigning: true, allowReject: true, watermark: true },
+      },
+    });
     expect(document.signingPayloadSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(document.signingPayloadJson)).not.toContain(
       'sensitive',
@@ -255,6 +252,8 @@ describe('EsignInitiationService', () => {
         ],
         signStartAt: start,
         signEndAt: end,
+        watermark: false,
+        allowReject: false,
       }),
     ).rejects.toThrow('每名簽署人至少需要一個簽名欄位');
     expect(document.status).toBe('draft');
@@ -284,6 +283,8 @@ describe('EsignInitiationService', () => {
         ],
         signStartAt: end,
         signEndAt: start,
+        watermark: false,
+        allowReject: false,
       }),
     ).rejects.toThrow('簽署開始時間必須早於截止時間');
   });
@@ -324,6 +325,8 @@ describe('EsignInitiationService', () => {
       ],
       signStartAt: start,
       signEndAt: end,
+      watermark: false,
+      allowReject: false,
     });
     expect(notifications.saveBatch).not.toHaveBeenCalled();
     expect(jobs.enqueueInvitations).toHaveBeenCalledWith([]);

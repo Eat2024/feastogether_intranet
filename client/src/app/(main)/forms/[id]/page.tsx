@@ -18,7 +18,11 @@ import { formOptions } from '@/features/forms/options';
 import { remainingWalkIns } from '@/features/forms/sheet/rules';
 import SheetTools from '@/features/forms/sheet/SheetTools';
 import StopSigningButton from '@/features/forms/StopSigningButton';
+import SigningHistory from '@/features/forms/detail/SigningHistory';
+import { getDocument, getDocumentHistory, toDetailForm, type DocumentDetail } from '@/features/forms/serverApi';
 import { getForm, toClientForm } from '@/features/forms/store';
+import type { EFormDoc } from '@/features/forms/types';
+import { EsignApiError } from '@/lib/api/esign';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import Box from '@mui/material/Box';
@@ -49,10 +53,26 @@ function Kpi({ label, value, color }: { label: string; value: number; color?: st
   );
 }
 
+/** 後端文件轉成文件簽署狀態頁的資料 */
+async function loadDocumentForm(id: string): Promise<EFormDoc> {
+  let document: DocumentDetail;
+  try {
+    document = await getDocument(id);
+  } catch (error) {
+    // 文件不存在、不是本人的文件（後端一律回 404）或 id 格式不正確
+    if (error instanceof EsignApiError && (error.status === 404 || error.status === 400)) notFound();
+    throw error;
+  }
+  return toDetailForm(document);
+}
+
 export default async function FormDetailPage({ params, searchParams }: PageProps<'/forms/[id]'>) {
   const { id } = await params;
-  const stored = getForm(id);
-  if (!stored) notFound();
+  // 簽到表與示意資料仍在 mock store；其餘為後端文件
+  const mock = getForm(id);
+  const stored = mock ?? (await loadDocumentForm(id));
+  // 後端文件另有簽署歷程
+  const history = mock ? null : await getDocumentHistory(id);
   // 草稿尚無簽署進度，請改用「編輯」或「發起簽署」
   if (stored.status === 'draft') redirect('/forms');
 
@@ -63,8 +83,12 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
   const statusMeta = FORM_STATUS_META[progress.status];
   const query = parseSignerQuery(await searchParams);
   const counts = countByStatus(form);
-  const { rows, total, page, pageCount } = querySigners(form, query, getDeptName);
-  const canEdit = signedCount(form) === 0 && form.status !== 'stopped';
+  // 後端文件的簽署人沒有組織架構 id，部門改用加入時的部門快照
+  const deptOf = (signerId: string) =>
+    getDeptName(signerId) ?? form.signers.find((s) => s.id === signerId)?.unit ?? null;
+  const { rows, total, page, pageCount } = querySigners(form, query, deptOf);
+  // 後端文件發起後不可修改
+  const canEdit = !!mock && signedCount(form) === 0 && form.status !== 'stopped';
 
   const sortHrefs = Object.fromEntries(
     SIGNER_SORT_KEYS.map((key) => [key, signerHref(id, query, { sort: nextSignerSort(query.sort, key) })]),
@@ -173,6 +197,8 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
           hrefs={pageHrefs(pageCount, (p) => signerHref(id, query, { page: p }))}
         />
       </Stack>
+
+      {history && <SigningHistory items={history} />}
     </>
   );
 }

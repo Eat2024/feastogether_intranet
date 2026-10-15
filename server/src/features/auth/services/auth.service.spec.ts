@@ -70,6 +70,9 @@ describe('AuthService WebView SSO', () => {
     };
     const hr = { lookupEligibleStaff: jest.fn().mockResolvedValue(staff) };
     const logger = { info: jest.fn() };
+    const passwordAuth = {
+      authenticate: jest.fn().mockResolvedValue(undefined),
+    };
     return {
       service: new AuthService(
         config as never,
@@ -78,8 +81,10 @@ describe('AuthService WebView SSO', () => {
         mysql as never,
         hr as never,
         logger as never,
+        passwordAuth as never,
       ),
       config,
+      passwordAuth,
       sessions,
       users,
       mysql,
@@ -87,6 +92,36 @@ describe('AuthService WebView SSO', () => {
       user,
     };
   };
+
+  it('帳密通過且員工符合資格才建立本地 session', async () => {
+    const { service, passwordAuth, hr, sessions } = setup();
+    const result = await service.login('00123', 'synthetic-password');
+    expect(passwordAuth.authenticate).toHaveBeenCalledWith(
+      '00123',
+      'synthetic-password',
+    );
+    expect(hr.lookupEligibleStaff).toHaveBeenCalledWith('00123');
+    expect(sessions.createActive).toHaveBeenCalledTimes(1);
+    expect(result.session.user.empId).toBe('00123');
+    expect(result.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it('錯誤密碼不查員工也不建立 session', async () => {
+    const { service, passwordAuth, hr, sessions } = setup();
+    passwordAuth.authenticate.mockRejectedValue(new Error('驗證失敗'));
+    await expect(service.login('00123', 'wrong')).rejects.toThrow('驗證失敗');
+    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(sessions.createActive).not.toHaveBeenCalled();
+  });
+
+  it('上游帳密正確但本地停用仍不得登入', async () => {
+    const { service, users, user, sessions } = setup();
+    users.findByEmpidForUpdate.mockResolvedValue({ ...user, isActive: false });
+    await expect(
+      service.login('00123', 'synthetic-password'),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(sessions.createActive).not.toHaveBeenCalled();
+  });
 
   const jwt = (overrides: Record<string, unknown> = {}, header = {}) => {
     const now = Math.floor(Date.now() / 1000);
@@ -132,6 +167,7 @@ describe('AuthService WebView SSO', () => {
           dependencies.mysql as never,
           dependencies.hr as never,
           { info: jest.fn() } as never,
+          dependencies.passwordAuth as never,
         ),
     ).toThrow('WEBVIEW_JWT_PUBLIC_KEY_B64 必須是有效 RSA 公鑰 PEM');
   });

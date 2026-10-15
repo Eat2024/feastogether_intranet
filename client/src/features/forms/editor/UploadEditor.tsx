@@ -16,6 +16,7 @@ import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import { useRouter } from "next/navigation";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import {
   useEffect,
@@ -28,6 +29,7 @@ import {
 } from "react";
 import { color } from "@/theme/tokens";
 import { saveUploadDocument } from "../actions";
+import { createUploadDocument, isBackendDocumentId, updateUploadDocument } from "../api";
 import { clampFieldSize, fieldSize } from "../signLayout";
 import { isPdfFile, MAX_PDF_BYTES, openPdf } from "../pdf/pdfjs";
 import { usePdfDocument, usePdfRenders } from "../pdf/usePdf";
@@ -347,6 +349,11 @@ export default function UploadEditor({
   const [fileId, setFileId] = useState(up?.fileId);
   const [uploading, setUploading] = useState(false);
   const uploadSeq = useRef(0);
+  // 本次選擇的 PDF 原始檔；新文件與後端草稿在送出時才上傳
+  const pickedFile = useRef<File | null>(null);
+  // 後端草稿（數字 id）：PDF 與欄位直接送到後端；mock 文件沿用原本的流程
+  const backend = !!form && isBackendDocumentId(form.id);
+  const router = useRouter();
 
   // 離開頁面時釋放 pdf.js 佔用的記憶體
   useEffect(() => () => void uploadedDocRef.current?.loadingTask.destroy(), []);
@@ -435,7 +442,9 @@ export default function UploadEditor({
     setFields([]);
     setErrors((e) => ({ ...e, file: undefined }));
     setReading(false);
-    await uploadFile(file, n);
+    pickedFile.current = file;
+    // 新文件與後端草稿在送出時連同欄位送到後端；mock 文件沿用原本的上傳流程
+    if (form && !backend) await uploadFile(file, n);
   };
 
   const handleFileDrop = (e: DragEvent) => {
@@ -534,7 +543,7 @@ export default function UploadEditor({
     if (!name.trim()) next.name = "請輸入文件名稱";
     if (!uploaded) next.file = "請先上傳文件";
     else if (uploading) next.file = "檔案上傳中，請稍候";
-    else if (uploadedDoc && !fileId) next.file = "檔案尚未上傳成功，請重新上傳";
+    else if (form && !backend && uploadedDoc && !fileId) next.file = "檔案尚未上傳成功，請重新上傳";
     else if (!confirmMode && fields.length === 0) {
       next.fields = "請至少指定一個簽名位置，或改用系統簽署確認頁";
     }
@@ -545,6 +554,27 @@ export default function UploadEditor({
   const submit = () => {
     if (!validate()) return;
     startTransition(async () => {
+      // 新文件與後端草稿：PDF（新上傳時）與簽名／日期欄位一次送到後端
+      if (!form || backend) {
+        const file = pickedFile.current;
+        if (!form && !file) {
+          setErrors({ file: "請先上傳文件" });
+          return;
+        }
+        // 系統簽署確認頁模式不使用文件上的欄位（後端尚未支援確認頁）
+        const sentFields = confirmMode ? [] : fields;
+        const result = form
+          ? await updateUploadDocument({ id: form.id, title: name, file: file ?? undefined, fields: sentFields })
+          : file
+            ? await createUploadDocument({ title: name, file, fields: sentFields })
+            : { error: "請先上傳文件" };
+        if ("error" in result) {
+          setErrors({ submit: result.error });
+          return;
+        }
+        router.push(`/forms/${result.id}/signers`);
+        return;
+      }
       try {
         const result = await saveUploadDocument({
           id: form?.id,

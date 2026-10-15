@@ -4,6 +4,7 @@ import { FeastogetherClient } from './feastogether.client';
 import { FeastogetherConfig } from './feastogether.config';
 import { FeastogetherBrandService } from './services/feastogether-brand.service';
 import { FeastogetherDepartmentService } from './services/feastogether-department.service';
+import { FeastogetherAuthService } from './services/feastogether-auth.service';
 import { FeastogetherHrService } from './services/feastogether-hr.service';
 
 /**
@@ -18,11 +19,13 @@ import { FeastogetherHrService } from './services/feastogether-hr.service';
     FeastogetherBrandService,
     FeastogetherDepartmentService,
     FeastogetherHrService,
+    FeastogetherAuthService,
   ],
   exports: [
     FeastogetherBrandService,
     FeastogetherDepartmentService,
     FeastogetherHrService,
+    FeastogetherAuthService,
     FeastogetherClient,
   ],
 })

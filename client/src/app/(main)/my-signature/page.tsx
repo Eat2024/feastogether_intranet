@@ -6,7 +6,8 @@ import { getForms, toSignerView } from '@/features/forms/store';
 import MySignTable from '@/features/my-signature/MySignTable';
 import MySignTabs from '@/features/my-signature/MySignTabs';
 import { mySignHref, parseMySort, sortTasks } from '@/features/my-signature/sort';
-import { getMySignTasks, parseTab } from '@/features/my-signature/tasks';
+import { listSigningTasks, toMySignTask } from '@/features/my-signature/serverApi';
+import { collectMySignTasks, groupMySignTasks, parseTab } from '@/features/my-signature/tasks';
 import { PAGE_SIZE, pageHrefs, paginate, parsePage } from '@/lib/paginate';
 import Stack from '@mui/material/Stack';
 import type { Metadata } from 'next';
@@ -26,13 +27,16 @@ export default async function MySignaturePage({ searchParams }: PageProps<'/my-s
   const sort = parseMySort(params, tab);
   // 以完整資料計算進度與可否簽署，再只保留本人的紀錄傳給畫面（不外流其他簽署人）
   const userId = getCurrentUserId();
-  const allTasks = getMySignTasks(getForms(), userId, new Date());
+  const today = new Date();
+  // 後端的簽署任務與 mock store 的文件一起整理分頁
+  const apiTasks = (await listSigningTasks()).map((t) => toMySignTask(t, today));
+  const allTasks = groupMySignTasks([...apiTasks, ...collectMySignTasks(getForms(), userId, today)]);
   const tasks = Object.fromEntries(
     Object.entries(allTasks).map(([tab, list]) => [
       tab,
       list.map((t) => {
         // me 也要用簽署人視角的資料（不含管理端備註，簽到表帶出序號）
-        const form = toSignerView(t.form, userId);
+        const form = toSignerView(t.form, t.me.id);
         return { ...t, form, me: form.signers[0] ?? t.me };
       }),
     ]),

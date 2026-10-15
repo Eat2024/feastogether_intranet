@@ -15,6 +15,8 @@ type FeastogetherMethod = 'get' | 'post';
 export interface FeastogetherRequestOptions {
   /** 帶上使用者的饗賓 access_token 做 Bearer（per-user 端點用）。 */
   token?: string;
+  /** 個別端點的連線逾時，避免登入請求無限等待。 */
+  timeoutMs?: number;
 }
 
 /** 饗賓固定回應格式；實際 payload 在 `data`。 */
@@ -84,15 +86,28 @@ export class FeastogetherClient {
 
     const url = `${this.config.baseUrl}${path}`;
     const safePath = path.split('?', 1)[0];
-    const isStaffLookup = safePath === '/api/v1/hr/staff_lookup';
+    const omitBody = [
+      '/api/v1/hr/staff_lookup',
+      '/api/v1/staff/login',
+    ].includes(safePath);
     try {
       const response =
         method === 'get'
           ? await firstValueFrom(
-              this.http.get<FeastogetherEnvelope<T>>(url, { headers }),
+              this.http.get<FeastogetherEnvelope<T>>(url, {
+                headers,
+                ...(options.timeoutMs !== undefined
+                  ? { timeout: options.timeoutMs }
+                  : {}),
+              }),
             )
           : await firstValueFrom(
-              this.http.post<FeastogetherEnvelope<T>>(url, body, { headers }),
+              this.http.post<FeastogetherEnvelope<T>>(url, body, {
+                headers,
+                ...(options.timeoutMs !== undefined
+                  ? { timeout: options.timeoutMs }
+                  : {}),
+              }),
             );
       return this.unwrap<T>(response.data, method, path, body);
     } catch (error: unknown) {
@@ -115,10 +130,10 @@ export class FeastogetherClient {
           path: safePath,
           status,
           errorType: getErrorType(error),
-          ...(body !== undefined ? { requestBody: maskSensitive(body) } : {}),
-          ...(!isStaffLookup
-            ? { responseBody: maskSensitive(responseBody) }
+          ...(!omitBody && body !== undefined
+            ? { requestBody: maskSensitive(body) }
             : {}),
+          ...(!omitBody ? { responseBody: maskSensitive(responseBody) } : {}),
         },
       });
       throw new FeastogetherApiError(
@@ -136,7 +151,10 @@ export class FeastogetherClient {
     requestBody: unknown,
   ): T {
     const safePath = path.split('?', 1)[0];
-    const isStaffLookup = safePath === '/api/v1/hr/staff_lookup';
+    const omitBody = [
+      '/api/v1/hr/staff_lookup',
+      '/api/v1/staff/login',
+    ].includes(safePath);
     if (payload && typeof payload === 'object' && 'success' in payload) {
       if (payload.success === false) {
         this.safeWarn({
@@ -147,10 +165,10 @@ export class FeastogetherClient {
             method,
             path: safePath,
             upstreamCode: payload.code,
-            ...(requestBody !== undefined
+            ...(!omitBody && requestBody !== undefined
               ? { requestBody: maskSensitive(requestBody) }
               : {}),
-            ...(!isStaffLookup ? { responseBody: maskSensitive(payload) } : {}),
+            ...(!omitBody ? { responseBody: maskSensitive(payload) } : {}),
           },
         });
         throw new FeastogetherApiError(

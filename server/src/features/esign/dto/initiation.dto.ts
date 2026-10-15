@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsISO8601,
   Min,
@@ -40,4 +41,12 @@ export class InitiateDocumentDto {
 
   @IsISO8601({ strict: true })
   signEndAt!: string;
+
+  /** 下載／匯出的已簽署 PDF 是否加上浮水印 */
+  @IsBoolean()
+  watermark!: boolean;
+
+  /** 是否允許簽署人拒絕簽署 */
+  @IsBoolean()
+  allowReject!: boolean;
 }

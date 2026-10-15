@@ -1,25 +1,22 @@
+import type { EntityManager } from 'typeorm';
+import type { EsignDocument } from '../entities/esign-document.entity';
+import type { EsignSigner } from '../entities/esign-signer.entity';
+import type { EsignDocumentField } from '../entities/esign-document-field.entity';
+import type { FieldInputDto } from '../dto/field.dto';
+import type { ValidatedPdf } from './pdf-validation.service';
 import { createHash } from 'node:crypto';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
-import {
-  PRIVATE_FILE_STORAGE,
-  type PrivateFileStorage,
-} from '#app/infrastructure/file-storage/private-file-storage.port';
-import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
-import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { DocumentRepository } from '../repositories/document.repository';
-import { FileObjectRepository } from '../repositories/file-object.repository';
 import { NotificationRepository } from '../repositories/notification.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { canonicalJson, EsignAuditService } from './esign-audit.service';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignConsentService } from './esign-consent.service';
-import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
 import { EsignTokenService } from './esign-token.service';
-import { PdfValidationService } from './pdf-validation.service';
 import { EsignSignerService } from './esign-signer.service';
 import { EsignFieldService } from './esign-field.service';
 import type { SignerInputDto } from '../dto/signer.dto';
@@ -32,6 +29,16 @@ export interface InitiateDocumentInput {
   creatorUserId: number;
   signStartAt: Date;
   signEndAt: Date;
+  /** 下載／匯出的已簽署 PDF 是否加上浮水印 */
+  watermark: boolean;
+  /** 是否允許簽署人拒絕簽署 */
+  allowReject: boolean;
+}
+
+interface SigningSnapshot {
+  payload: Record<string, unknown>;
+  payloadSha256: string;
+  consentVersion: string;
 }
 
 @Injectable()
@@ -40,23 +47,87 @@ export class EsignInitiationService {
     private readonly mysql: MysqlService,
     private readonly documents: DocumentRepository,
     private readonly signers: SignerRepository,
-    private readonly fields: DocumentFieldRepository,
-    private readonly files: FileObjectRepository,
     private readonly notifications: NotificationRepository,
     private readonly access: EsignAccessPolicyService,
-    private readonly validation: EsignDocumentValidationService,
-    private readonly pdf: PdfValidationService,
     private readonly consent: EsignConsentService,
     private readonly tokens: EsignTokenService,
     private readonly audit: EsignAuditService,
     private readonly jobs: EsignJobProducerService,
-    @Inject(PRIVATE_FILE_STORAGE)
-    private readonly storage: PrivateFileStorage,
     private readonly signerService: EsignSignerService,
     private readonly fieldService: EsignFieldService,
-  ) {}
+  ) { }
 
   async initiate(input: InitiateDocumentInput) {
+    this.validateSigningPeriod(input);
+    const result = await this.mysql.transaction(async (manager) => {
+      const document = await this.access.checkAndLockDraftDoc(
+        input.documentId,
+        input.creatorUserId,
+        manager,
+      );
+      const signers = await this.signerService.updateSigners(
+        document,
+        input.creatorUserId,
+        input.signers,
+        manager,
+      );
+      const fieldInputs = this.mapFieldsToSigners(input.fields, signers);
+      const { fields, sourceMetadata } = await this.fieldService.buildFields(
+        document,
+        input.creatorUserId,
+        fieldInputs,
+        manager,
+      );
+      this.validateSigningAssignments(
+        document,
+        signers,
+        fields,
+        sourceMetadata.pageCount,
+      );
+      const snapshot = this.buildSigningSnapshot(
+        input,
+        document,
+        signers,
+        fields,
+        sourceMetadata,
+      );
+      const initiatedAt = new Date();
+      const externalSigners = await this.createExternalInvitationTokens(
+        input,
+        signers,
+        manager,
+      );
+      await this.activateDocument(
+        input,
+        document,
+        snapshot,
+        initiatedAt,
+        manager,
+      );
+      const notificationLogIds = await this.createInvitationNotifications(
+        input,
+        document.id,
+        externalSigners,
+        initiatedAt,
+        manager,
+      );
+      await this.recordInitiationAudit(
+        input,
+        document,
+        signers,
+        snapshot.consentVersion,
+        initiatedAt,
+        manager,
+      );
+      return { document, notificationLogIds };
+    });
+
+    // 通知工作須在交易提交後才入列。
+    await this.jobs.enqueueInvitations(result.notificationLogIds);
+    return result.document;
+  }
+
+  private validateSigningPeriod(input: InitiateDocumentInput): void {
     if (
       !Number.isFinite(input.signStartAt.getTime()) ||
       !Number.isFinite(input.signEndAt.getTime()) ||
@@ -64,214 +135,229 @@ export class EsignInitiationService {
     ) {
       throw this.invalid('簽署開始時間必須早於截止時間');
     }
+  }
 
-    const result = await this.mysql.transaction(async (manager) => {
-      const document = await this.documents.findByIdForUpdate(
-        input.documentId,
-        manager,
-      );
-      this.access.checkEsignCreator(document, input.creatorUserId);
-      this.validation.checkStillDraft(document);
+  private mapFieldsToSigners(
+    fields: InitiationFieldDto[],
+    signers: EsignSigner[],
+  ): FieldInputDto[] {
+    return fields.map(({ signerIndex, ...field }) => {
+      const signer =
+        Number.isInteger(signerIndex) && signerIndex >= 0
+          ? signers[signerIndex]
+          : undefined;
+      if (!signer) throw this.invalid('欄位指定的簽署人不在本次名單中');
+      return { ...field, signerPublicId: signer.publicId };
+    });
+  }
 
-      const replacements = await this.signerService.replaceInTransaction(
-        input.documentId,
-        input.creatorUserId,
-        input.signers,
-        manager,
-      );
-      const fieldInputs = input.fields.map(({ signerIndex, ...field }) => {
-        const signer =
-          Number.isInteger(signerIndex) && signerIndex >= 0
-            ? replacements[signerIndex]
-            : undefined;
-        if (!signer) throw this.invalid('欄位指定的簽署人不在本次名單中');
-        return { ...field, signerPublicId: signer.publicId };
-      });
-      await this.fieldService.replaceInTransaction(
-        input.documentId,
-        input.creatorUserId,
-        fieldInputs,
-        manager,
-      );
+  private validateSigningAssignments(
+    document: EsignDocument,
+    signers: EsignSigner[],
+    fields: EsignDocumentField[],
+    pageCount: number,
+  ): void {
+    if (signers.length < 1 || signers.length > 50) {
+      throw this.invalid('文件必須有 1 至 50 名簽署人');
+    }
+    if (fields.length > 200) throw this.invalid('欄位數量不可超過 200 個');
 
-      const [signers, fields, source] = await Promise.all([
-        this.signers.findByDocumentForUpdate(input.documentId, manager),
-        this.fields.findByDocumentForUpdate(input.documentId, manager),
-        this.files.findDocumentFile(input.documentId, 'source_pdf', manager),
-      ]);
-      if (!source) throw this.invalid('草稿缺少 PDF 文件');
-      if (signers.length < 1 || signers.length > 50) {
-        throw this.invalid('文件必須有 1 至 50 名簽署人');
-      }
-      if (fields.length > 200) throw this.invalid('欄位數量不可超過 200 個');
-
-      const sourceBytes = await readPrivateFile(this.storage, source);
-      const sourceMetadata = await this.pdf.validatePersistedPdf(sourceBytes);
-      this.validation.assertSourceIntegrity(
-        document,
-        source,
-        sourceMetadata.sha256,
-      );
-
-      const signerIds = new Set(signers.map((signer) => signer.id));
+    const signerIds = new Set(signers.map((signer) => signer.id));
+    if (
+      fields.some(
+        (field) =>
+          field.signerId === undefined ||
+          !signerIds.has(field.signerId) ||
+          field.documentId !== document.id ||
+          field.pageNumber > pageCount,
+      )
+    ) {
+      throw this.invalid('文件包含無效或未指派的簽署欄位');
+    }
+    for (const signer of signers) {
       if (
-        fields.some(
+        !fields.some(
           (field) =>
-            field.signerId === undefined ||
-            !signerIds.has(field.signerId) ||
-            field.documentId !== document.id ||
-            field.pageNumber > sourceMetadata.pageCount,
+            field.signerId === signer.id && field.fieldType === 'signature',
         )
       ) {
-        throw this.invalid('文件包含無效或未指派的簽署欄位');
+        throw this.invalid('每名簽署人至少需要一個簽名欄位');
       }
-      for (const signer of signers) {
-        if (
-          !fields.some(
-            (field) =>
-              field.signerId === signer.id && field.fieldType === 'signature',
-          )
-        ) {
-          throw this.invalid('每名簽署人至少需要一個簽名欄位');
-        }
-      }
+    }
+  }
 
-      const activeConsent = this.consent.getActive();
-      const payload = {
-        document: {
-          id: String(document.id),
-          docNumber: document.docNumber,
-          title: document.title,
-          sourceFileSha256: sourceMetadata.sha256,
-        },
-        period: {
-          startAt: input.signStartAt.toISOString(),
-          endAt: input.signEndAt.toISOString(),
-        },
-        consent: {
-          version: activeConsent.version,
-          sha256: activeConsent.sha256,
-        },
-        options: {
-          parallelSigning: true,
-          allowReject: false,
-          watermark: false,
-        },
-        signers: signers.map((signer) => ({
-          id: String(signer.id),
-          publicId: signer.publicId,
-          type: signer.signerType,
-          userId: signer.userId ? String(signer.userId) : null,
-          email: signer.email ?? null,
-          employeeNo: signer.empidSnapshot ?? null,
-          name: signer.nameSnapshot,
-          department: signer.departmentSnapshot ?? null,
-          title: signer.titleSnapshot ?? null,
-          sortOrder: signer.sortOrder,
-        })),
-        fields: fields.map((field) => ({
-          id: String(field.id),
-          signerId: String(field.signerId),
-          type: field.fieldType,
-          page: field.pageNumber,
-          xPercent: Number(field.xPercent),
-          yPercent: Number(field.yPercent),
-          widthPercent: Number(field.widthPercent),
-          heightPercent: Number(field.heightPercent),
-          sortOrder: field.sortOrder,
-        })),
-      };
-      const payloadJson = canonicalJson(payload);
-      const payloadSha256 = createHash('sha256')
-        .update(payloadJson, 'utf8')
-        .digest('hex');
-      const initiatedAt = new Date();
+  private buildSigningSnapshot(
+    input: InitiateDocumentInput,
+    document: EsignDocument,
+    signers: EsignSigner[],
+    fields: EsignDocumentField[],
+    sourceMetadata: ValidatedPdf,
+  ): SigningSnapshot {
+    const activeConsent = this.consent.getActive();
+    const payload = {
+      document: {
+        id: String(document.id),
+        docNumber: document.docNumber,
+        title: document.title,
+        sourceFileSha256: sourceMetadata.sha256,
+      },
+      period: {
+        startAt: input.signStartAt.toISOString(),
+        endAt: input.signEndAt.toISOString(),
+      },
+      consent: {
+        version: activeConsent.version,
+        sha256: activeConsent.sha256,
+      },
+      options: {
+        parallelSigning: true,
+        allowReject: input.allowReject,
+        watermark: input.watermark,
+      },
+      signers: signers.map((signer) => ({
+        id: String(signer.id),
+        publicId: signer.publicId,
+        type: signer.signerType,
+        userId: signer.userId ? String(signer.userId) : null,
+        email: signer.email ?? null,
+        employeeNo: signer.empidSnapshot ?? null,
+        name: signer.nameSnapshot,
+        department: signer.departmentSnapshot ?? null,
+        title: signer.titleSnapshot ?? null,
+        sortOrder: signer.sortOrder,
+      })),
+      fields: fields.map((field) => ({
+        id: String(field.id),
+        signerId: String(field.signerId),
+        type: field.fieldType,
+        page: field.pageNumber,
+        xPercent: Number(field.xPercent),
+        yPercent: Number(field.yPercent),
+        widthPercent: Number(field.widthPercent),
+        heightPercent: Number(field.heightPercent),
+        sortOrder: field.sortOrder,
+      })),
+    };
+    const payloadJson = canonicalJson(payload);
+    const payloadSha256 = createHash('sha256')
+      .update(payloadJson, 'utf8')
+      .digest('hex');
+    return { payload, payloadSha256, consentVersion: activeConsent.version };
+  }
 
-      const externalSigners = signers.filter(
-        (signer) => signer.signerType === 'email',
+  private async createExternalInvitationTokens(
+    input: InitiateDocumentInput,
+    signers: EsignSigner[],
+    manager: EntityManager,
+  ): Promise<EsignSigner[]> {
+    const externalSigners = signers.filter(
+      (signer) => signer.signerType === 'email',
+    );
+    for (const signer of externalSigners) {
+      const token = this.tokens.createInvitationToken();
+      signer.invitationTokenSha256 = token.digest;
+      signer.invitationTokenCiphertext = token.ciphertext;
+      signer.invitationExpiresAt = input.signEndAt;
+      signer.updatedByUserId = input.creatorUserId;
+    }
+    if (externalSigners.length > 0) {
+      await this.signers.saveMany(externalSigners, manager);
+    }
+    return externalSigners;
+  }
+
+  private async activateDocument(
+    input: InitiateDocumentInput,
+    document: EsignDocument,
+    snapshot: SigningSnapshot,
+    initiatedAt: Date,
+    manager: EntityManager,
+  ): Promise<void> {
+    document.status = 'active';
+    document.signStartAt = input.signStartAt;
+    document.signEndAt = input.signEndAt;
+    document.signingPayloadJson = snapshot.payload;
+    document.signingPayloadSha256 = snapshot.payloadSha256;
+    document.initiatedAt = initiatedAt;
+    document.watermarkEnabled = input.watermark;
+    document.allowReject = input.allowReject;
+    await this.documents.save(document, manager);
+  }
+
+  private async createInvitationNotifications(
+    input: InitiateDocumentInput,
+    documentId: number,
+    externalSigners: EsignSigner[],
+    initiatedAt: Date,
+    manager: EntityManager,
+  ): Promise<number[]> {
+    const notificationLogIds: number[] = [];
+    if (externalSigners.length > 0) {
+      const batch = await this.notifications.saveBatch(
+        this.notifications.createBatch(
+          {
+            documentId: documentId,
+            filterType: 'external_invitation',
+            targetCount: externalSigners.length,
+            notifiedByUserId: input.creatorUserId,
+          },
+          manager,
+        ),
+        manager,
       );
-      for (const signer of externalSigners) {
-        const token = this.tokens.createInvitationToken();
-        signer.invitationTokenSha256 = token.digest;
-        signer.invitationTokenCiphertext = token.ciphertext;
-        signer.invitationExpiresAt = input.signEndAt;
-        signer.updatedByUserId = input.creatorUserId;
-      }
-      if (externalSigners.length > 0) {
-        await this.signers.saveMany(externalSigners, manager);
-      }
-
-      document.status = 'active';
-      document.signStartAt = input.signStartAt;
-      document.signEndAt = input.signEndAt;
-      document.signingPayloadJson = payload;
-      document.signingPayloadSha256 = payloadSha256;
-      document.initiatedAt = initiatedAt;
-      document.watermarkEnabled = false;
-      document.allowReject = false;
-      await this.documents.save(document, manager);
-
-      const notificationLogIds: number[] = [];
-      if (externalSigners.length > 0) {
-        const batch = await this.notifications.saveBatch(
-          this.notifications.createBatch(
+      const logs = await this.notifications.saveLogs(
+        externalSigners.map((signer) =>
+          this.notifications.createLog(
             {
-              documentId: document.id,
-              filterType: 'external_invitation',
-              targetCount: externalSigners.length,
-              notifiedByUserId: input.creatorUserId,
+              batchId: batch.id,
+              signerId: signer.id,
+              channel: 'email',
+              result: 'pending',
+              attemptCount: 0,
+              nextAttemptAt: initiatedAt,
             },
             manager,
           ),
-          manager,
-        );
-        const logs = await this.notifications.saveLogs(
-          externalSigners.map((signer) =>
-            this.notifications.createLog(
-              {
-                batchId: batch.id,
-                signerId: signer.id,
-                channel: 'email',
-                result: 'pending',
-                attemptCount: 0,
-                nextAttemptAt: initiatedAt,
-              },
-              manager,
-            ),
-          ),
-          manager,
-        );
-        notificationLogIds.push(...logs.map((log) => log.id));
-      }
+        ),
+        manager,
+      );
+      notificationLogIds.push(...logs.map((log) => log.id));
+    }
 
-      for (const signer of signers) {
-        await this.audit.append(
-          {
-            documentId: document.id,
-            signerId: signer.id,
-            actorUserId: input.creatorUserId,
-            eventType: 'signer.assigned',
-            occurredAt: initiatedAt,
-            metadata: { status: 'pending' },
-          },
-          manager,
-        );
-      }
+    return notificationLogIds;
+  }
+
+  private async recordInitiationAudit(
+    input: InitiateDocumentInput,
+    document: EsignDocument,
+    signers: EsignSigner[],
+    consentVersion: string,
+    initiatedAt: Date,
+    manager: EntityManager,
+  ): Promise<void> {
+    for (const signer of signers) {
       await this.audit.append(
         {
           documentId: document.id,
+          signerId: signer.id,
           actorUserId: input.creatorUserId,
-          eventType: 'document.initiated',
+          eventType: 'signer.assigned',
           occurredAt: initiatedAt,
-          metadata: { status: 'active', consentVersion: activeConsent.version },
+          metadata: { status: 'pending' },
         },
         manager,
       );
-      return { document, notificationLogIds };
-    });
-
-    await this.jobs.enqueueInvitations(result.notificationLogIds);
-    return result.document;
+    }
+    await this.audit.append(
+      {
+        documentId: document.id,
+        actorUserId: input.creatorUserId,
+        eventType: 'document.initiated',
+        occurredAt: initiatedAt,
+        metadata: { status: 'active', consentVersion: consentVersion },
+      },
+      manager,
+    );
   }
 
   private invalid(message: string): AppException {

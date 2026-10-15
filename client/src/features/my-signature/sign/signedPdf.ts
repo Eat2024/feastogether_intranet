@@ -1,3 +1,4 @@
+import { redirectExpiredSession } from '@/features/auth/navigation';
 // 在瀏覽器端產生「已簽署副本」PDF：
 // - 有原始檔：在原始 PDF 上合成本人的簽名、日期與追蹤 QR code（保留原文件的文字與向量內容）。
 // - 舊資料沒有原始檔：每頁以示意版面繪製（canvas，可沿用網頁字型顯示中文；pdf-lib 內建字型不支援中文）。
@@ -228,6 +229,7 @@ function pageMapper(page: PDFPage) {
 /** 有原始檔：在原始 PDF 上合成本人的簽名、日期與追蹤 QR code（需要時附加系統簽署確認頁） */
 async function buildOriginalCopy(form: EFormDoc, me: Signer, layout: SignLayout, font: string, watermark: boolean) {
   const res = await fetch(`/files/forms/${encodeURIComponent(form.id)}`, { cache: 'no-store' });
+  if (redirectExpiredSession(res)) throw new Error('登入已失效');
   if (!res.ok) throw new Error(`無法取得原始文件（${res.status}）`);
   const pdf = await PDFDocument.load(await res.arrayBuffer());
   pdf.setTitle(`${form.name}（已簽署）`);

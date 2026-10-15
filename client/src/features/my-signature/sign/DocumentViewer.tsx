@@ -12,6 +12,8 @@ import { useEffect } from "react";
 import SignatureQr from "./SignatureQr";
 
 type DocumentViewerProps = {
+  /** 原始 PDF 的網址；未提供時有原始檔才由 /files/forms/[id] 讀取 */
+  pdfUrl?: string;
   form: EFormDoc;
   signer: Pick<Signer, "name" | "employeeNo">;
   layout: SignLayout;
@@ -337,6 +339,7 @@ export default function DocumentViewer({
   activePage,
   onPageChange,
   onSignField,
+  pdfUrl,
 }: DocumentViewerProps) {
   const pages = Array.from({ length: layout.pageCount }, (_, i) => i + 1);
   const pageLabel = (p: number) =>
@@ -349,7 +352,7 @@ export default function DocumentViewer({
   const pageFields = layout.fields.filter((f) => f.page === activePage);
   // 有原始檔時顯示實際內容（系統簽署確認頁除外）；沒有時（舊資料）顯示示意版面
   const { doc } = usePdfDocument(
-    form.upload?.fileId ? `/files/forms/${form.id}` : null,
+    pdfUrl ?? (form.upload?.fileId ? `/files/forms/${form.id}` : null),
   );
   const { thumbs, pageImage, requestPage } = usePdfRenders(doc);
   const isOriginalPage = (p: number) => p !== layout.confirmPage;

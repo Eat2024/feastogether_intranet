@@ -55,12 +55,12 @@ export class DocumentsController {
     private readonly stoppages: EsignStoppageService,
     private readonly completions: EsignCompletionAccessService,
     private readonly config: ConfigService,
-  ) {}
+  ) { }
 
   @ApiOperation({
     summary: '列出電子簽文件',
     description:
-      '依角色與狀態查詢目前員工可見的文件。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms 電子簽列表透過 listCreatedDocuments() 查詢 role=created，顯示本人建立的文件與簽署人數。',
+      '依角色與狀態查詢目前員工可見的文件。',
   })
   @Get()
   list(@CurrentUserId() userId: number, @Query() query: ListDocumentsQueryDto) {
@@ -73,7 +73,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '上傳 PDF 並建立草稿',
     description:
-      '以 multipart/form-data 接收 title、file 與可選的 fields（JSON 字串），建立草稿及未指派欄位。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/new 的 UploadEditor 透過 createUploadDocument() 直接上傳 PDF 與欄位配置。',
+      '以 multipart/form-data 接收 title、file 與可選的 fields（JSON 字串），建立草稿及未指派欄位。',
   })
   @Post()
   async create(
@@ -100,7 +100,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '取得建立人的文件詳情',
     description:
-      '驗證文件建立人後，回傳文件狀態、簽署人、欄位與來源 PDF 資訊。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/[id] 顯示簽署狀態；/forms/[id]/edit 載入編輯內容；/forms/[id]/signers 載入簽署設定，皆透過 getDocument() 取得資料。',
+      '驗證文件建立人後，回傳文件狀態、簽署人、欄位與來源 PDF 資訊。',
   })
   @Get(':documentId')
   detail(@Param('documentId') id: string, @CurrentUserId() userId: number) {
@@ -112,7 +112,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '更新草稿名稱、PDF 或欄位',
     description:
-      '僅建立人可修改草稿。以 multipart/form-data 接收更新內容；替換 PDF 會清除舊欄位，有傳 fields 時依新 PDF 重新建立，未換 PDF 時則整批取代傳入的欄位。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/[id]/edit 的 UploadEditor 透過 updateUploadDocument() 儲存名稱、PDF 與簽名／日期欄位。',
+      '僅建立人可修改草稿。以 multipart/form-data 接收更新內容；替換 PDF 會清除舊欄位，有傳 fields 時依新 PDF 重新建立，未換 PDF 時則整批取代傳入的欄位。',
   })
   @Patch(':documentId')
   async update(
@@ -134,7 +134,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '刪除草稿',
     description:
-      '僅建立人可刪除尚未發起的文件，以軟刪除保留資料並記錄稽核事件。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：電子簽文件的 DeleteFormButton 經 Server Action 呼叫 deleteDraftDocument()。',
+      '僅建立人可刪除尚未發起的文件，以軟刪除保留資料並記錄稽核事件。',
   })
   @Delete(':documentId')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -146,7 +146,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '儲存草稿簽署人名單',
     description:
-      '整批取代草稿簽署人並解除既有欄位指派；此 API 不儲存 PDF、欄位位置或發起簽署。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/[id]/signers 按下儲存草稿時，Server Action 先呼叫 replaceSigners()，再呼叫 PUT fields 更新欄位指派。',
+      '整批取代草稿簽署人並解除既有欄位指派；此 API 不儲存 PDF、欄位位置或發起簽署。',
   })
   @Put(':documentId/draftSave')
   async replaceSigners(
@@ -163,7 +163,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '整批更新草稿欄位與簽署人指派',
     description:
-      '驗證原 PDF 完整性、欄位位置與簽署人歸屬後，整批取代欄位；可保留未指派欄位。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/[id]/signers 儲存草稿時，Server Action 在儲存簽署人後呼叫 replaceFields()；只有一位簽署人時自動指派，否則保留未指派。',
+      '驗證原 PDF 完整性、欄位位置與簽署人歸屬後，整批取代欄位；可保留未指派欄位。',
   })
   @Put(':documentId/fields')
   async replaceFields(
@@ -181,7 +181,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '發起文件簽署',
     description:
-      '在同一交易儲存簽署人、欄位、期間與選項，驗證指派後將草稿轉為簽署中；外部邀請於交易提交後入列。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/[id]/signers 按下發起簽署時，Server Action 呼叫 initiateDocument()。目前前端僅支援一位簽署人的發起流程。',
+      '在同一交易儲存簽署人、欄位、期間與選項，驗證指派後將草稿轉為簽署中；外部邀請於交易提交後入列。',
   })
   @Post(':documentId/initiations')
   async initiate(
@@ -206,7 +206,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '讀取建立人的原始 PDF',
     description:
-      '驗證建立人權限後回傳原始 PDF 串流，供預覽使用。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/[id]/edit 等文件預覽透過 /files/forms/[id] 代理讀取；由文件建立人身分存取。',
+      '驗證建立人權限後回傳原始 PDF 串流，供預覽使用。',
   })
   @Get(':documentId/source-file')
   @Header('Cache-Control', 'private, no-store')
@@ -238,7 +238,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '停止文件簽署',
     description:
-      '由建立人提供原因停止簽署，回傳更新後的文件詳情並保留停止紀錄。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/[id] 的 StopSigningButton 經 Server Action 呼叫 stopDocument()。',
+      '由建立人提供原因停止簽署，回傳更新後的文件詳情並保留停止紀錄。',
   })
   @Post(':documentId/stoppages')
   async stop(
@@ -254,7 +254,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '查詢文件簽署歷程',
     description:
-      '回傳建立人可見的文件事件與停止原因。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/[id] 透過 getDocumentHistory() 取得資料，由 SigningHistory 顯示歷程。',
+      '回傳建立人可見的文件事件與停止原因。',
   })
   @Get(':documentId/history')
   history(@Param('documentId') id: string, @CurrentUserId() userId: number) {
@@ -264,7 +264,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '下載全員簽署完成的 PDF',
     description:
-      '供建立人或已簽署的內部簽署人下載完成文件；尚未產生時回傳狀態衝突，不提供個人簽署副本。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：文件詳情與我的電子簽下載按鈕透過 downloadCompletedPdf() 呼叫 /files/forms/[id]?variant=completed，再代理至此 API。',
+      '供建立人或已簽署的內部簽署人下載完成文件',
   })
   @Get(':documentId/completed-file')
   @Header('Cache-Control', 'private, no-store')

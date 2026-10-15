@@ -4,13 +4,13 @@ import { EsignSignerCandidateService } from '../services/esign-signer-candidate.
 
 @Controller('esign/signer-candidates')
 export class SignerCandidatesController {
-  constructor(private readonly candidates: EsignSignerCandidateService) {}
+  constructor(private readonly candidates: EsignSignerCandidateService) { }
 
   // 本地查無完整員編時，service 會改向饗賓人 API 查詢並建立帳號
   @ApiOperation({
     summary: '查詢可指定的內部簽署人',
     description:
-      '依 q 查詢本地員工；完整八碼員編在本地查無時，向饗賓人 API 查詢符合資格的員工並建立本地帳號。\n\n前端串接參考（本 PR 不包含前端實作；頁面及函式名稱供後續串接參考）：/forms/[id]/signers 儲存或發起時，Server Action 以 listSignerCandidates(employeeNo) 將選取的員編轉為後端 userId；目前不是前端即時搜尋下拉選單。',
+      '依 q 查詢本地員工；完整八碼員編在本地查無時，向饗賓人 API 查詢符合資格的員工並建立本地帳號。\n\n前端串接參考：/forms/[id]/signers 儲存或發起時，Server Action 以 listSignerCandidates(employeeNo) 將選取的員編轉為後端 userId；目前不是前端即時搜尋下拉選單。',
   })
   @Get()
   async list(@Query('q') query?: string) {

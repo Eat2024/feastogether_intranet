@@ -31,9 +31,9 @@ export const FIELDS = [
   { key: 'signedAt', label: '簽署時間', width: 18, value: (r) => r.signedAt ?? '' },
   { key: 'rejectedAt', label: '拒絕時間', width: 18, value: (r) => r.rejectedAt ?? '' },
   { key: 'rejectReason', label: '拒絕原因', width: 40, value: (r) => r.rejectReason ?? '' },
-  // 簽到表：簽署人簽到時自填的備註；名單外人員以空白列簽到
+  // 簽到表：簽署人簽到時自填的備註；發起後由建立人臨時追加的人
   { key: 'remark', label: '簽到備註', width: 30, value: (r) => r.remark ?? '' },
-  { key: 'walkIn', label: '名單外', width: 10, value: (r) => (r.walkIn ? '是' : '') },
+  { key: 'lateAdded', label: '臨時加入', width: 18, value: (r) => r.lateAdded?.at ?? '' },
 ] as const satisfies readonly FieldDef[];
 
 export type FieldKey = (typeof FIELDS)[number]['key'];

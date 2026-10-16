@@ -35,8 +35,8 @@ export type Signer = {
   title?: string;
   /** 簽到表：簽署人簽到時自行填寫的備註（見 sheet.ts） */
   remark?: string;
-  /** 簽到表：未列在名單中、透過簽到連結使用空白列簽到 */
-  walkIn?: boolean;
+  /** 簽到表：發起後由建立人臨時追加的簽署人（加入時間與加入人，供稽核） */
+  lateAdded?: { at: string; by: Employee };
   /** 簽到表：在表上的序號。只有簽署人視角（toSignerView）會帶出，不寫入 store */
   rowNo?: number;
 };
@@ -114,8 +114,6 @@ export type SheetInfo = {
   formCode: string;
   /** 表頭欄位（依順序兩欄排列）；「出席人數」由系統自動加上 */
   fields: { label: string; value: string }[];
-  /** 保留給名單外人員簽到的空白列數 */
-  walkInSlots: number;
 };
 
 /** 一次補簽：到期後仍有人未簽署時，重新開放未簽署者在新期間內簽署 */

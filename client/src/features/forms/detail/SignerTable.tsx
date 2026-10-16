@@ -19,7 +19,9 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useState, useTransition } from 'react';
-import { notifySigners } from '../actions';
+import { ACTION_FAILED_MESSAGE } from '@/lib/actionError';
+import PersonRemoveRoundedIcon from '@mui/icons-material/PersonRemoveRounded';
+import { notifySigners, removeSheetSigner } from '../actions';
 import type { Signer } from '../types';
 import ExportSignerCopyButton from './ExportSignerCopyButton';
 import SignerNoteCell from './SignerNoteCell';
@@ -63,7 +65,7 @@ export default function SignerTable({
   sortHrefs: Record<SignerSortKey, string>;
   /** 文件為簽署中才能通知 */
   canNotify: boolean;
-  /** 簽到表：多顯示簽署人自填的「簽到備註」，並標示名單外人員 */
+  /** 簽到表：多顯示簽署人自填的「簽到備註」，標示並可移除臨時加入的人 */
   isSheet?: boolean;
   /** 整份文件待簽署人數（「通知所有未簽署者」用） */
   pendingTotal: number;
@@ -74,6 +76,20 @@ export default function SignerTable({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState<NotifyTarget | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
+
+  const removeSigner = () => {
+    if (!removeTarget) return;
+    startTransition(async () => {
+      try {
+        const res = await removeSheetSigner({ formId, signerId: removeTarget.id });
+        setResult(res?.error ? { ok: false, message: res.error } : { ok: true, message: `已移除 ${removeTarget.name}` });
+      } catch {
+        setResult({ ok: false, message: ACTION_FAILED_MESSAGE });
+      }
+      setRemoveTarget(null);
+    });
+  };
   const [pending, startTransition] = useTransition();
 
   const notifiable = canNotify ? rows.filter((s) => s.status === 'pending') : [];
@@ -164,7 +180,15 @@ export default function SignerTable({
                       {/* content variant 預設渲染成 <p>，裡面不能放 Chip（<div>），改用 div 包住姓名與標籤 */}
                       <Typography variant="content" component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {s.name}
-                        {s.walkIn && <Chip size="small" variant="soft" color="info" label="名單外" />}
+                        {s.lateAdded && (
+                          <Chip
+                            size="small"
+                            variant="soft"
+                            color="info"
+                            label="臨時加入"
+                            title={`${s.lateAdded.by.name} 於 ${s.lateAdded.at} 追加`}
+                          />
+                        )}
                       </Typography>
                       <Typography variant="helper">{s.email ?? s.employeeNo}</Typography>
                     </TableCell>
@@ -212,6 +236,16 @@ export default function SignerTable({
                         disabled={s.status !== 'signed'}
                         onError={(message) => setResult({ ok: false, message })}
                       />
+                      {/* 臨時追加、尚未簽到的人可以移除（加錯人時更正） */}
+                      {isSheet && s.lateAdded && s.status === 'pending' && (
+                        <TooltipIconButton
+                          label="移除臨時加入的簽署人"
+                          icon={<PersonRemoveRoundedIcon />}
+                          color="error"
+                          disabled={pending}
+                          onClick={() => setRemoveTarget({ id: s.id, name: s.name })}
+                        />
+                      )}
                     </TableCell>
                   </TableRow>
                 );
@@ -247,6 +281,16 @@ export default function SignerTable({
         </Box>
       )}
 
+      <ConfirmDialog
+        open={!!removeTarget}
+        icon={<PersonRemoveRoundedIcon />}
+        color="error"
+        title={`移除 ${removeTarget?.name ?? ''}？`}
+        description="此人為臨時追加、尚未簽到，移除後不會出現在簽到名單中。"
+        confirmLabel={pending ? '移除中…' : '移除'}
+        onConfirm={() => !pending && removeSigner()}
+        onClose={() => !pending && setRemoveTarget(null)}
+      />
       <ConfirmDialog
         open={!!target}
         icon={<NotificationsActiveRoundedIcon />}

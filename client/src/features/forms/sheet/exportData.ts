@@ -17,7 +17,7 @@ export function sheetExportData(stored: EFormDoc): SheetExport {
   };
   return {
     form,
-    rows: sheetRows(form, { includeBlank: true }),
+    rows: sheetRows(form),
     attendance: attendance(form),
     fileName: `${form.docNumber ?? form.id}_${form.name}_簽到表.pdf`,
   };

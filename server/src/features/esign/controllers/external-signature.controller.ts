@@ -17,11 +17,14 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
 import { Public } from '#app/framework/decorators/public.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
+import {
+  externalUnauthorized,
+  invalidRequest,
+  stateConflict,
+} from '../helpers/esign-errors';
 import {
   clearExternalAccessCookie,
   clearExternalReceiptCookie,
@@ -57,13 +60,7 @@ export class ExternalSignatureController {
   })
   @Get('external-signature-invitations/:token')
   getBridge(@Param('token') token: string, @Res() reply: FastifyReply): void {
-    if (!this.external.isTokenFormat(token)) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '邀請連結格式錯誤',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    this.assertInvitationTokenFormat(token);
     const nonce = randomBytes(18).toString('base64');
     reply
       .header('Cache-Control', 'no-store')
@@ -93,13 +90,7 @@ export class ExternalSignatureController {
     @Body('token') token: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    if (!this.external.isTokenFormat(token)) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '邀請連結格式錯誤',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    this.assertInvitationTokenFormat(token);
     const session = await this.external.createSession(token);
     setExternalAccessCookie(
       reply,
@@ -153,7 +144,7 @@ export class ExternalSignatureController {
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const file = await this.external.source(this.accessToken(request));
-    if (!file) throw this.unauthorized();
+    if (!file) throw externalUnauthorized();
     allowPdfPreview(reply);
     reply
       .type('application/pdf')
@@ -200,10 +191,16 @@ export class ExternalSignatureController {
     return toSignatureResultView(result);
   }
 
+  private assertInvitationTokenFormat(token: string): void {
+    if (!this.external.isTokenFormat(token)) {
+      throw invalidRequest('邀請連結格式錯誤');
+    }
+  }
+
   private accessToken(request: FastifyRequest): string {
     const token = cookieTokenFromMap(request.cookies, EXTERNAL_ACCESS_COOKIE);
     if (!token || !this.external.isTokenFormat(token))
-      throw this.unauthorized();
+      throw externalUnauthorized();
     return token;
   }
 
@@ -240,13 +237,7 @@ export class ExternalSignatureController {
       signerPublicId,
       this.receiptToken(request),
     );
-    if (!file) {
-      throw new AppException(
-        AppErrorCode.ESIGN_STATE_CONFLICT,
-        '完成文件尚未產生',
-        HttpStatus.CONFLICT,
-      );
-    }
+    if (!file) throw stateConflict('完成文件尚未產生');
     reply
       .type('application/pdf')
       .header('Content-Disposition', 'attachment; filename="completed.pdf"')
@@ -286,11 +277,7 @@ export class ExternalSignatureController {
         signerPublicId,
       )
     ) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '簽署人識別格式錯誤',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw invalidRequest('簽署人識別格式錯誤');
     }
     clearExternalReceiptCookie(reply, signerPublicId);
   }
@@ -298,15 +285,7 @@ export class ExternalSignatureController {
   private receiptToken(request: FastifyRequest): string {
     const token = cookieTokenFromMap(request.cookies, EXTERNAL_RECEIPT_COOKIE);
     if (!token || !this.external.isTokenFormat(token))
-      throw this.unauthorized();
+      throw externalUnauthorized();
     return token;
-  }
-
-  private unauthorized(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
-      '外部簽署存取已失效',
-      HttpStatus.UNAUTHORIZED,
-    );
   }
 }

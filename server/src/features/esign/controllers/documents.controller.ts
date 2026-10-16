@@ -18,9 +18,12 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ConfigService } from '@nestjs/config';
+import {
+  invalidRequest,
+  resourceNotFound,
+  stateConflict,
+} from '../helpers/esign-errors';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
 import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { ReplaceFieldsDto } from '../dto/field.dto';
@@ -81,13 +84,7 @@ export class DocumentsController {
     @Body('fields') body: CreateDocumentDto,
     @Body('file') file: DocumentUpload['file'],
   ) {
-    if (!file) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '請上傳 PDF 文件',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    if (!file) throw invalidRequest('請上傳 PDF 文件');
     const document = await this.drafts.create({
       title: body.title,
       creatorUserId: userId,
@@ -217,13 +214,7 @@ export class DocumentsController {
     @Res() reply: FastifyReply,
   ) {
     const file = await this.queries.creatorSource(this.id(id), userId);
-    if (!file) {
-      throw new AppException(
-        AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
-        '找不到電子簽資源',
-        HttpStatus.NOT_FOUND,
-      );
-    }
+    if (!file) throw resourceNotFound();
     allowPdfPreview(reply, this.config.get<string>('AUTH_TRUSTED_ORIGINS'));
     reply
       .type('application/pdf')
@@ -275,13 +266,7 @@ export class DocumentsController {
     @Res() reply: FastifyReply,
   ) {
     const file = await this.completions.internalFile(this.id(id), userId);
-    if (!file) {
-      throw new AppException(
-        AppErrorCode.ESIGN_STATE_CONFLICT,
-        '完成文件尚未產生',
-        HttpStatus.CONFLICT,
-      );
-    }
+    if (!file) throw stateConflict('完成文件尚未產生');
     reply
       .type('application/pdf')
       .header('Content-Disposition', 'attachment; filename="completed.pdf"')
@@ -289,17 +274,9 @@ export class DocumentsController {
   }
 
   private id(value: string): number {
-    if (!/^[1-9][0-9]*$/.test(value)) throw this.invalid('文件識別格式錯誤');
+    if (!/^[1-9][0-9]*$/.test(value)) throw invalidRequest('文件識別格式錯誤');
     const id = Number(value);
-    if (!Number.isSafeInteger(id)) throw this.invalid('文件識別格式錯誤');
+    if (!Number.isSafeInteger(id)) throw invalidRequest('文件識別格式錯誤');
     return id;
-  }
-
-  private invalid(message: string): AppException {
-    return new AppException(
-      AppErrorCode.INVALID_REQUEST,
-      message,
-      HttpStatus.BAD_REQUEST,
-    );
   }
 }

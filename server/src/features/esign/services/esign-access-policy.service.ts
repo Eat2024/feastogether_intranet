@@ -1,10 +1,12 @@
 import type { EntityManager } from 'typeorm';
 import { timingSafeEqual } from 'node:crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
+import { Injectable } from '@nestjs/common';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
+import {
+  externalUnauthorized,
+  resourceNotFound,
+} from '../helpers/esign-errors';
 import { DocumentRepository } from '../repositories/document.repository';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 
@@ -42,7 +44,7 @@ export class EsignAccessPolicyService {
       document.createdByUserId !== userId ||
       document.deletedAt
     ) {
-      throw this.notFound();
+      throw resourceNotFound();
     }
   }
 
@@ -58,7 +60,7 @@ export class EsignAccessPolicyService {
       signer.deletedAt ||
       document.deletedAt
     ) {
-      throw this.notFound();
+      throw resourceNotFound();
     }
   }
 
@@ -79,7 +81,7 @@ export class EsignAccessPolicyService {
     ) {
       return;
     }
-    throw this.notFound();
+    throw resourceNotFound();
   }
 
   assertExternalInvitation(
@@ -100,12 +102,12 @@ export class EsignAccessPolicyService {
       this.equalDigest(signer.invitationTokenSha256, digest) &&
       signer.invitationExpiresAt !== undefined &&
       now < signer.invitationExpiresAt;
-    if (!valid) throw this.externalUnauthorized();
+    if (!valid) throw externalUnauthorized();
 
     try {
       this.documents.assertActiveSigningWindow(document, now);
     } catch {
-      throw this.externalUnauthorized();
+      throw externalUnauthorized();
     }
   }
 
@@ -124,7 +126,7 @@ export class EsignAccessPolicyService {
       !signer.invitationTokenSha256 ||
       !this.equalDigest(signer.invitationTokenSha256, digest)
     ) {
-      throw this.externalUnauthorized();
+      throw externalUnauthorized();
     }
   }
 
@@ -149,7 +151,7 @@ export class EsignAccessPolicyService {
       (!terminal ||
         (signer.completionReceiptExpiresAt !== undefined &&
           now < signer.completionReceiptExpiresAt));
-    if (!valid) throw this.externalUnauthorized();
+    if (!valid) throw externalUnauthorized();
   }
 
   private equalDigest(expected: string, actual: string): boolean {
@@ -158,22 +160,6 @@ export class EsignAccessPolicyService {
     return (
       expectedBytes.byteLength === actualBytes.byteLength &&
       timingSafeEqual(expectedBytes, actualBytes)
-    );
-  }
-
-  private notFound(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
-      '找不到電子簽資源',
-      HttpStatus.NOT_FOUND,
-    );
-  }
-
-  private externalUnauthorized(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
-      '外部簽署存取已失效',
-      HttpStatus.UNAUTHORIZED,
     );
   }
 }

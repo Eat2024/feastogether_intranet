@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
@@ -14,6 +13,7 @@ import type { EsignAuditEvent } from '../entities/esign-audit-event.entity';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import type { EsignSignatureRecord } from '../entities/esign-signature-record.entity';
 import type { EsignSigner } from '../entities/esign-signer.entity';
+import { integrityFailed, resourceNotFound } from '../helpers/esign-errors';
 import { AuditEventRepository } from '../repositories/audit-event.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
@@ -177,7 +177,7 @@ export class EsignVerificationService {
       records.map((record) => [record.signerId, record]),
     );
     if (!source || signers.some((signer) => !recordBySigner.has(signer.id))) {
-      throw this.integrity();
+      throw integrityFailed();
     }
     const manifest = {
       schemaVersion: VERIFICATION_MANIFEST_SCHEMA,
@@ -209,11 +209,11 @@ export class EsignVerificationService {
 
   /** 公開驗證：代碼格式不符不查 DB；只讀、不 lock、不寫任何資料或稽核事件。 */
   async verify(code: string): Promise<SignatureVerificationDto> {
-    if (!this.tokens.isVerificationCodeFormat(code)) throw this.notFound();
     const manager = this.mysql.getManager();
     const evidence = await this.signedEvidence(code, manager);
+    if (!evidence) throw resourceNotFound('查無此簽章或驗證碼無效');
     if (!evidenceConsistent(evidence)) {
-      throw this.integrityFailed(evidence.document.id);
+      throw this.inconsistent(evidence.document.id);
     }
     const completedPdfSha256 =
       evidence.document.status === 'completed'
@@ -222,20 +222,21 @@ export class EsignVerificationService {
     return verificationView(evidence, completedPdfSha256);
   }
 
-  /** 查無代碼、簽署人已刪除或未簽署、文件為草稿或已刪除，一律同一個 404。 */
+  /** 格式錯誤、查無代碼、未簽署、文件為草稿或已刪除都回 null，由 verify() 回同一個 404。 */
   private async signedEvidence(
     code: string,
     manager: EntityManager,
-  ): Promise<SignedEvidence> {
+  ): Promise<SignedEvidence | null> {
+    if (!this.tokens.isVerificationCodeFormat(code)) return null;
     const record = await this.records.findByVerificationCode(code, manager);
-    if (!record) throw this.notFound();
+    if (!record) return null;
     const signer = await this.signers.findById(record.signerId, manager);
-    if (signer?.status !== 'signed') throw this.notFound();
+    if (signer?.status !== 'signed') return null;
     const [document, source] = await Promise.all([
       this.documents.findById(signer.documentId, manager),
       this.files.findDocumentFile(signer.documentId, 'source_pdf', manager),
     ]);
-    if (!document || document.status === 'draft') throw this.notFound();
+    if (!document || document.status === 'draft') return null;
     return { signer, document, record, sourcePdfSha256: source?.sha256 };
   }
 
@@ -268,34 +269,18 @@ export class EsignVerificationService {
       canonicalJson(manifestEntryOf(manifest, signer.publicId)) ===
         canonicalJson(manifestSigner(signer, record)) &&
       reachesAuditRoot(events, snapshot.auditRootHash);
-    if (!consistent) throw this.integrityFailed(document.id);
+    if (!consistent) throw this.inconsistent(document.id);
     return snapshot.finalPdfSha256;
   }
 
-  private notFound(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
-      '查無此簽章或驗證碼無效',
-      HttpStatus.NOT_FOUND,
-    );
-  }
-
   /** 公開驗證不一致：記錄不含 token 的告警後回 409，回應不揭露哪一項不一致。 */
-  private integrityFailed(documentId: number): AppException {
+  private inconsistent(documentId: number): AppException {
     this.logger.warn({
       context: EsignVerificationService.name,
       event: 'esign.verification_integrity_failed',
       message: '簽章驗證資料不一致',
       metadata: { documentId },
     });
-    return this.integrity();
-  }
-
-  private integrity(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_INTEGRITY_FAILED,
-      '文件完整性驗證失敗',
-      HttpStatus.CONFLICT,
-    );
+    return integrityFailed();
   }
 }

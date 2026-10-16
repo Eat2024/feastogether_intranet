@@ -14,9 +14,8 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ConfigService } from '@nestjs/config';
+import { resourceNotFound } from '../helpers/esign-errors';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
 import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
@@ -65,7 +64,7 @@ export class SigningTasksController {
   @ApiOperation({
     summary: '讀取內部簽署任務的原始 PDF',
     description:
-      '驗證目前員工為該任務簽署人後，回傳原始 PDF。\n\n前端串接參考：/my-signature/[id] 透過 sourcePageCount() 計算頁數，文件預覽另經 /files/forms/[id] 代理讀取。',
+      '驗證目前員工為該任務簽署人後，回傳原始 PDF。\n\n前端串接參考：/my-signature/[id]',
   })
   @Get(':signerPublicId/source-file')
   @Header('Cache-Control', 'private, no-store')
@@ -76,7 +75,7 @@ export class SigningTasksController {
     @Res() reply: FastifyReply,
   ) {
     const file = await this.tasks.source(signerPublicId, userId);
-    if (!file) throw this.notFound();
+    if (!file) throw resourceNotFound();
     allowPdfPreview(reply, this.config.get<string>('AUTH_TRUSTED_ORIGINS'));
     reply
       .type('application/pdf')
@@ -110,12 +109,5 @@ export class SigningTasksController {
         reply.status(result.repeated ? HttpStatus.OK : HttpStatus.CREATED);
         return toSignatureResultView(result);
       });
-  }
-  private notFound(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
-      '找不到電子簽資源',
-      HttpStatus.NOT_FOUND,
-    );
   }
 }

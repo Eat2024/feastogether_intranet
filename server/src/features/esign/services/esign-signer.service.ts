@@ -1,15 +1,14 @@
 import type { EntityManager } from 'typeorm';
 import { randomUUID } from 'node:crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { isEmail } from 'class-validator';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
 import type { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import type { SignerInputDto } from '../dto/signer.dto';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import type { EsignSigner } from '../entities/esign-signer.entity';
+import { invalidRequest } from '../helpers/esign-errors';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
@@ -88,7 +87,7 @@ export class EsignSignerService {
     inputs: SignerInputDto[],
   ): ValidatedSignerInput[] {
     if (inputs.length < 1 || inputs.length > 50)
-      throw this.invalid('簽署人數量必須介於 1 至 50 人');
+      throw invalidRequest('簽署人數量必須介於 1 至 50 人');
 
     const seenUsers = new Set<number>();
     const seenEmails = new Set<string>();
@@ -101,7 +100,7 @@ export class EsignSignerService {
           userId < 1 ||
           seenUsers.has(userId)
         ) {
-          throw this.invalid('內部簽署人不可重複');
+          throw invalidRequest('內部簽署人不可重複');
         }
         seenUsers.add(userId);
         return { type: 'user', userId };
@@ -113,7 +112,7 @@ export class EsignSignerService {
         !input.name ||
         !input.email
       ) {
-        throw this.invalid('外部簽署人資料格式不正確');
+        throw invalidRequest('外部簽署人資料格式不正確');
       }
       const email = this.normalizeEmail(input.email);
       const name = input.name.trim();
@@ -124,7 +123,7 @@ export class EsignSignerService {
         !isEmail(email) ||
         seenEmails.has(email)
       ) {
-        throw this.invalid('外部簽署人姓名或 Email 不正確或重複');
+        throw invalidRequest('外部簽署人姓名或 Email 不正確或重複');
       }
       seenEmails.add(email);
       return { type: 'email', name, email };
@@ -147,7 +146,7 @@ export class EsignSignerService {
       if (input.type === 'email') return input;
       const user = userById.get(input.userId);
       if (!user || !user.isActive || user.deletedAt) {
-        throw this.invalid('指定的內部簽署人不存在或已停用');
+        throw invalidRequest('指定的內部簽署人不存在或已停用');
       }
       return { ...input, user };
     });
@@ -207,13 +206,5 @@ export class EsignSignerService {
     await this.fields.unassignDraftFields(documentId, creatorUserId, manager);
     await this.signers.deleteDraftSigners(documentId, manager);
     return this.signers.saveMany(newSigners, manager);
-  }
-
-  private invalid(message: string): AppException {
-    return new AppException(
-      AppErrorCode.INVALID_REQUEST,
-      message,
-      HttpStatus.BAD_REQUEST,
-    );
   }
 }

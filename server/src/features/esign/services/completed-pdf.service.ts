@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   PDFDocument,
   type PDFImage,
@@ -8,14 +8,13 @@ import {
   rgb,
 } from 'pdf-lib';
 import { type BitMatrix, create as createQr } from 'qrcode';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   PRIVATE_FILE_STORAGE,
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
+import { integrityFailed } from '../helpers/esign-errors';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
@@ -121,14 +120,14 @@ export class CompletedPdfService {
   async create(documentId: number) {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
-    if (!document || document.status !== 'finalizing') throw this.integrity();
+    if (!document || document.status !== 'finalizing') throw integrityFailed();
     const [signers, fields, source] = await Promise.all([
       this.signers.findByDocument(documentId, manager),
       this.fields.findByDocument(documentId, manager),
       this.files.findDocumentFile(documentId, 'source_pdf', manager),
     ]);
     if (!source || signers.some((signer) => signer.status !== 'signed')) {
-      throw this.integrity();
+      throw integrityFailed();
     }
     const sourceBytes = await readPrivateFile(this.storage, source);
     const sourceMetadata =
@@ -150,7 +149,7 @@ export class CompletedPdfService {
     const recordBySigner = new Map(
       records.map((record) => [record.signerId, record]),
     );
-    if (recordBySigner.size !== signers.length) throw this.integrity();
+    if (recordBySigner.size !== signers.length) throw integrityFailed();
     const signatureFiles = (
       await Promise.all(
         records.map((record) =>
@@ -167,7 +166,7 @@ export class CompletedPdfService {
           record.consentVersion !== consentVersion,
       )
     ) {
-      throw this.integrity();
+      throw integrityFailed();
     }
     const signatureByField = new Map(
       signatureFiles.map((file) => [file.documentFieldId, file]),
@@ -181,7 +180,7 @@ export class CompletedPdfService {
       (field) => field.fieldType === 'signature',
     );
     if (signatureFiles.length !== signatureFields.length) {
-      throw this.integrity();
+      throw integrityFailed();
     }
 
     for (const field of fields) {
@@ -195,7 +194,7 @@ export class CompletedPdfService {
         !signer.signedAt ||
         signer.signedAt.getTime() !== record.signedAtUtc.getTime()
       ) {
-        throw this.integrity();
+        throw integrityFailed();
       }
       const { width: pageWidth, height: pageHeight } = page.getSize();
       const x = (Number(field.xPercent) / 100) * pageWidth;
@@ -227,7 +226,7 @@ export class CompletedPdfService {
           color: rgb(0, 0, 0),
         });
       } else {
-        throw this.integrity();
+        throw integrityFailed();
       }
     }
 
@@ -248,7 +247,7 @@ export class CompletedPdfService {
         persisted.pageCount !== sourceMetadata.pageCount ||
         persisted.sha256 !== stored.sha256
       ) {
-        throw this.integrity();
+        throw integrityFailed();
       }
       return { stored, metadata: persisted };
     } catch (error) {
@@ -270,14 +269,14 @@ export class CompletedPdfService {
       file.mimeType !== 'image/png' ||
       file.archiveStatus !== 'active'
     ) {
-      throw this.integrity();
+      throw integrityFailed();
     }
     const pngBytes = await readPrivateFile(this.storage, file);
     if (
       Number(file.fileSize) !== pngBytes.byteLength ||
       file.sha256 !== createHash('sha256').update(pngBytes).digest('hex')
     ) {
-      throw this.integrity();
+      throw integrityFailed();
     }
     return output.embedPng(pngBytes);
   }
@@ -296,19 +295,11 @@ export class CompletedPdfService {
   }
 
   private consentVersion(payload: unknown): string {
-    if (!payload || typeof payload !== 'object') throw this.integrity();
+    if (!payload || typeof payload !== 'object') throw integrityFailed();
     const consent = (payload as Record<string, unknown>).consent;
-    if (!consent || typeof consent !== 'object') throw this.integrity();
+    if (!consent || typeof consent !== 'object') throw integrityFailed();
     const version = (consent as Record<string, unknown>).version;
-    if (typeof version !== 'string' || version === '') throw this.integrity();
+    if (typeof version !== 'string' || version === '') throw integrityFailed();
     return version;
-  }
-
-  private integrity(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_INTEGRITY_FAILED,
-      '文件完整性驗證失敗',
-      HttpStatus.CONFLICT,
-    );
   }
 }

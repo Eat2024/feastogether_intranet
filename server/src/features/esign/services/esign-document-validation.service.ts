@@ -1,16 +1,19 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
+import { Injectable } from '@nestjs/common';
 import { EsignDocumentField } from '../entities/esign-document-field.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignFileObject } from '../entities/esign-file-object.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
+import {
+  integrityFailed,
+  invalidRequest,
+  stateConflict,
+} from '../helpers/esign-errors';
 
 @Injectable()
 export class EsignDocumentValidationService {
   checkStillDraft(document: EsignDocument): void {
     if (document.status !== 'draft' || document.deletedAt) {
-      throw this.stateConflict('文件已發起，無法修改草稿');
+      throw stateConflict('文件已發起，無法修改草稿');
     }
   }
 
@@ -22,7 +25,7 @@ export class EsignDocumentValidationService {
       now < document.signStartAt ||
       now >= document.signEndAt
     ) {
-      throw this.stateConflict('文件目前不在可簽署期間');
+      throw stateConflict('文件目前不在可簽署期間');
     }
   }
 
@@ -32,7 +35,7 @@ export class EsignDocumentValidationService {
       signer.status !== 'pending' ||
       signer.deletedAt
     ) {
-      throw this.stateConflict('簽署任務目前無法操作');
+      throw stateConflict('簽署任務目前無法操作');
     }
   }
 
@@ -48,11 +51,7 @@ export class EsignDocumentValidationService {
           field.deletedAt,
       )
     ) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '簽署欄位與文件或簽署人不相符',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw invalidRequest('簽署欄位與文件或簽署人不相符');
     }
   }
 
@@ -76,7 +75,7 @@ export class EsignDocumentValidationService {
       file.archiveStatus !== 'active' ||
       file.sha256 !== persistedSha256
     ) {
-      throw this.integrityFailed();
+      throw integrityFailed();
     }
   }
 
@@ -89,13 +88,13 @@ export class EsignDocumentValidationService {
       !document.signingPayloadSha256 ||
       document.signingPayloadSha256 !== recalculatedSha256
     ) {
-      throw this.integrityFailed();
+      throw integrityFailed();
     }
   }
 
   assertActiveForStop(document: EsignDocument): void {
     if (document.status !== 'active') {
-      throw this.stateConflict('只有簽署中的文件可以停止');
+      throw stateConflict('只有簽署中的文件可以停止');
     }
   }
 
@@ -110,26 +109,10 @@ export class EsignDocumentValidationService {
           document.status,
         )
       ) {
-        throw this.stateConflict('簽署文件目前無法讀取');
+        throw stateConflict('簽署文件目前無法讀取');
       }
       return;
     }
     this.assertActiveSigningWindow(document, now);
-  }
-
-  private stateConflict(message: string): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_STATE_CONFLICT,
-      message,
-      HttpStatus.CONFLICT,
-    );
-  }
-
-  private integrityFailed(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_INTEGRITY_FAILED,
-      '文件完整性驗證失敗',
-      HttpStatus.CONFLICT,
-    );
   }
 }

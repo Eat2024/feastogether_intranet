@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
+import { resourceNotFound } from '../helpers/esign-errors';
 import { AuditEventRepository } from '../repositories/audit-event.repository';
 
 export interface EsignAuditMetadata {
@@ -87,13 +86,7 @@ export class EsignAuditService {
       input.documentId,
       manager,
     );
-    if (!document) {
-      throw new AppException(
-        AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
-        '找不到電子簽資源',
-        HttpStatus.NOT_FOUND,
-      );
-    }
+    if (!document) throw resourceNotFound();
 
     const previous = await this.repository.findLatestDocumentEvent(
       input.documentId,

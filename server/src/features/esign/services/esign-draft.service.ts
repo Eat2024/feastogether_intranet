@@ -2,9 +2,7 @@ import type { EntityManager } from 'typeorm';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
+import { Inject, Injectable } from '@nestjs/common';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   PRIVATE_FILE_STORAGE,
@@ -14,6 +12,7 @@ import {
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 import type { FieldPlacementDto } from '../dto/field.dto';
+import { integrityFailed, invalidRequest } from '../helpers/esign-errors';
 import { DocumentRepository } from '../repositories/document.repository';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
@@ -216,11 +215,7 @@ export class EsignDraftService {
       input.file === undefined &&
       input.fields === undefined
     ) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '至少需要提供一項草稿更新內容',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw invalidRequest('至少需要提供一項草稿更新內容');
     }
     return input.title === undefined
       ? undefined
@@ -250,9 +245,7 @@ export class EsignDraftService {
     });
     try {
       const metadata = await this.validateStoredPdf(stored);
-      if (metadata.sha256 !== uploadValidation.sha256) {
-        throw this.integrityFailure();
-      }
+      if (metadata.sha256 !== uploadValidation.sha256) throw integrityFailed();
       return {
         stored,
         metadata,
@@ -376,11 +369,7 @@ export class EsignDraftService {
   private normalizeTitle(title: string): string {
     const normalized = title.trim();
     if (normalized.length < 1 || normalized.length > 200) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '文件名稱必須為 1 至 200 字',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw invalidRequest('文件名稱必須為 1 至 200 字');
     }
     return normalized;
   }
@@ -388,13 +377,5 @@ export class EsignDraftService {
   private async validateStoredPdf(stored: StoredPrivateFile) {
     const bytes = await readPrivateFile(this.storage, stored);
     return this.pdf.validatePersistedPdf(bytes);
-  }
-
-  private integrityFailure(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_INTEGRITY_FAILED,
-      '文件完整性驗證失敗',
-      HttpStatus.CONFLICT,
-    );
   }
 }

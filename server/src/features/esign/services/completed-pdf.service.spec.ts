@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { PDFDocument, PDFPage } from 'pdf-lib';
+import { create as createQr } from 'qrcode';
 import { canonicalJson } from './esign-audit.service';
-import { CompletedPdfService } from './completed-pdf.service';
+import {
+  CompletedPdfService,
+  signatureFieldLayout,
+} from './completed-pdf.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { PdfValidationService } from './pdf-validation.service';
 
@@ -29,6 +33,7 @@ describe('CompletedPdfService', () => {
     };
     const signer = {
       id: 7,
+      publicId: 'c854d925-1d70-49dc-9c81-abf18409ae42',
       status: 'signed',
       signedAt: new Date('2026-10-13T16:30:00.000Z'),
     };
@@ -98,6 +103,10 @@ describe('CompletedPdfService', () => {
     };
     const manager = {} as never;
     const drawText = jest.spyOn(PDFPage.prototype, 'drawText');
+    const drawImage = jest.spyOn(PDFPage.prototype, 'drawImage');
+    const drawRectangle = jest.spyOn(PDFPage.prototype, 'drawRectangle');
+    const verificationUrl = `https://esign.example.internal/verify/${'A'.repeat(110)}`;
+    const tokens = { verificationUrl: jest.fn(() => verificationUrl) };
     const record = {
       id: 21,
       signerId: 7,
@@ -120,10 +129,40 @@ describe('CompletedPdfService', () => {
       } as never,
       new EsignDocumentValidationService(),
       new PdfValidationService(),
+      tokens as never,
       storage as never,
     );
 
     const result = await service.create(4);
+
+    // 欄位 11：x=10%、y=10%、寬 25%、高 10%，PDF 座標原點在左下
+    const field = { x: 59.5, y: 842 - 168.4, width: 148.75, height: 84.2 };
+    const qrSize = field.height * 0.72;
+    expect(tokens.verificationUrl).toHaveBeenCalledWith(signer.publicId);
+    const [qrBackground, ...darkCells] = drawRectangle.mock.calls.map(
+      ([options]) => options!,
+    );
+    expect(qrBackground).toMatchObject({
+      width: expect.closeTo(qrSize, 6) as number,
+      height: expect.closeTo(qrSize, 6) as number,
+    });
+    expect(qrBackground.x! + qrBackground.width!).toBeCloseTo(
+      field.x + field.width,
+      6,
+    );
+    expect(qrBackground.y).toBeCloseTo(field.y, 6);
+    const { modules } = createQr(verificationUrl, {
+      errorCorrectionLevel: 'M',
+    });
+    const cell = qrSize / modules.size;
+    const darkCount = Array.from(modules.data).filter(Boolean).length;
+    expect(
+      darkCells.reduce((sum, options) => sum + options.width! / cell, 0),
+    ).toBeCloseTo(darkCount, 6);
+    const signatureBox = drawImage.mock.calls[0][1]!;
+    expect(signatureBox.x! + signatureBox.width!).toBeLessThanOrEqual(
+      qrBackground.x! - field.height * 0.08 + 1e-6,
+    );
 
     expect(drawText).toHaveBeenCalledWith(
       '2026/10/14',
@@ -152,5 +191,55 @@ describe('CompletedPdfService', () => {
     await expect(service.create(4)).rejects.toThrow('storage unavailable');
     expect(storage.store).toHaveBeenCalledTimes(1);
     drawText.mockRestore();
+    drawImage.mockRestore();
+    drawRectangle.mockRestore();
+  });
+});
+
+describe('signatureFieldLayout', () => {
+  const field = { x: 10, y: 20, width: 200, height: 100 };
+
+  it('QR 邊長為欄位高度 72% 並貼齊右下角', () => {
+    expect(signatureFieldLayout(field, { width: 300, height: 100 }).qr).toEqual(
+      { x: 138, y: 20, width: 72, height: 72 },
+    );
+  });
+
+  it.each([
+    ['寬簽名', { width: 300, height: 100 }],
+    ['高簽名', { width: 50, height: 200 }],
+  ])('%s在左側剩餘寬度內等比縮放置中，且不與 QR 重疊', (_name, image) => {
+    const { signature, qr } = signatureFieldLayout(field, image);
+    const available = field.width - 72 - 8;
+    expect(signature.width / signature.height).toBeCloseTo(
+      image.width / image.height,
+      6,
+    );
+    expect(signature.x - field.x).toBeCloseTo(
+      (available - signature.width) / 2,
+      6,
+    );
+    expect(signature.y - field.y).toBeCloseTo(
+      (field.height - signature.height) / 2,
+      6,
+    );
+    expect(signature.x + signature.width).toBeLessThanOrEqual(qr.x - 8 + 1e-6);
+    expect(signature.height).toBeLessThanOrEqual(field.height + 1e-6);
+  });
+
+  it('欄位過窄時 QR 縮到可用寬度一半，簽名仍可見且 QR 不超出欄位', () => {
+    const narrow = { x: 10, y: 20, width: 60, height: 84 };
+    const { signature, qr } = signatureFieldLayout(narrow, {
+      width: 300,
+      height: 100,
+    });
+    const gap = narrow.height * 0.08;
+    expect(qr.width).toBeCloseTo((narrow.width - gap) / 2, 6);
+    expect(qr.x).toBeGreaterThanOrEqual(narrow.x);
+    expect(qr.x + qr.width).toBeCloseTo(narrow.x + narrow.width, 6);
+    expect(signature.width).toBeGreaterThan(0);
+    expect(signature.x + signature.width).toBeLessThanOrEqual(
+      qr.x - gap + 1e-6,
+    );
   });
 });

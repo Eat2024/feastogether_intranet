@@ -4,7 +4,6 @@ import type { EsignSigner } from '../entities/esign-signer.entity';
 import type { EsignDocumentField } from '../entities/esign-document-field.entity';
 import type { FieldInputDto } from '../dto/field.dto';
 import type { ValidatedPdf } from './pdf-validation.service';
-import { createHash } from 'node:crypto';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
@@ -12,7 +11,7 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { DocumentRepository } from '../repositories/document.repository';
 import { NotificationRepository } from '../repositories/notification.repository';
 import { SignerRepository } from '../repositories/signer.repository';
-import { canonicalJson, EsignAuditService } from './esign-audit.service';
+import { canonicalSha256, EsignAuditService } from './esign-audit.service';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
@@ -238,10 +237,7 @@ export class EsignInitiationService {
         sortOrder: field.sortOrder,
       })),
     };
-    const payloadJson = canonicalJson(payload);
-    const payloadSha256 = createHash('sha256')
-      .update(payloadJson, 'utf8')
-      .digest('hex');
+    const payloadSha256 = canonicalSha256(payload);
     return { payload, payloadSha256, consentVersion: activeConsent.version };
   }
 

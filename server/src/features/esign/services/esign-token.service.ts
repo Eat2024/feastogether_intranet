@@ -2,10 +2,15 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createPublicKey,
+  type KeyObject,
   randomBytes,
+  sign,
+  verify,
 } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { parseVerificationSigningKey } from '#app/config/app.environment';
 
 export interface EncryptedEsignToken {
   token: string;
@@ -18,9 +23,18 @@ export interface EsignToken {
   digest: string;
 }
 
+/** 簽章驗證 token：版本 1 byte + kid 1 byte + signer public ID 16 bytes 為簽署內容。 */
+const VERIFICATION_TOKEN_VERSION = 0x01;
+const VERIFICATION_TOKEN_KID = 1;
+const VERIFICATION_PAYLOAD_BYTES = 18;
+const VERIFICATION_TOKEN_BYTES = VERIFICATION_PAYLOAD_BYTES + 64;
+
 @Injectable()
 export class EsignTokenService {
   private readonly key: Buffer;
+  private readonly verificationPrivateKey: KeyObject;
+  private readonly verificationPublicKey: KeyObject;
+  private readonly verificationOrigin: string;
 
   constructor(config: ConfigService) {
     this.key = Buffer.from(
@@ -32,6 +46,59 @@ export class EsignTokenService {
         'ESIGN_INVITATION_ENCRYPTION_KEY_B64 必須是 32 bytes 的 base64',
       );
     }
+    this.verificationPrivateKey = parseVerificationSigningKey(
+      config.getOrThrow<string>('ESIGN_VERIFICATION_SIGNING_KEY_B64'),
+    );
+    this.verificationPublicKey = createPublicKey(this.verificationPrivateKey);
+    this.verificationOrigin = config.getOrThrow<string>(
+      'EXTERNAL_SIGNING_ORIGIN',
+    );
+  }
+
+  /** 簽章公開驗證網址；Ed25519 為確定性簽章，同一 signer 每次相同。 */
+  verificationUrl(signerPublicId: string): string {
+    return `${this.verificationOrigin}/verify/${this.verificationToken(signerPublicId)}`;
+  }
+
+  verificationToken(signerPublicId: string): string {
+    const payload = Buffer.concat([
+      Buffer.from([VERIFICATION_TOKEN_VERSION, VERIFICATION_TOKEN_KID]),
+      Buffer.from(signerPublicId.replaceAll('-', ''), 'hex'),
+    ]);
+    if (payload.byteLength !== VERIFICATION_PAYLOAD_BYTES) {
+      throw new Error('簽署人識別格式錯誤');
+    }
+    return Buffer.concat([
+      payload,
+      sign(null, payload, this.verificationPrivateKey),
+    ]).toString('base64url');
+  }
+
+  /** 驗章成功回傳 signer public ID；任何格式、版本或簽章錯誤一律回 null，不區分原因。 */
+  verifyVerificationToken(token: string): string | null {
+    let bytes: Buffer;
+    try {
+      bytes = this.decodeCanonicalBase64Url(token, VERIFICATION_TOKEN_BYTES);
+    } catch {
+      return null;
+    }
+    const payload = bytes.subarray(0, VERIFICATION_PAYLOAD_BYTES);
+    if (
+      payload[0] !== VERIFICATION_TOKEN_VERSION ||
+      payload[1] !== VERIFICATION_TOKEN_KID ||
+      !verify(
+        null,
+        payload,
+        this.verificationPublicKey,
+        bytes.subarray(VERIFICATION_PAYLOAD_BYTES),
+      )
+    ) {
+      return null;
+    }
+    return payload
+      .subarray(2)
+      .toString('hex')
+      .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
   }
 
   createInvitationToken(): EncryptedEsignToken {

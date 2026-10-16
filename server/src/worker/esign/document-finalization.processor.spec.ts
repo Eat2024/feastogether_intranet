@@ -6,6 +6,7 @@ describe('DocumentFinalizationProcessor', () => {
 
   function setup(options?: {
     renderError?: Error;
+    snapshotError?: Error;
     loseLease?: boolean;
     signerChangesAfterRender?: boolean;
   }) {
@@ -62,7 +63,12 @@ describe('DocumentFinalizationProcessor', () => {
       create: jest.fn((value: object) => value),
       save: jest.fn(async (value: object) => value),
     };
-    const audit = { append: jest.fn() };
+    const audit = { append: jest.fn(async () => 'c'.repeat(64)) };
+    const verification = {
+      saveSnapshot: jest.fn(async () => {
+        if (options?.snapshotError) throw options.snapshotError;
+      }),
+    };
     const storage = { delete: jest.fn(async () => undefined) };
     const processor = new DocumentFinalizationProcessor(
       mysql as never,
@@ -71,6 +77,7 @@ describe('DocumentFinalizationProcessor', () => {
       files as never,
       completedPdf as never,
       audit as never,
+      verification as never,
       storage as never,
     );
     return {
@@ -80,6 +87,7 @@ describe('DocumentFinalizationProcessor', () => {
       completedPdf,
       files,
       audit,
+      verification,
       storage,
       stored,
     };
@@ -108,13 +116,42 @@ describe('DocumentFinalizationProcessor', () => {
     expect(files.save).toHaveBeenCalledTimes(1);
   });
 
-  it('舊 worker 失去 lease 後不得 commit，並清除自己產生的 orphan', async () => {
-    const { processor, document, files, storage, stored } = setup({
-      loseLease: true,
+  it('同一 transaction 以 document.completed hash 寫入一筆驗證快照', async () => {
+    const { processor, document, signers, verification, audit } = setup();
+    await processor.process(job);
+
+    expect(verification.saveSnapshot).toHaveBeenCalledTimes(1);
+    expect(verification.saveSnapshot).toHaveBeenCalledWith(
+      {
+        document,
+        signers,
+        finalPdfSha256: 'a'.repeat(64),
+        completedAt: document.completedAt,
+        auditRootHash: 'c'.repeat(64),
+      },
+      manager,
+    );
+    expect(audit.append.mock.invocationCallOrder[0]).toBeLessThan(
+      verification.saveSnapshot.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('驗證快照寫入失敗時結案失敗並清除完成檔，交由重試', async () => {
+    const { processor, storage, stored } = setup({
+      snapshotError: new Error('snapshot failed'),
     });
+    await expect(processor.process(job)).rejects.toThrow('snapshot failed');
+    expect(storage.delete).toHaveBeenCalledWith(stored);
+  });
+
+  it('舊 worker 失去 lease 後不得 commit，並清除自己產生的 orphan', async () => {
+    const { processor, document, files, storage, stored, verification } = setup(
+      { loseLease: true },
+    );
     await processor.process(job);
     expect(document.status).toBe('finalizing');
     expect(files.save).not.toHaveBeenCalled();
+    expect(verification.saveSnapshot).not.toHaveBeenCalled();
     expect(storage.delete).toHaveBeenCalledWith(stored);
   });
 

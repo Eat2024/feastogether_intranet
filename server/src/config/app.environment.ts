@@ -1,3 +1,4 @@
+import { createPrivateKey, type KeyObject } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 
 /** 應用程式支援的執行環境名稱，對應 NODE_ENV。 */
@@ -71,6 +72,26 @@ function validateEncryptionKey(value: string): void {
       '環境變數 ESIGN_INVITATION_ENCRYPTION_KEY_B64 必須是 32 bytes 的 base64',
     );
   }
+}
+
+/**
+ * 解析簽章驗證網址的簽發私鑰（Ed25519 PKCS#8 DER 的 base64）。
+ * HTTP server 與 worker 的啟動驗證、EsignTokenService 共用；錯誤訊息不含金鑰內容。
+ */
+export function parseVerificationSigningKey(value: string): KeyObject {
+  try {
+    const key = createPrivateKey({
+      key: Buffer.from(value, 'base64'),
+      format: 'der',
+      type: 'pkcs8',
+    });
+    if (key.asymmetricKeyType === 'ed25519') return key;
+  } catch {
+    // 統一改拋下方訊息，避免底層錯誤帶出金鑰內容
+  }
+  throw new Error(
+    '環境變數 ESIGN_VERIFICATION_SIGNING_KEY_B64 必須是 Ed25519 PKCS#8 DER 的 base64',
+  );
 }
 
 function validateMailAddress(value: string, key: string): void {
@@ -157,12 +178,13 @@ export function validateAppEnvironment(config: Environment): Environment {
     }
   }
 
-  validateExternalOrigin(
-    requiredString(config, 'EXTERNAL_SIGNING_ORIGIN'),
-    environment,
-  );
+  const externalOrigin = requiredString(config, 'EXTERNAL_SIGNING_ORIGIN');
+  validateExternalOrigin(externalOrigin, environment);
   validateEncryptionKey(
     requiredString(config, 'ESIGN_INVITATION_ENCRYPTION_KEY_B64'),
+  );
+  parseVerificationSigningKey(
+    requiredString(config, 'ESIGN_VERIFICATION_SIGNING_KEY_B64'),
   );
 
   return {
@@ -170,5 +192,7 @@ export function validateAppEnvironment(config: Environment): Environment {
     NODE_ENV: environment,
     ESIGN_STORAGE_DRIVER: storageDriver,
     ESIGN_MAIL_DRIVER: mailDriver,
+    // 驗證網址會印進完成 PDF，必須使用去除空白後的 origin
+    EXTERNAL_SIGNING_ORIGIN: externalOrigin,
   };
 }

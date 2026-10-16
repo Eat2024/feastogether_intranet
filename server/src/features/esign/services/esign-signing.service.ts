@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { PDFDocument } from 'pdf-lib';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
@@ -17,7 +16,7 @@ import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { canonicalJson, EsignAuditService } from './esign-audit.service';
+import { canonicalSha256, EsignAuditService } from './esign-audit.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
@@ -31,6 +30,18 @@ export type SigningPrincipal =
 export interface SigningRequestContext {
   sourceIp?: string;
   userAgent?: string;
+}
+
+/** 簽署結果的公開欄位；明確裁切，避免 receiptToken 等內部欄位外洩。 */
+export function toSignatureResultView(
+  result: Awaited<ReturnType<EsignSigningService['sign']>>,
+) {
+  return {
+    signerPublicId: result.signerPublicId,
+    signedAt: result.signedAt.toISOString(),
+    documentStatus: result.documentStatus,
+    verificationUrl: result.verificationUrl,
+  };
 }
 
 @Injectable()
@@ -53,7 +64,26 @@ export class EsignSigningService {
     private readonly storage: PrivateFileStorage,
   ) {}
 
+  /** 簽署成功（含重送）後才附上該簽章的驗證網址；失敗路徑一律拋錯，不會發出網址。 */
   async sign(
+    signerPublicId: string,
+    principal: SigningPrincipal,
+    submission: SignatureSubmissionDto,
+    request: SigningRequestContext,
+  ) {
+    const result = await this.submit(
+      signerPublicId,
+      principal,
+      submission,
+      request,
+    );
+    return {
+      ...result,
+      verificationUrl: this.tokens.verificationUrl(signerPublicId),
+    };
+  }
+
+  private async submit(
     signerPublicId: string,
     principal: SigningPrincipal,
     submission: SignatureSubmissionDto,
@@ -162,9 +192,7 @@ export class EsignSigningService {
           source,
           persistedPdf.sha256,
         );
-        const payloadHash = createHash('sha256')
-          .update(canonicalJson(lockedDocument.signingPayloadJson), 'utf8')
-          .digest('hex');
+        const payloadHash = canonicalSha256(lockedDocument.signingPayloadJson);
         this.validation.assertPayloadIntegrity(lockedDocument, payloadHash);
         const lockedOwnFields = lockedFields.filter(
           (field) => field.signerId === lockedSigner.id,

@@ -44,7 +44,7 @@ export class EsignCompletionAccessService {
   }
 
   async receiptStatus(signerPublicId: string, token: string) {
-    const { document } = await this.receiptContext(
+    const { signer, document } = await this.receiptContext(
       signerPublicId,
       token,
     );
@@ -53,6 +53,8 @@ export class EsignCompletionAccessService {
       status: document.status,
       completedAt: document.completedAt?.toISOString() ?? null,
       stoppedAt: document.stoppedAt?.toISOString() ?? null,
+      // 完成回執只在簽署成功後核發，持有者必為已簽署者
+      verificationUrl: this.tokens.verificationUrl(signer.publicId),
     };
   }
 

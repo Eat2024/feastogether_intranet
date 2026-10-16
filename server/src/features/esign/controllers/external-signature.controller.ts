@@ -30,7 +30,10 @@ import {
   setExternalAccessCookie,
   setExternalReceiptCookie,
 } from '../helpers/external-signature-cookie';
-import { EsignSigningService } from '../services/esign-signing.service';
+import {
+  EsignSigningService,
+  toSignatureResultView,
+} from '../services/esign-signing.service';
 import { EsignTokenService } from '../services/esign-token.service';
 import { ExternalAccessService } from '../services/external-access.service';
 import { EsignCompletionAccessService } from '../services/esign-completion-access.service';
@@ -165,7 +168,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '送出外部簽署人簽名',
     description:
-      '以外部存取 cookie 驗證並提交同意紀錄與簽名；成功後清除存取 cookie，設定完成回執 cookie。\n\n前端串接參考：ExternalSignFlow 送出簽名時直接 fetch，成功後導向 /external-signatures/[signerPublicId]/completion。',
+      '以外部存取 cookie 驗證並提交同意紀錄與簽名；成功後清除存取 cookie，設定完成回執 cookie，並回傳該簽章的公開驗證網址 verificationUrl。\n\n前端串接參考：ExternalSignFlow 送出簽名時直接 fetch，成功後導向 /external-signatures/[signerPublicId]/completion。',
   })
   @Post('external-signing-task/signatures')
   async sign(
@@ -194,11 +197,7 @@ export class ExternalSignatureController {
       );
     }
     reply.status(result.repeated ? HttpStatus.OK : HttpStatus.CREATED);
-    return {
-      signerPublicId: result.signerPublicId,
-      signedAt: result.signedAt.toISOString(),
-      documentStatus: result.documentStatus,
-    };
+    return toSignatureResultView(result);
   }
 
   private accessToken(request: FastifyRequest): string {
@@ -211,7 +210,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '查詢外部簽署完成狀態',
     description:
-      '以完成回執 cookie 查詢文件狀態；不使用原邀請連結作為憑證。\n\n前端串接參考：/external-signatures/[signerPublicId]/completion 的 ExternalCompletion 載入時查詢，顯示等待其他人簽署、產檔中或完成等狀態。',
+      '以完成回執 cookie 查詢文件狀態與本人簽章的公開驗證網址 verificationUrl；不使用原邀請連結作為憑證。\n\n前端串接參考：/external-signatures/[signerPublicId]/completion 的 ExternalCompletion 載入時查詢，顯示等待其他人簽署、產檔中或完成等狀態。',
   })
   @Get('external-completions/:signerPublicId')
   completionStatus(

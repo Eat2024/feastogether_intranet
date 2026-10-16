@@ -1,8 +1,9 @@
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
+import { getQueueToken } from '@nestjs/bullmq';
 import { NestFactory } from '@nestjs/core';
-import type { Job } from 'bullmq';
+import type { Job, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
@@ -10,9 +11,10 @@ import {
   PRIVATE_FILE_STORAGE,
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
-import { apiData } from './api-response.helper';
+import { apiData, apiError } from './api-response.helper';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
+import { ESIGN_DOCUMENT_FINALIZATION_QUEUE } from '#app/features/esign/esign-queue.constants';
 import { WorkerModule } from '#app/worker.module';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import {
@@ -20,6 +22,15 @@ import {
   createSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import {
+  esignRowCounts,
+  getSignatureVerification,
+  type SignatureVerification,
+  VERIFICATION_URL,
+} from './signature-verification.helper';
+
+const PNG_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=';
 
 interface LaunchView {
   launchUrl: string;
@@ -29,7 +40,14 @@ interface DocumentDetail {
   id: string;
   status: string;
   sourceFile: { pageCount: number; sha256: string };
-  signers: Array<{ publicId: string }>;
+  signers: Array<{ publicId: string; verificationUrl: string | null }>;
+}
+
+interface SigningTask {
+  signerPublicId: string;
+  signer: { verificationUrl: string | null };
+  fields: Array<{ id: string; type: string }>;
+  consent: { version: string };
 }
 
 describe('核心電子簽 US1', () => {
@@ -83,6 +101,10 @@ describe('核心電子簽 US1', () => {
       await db.query('DELETE FROM esign_audit_events WHERE document_id = ?', [
         documentId,
       ]);
+      await db.query(
+        'DELETE FROM esign_verification_records WHERE document_id = ?',
+        [documentId],
+      );
       await db.query(
         'DELETE FROM esign_notification_logs WHERE batch_id IN (SELECT id FROM esign_notification_batches WHERE document_id = ?)',
         [documentId],
@@ -567,14 +589,12 @@ describe('核心電子簽 US1', () => {
       .set('Cookie', externalCookie)
       .set('Origin', 'http://localhost:3000')
       .expect(200);
-    const task = apiData<{
-      fields: Array<{ id: string; type: string }>;
-      consent: { version: string };
-    }>(taskResponse);
+    const task = apiData<SigningTask>(taskResponse);
     const signatureField = task.fields.find(
       (field) => field.type === 'signature',
     );
     expect(signatureField).toBeDefined();
+    expect(task.signer.verificationUrl).toBeNull();
 
     const signatureRequestId = randomUUID();
     const signatureSubmission = {
@@ -605,6 +625,43 @@ describe('核心電子簽 US1', () => {
     const signedBody = apiData<Record<string, unknown>>(signed);
     expect(signedBody).toMatchObject({ documentStatus: 'active' });
     expect(signedBody).not.toHaveProperty('receiptToken');
+    const verificationUrl = String(signedBody.verificationUrl);
+    expect(verificationUrl).toMatch(VERIFICATION_URL);
+    expect(
+      repeatedCalls.map(
+        (response) =>
+          apiData<{ verificationUrl: string }>(response).verificationUrl,
+      ),
+    ).toEqual([verificationUrl, verificationUrl]);
+    expect(verificationUrl).not.toMatch(
+      new RegExp(`candidate|外部簽署人|Spec 03|${signers[0].publicId}`, 'i'),
+    );
+    const detailAfterSign = apiData<DocumentDetail>(
+      await request(ctx.server)
+        .get(`/api/esign/documents/${documentId}`)
+        .set('Cookie', creatorCookie)
+        .expect(200),
+    );
+    expect(detailAfterSign.signers[0].verificationUrl).toBe(verificationUrl);
+    expect(
+      apiData<SignatureVerification>(
+        await getSignatureVerification(ctx.server, verificationUrl).expect(200),
+      ),
+    ).toEqual({
+      signature: {
+        signerName: '外部簽署人',
+        signedAt: signedBody.signedAt,
+        authenticationMethod: 'email_invitation',
+      },
+      document: {
+        title: 'Spec 03 測試文件',
+        status: 'active',
+        signedSourceSha256: created.sourceFile.sha256,
+        completedAt: null,
+        stoppedAt: null,
+        completedPdfSha256: null,
+      },
+    });
     expect(firstCookie(signed.headers['set-cookie'])).toContain(
       'FT_ESIGN_EXTERNAL_ACCESS=;',
     );
@@ -639,12 +696,15 @@ describe('核心電子簽 US1', () => {
     expect(Number(signingRows[0].record_count)).toBe(1);
     expect(Number(signingRows[0].file_count)).toBe(1);
 
-    await request(ctx.server)
+    const resent = await request(ctx.server)
       .post('/api/external-signing-task/signatures')
       .set('Cookie', externalCookie)
       .set('Origin', 'http://localhost:3000')
       .send(signatureSubmission)
       .expect(200);
+    expect(apiData<{ verificationUrl: string }>(resent).verificationUrl).toBe(
+      verificationUrl,
+    );
 
     await request(ctx.server)
       .post('/api/external-signing-task')
@@ -652,16 +712,53 @@ describe('核心電子簽 US1', () => {
       .set('Origin', 'http://localhost:3000')
       .expect(401);
 
+    // 暫停 queue，避免 worker 的 BullMQ consumer 與下方直接呼叫競爭 lease
+    const finalizationQueue = ctx.app.get<Queue>(
+      getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
+    );
+    await finalizationQueue.pause();
     const worker = await NestFactory.createApplicationContext(WorkerModule, {
       logger: false,
     });
     try {
-      await worker.get(DocumentFinalizationProcessor).process({
-        data: { documentId },
-      } as Job<{ documentId: number }>);
+      const processor = worker.get(DocumentFinalizationProcessor);
+      const job = { data: { documentId } } as Job<{ documentId: number }>;
+      // 以同文件既有快照觸發 unique 衝突：快照寫入失敗時整筆結案 rollback，可安全重試
+      await db.query(
+        `INSERT INTO esign_verification_records
+           (document_id, public_id, manifest_json, manifest_sha256,
+            final_pdf_sha256, audit_root_hash, issued_at)
+         VALUES (?, UUID(), JSON_OBJECT(), REPEAT('0', 64), REPEAT('0', 64),
+           REPEAT('0', 64), UTC_TIMESTAMP(6))`,
+        [documentId],
+      );
+      await expect(processor.process(job)).rejects.toThrow();
+      const rolledBack = await db.query<
+        Array<{ status: string; file_count: number; event_count: number }>
+      >(
+        `SELECT d.status,
+          (SELECT COUNT(*) FROM esign_file_objects f WHERE f.document_id = d.id AND f.file_purpose = 'completed_pdf') file_count,
+          (SELECT COUNT(*) FROM esign_audit_events a WHERE a.document_id = d.id AND a.event_type = 'document.completed') event_count
+         FROM esign_documents d WHERE d.id = ?`,
+        [documentId],
+      );
+      expect(rolledBack[0].status).toBe('active');
+      expect(Number(rolledBack[0].file_count)).toBe(0);
+      expect(Number(rolledBack[0].event_count)).toBe(0);
+      await db.query(
+        'DELETE FROM esign_verification_records WHERE document_id = ?',
+        [documentId],
+      );
+      await processor.process(job);
     } finally {
       await worker.close();
+      await finalizationQueue.resume();
     }
+    const snapshotCount = await db.query<Array<{ count: number }>>(
+      'SELECT COUNT(*) count FROM esign_verification_records WHERE document_id = ?',
+      [documentId],
+    );
+    expect(Number(snapshotCount[0].count)).toBe(1);
 
     const completed = await db.query<Array<{ status: string }>>(
       'SELECT status FROM esign_documents WHERE id = ?',
@@ -681,9 +778,32 @@ describe('核心電子簽 US1', () => {
       .get(`/api/external-completions/${signers[0].publicId}`)
       .set('Cookie', receiptCookie)
       .expect(200);
-    expect(apiData<{ status: string }>(completionStatus).status).toBe(
-      'completed',
+    expect(
+      apiData<{ status: string; verificationUrl: string }>(completionStatus),
+    ).toMatchObject({ status: 'completed', verificationUrl });
+    const completedFiles = await db.query<Array<{ sha256: string }>>(
+      `SELECT sha256 FROM esign_file_objects
+       WHERE document_id = ? AND file_purpose = 'completed_pdf'`,
+      [documentId],
     );
+    const rowsBeforeVerification = await esignRowCounts(db);
+    const completedVerification = await getSignatureVerification(
+      ctx.server,
+      verificationUrl,
+    )
+      .expect(200)
+      .expect('Cache-Control', 'no-store')
+      .expect('Referrer-Policy', 'no-referrer');
+    expect(completedVerification.headers['set-cookie']).toBeUndefined();
+    expect(await esignRowCounts(db)).toEqual(rowsBeforeVerification);
+    expect(
+      apiData<SignatureVerification>(completedVerification).document,
+    ).toMatchObject({
+      status: 'completed',
+      completedAt: expect.any(String),
+      stoppedAt: null,
+      completedPdfSha256: completedFiles[0].sha256,
+    });
     await request(ctx.server)
       .get(`/api/external-completions/${signers[0].publicId}/completed-file`)
       .set('Cookie', receiptCookie)
@@ -697,6 +817,18 @@ describe('核心電子簽 US1', () => {
     expect(String(cleared.headers['set-cookie'])).toContain(
       'FT_ESIGN_EXTERNAL_RECEIPT=;',
     );
+
+    // 快照與完成文件摘要不一致時，驗證失敗而非顯示有效
+    await db.query(
+      `UPDATE esign_verification_records SET final_pdf_sha256 = REPEAT('0', 64)
+       WHERE document_id = ?`,
+      [documentId],
+    );
+    const tampered = await getSignatureVerification(
+      ctx.server,
+      verificationUrl,
+    ).expect(409);
+    expect(apiError(tampered).code).toBe('ESIGN_INTEGRITY_FAILED');
   });
 
   it('已有證據的 active 文件可停止；pending access 失效且重新發起只能建立全新文件', async () => {
@@ -787,28 +919,35 @@ describe('核心電子簽 US1', () => {
       .set('Cookie', accessCookie)
       .set('Origin', 'http://localhost:3000')
       .expect(200);
-    const task = apiData<{
-      fields: Array<{ id: string; type: string }>;
-      consent: { version: string };
-    }>(taskResponse);
-    await request(ctx.server)
-      .post('/api/external-signing-task/signatures')
-      .set('Cookie', accessCookie)
-      .set('Origin', 'http://localhost:3000')
-      .send({
-        requestId: randomUUID(),
-        consentVersion: task.consent.version,
-        accepted: true,
-        signatures: [
-          {
-            fieldId: task.fields.find((field) => field.type === 'signature')!
-              .id,
-            pngDataUrl:
-              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
-          },
-        ],
-      })
-      .expect(201);
+    const task = apiData<SigningTask>(taskResponse);
+    const firstSigned = apiData<{ verificationUrl: string }>(
+      await request(ctx.server)
+        .post('/api/external-signing-task/signatures')
+        .set('Cookie', accessCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          requestId: randomUUID(),
+          consentVersion: task.consent.version,
+          accepted: true,
+          signatures: [
+            {
+              fieldId: task.fields.find((field) => field.type === 'signature')!
+                .id,
+              pngDataUrl: PNG_DATA_URL,
+            },
+          ],
+        })
+        .expect(201),
+    );
+    // 已簽者有驗證網址，尚未簽署者為 null
+    expect(
+      apiData<DocumentDetail>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${stoppedDocumentId}`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      ).signers.map((signer) => signer.verificationUrl),
+    ).toEqual([firstSigned.verificationUrl, null]);
 
     const pendingSession = await request(ctx.server)
       .post('/api/external-signature-session')
@@ -881,6 +1020,20 @@ describe('核心電子簽 US1', () => {
     );
     expect(stoppedRows[0].status).toBe('stopped');
     expect(Number(stoppedRows[0].stop_count)).toBe(1);
+    expect(
+      apiData<SignatureVerification>(
+        await getSignatureVerification(
+          ctx.server,
+          firstSigned.verificationUrl,
+        ).expect(200),
+      ).document,
+    ).toMatchObject({
+      title: '待停止文件',
+      status: 'stopped',
+      completedAt: null,
+      stoppedAt: expect.any(String),
+      completedPdfSha256: null,
+    });
 
     const replacementPdf = await PDFDocument.create();
     replacementPdf.addPage();
@@ -1066,6 +1219,63 @@ describe('核心電子簽 US1', () => {
       .get(`/api/esign/documents/${documentId}/history`)
       .set('Cookie', outsiderCookie)
       .expect(404);
+
+    // 內部簽署：簽署前無驗證網址，簽署後任務、重開與建立人詳情回同一網址
+    const taskPath = `/api/esign/signing-tasks/${assigned[0].publicId}`;
+    const openTask = () =>
+      request(ctx.server)
+        .post(taskPath)
+        .set('Cookie', signerCookie)
+        .set('Origin', 'http://localhost:3000')
+        .expect(201);
+    const internalTask = apiData<SigningTask>(await openTask());
+    expect(internalTask.signer.verificationUrl).toBeNull();
+    const internalSigned = apiData<{ verificationUrl: string }>(
+      await request(ctx.server)
+        .post(`${taskPath}/signatures`)
+        .set('Cookie', signerCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          requestId: randomUUID(),
+          consentVersion: internalTask.consent.version,
+          accepted: true,
+          signatures: [
+            { fieldId: internalTask.fields[0].id, pngDataUrl: PNG_DATA_URL },
+          ],
+        })
+        .expect(201),
+    );
+    expect(internalSigned.verificationUrl).toMatch(VERIFICATION_URL);
+    const tasksAfterSign = apiData<SigningTask[]>(
+      await request(ctx.server)
+        .get('/api/esign/signing-tasks')
+        .set('Cookie', signerCookie)
+        .expect(200),
+    );
+    expect(
+      tasksAfterSign.find(
+        (task) => task.signerPublicId === assigned[0].publicId,
+      )?.signer.verificationUrl,
+    ).toBe(internalSigned.verificationUrl);
+    expect(apiData<SigningTask>(await openTask()).signer.verificationUrl).toBe(
+      internalSigned.verificationUrl,
+    );
+    expect(
+      apiData<DocumentDetail>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${documentId}`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      ).signers[0].verificationUrl,
+    ).toBe(internalSigned.verificationUrl);
+    expect(
+      apiData<SignatureVerification>(
+        await getSignatureVerification(
+          ctx.server,
+          internalSigned.verificationUrl,
+        ).expect(200),
+      ).signature.authenticationMethod,
+    ).toBe('employee_session');
   });
 
   async function login(empid: string): Promise<string> {

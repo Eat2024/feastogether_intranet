@@ -40,6 +40,11 @@ describe('EsignSigningService', () => {
     const fields = { findByDocument: jest.fn(async () => [] as object[]) };
     const storage = { store: jest.fn(), delete: jest.fn() };
     const mysql = { getManager: jest.fn(() => manager) };
+    const tokens = {
+      verificationUrl: jest.fn(
+        (id: string) => `https://esign.example.internal/verify/token-of-${id}`,
+      ),
+    };
     const service = new EsignSigningService(
       mysql as never,
       documents as never,
@@ -51,12 +56,12 @@ describe('EsignSigningService', () => {
       validation as never,
       {} as never,
       { assertAccepted: jest.fn() } as never,
-      {} as never,
+      tokens as never,
       {} as never,
       {} as never,
       storage as never,
     );
-    return { service, access, storage, fields, mysql };
+    return { service, access, storage, fields, mysql, tokens };
   }
 
   const submission = {
@@ -88,6 +93,40 @@ describe('EsignSigningService', () => {
       expect(access.assertExternalCredential).toHaveBeenCalled();
     }
     expect(storage.store).not.toHaveBeenCalled();
+  });
+
+  it('簽署結果附上本人簽章驗證網址，重送回相同網址', async () => {
+    const { service, tokens } = setup({ signerId: 8, signedAtUtc: signedAt });
+    const principal = { kind: 'internal' as const, userId: 20 };
+    const first = await service.sign(signerPublicId, principal, submission, {});
+    const second = await service.sign(
+      signerPublicId,
+      principal,
+      submission,
+      {},
+    );
+
+    expect(first.verificationUrl).toBe(
+      `https://esign.example.internal/verify/token-of-${signerPublicId}`,
+    );
+    expect(second.verificationUrl).toBe(first.verificationUrl);
+    expect(tokens.verificationUrl).toHaveBeenCalledWith(signerPublicId);
+  });
+
+  it('簽署失敗時不產生驗證網址', async () => {
+    const { service, fields, tokens } = setup();
+    fields.findByDocument.mockResolvedValue([
+      { id: 11, signerId: 8, documentId: 4, fieldType: 'signature' },
+    ]);
+    await expect(
+      service.sign(
+        signerPublicId,
+        { kind: 'internal', userId: 20 },
+        submission,
+        {},
+      ),
+    ).rejects.toThrow();
+    expect(tokens.verificationUrl).not.toHaveBeenCalled();
   });
 
   it('不是同一 request 時仍須完成所有本人 signature fields', async () => {

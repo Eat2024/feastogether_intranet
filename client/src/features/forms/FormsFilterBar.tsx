@@ -1,6 +1,6 @@
 'use client';
 
-// 列表篩選：文件狀態（多選）與簽署期間（起訖日）。條件寫入網址參數，由伺服器端篩選；
+// 列表篩選：文件狀態（多選）與簽署期間（起訖日）。條件寫入網址參數，由頁面依網址篩選；
 // 會保留其他參數（搜尋關鍵字、排序）。
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -19,19 +19,26 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
 import { FORM_STATUS_META } from './status';
 import { FORM_STATUSES } from './sort';
-import type { FormStatus } from './types';
 
 // 網址上的日期格式
 const PARAM_FORMAT = 'YYYY-MM-DD';
+
+export type StatusOption = { value: string; label: string };
+
+// 預設為 mock 文件的狀態；串接後端的列表可傳入自己的狀態選項
+const DEFAULT_STATUS_OPTIONS: StatusOption[] = FORM_STATUSES.map((s) => ({ value: s, label: FORM_STATUS_META[s].label }));
 
 export default function FormsFilterBar({
   statuses,
   from,
   to,
+  statusOptions = DEFAULT_STATUS_OPTIONS,
 }: {
-  statuses: FormStatus[];
+  statuses: string[];
   from: string | null;
   to: string | null;
+  /** 狀態下拉選單的選項（依顯示順序） */
+  statusOptions?: StatusOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -78,18 +85,22 @@ export default function FormsFilterBar({
           onChange={(e) => {
             const v = e.target.value;
             const picked = typeof v === 'string' ? v.split(',') : v;
-            update({ status: FORM_STATUSES.filter((s) => picked.includes(s)).join(',') || null });
+            update({
+              status: statusOptions.filter((o) => picked.includes(o.value)).map((o) => o.value).join(',') || null,
+            });
           }}
           renderValue={(sel) =>
-            sel.length === 0 ? '全部狀態' : sel.map((s) => FORM_STATUS_META[s].label).join('、')
+            sel.length === 0
+              ? '全部狀態'
+              : sel.map((s) => statusOptions.find((o) => o.value === s)?.label ?? s).join('、')
           }
           inputProps={{ 'aria-label': '文件狀態' }}
           sx={{ width: 160, bgcolor: 'background.paper' }}
         >
-          {FORM_STATUSES.map((s) => (
-            <MenuItem key={s} value={s} dense>
-              <Checkbox size="small" checked={statuses.includes(s)} sx={{ p: 0.5, mr: 1 }} />
-              <ListItemText primary={FORM_STATUS_META[s].label} />
+          {statusOptions.map((o) => (
+            <MenuItem key={o.value} value={o.value} dense>
+              <Checkbox size="small" checked={statuses.includes(o.value)} sx={{ p: 0.5, mr: 1 }} />
+              <ListItemText primary={o.label} />
             </MenuItem>
           ))}
         </Select>

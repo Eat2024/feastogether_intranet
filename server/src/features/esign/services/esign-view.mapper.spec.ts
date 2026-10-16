@@ -2,12 +2,10 @@ import type { EsignSigner } from '../entities/esign-signer.entity';
 import { EsignViewMapper } from './esign-view.mapper';
 
 describe('EsignViewMapper', () => {
-  const tokens = {
-    verificationUrl: jest.fn(
-      (id: string) => `https://esign.example.internal/verify/token-of-${id}`,
-    ),
-  };
-  const mapper = new EsignViewMapper(tokens as never);
+  const mapper = new EsignViewMapper({
+    verificationUrl: (code?: string) =>
+      code ? `https://esign.example.internal/verify/${code}` : null,
+  } as never);
   const signer = (status: 'pending' | 'signed') =>
     ({
       publicId: 'c854d925-1d70-49dc-9c81-abf18409ae42',
@@ -18,16 +16,13 @@ describe('EsignViewMapper', () => {
       signedAt: status === 'signed' ? new Date() : undefined,
     }) as EsignSigner;
 
-  beforeEach(() => tokens.verificationUrl.mockClear());
-
-  it('已簽署者的 signer view 帶驗證網址', () => {
-    expect(mapper.signer(signer('signed'), null).verificationUrl).toBe(
-      'https://esign.example.internal/verify/token-of-c854d925-1d70-49dc-9c81-abf18409ae42',
-    );
+  it('已簽署者以簽署紀錄的驗證代碼組出驗證網址', () => {
+    expect(
+      mapper.signer(signer('signed'), null, 'c'.repeat(22)).verificationUrl,
+    ).toBe(`https://esign.example.internal/verify/${'c'.repeat(22)}`);
   });
 
-  it('尚未簽署者的 verificationUrl 為 null，且不簽發 token', () => {
+  it('尚未簽署者沒有驗證代碼，verificationUrl 為 null', () => {
     expect(mapper.signer(signer('pending'), null).verificationUrl).toBeNull();
-    expect(tokens.verificationUrl).not.toHaveBeenCalled();
   });
 });

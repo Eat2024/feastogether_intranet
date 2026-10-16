@@ -79,7 +79,7 @@ export class EsignSigningService {
     );
     return {
       ...result,
-      verificationUrl: this.tokens.verificationUrl(signerPublicId),
+      verificationUrl: this.tokens.verificationUrl(result.verificationCode),
     };
   }
 
@@ -114,6 +114,7 @@ export class EsignSigningService {
         signerPublicId,
         signedAt: repeated.signedAtUtc,
         documentStatus: document.status,
+        verificationCode: repeated.verificationCode,
         repeated: true,
       };
     }
@@ -165,6 +166,7 @@ export class EsignSigningService {
             signerPublicId,
             signedAt: repeated.signedAtUtc,
             documentStatus: lockedDocument?.status ?? 'active',
+            verificationCode: repeated.verificationCode,
             repeated: true,
           };
         }
@@ -209,6 +211,7 @@ export class EsignSigningService {
         );
 
         const signedAt = new Date();
+        const verificationCode = this.tokens.createVerificationCode();
         const inserted = await this.records.insert(
           {
             signerId: lockedSigner.id,
@@ -223,6 +226,7 @@ export class EsignSigningService {
             sourceIp: request.sourceIp?.slice(0, 45),
             userAgent: request.userAgent?.slice(0, 500),
             signedAtUtc: signedAt,
+            verificationCode,
           },
           tx,
         );
@@ -295,6 +299,7 @@ export class EsignSigningService {
           documentId: lockedDocument.id,
           allSigned: allSigners.every((item) => item.status === 'signed'),
           receiptToken,
+          verificationCode,
           repeated: false,
         };
       });

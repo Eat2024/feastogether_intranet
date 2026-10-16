@@ -1,17 +1,7 @@
-import { generateKeyPairSync, type KeyObject, randomBytes } from 'node:crypto';
-import {
-  parseVerificationSigningKey,
-  validateAppEnvironment,
-} from './app.environment';
+import { randomBytes } from 'node:crypto';
+import { validateAppEnvironment } from './app.environment';
 
 const encryptionKey = randomBytes(32).toString('base64');
-const pkcs8Base64 = ({ privateKey }: { privateKey: KeyObject }) =>
-  privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64');
-const verificationKey = pkcs8Base64(generateKeyPairSync('ed25519'));
-const esignKeys = {
-  ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
-  ESIGN_VERIFICATION_SIGNING_KEY_B64: verificationKey,
-};
 
 describe('validateAppEnvironment', () => {
   it('development 固定使用 local storage 與 SMTP', () => {
@@ -20,7 +10,7 @@ describe('validateAppEnvironment', () => {
         NODE_ENV: 'development',
         ESIGN_STORAGE_ROOT: '/tmp/esign-development',
         EXTERNAL_SIGNING_ORIGIN: 'http://localhost:3000',
-        ...esignKeys,
+        ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
         SMTP_HOST: '127.0.0.1',
         SMTP_PORT: '1025',
         SMTP_SECURE: 'false',
@@ -38,7 +28,7 @@ describe('validateAppEnvironment', () => {
         NODE_ENV: 'test',
         ESIGN_STORAGE_ROOT: '/tmp/esign-test',
         EXTERNAL_SIGNING_ORIGIN: 'http://127.0.0.1:3000',
-        ...esignKeys,
+        ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
       }),
     ).toMatchObject({
       ESIGN_STORAGE_DRIVER: 'local',
@@ -54,7 +44,7 @@ describe('validateAppEnvironment', () => {
         AWS_REGION: 'ap-northeast-1',
         SES_FROM: 'no-reply@example.internal',
         EXTERNAL_SIGNING_ORIGIN: 'https://esign-uat.example.internal',
-        ...esignKeys,
+        ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
       }),
     ).toMatchObject({
       ESIGN_STORAGE_DRIVER: 'local',
@@ -70,7 +60,7 @@ describe('validateAppEnvironment', () => {
         AWS_REGION: 'ap-northeast-1',
         SES_FROM: 'no-reply@example.internal',
         EXTERNAL_SIGNING_ORIGIN: 'https://esign.example.internal',
-        ...esignKeys,
+        ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
       }),
     ).toMatchObject({
       ESIGN_STORAGE_DRIVER: 's3',
@@ -97,7 +87,7 @@ describe('validateAppEnvironment', () => {
         AWS_ACCESS_KEY_ID: 'not-a-real-key',
         SES_FROM: 'no-reply@example.internal',
         EXTERNAL_SIGNING_ORIGIN: 'https://esign-uat.example.internal',
-        ...esignKeys,
+        ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
       }),
     ).toThrow('AWS_ACCESS_KEY_ID');
   });
@@ -108,7 +98,7 @@ describe('validateAppEnvironment', () => {
         NODE_ENV: 'test',
         ESIGN_STORAGE_ROOT: './private',
         EXTERNAL_SIGNING_ORIGIN: 'http://localhost:3000',
-        ...esignKeys,
+        ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
       }),
     ).toThrow('絕對路徑');
 
@@ -117,27 +107,9 @@ describe('validateAppEnvironment', () => {
         NODE_ENV: 'test',
         ESIGN_STORAGE_ROOT: '/tmp/esign-test',
         EXTERNAL_SIGNING_ORIGIN: 'http://localhost:3000',
-        ...esignKeys,
         ESIGN_INVITATION_ENCRYPTION_KEY_B64: 'dG9vLXNob3J0',
       }),
     ).toThrow('32 bytes');
-  });
-
-  it.each([
-    ['缺值', undefined],
-    ['非 DER', 'bm90LWEta2V5'],
-    ['非 Ed25519', pkcs8Base64(generateKeyPairSync('x25519'))],
-  ])('驗證網址簽章私鑰%s時啟動失敗且錯誤不含金鑰', (_name, key) => {
-    const run = () =>
-      validateAppEnvironment({
-        NODE_ENV: 'test',
-        ESIGN_STORAGE_ROOT: '/tmp/esign-test',
-        EXTERNAL_SIGNING_ORIGIN: 'http://localhost:3000',
-        ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
-        ESIGN_VERIFICATION_SIGNING_KEY_B64: key,
-      });
-    expect(run).toThrow('ESIGN_VERIFICATION_SIGNING_KEY_B64');
-    if (key) expect(() => run()).not.toThrow(key);
   });
 
   it('回傳去除空白後的 EXTERNAL_SIGNING_ORIGIN，避免驗證網址帶入空白', () => {
@@ -146,14 +118,8 @@ describe('validateAppEnvironment', () => {
         NODE_ENV: 'test',
         ESIGN_STORAGE_ROOT: '/tmp/esign-test',
         EXTERNAL_SIGNING_ORIGIN: ' http://localhost:3000\n',
-        ...esignKeys,
+        ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
       }).EXTERNAL_SIGNING_ORIGIN,
     ).toBe('http://localhost:3000');
-  });
-
-  it('接受 Ed25519 PKCS#8 DER 的 base64', () => {
-    expect(parseVerificationSigningKey(verificationKey).asymmetricKeyType).toBe(
-      'ed25519',
-    );
   });
 });

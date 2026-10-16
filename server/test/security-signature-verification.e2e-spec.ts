@@ -1,7 +1,6 @@
-import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { AUTH_RATE_LIMIT_SHORT_LIMIT } from '#app/features/auth/auth.constants';
-import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { HttpAccessLoggerService } from '#app/infrastructure/logging/httpEndpointLog/http-access-logger.service';
@@ -17,52 +16,35 @@ import {
   randomClientIp,
 } from './signature-verification.helper';
 
-/** 依 token 格式以任意私鑰簽發，模擬非本系統簽發的 token。 */
-function tokenSignedByOtherKey(signerPublicId: string): string {
-  const payload = Buffer.concat([
-    Buffer.from([0x01, 1]),
-    Buffer.from(signerPublicId.replaceAll('-', ''), 'hex'),
-  ]);
-  const { privateKey } = generateKeyPairSync('ed25519');
-  return Buffer.concat([payload, sign(null, payload, privateKey)]).toString(
-    'base64url',
-  );
-}
-
-function tamper(token: string): string {
-  const index = 40;
-  return `${token.slice(0, index)}${token[index] === 'A' ? 'B' : 'A'}${token.slice(index + 1)}`;
-}
+/** 格式正確但不存在於 DB 的驗證代碼 */
+const unknownCode = () => randomBytes(16).toString('base64url');
 
 describe('公開簽章驗證安全邊界', () => {
   let ctx: SecurityE2eContext;
   let db: DataSource;
-  let tokens: EsignTokenService;
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp();
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
-    tokens = ctx.app.get(EsignTokenService);
   });
 
   afterEach(() => jest.restoreAllMocks());
 
   afterAll(async () => closeSecurityE2eApp(ctx));
 
-  it('偽造、竄改、錯誤長度、結構錯誤、他鑰簽發與查無簽署人的 token 回應完全相同，且不寫入、不設 cookie、不記錄 token', async () => {
-    // 簽章正確但簽署人不存在，代表「通過驗章後查 DB 才失敗」的路徑
-    const unknownSigner = tokens.verificationToken(randomUUID());
+  it('偽造、錯誤長度、結構錯誤與查無的代碼回應完全相同，且不寫入、不設 cookie、不記錄代碼', async () => {
+    // 格式正確但不存在，代表「查 DB 後才失敗」的路徑
+    const unknown = unknownCode();
     const candidates = [
-      'A'.repeat(110),
-      tamper(unknownSigner),
-      unknownSigner.slice(0, -1),
-      `${unknownSigner}A`,
-      tokenSignedByOtherKey(randomUUID()),
-      unknownSigner,
+      unknown,
+      'A'.repeat(22),
+      unknown.slice(0, -1),
+      `${unknown}A`,
+      `${unknown.slice(0, -1)}=`,
       // 結構錯誤的路徑也走同一個 handler，不落到 router 的通用 404
       'A'.repeat(300),
-      `${unknownSigner}/extra`,
-      `${unknownSigner}/`,
+      `${unknown}/extra`,
+      `${unknown}/`,
       '',
     ];
     const accessLog = jest.spyOn(ctx.app.get(HttpAccessLoggerService), 'write');
@@ -92,7 +74,7 @@ describe('公開簽章驗證安全邊界', () => {
 
   it('同一 client IP 超過登入端點的短視窗額度回 429，其他 IP 不受影響，限流 log 不含 token', async () => {
     const clientIp = randomClientIp();
-    const token = tokens.verificationToken(randomUUID());
+    const token = unknownCode();
     const appWarn = jest.spyOn(ctx.app.get(AppLoggerService), 'warn');
 
     for (let index = 0; index < AUTH_RATE_LIMIT_SHORT_LIMIT; index += 1) {

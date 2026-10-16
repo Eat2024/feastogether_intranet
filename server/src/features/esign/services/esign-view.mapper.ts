@@ -75,9 +75,11 @@ export class EsignViewMapper {
     };
   }
 
+  /** verificationCode 來自本人的簽署紀錄；尚未簽署時沒有，驗證網址為 null */
   signer(
     signer: EsignSigner,
     invitationDelivery: EsignInvitationDelivery | null,
+    verificationCode?: string,
   ): EsignSignerViewDto {
     return {
       publicId: signer.publicId,
@@ -90,10 +92,7 @@ export class EsignViewMapper {
       status: signer.status as EsignSignerStatus,
       signedAt: signer.signedAt?.toISOString() ?? null,
       invitationDelivery,
-      verificationUrl:
-        signer.status === 'signed'
-          ? this.tokens.verificationUrl(signer.publicId)
-          : null,
+      verificationUrl: this.tokens.verificationUrl(verificationCode),
     };
   }
 

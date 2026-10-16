@@ -213,11 +213,11 @@ export class CompletedPdfService {
         );
         const layout = signatureFieldLayout({ x, y, width, height }, png);
         page.drawImage(png, layout.signature);
-        drawVectorQr(
-          page,
-          this.tokens.verificationUrl(signer.publicId),
-          layout.qr,
+        // Spec 04 上線前的簽署紀錄沒有驗證代碼，不畫 QR
+        const verificationUrl = this.tokens.verificationUrl(
+          record.verificationCode,
         );
+        if (verificationUrl) drawVectorQr(page, verificationUrl, layout.qr);
       } else if (field.fieldType === 'date') {
         page.drawText(this.taipeiDate(record.signedAtUtc), {
           x,

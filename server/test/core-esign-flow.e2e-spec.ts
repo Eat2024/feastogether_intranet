@@ -627,6 +627,14 @@ describe('核心電子簽 US1', () => {
     expect(signedBody).not.toHaveProperty('receiptToken');
     const verificationUrl = String(signedBody.verificationUrl);
     expect(verificationUrl).toMatch(VERIFICATION_URL);
+    const storedCodes = await db.query<Array<{ verification_code: string }>>(
+      `SELECT r.verification_code FROM esign_signature_records r
+       JOIN esign_signers s ON s.id = r.signer_id WHERE s.public_id = ?`,
+      [signers[0].publicId],
+    );
+    expect(storedCodes).toEqual([
+      { verification_code: VERIFICATION_URL.exec(verificationUrl)![1] },
+    ]);
     expect(
       repeatedCalls.map(
         (response) =>

@@ -111,4 +111,15 @@ describe('validateAppEnvironment', () => {
       }),
     ).toThrow('32 bytes');
   });
+
+  it('回傳去除空白後的 EXTERNAL_SIGNING_ORIGIN，避免驗證網址帶入空白', () => {
+    expect(
+      validateAppEnvironment({
+        NODE_ENV: 'test',
+        ESIGN_STORAGE_ROOT: '/tmp/esign-test',
+        EXTERNAL_SIGNING_ORIGIN: ' http://localhost:3000\n',
+        ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
+      }).EXTERNAL_SIGNING_ORIGIN,
+    ).toBe('http://localhost:3000');
+  });
 });

@@ -19,6 +19,10 @@ export class SignatureRecordRepository {
     return manager.findOneBy(EsignSignatureRecord, { authenticationEventId });
   }
 
+  findByVerificationCode(verificationCode: string, manager: EntityManager) {
+    return manager.findOneBy(EsignSignatureRecord, { verificationCode });
+  }
+
   findBySignerIds(signerIds: number[], manager: EntityManager) {
     if (signerIds.length === 0) return Promise.resolve([]);
     return manager.find(EsignSignatureRecord, {

@@ -4,6 +4,7 @@ import {
   createSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { getSignatureVerification } from './signature-verification.helper';
 
 describe('runtime API coverage', () => {
   let ctx: SecurityE2eContext;
@@ -128,5 +129,16 @@ describe('runtime API coverage', () => {
     await request(ctx.server)
       .get(`/api/external-completions/${signerPublicId}/history`)
       .expect(401);
+  });
+
+  it('公開簽章驗證已註冊、不需 session，無效 token 回統一 404 envelope', async () => {
+    const response = await getSignatureVerification(ctx.server, 'A'.repeat(22))
+      .expect(404)
+      .expect('Cache-Control', 'no-store')
+      .expect('Referrer-Policy', 'no-referrer');
+    expect(response.body).toMatchObject({
+      success: false,
+      error: { code: 'ESIGN_RESOURCE_NOT_FOUND' },
+    });
   });
 });

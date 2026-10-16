@@ -1,7 +1,5 @@
 import type { EntityManager } from 'typeorm';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
+import { Inject, Injectable } from '@nestjs/common';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   PRIVATE_FILE_STORAGE,
@@ -11,6 +9,7 @@ import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-f
 import type { FieldInputDto } from '../dto/field.dto';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import type { EsignSigner } from '../entities/esign-signer.entity';
+import { invalidRequest } from '../helpers/esign-errors';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignerRepository } from '../repositories/signer.repository';
@@ -33,9 +32,7 @@ export class EsignFieldService {
   ) {}
 
   replace(documentId: number, creatorUserId: number, inputs: FieldInputDto[]) {
-    if (inputs.length > 200) {
-      throw this.invalid('欄位數量不可超過 200 個');
-    }
+    if (inputs.length > 200) throw invalidRequest('欄位數量不可超過 200 個');
     return this.mysql.transaction(async (manager) => {
       const document = await this.access.checkAndLockDraftDoc(
         documentId,
@@ -66,7 +63,7 @@ export class EsignFieldService {
       'source_pdf',
       manager,
     );
-    if (!source) throw this.invalid('草稿缺少 PDF 文件');
+    if (!source) throw invalidRequest('草稿缺少 PDF 文件');
     const bytes = await readPrivateFile(this.storage, source);
     const metadata = await this.pdf.validatePersistedPdf(bytes);
     this.validation.assertSourceIntegrity(document, source, metadata.sha256);
@@ -102,7 +99,7 @@ export class EsignFieldService {
     signers: EsignSigner[],
     manager: EntityManager,
   ) {
-    if (inputs.length > 200) throw this.invalid('欄位數量不可超過 200 個');
+    if (inputs.length > 200) throw invalidRequest('欄位數量不可超過 200 個');
     const signerByPublicId = new Map(
       signers.map((signer) => [signer.publicId, signer]),
     );
@@ -112,14 +109,14 @@ export class EsignFieldService {
         ? signerByPublicId.get(input.signerPublicId)
         : undefined;
       if (input.signerPublicId && !signer) {
-        throw this.invalid('欄位指定的簽署人不屬於本文件');
+        throw invalidRequest('欄位指定的簽署人不屬於本文件');
       }
       if (
         input.page > pageCount ||
         input.xPercent + input.widthPercent > 100 ||
         input.yPercent + input.heightPercent > 100
       ) {
-        throw this.invalid('欄位頁碼或位置超出 PDF 範圍');
+        throw invalidRequest('欄位頁碼或位置超出 PDF 範圍');
       }
       return this.fields.create(
         {
@@ -138,13 +135,5 @@ export class EsignFieldService {
         manager,
       );
     });
-  }
-
-  private invalid(message: string): AppException {
-    return new AppException(
-      AppErrorCode.INVALID_REQUEST,
-      message,
-      HttpStatus.BAD_REQUEST,
-    );
   }
 }

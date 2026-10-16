@@ -13,8 +13,9 @@ export function getRequestUrl(request: UrlSource | FastifyRequest): string {
 
 export function getRequestPath(request: UrlSource | FastifyRequest): string {
   const path = getRequestUrl(request).split('?')[0] || '/';
+  // 路徑本身就是憑證的端點，log 一律正規化，不留完整 token
   return path.replace(
-    /^(\/api)?\/external-signature-invitations\/[^/]+$/,
-    '$1/external-signature-invitations/:token',
+    /^(\/api)?\/(external-signature-invitations|signature-verifications)\/.*$/,
+    '$1/$2/:token',
   );
 }

@@ -8,6 +8,7 @@ import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-f
 import { AuditEventRepository } from '../repositories/audit-event.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
+import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
@@ -28,6 +29,7 @@ export class EsignCompletionAccessService {
     private readonly pdf: PdfValidationService,
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
+    private readonly records: SignatureRecordRepository,
   ) {}
 
   async internalFile(documentId: number, userId: number) {
@@ -44,15 +46,21 @@ export class EsignCompletionAccessService {
   }
 
   async receiptStatus(signerPublicId: string, token: string) {
-    const { document } = await this.receiptContext(
+    const { signer, document } = await this.receiptContext(
       signerPublicId,
       token,
+    );
+    // 完成回執只在簽署成功後核發，持有者必有簽署紀錄
+    const record = await this.records.findBySignerId(
+      signer.id,
+      this.mysql.getManager(),
     );
     return {
       title: document.title,
       status: document.status,
       completedAt: document.completedAt?.toISOString() ?? null,
       stoppedAt: document.stoppedAt?.toISOString() ?? null,
+      verificationUrl: this.tokens.verificationUrl(record?.verificationCode),
     };
   }
 

@@ -1,7 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
+import { Injectable } from '@nestjs/common';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import { invalidRequest } from '../helpers/esign-errors';
 import { DocumentRepository } from '../repositories/document.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
@@ -22,11 +21,7 @@ export class EsignStoppageService {
   stopByCreator(documentId: number, creatorUserId: number, reason: string) {
     const normalized = reason.trim();
     if (normalized.length < 1 || normalized.length > 500) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '停止原因必須為 1 至 500 字',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw invalidRequest('停止原因必須為 1 至 500 字');
     }
     return this.stop(documentId, normalized, new Date(), creatorUserId);
   }

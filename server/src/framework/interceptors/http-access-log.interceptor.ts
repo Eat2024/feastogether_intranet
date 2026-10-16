@@ -51,6 +51,8 @@ const QUERY_EXCLUDED_PATHS = [
   '/api/auth/session',
   '/external-signature-invitations/:token',
   '/api/external-signature-invitations/:token',
+  '/signature-verifications/:token',
+  '/api/signature-verifications/:token',
 ];
 
 /**

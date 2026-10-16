@@ -4,6 +4,12 @@ import { EsignSigner } from '../entities/esign-signer.entity';
 
 @Injectable()
 export class SignerRepository {
+  findById(id: number, manager: EntityManager) {
+    return manager.findOne(EsignSigner, {
+      where: { id, deletedAt: IsNull() },
+    });
+  }
+
   findByPublicId(publicId: string, manager: EntityManager) {
     return manager.findOne(EsignSigner, {
       where: { publicId, deletedAt: IsNull() },

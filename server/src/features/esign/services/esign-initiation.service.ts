@@ -3,16 +3,14 @@ import type { EsignDocument } from '../entities/esign-document.entity';
 import type { EsignSigner } from '../entities/esign-signer.entity';
 import type { EsignDocumentField } from '../entities/esign-document-field.entity';
 import type { FieldInputDto } from '../dto/field.dto';
+import { invalidRequest } from '../helpers/esign-errors';
 import type { ValidatedPdf } from './pdf-validation.service';
-import { createHash } from 'node:crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
+import { Injectable } from '@nestjs/common';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { DocumentRepository } from '../repositories/document.repository';
 import { NotificationRepository } from '../repositories/notification.repository';
 import { SignerRepository } from '../repositories/signer.repository';
-import { canonicalJson, EsignAuditService } from './esign-audit.service';
+import { canonicalSha256, EsignAuditService } from './esign-audit.service';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
@@ -133,7 +131,7 @@ export class EsignInitiationService {
       !Number.isFinite(input.signEndAt.getTime()) ||
       input.signStartAt >= input.signEndAt
     ) {
-      throw this.invalid('簽署開始時間必須早於截止時間');
+      throw invalidRequest('簽署開始時間必須早於截止時間');
     }
   }
 
@@ -146,7 +144,7 @@ export class EsignInitiationService {
         Number.isInteger(signerIndex) && signerIndex >= 0
           ? signers[signerIndex]
           : undefined;
-      if (!signer) throw this.invalid('欄位指定的簽署人不在本次名單中');
+      if (!signer) throw invalidRequest('欄位指定的簽署人不在本次名單中');
       return { ...field, signerPublicId: signer.publicId };
     });
   }
@@ -158,9 +156,9 @@ export class EsignInitiationService {
     pageCount: number,
   ): void {
     if (signers.length < 1 || signers.length > 50) {
-      throw this.invalid('文件必須有 1 至 50 名簽署人');
+      throw invalidRequest('文件必須有 1 至 50 名簽署人');
     }
-    if (fields.length > 200) throw this.invalid('欄位數量不可超過 200 個');
+    if (fields.length > 200) throw invalidRequest('欄位數量不可超過 200 個');
 
     const signerIds = new Set(signers.map((signer) => signer.id));
     if (
@@ -172,7 +170,7 @@ export class EsignInitiationService {
           field.pageNumber > pageCount,
       )
     ) {
-      throw this.invalid('文件包含無效或未指派的簽署欄位');
+      throw invalidRequest('文件包含無效或未指派的簽署欄位');
     }
     for (const signer of signers) {
       if (
@@ -181,7 +179,7 @@ export class EsignInitiationService {
             field.signerId === signer.id && field.fieldType === 'signature',
         )
       ) {
-        throw this.invalid('每名簽署人至少需要一個簽名欄位');
+        throw invalidRequest('每名簽署人至少需要一個簽名欄位');
       }
     }
   }
@@ -238,10 +236,7 @@ export class EsignInitiationService {
         sortOrder: field.sortOrder,
       })),
     };
-    const payloadJson = canonicalJson(payload);
-    const payloadSha256 = createHash('sha256')
-      .update(payloadJson, 'utf8')
-      .digest('hex');
+    const payloadSha256 = canonicalSha256(payload);
     return { payload, payloadSha256, consentVersion: activeConsent.version };
   }
 
@@ -357,14 +352,6 @@ export class EsignInitiationService {
         metadata: { status: 'active', consentVersion: consentVersion },
       },
       manager,
-    );
-  }
-
-  private invalid(message: string): AppException {
-    return new AppException(
-      AppErrorCode.INVALID_REQUEST,
-      message,
-      HttpStatus.BAD_REQUEST,
     );
   }
 }

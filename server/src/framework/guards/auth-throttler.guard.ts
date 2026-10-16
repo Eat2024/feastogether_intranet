@@ -16,6 +16,7 @@ import {
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { AUTH_RATE_LIMIT_MESSAGE } from '#app/features/auth/auth.constants';
+import { getRequestPath } from '#app/framework/http/request.context';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 
 /**
@@ -48,7 +49,7 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
       message: '取不到 client IP，本次請求不套用速率限制',
       metadata: {
         method: req.method,
-        path: req.url,
+        path: getRequestPath(req),
         xForwardedFor: (req.headers as Record<string, unknown> | undefined)?.[
           'x-forwarded-for'
         ],
@@ -125,7 +126,7 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
       metadata: {
         ip: req.ip,
         method: req.method,
-        path: req.url,
+        path: getRequestPath(req),
         xForwardedFor: headers['x-forwarded-for'],
         limit: detail.limit,
         totalHits: detail.totalHits,

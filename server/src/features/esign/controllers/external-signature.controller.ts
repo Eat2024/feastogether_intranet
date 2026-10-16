@@ -16,12 +16,17 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
+import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
+import { sendHtmlErrorPage } from '#app/common/http/html-error-page';
 import { Public } from '#app/framework/decorators/public.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
+import {
+  externalUnauthorized,
+  invalidRequest,
+  stateConflict,
+} from '../helpers/esign-errors';
 import {
   clearExternalAccessCookie,
   clearExternalReceiptCookie,
@@ -30,7 +35,10 @@ import {
   setExternalAccessCookie,
   setExternalReceiptCookie,
 } from '../helpers/external-signature-cookie';
-import { EsignSigningService } from '../services/esign-signing.service';
+import {
+  EsignSigningService,
+  toSignatureResultView,
+} from '../services/esign-signing.service';
 import { EsignTokenService } from '../services/esign-token.service';
 import { ExternalAccessService } from '../services/external-access.service';
 import { EsignCompletionAccessService } from '../services/esign-completion-access.service';
@@ -50,25 +58,21 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '開啟外部簽署邀請確認頁',
     description:
-      '回傳含開啟按鈕的 HTML 表單，此 GET 不建立簽署 session。\n\n前端串接參考：外部簽署人點擊 Email 邀請連結進入此後端頁面，再按按鈕送出 POST external-signature-session；不是 Next.js 頁面直接呼叫。',
+      '回傳含開啟按鈕的 HTML 表單，此 GET 不建立簽署 session；token 格式錯誤時回 HTML 錯誤頁。\n\n前端串接參考：外部簽署人點擊 Email 邀請連結進入此後端頁面，再按按鈕送出 POST external-signature-session；不是 Next.js 頁面直接呼叫。',
   })
   @Get('external-signature-invitations/:token')
   getBridge(@Param('token') token: string, @Res() reply: FastifyReply): void {
+    this.setInvitationPageHeaders(reply);
     if (!this.external.isTokenFormat(token)) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '邀請連結格式錯誤',
+      this.invitationErrorPage(
+        reply,
         HttpStatus.BAD_REQUEST,
+        '邀請連結格式錯誤',
       );
+      return;
     }
     const nonce = randomBytes(18).toString('base64');
     reply
-      .header('Cache-Control', 'no-store')
-      .header('Referrer-Policy', 'no-referrer')
-      .header(
-        'Content-Security-Policy',
-        `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
-      )
       .type('text/html; charset=utf-8')
       .send(
         '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>開啟電子簽署</title></head><body>' +
@@ -83,34 +87,46 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '建立外部簽署存取 session',
     description:
-      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
+      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁；token 格式錯誤、邀請無效或過期時回 HTML 錯誤頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
   })
   @Post('external-signature-session')
   async createSession(
     @Body('token') token: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
+    this.setInvitationPageHeaders(reply);
     if (!this.external.isTokenFormat(token)) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '邀請連結格式錯誤',
+      this.invitationErrorPage(
+        reply,
         HttpStatus.BAD_REQUEST,
+        '邀請連結格式錯誤',
       );
+      return;
     }
-    const session = await this.external.createSession(token);
-    setExternalAccessCookie(
-      reply,
-      this.config,
-      token,
-      session.invitationExpiresAt,
-    );
-    reply
-      .header('Cache-Control', 'no-store')
-      .header('Referrer-Policy', 'no-referrer')
-      .redirect(
+    try {
+      const session = await this.external.createSession(token);
+      setExternalAccessCookie(
+        reply,
+        this.config,
+        token,
+        session.invitationExpiresAt,
+      );
+      reply.redirect(
         `/external-signatures/${session.signerPublicId}`,
         HttpStatus.SEE_OTHER,
       );
+    } catch (error) {
+      // 非預期錯誤交給全域 handler 記錄
+      if (!(error instanceof AppException)) throw error;
+      const status = error.getStatus();
+      this.invitationErrorPage(
+        reply,
+        status,
+        status >= 500
+          ? '電子簽署服務暫時無法使用，請稍後再試'
+          : '邀請連結無效或已到期',
+      );
+    }
   }
 
   @UseGuards(OriginGuard)
@@ -150,7 +166,7 @@ export class ExternalSignatureController {
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const file = await this.external.source(this.accessToken(request));
-    if (!file) throw this.unauthorized();
+    if (!file) throw externalUnauthorized();
     allowPdfPreview(reply);
     reply
       .type('application/pdf')
@@ -165,7 +181,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '送出外部簽署人簽名',
     description:
-      '以外部存取 cookie 驗證並提交同意紀錄與簽名；成功後清除存取 cookie，設定完成回執 cookie。\n\n前端串接參考：ExternalSignFlow 送出簽名時直接 fetch，成功後導向 /external-signatures/[signerPublicId]/completion。',
+      '以外部存取 cookie 驗證並提交同意紀錄與簽名；成功後清除存取 cookie，設定完成回執 cookie，並回傳該簽章的公開驗證網址 verificationUrl。\n\n前端串接參考：ExternalSignFlow 送出簽名時直接 fetch，成功後導向 /external-signatures/[signerPublicId]/completion。',
   })
   @Post('external-signing-task/signatures')
   async sign(
@@ -194,24 +210,40 @@ export class ExternalSignatureController {
       );
     }
     reply.status(result.repeated ? HttpStatus.OK : HttpStatus.CREATED);
-    return {
-      signerPublicId: result.signerPublicId,
-      signedAt: result.signedAt.toISOString(),
-      documentStatus: result.documentStatus,
-    };
+    return toSignatureResultView(result);
+  }
+
+  /** 邀請頁由瀏覽器直接開啟（Email 連結、表單送出），不快取、不外送 referrer。 */
+  private setInvitationPageHeaders(reply: FastifyReply): void {
+    reply
+      .header('Cache-Control', 'no-store')
+      .header('Referrer-Policy', 'no-referrer')
+      .header(
+        'Content-Security-Policy',
+        `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+      );
+  }
+
+  /** 邀請頁出錯時回 HTML，不讓外部簽署人看到 JSON。 */
+  private invitationErrorPage(
+    reply: FastifyReply,
+    status: number,
+    message: string,
+  ): void {
+    sendHtmlErrorPage(reply, status, '無法開啟電子簽署文件', message);
   }
 
   private accessToken(request: FastifyRequest): string {
     const token = cookieTokenFromMap(request.cookies, EXTERNAL_ACCESS_COOKIE);
     if (!token || !this.external.isTokenFormat(token))
-      throw this.unauthorized();
+      throw externalUnauthorized();
     return token;
   }
 
   @ApiOperation({
     summary: '查詢外部簽署完成狀態',
     description:
-      '以完成回執 cookie 查詢文件狀態；不使用原邀請連結作為憑證。\n\n前端串接參考：/external-signatures/[signerPublicId]/completion 的 ExternalCompletion 載入時查詢，顯示等待其他人簽署、產檔中或完成等狀態。',
+      '以完成回執 cookie 查詢文件狀態與本人簽章的公開驗證網址 verificationUrl；不使用原邀請連結作為憑證。\n\n前端串接參考：/external-signatures/[signerPublicId]/completion 的 ExternalCompletion 載入時查詢，顯示等待其他人簽署、產檔中或完成等狀態。',
   })
   @Get('external-completions/:signerPublicId')
   completionStatus(
@@ -241,13 +273,7 @@ export class ExternalSignatureController {
       signerPublicId,
       this.receiptToken(request),
     );
-    if (!file) {
-      throw new AppException(
-        AppErrorCode.ESIGN_STATE_CONFLICT,
-        '完成文件尚未產生',
-        HttpStatus.CONFLICT,
-      );
-    }
+    if (!file) throw stateConflict('完成文件尚未產生');
     reply
       .type('application/pdf')
       .header('Content-Disposition', 'attachment; filename="completed.pdf"')
@@ -287,11 +313,7 @@ export class ExternalSignatureController {
         signerPublicId,
       )
     ) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '簽署人識別格式錯誤',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw invalidRequest('簽署人識別格式錯誤');
     }
     clearExternalReceiptCookie(reply, signerPublicId);
   }
@@ -299,15 +321,7 @@ export class ExternalSignatureController {
   private receiptToken(request: FastifyRequest): string {
     const token = cookieTokenFromMap(request.cookies, EXTERNAL_RECEIPT_COOKIE);
     if (!token || !this.external.isTokenFormat(token))
-      throw this.unauthorized();
+      throw externalUnauthorized();
     return token;
-  }
-
-  private unauthorized(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
-      '外部簽署存取已失效',
-      HttpStatus.UNAUTHORIZED,
-    );
   }
 }

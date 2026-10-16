@@ -195,6 +195,7 @@ INDEX (user_id, status)
 | `source_ip`               | VARCHAR(45)  |   否 |                                 | 簽署來源 IPv4／IPv6，僅作輔助證據。                           |
 | `user_agent`              | VARCHAR(500) |   否 |                                 | 簽署端 user agent，僅作輔助證據。                             |
 | `signed_at_utc`           | DATETIME(6)  |   是 | INDEX                           | Server 接受並完成簽署交易的 UTC 時間。                        |
+| `verification_code`       | CHAR(22)     |   否 | UNIQUE                          | 簽章公開驗證代碼（16 bytes 隨機值的 base64url），驗證網址為 `/verify/{code}`；Spec 04 上線前的紀錄為 NULL，不回補。 |
 | `created_at`              | DATETIME(6)  |   是 | INDEX                           | 證據紀錄建立時間，通常與 `signed_at_utc` 相同。               |
 
 本表不提供 `updated_at`、`deleted_at`，避免一般 repository 暴露修改或軟刪除語意。
@@ -249,19 +250,19 @@ INDEX (document_id, occurred_at, id)
 
 ### 4.3 `esign_verification_records`
 
-文件完成後產生的 QR Code 公開驗證紀錄。QR Code 僅包含 `/verify/{public_id}`，不直接包含完整 manifest 或簽署人個資。
+文件結案時寫入的文件驗證快照（Spec 04），與完成 PDF 在同一 transaction 成立。完成 PDF 上的 QR Code 指向單一簽章的驗證網址 `/verify/{code}`（code 為 `esign_signature_records.verification_code`），公開驗證時再以該簽署人所屬文件讀取本表比對；本表的 `public_id` 保留給日後文件層級驗證入口。
 
 | 欄位               | 型別        | 必填 | 鍵值／索引                        | 說明                                                                                                       |
 | ------------------ | ----------- | ---: | --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `id`               | BIGINT      |   是 | PK                                | 驗證紀錄流水號。                                                                                           |
 | `document_id`      | BIGINT      |   是 | FK → `esign_documents.id`、UNIQUE | 第一階段每份完成文件最多一筆正式驗證紀錄。                                                                 |
-| `public_id`        | CHAR(36)    |   是 | UNIQUE                            | QR Code 公開網址使用的不可預測 UUID，不使用 DB 流水號。                                                    |
+| `public_id`        | CHAR(36)    |   是 | UNIQUE                            | 不可預測的 UUID，不使用 DB 流水號；Spec 04 不對外使用，保留給日後文件層級驗證入口。                        |
 | `manifest_json`    | JSON        |   是 |                                   | 完成文件的 canonical 驗證 manifest；包含 schema version、文件 hash、最終 PDF hash、簽署結果及 audit root。 |
 | `manifest_sha256`  | CHAR(64)    |   是 | INDEX                             | Server 對 canonical manifest 計算的 SHA-256。                                                              |
 | `final_pdf_sha256` | CHAR(64)    |   是 | INDEX                             | 寫入 object storage 的最終 PDF SHA-256。                                                                   |
-| `audit_root_hash`  | CHAR(64)    |   是 |                                   | 文件最後一筆有效 audit event hash。                                                                        |
+| `audit_root_hash`  | CHAR(64)    |   是 |                                   | 同一結案 transaction 寫入的 `document.completed` event hash。                                              |
 | `status`           | VARCHAR(20) |   是 | INDEX，預設 `valid`               | `valid`、`revoked`、`superseded`。                                                                         |
-| `issued_at`        | DATETIME(6) |   是 | INDEX                             | QR 驗證紀錄正式生效時間。                                                                                  |
+| `issued_at`        | DATETIME(6) |   是 | INDEX                             | 驗證快照正式生效時間；等於文件 `completed_at`。                                                            |
 | `revoked_at`       | DATETIME(6) |   否 | INDEX                             | 驗證紀錄失效時間；僅 `status = revoked` 時填入。                                                           |
 | `created_at`       | DATETIME(6) |   是 | INDEX                             | 建立時間。                                                                                                 |
 
@@ -352,7 +353,7 @@ esign_signers.user_id = currentUserId
 
 ### QR Code 驗證
 
-公開驗證 endpoint 以 `esign_verification_records.public_id` 查找紀錄，重新計算 `manifest_sha256`、最終 PDF hash 與 audit chain，並只回傳最小必要資訊。不得公開文件內容、完整員編、簽名圖片或未遮罩個資。
+公開驗證 endpoint 以驗證代碼查詢簽署紀錄（格式不符不查 DB），再查該簽署人與文件；文件已完成時再讀取本文件的 `esign_verification_records`，重新計算 `manifest_sha256`，比對 manifest 與欄位的完成 PDF 摘要及 audit root、完成 PDF file object 摘要、本人快照項目，並由 `audit_root_hash` 往回逐筆重算 hash 至第一筆事件；任一不一致回 409 `ESIGN_INTEGRITY_FAILED`。查詢只讀、不寫 audit。依 Constitution III 公開簽章驗證例外，只可揭露簽署人於發起時固定的完整姓名、文件標題與驗證所需的狀態、時間及摘要；不得公開文件內容、Email、員編、部門、職稱、簽名圖片、來源 IP、User-Agent 或其他未遮罩個資。
 
 ## 7. 狀態一致性
 

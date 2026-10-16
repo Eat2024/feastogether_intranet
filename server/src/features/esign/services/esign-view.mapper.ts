@@ -17,6 +17,7 @@ import {
   EsignSignerViewDto,
   EsignSourceFileDto,
 } from '../dto/esign-common.dto';
+import { EsignTokenService } from './esign-token.service';
 
 export interface EsignSignerCounts {
   pendingCount: number;
@@ -26,6 +27,8 @@ export interface EsignSignerCounts {
 /** 將 persistence entity 明確裁切成公開 DTO，避免 credential 或 object key 外洩。 */
 @Injectable()
 export class EsignViewMapper {
+  constructor(private readonly tokens: EsignTokenService) {}
+
   documentSummary(
     document: EsignDocument,
     counts: EsignSignerCounts,
@@ -72,9 +75,11 @@ export class EsignViewMapper {
     };
   }
 
+  /** verificationCode 來自本人的簽署紀錄；尚未簽署時沒有，驗證網址為 null */
   signer(
     signer: EsignSigner,
     invitationDelivery: EsignInvitationDelivery | null,
+    verificationCode?: string,
   ): EsignSignerViewDto {
     return {
       publicId: signer.publicId,
@@ -87,6 +92,7 @@ export class EsignViewMapper {
       status: signer.status as EsignSignerStatus,
       signedAt: signer.signedAt?.toISOString() ?? null,
       invitationDelivery,
+      verificationUrl: this.tokens.verificationUrl(verificationCode),
     };
   }
 

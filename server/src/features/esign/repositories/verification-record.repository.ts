@@ -8,6 +8,10 @@ export class VerificationRecordRepository {
     return manager.insert(EsignVerificationRecord, record as never);
   }
 
+  findByDocumentId(documentId: number, manager: EntityManager) {
+    return manager.findOneBy(EsignVerificationRecord, { documentId });
+  }
+
   findByPublicId(publicId: string, manager: EntityManager) {
     return manager.findOneBy(EsignVerificationRecord, { publicId });
   }

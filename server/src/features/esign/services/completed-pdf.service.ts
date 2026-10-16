@@ -1,22 +1,105 @@
 import { createHash } from 'node:crypto';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  PDFDocument,
+  type PDFImage,
+  type PDFPage,
+  StandardFonts,
+  rgb,
+} from 'pdf-lib';
+import { type BitMatrix, create as createQr } from 'qrcode';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   PRIVATE_FILE_STORAGE,
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
+import { integrityFailed } from '../helpers/esign-errors';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
-import { canonicalJson } from './esign-audit.service';
+import type { EsignFileObject } from '../entities/esign-file-object.entity';
+import type { EsignSignatureRecord } from '../entities/esign-signature-record.entity';
+import { canonicalSha256 } from './esign-audit.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
+import { EsignTokenService } from './esign-token.service';
 import { PdfValidationService } from './pdf-validation.service';
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 簽名欄位版面（與簽署畫面佔位圖相同）：QR 邊長為欄位高度 72% 並貼齊右下角，
+ * 簽名在左側剩餘寬度（扣除欄位高度 8% 間距）內等比縮放置中，兩者不重疊。
+ * 欄位過窄時 QR 縮到不超過可用寬度的一半，確保簽名不被擠掉、QR 不超出欄位。
+ */
+export function signatureFieldLayout(
+  field: Box,
+  image: { width: number; height: number },
+): { signature: Box; qr: Box } {
+  const gap = field.height * 0.08;
+  const qrSize = Math.max(
+    0,
+    Math.min(field.height * 0.72, (field.width - gap) / 2),
+  );
+  const availableWidth = Math.max(0, field.width - qrSize - gap);
+  const scale = Math.min(
+    availableWidth / image.width,
+    field.height / image.height,
+  );
+  const width = image.width * scale;
+  const height = image.height * scale;
+  return {
+    signature: {
+      x: field.x + (availableWidth - width) / 2,
+      y: field.y + (field.height - height) / 2,
+      width,
+      height,
+    },
+    qr: {
+      x: field.x + field.width - qrSize,
+      y: field.y,
+      width: qrSize,
+      height: qrSize,
+    },
+  };
+}
+
+/** 一列中連續暗模組的 [起始欄, 長度]，合併後減少 PDF 繪圖指令與接縫。 */
+function darkRuns(modules: BitMatrix, row: number): Array<[number, number]> {
+  const runs: Array<[number, number]> = [];
+  for (let col = 0; col < modules.size; col += 1) {
+    if (!modules.get(row, col)) continue;
+    const last = runs.at(-1);
+    if (last && last[0] + last[1] === col) last[1] += 1;
+    else runs.push([col, 1]);
+  }
+  return runs;
+}
+
+/** 以向量方塊畫 QR（錯誤修正 M、無留白、先畫白底），任何列印解析度都清晰。 */
+export function drawVectorQr(page: PDFPage, text: string, box: Box): void {
+  const { modules } = createQr(text, { errorCorrectionLevel: 'M' });
+  const cell = box.width / modules.size;
+  page.drawRectangle({ ...box, color: rgb(1, 1, 1) });
+  for (let row = 0; row < modules.size; row += 1) {
+    for (const [col, length] of darkRuns(modules, row)) {
+      page.drawRectangle({
+        x: box.x + col * cell,
+        y: box.y + box.height - (row + 1) * cell,
+        width: length * cell,
+        height: cell,
+        color: rgb(0, 0, 0),
+      });
+    }
+  }
+}
 
 @Injectable()
 export class CompletedPdfService {
@@ -29,6 +112,7 @@ export class CompletedPdfService {
     private readonly records: SignatureRecordRepository,
     private readonly validation: EsignDocumentValidationService,
     private readonly pdfValidation: PdfValidationService,
+    private readonly tokens: EsignTokenService,
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
   ) {}
@@ -36,14 +120,14 @@ export class CompletedPdfService {
   async create(documentId: number) {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
-    if (!document || document.status !== 'finalizing') throw this.integrity();
+    if (!document || document.status !== 'finalizing') throw integrityFailed();
     const [signers, fields, source] = await Promise.all([
       this.signers.findByDocument(documentId, manager),
       this.fields.findByDocument(documentId, manager),
       this.files.findDocumentFile(documentId, 'source_pdf', manager),
     ]);
     if (!source || signers.some((signer) => signer.status !== 'signed')) {
-      throw this.integrity();
+      throw integrityFailed();
     }
     const sourceBytes = await readPrivateFile(this.storage, source);
     const sourceMetadata =
@@ -55,9 +139,7 @@ export class CompletedPdfService {
     );
     this.validation.assertPayloadIntegrity(
       document,
-      createHash('sha256')
-        .update(canonicalJson(document.signingPayloadJson), 'utf8')
-        .digest('hex'),
+      canonicalSha256(document.signingPayloadJson),
     );
 
     const records = await this.records.findBySignerIds(
@@ -67,7 +149,7 @@ export class CompletedPdfService {
     const recordBySigner = new Map(
       records.map((record) => [record.signerId, record]),
     );
-    if (recordBySigner.size !== signers.length) throw this.integrity();
+    if (recordBySigner.size !== signers.length) throw integrityFailed();
     const signatureFiles = (
       await Promise.all(
         records.map((record) =>
@@ -84,7 +166,7 @@ export class CompletedPdfService {
           record.consentVersion !== consentVersion,
       )
     ) {
-      throw this.integrity();
+      throw integrityFailed();
     }
     const signatureByField = new Map(
       signatureFiles.map((file) => [file.documentFieldId, file]),
@@ -98,7 +180,7 @@ export class CompletedPdfService {
       (field) => field.fieldType === 'signature',
     );
     if (signatureFiles.length !== signatureFields.length) {
-      throw this.integrity();
+      throw integrityFailed();
     }
 
     for (const field of fields) {
@@ -112,7 +194,7 @@ export class CompletedPdfService {
         !signer.signedAt ||
         signer.signedAt.getTime() !== record.signedAtUtc.getTime()
       ) {
-        throw this.integrity();
+        throw integrityFailed();
       }
       const { width: pageWidth, height: pageHeight } = page.getSize();
       const x = (Number(field.xPercent) / 100) * pageWidth;
@@ -123,26 +205,18 @@ export class CompletedPdfService {
         ((Number(field.yPercent) + Number(field.heightPercent)) / 100) *
           pageHeight;
       if (field.fieldType === 'signature') {
-        const file = signatureByField.get(field.id);
-        if (
-          !file ||
-          file.signatureRecordId !== record.id ||
-          file.filePurpose !== 'signature_png' ||
-          file.mimeType !== 'image/png' ||
-          file.archiveStatus !== 'active'
-        ) {
-          throw this.integrity();
-        }
-        const pngBytes = await readPrivateFile(this.storage, file);
-        if (
-          Number(file.fileSize) !== pngBytes.byteLength ||
-          file.sha256 !==
-            createHash('sha256').update(pngBytes).digest('hex')
-        ) {
-          throw this.integrity();
-        }
-        const png = await output.embedPng(pngBytes);
-        page.drawImage(png, { x, y, width, height });
+        const png = await this.embedSignature(
+          output,
+          signatureByField.get(field.id),
+          record,
+        );
+        const layout = signatureFieldLayout({ x, y, width, height }, png);
+        page.drawImage(png, layout.signature);
+        // Spec 04 上線前的簽署紀錄沒有驗證代碼，不畫 QR
+        const verificationUrl = this.tokens.verificationUrl(
+          record.verificationCode,
+        );
+        if (verificationUrl) drawVectorQr(page, verificationUrl, layout.qr);
       } else if (field.fieldType === 'date') {
         page.drawText(this.taipeiDate(record.signedAtUtc), {
           x,
@@ -152,7 +226,7 @@ export class CompletedPdfService {
           color: rgb(0, 0, 0),
         });
       } else {
-        throw this.integrity();
+        throw integrityFailed();
       }
     }
 
@@ -173,13 +247,38 @@ export class CompletedPdfService {
         persisted.pageCount !== sourceMetadata.pageCount ||
         persisted.sha256 !== stored.sha256
       ) {
-        throw this.integrity();
+        throw integrityFailed();
       }
       return { stored, metadata: persisted };
     } catch (error) {
       await this.storage.delete(stored).catch(() => undefined);
       throw error;
     }
+  }
+
+  /** 簽名 PNG 必須屬於該簽署紀錄且 bytes 與保存的摘要一致，才可嵌入完成 PDF。 */
+  private async embedSignature(
+    output: PDFDocument,
+    file: EsignFileObject | undefined,
+    record: EsignSignatureRecord,
+  ): Promise<PDFImage> {
+    if (
+      !file ||
+      file.signatureRecordId !== record.id ||
+      file.filePurpose !== 'signature_png' ||
+      file.mimeType !== 'image/png' ||
+      file.archiveStatus !== 'active'
+    ) {
+      throw integrityFailed();
+    }
+    const pngBytes = await readPrivateFile(this.storage, file);
+    if (
+      Number(file.fileSize) !== pngBytes.byteLength ||
+      file.sha256 !== createHash('sha256').update(pngBytes).digest('hex')
+    ) {
+      throw integrityFailed();
+    }
+    return output.embedPng(pngBytes);
   }
 
   private taipeiDate(date: Date): string {
@@ -196,19 +295,11 @@ export class CompletedPdfService {
   }
 
   private consentVersion(payload: unknown): string {
-    if (!payload || typeof payload !== 'object') throw this.integrity();
+    if (!payload || typeof payload !== 'object') throw integrityFailed();
     const consent = (payload as Record<string, unknown>).consent;
-    if (!consent || typeof consent !== 'object') throw this.integrity();
+    if (!consent || typeof consent !== 'object') throw integrityFailed();
     const version = (consent as Record<string, unknown>).version;
-    if (typeof version !== 'string' || version === '') throw this.integrity();
+    if (typeof version !== 'string' || version === '') throw integrityFailed();
     return version;
-  }
-
-  private integrity(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_INTEGRITY_FAILED,
-      '文件完整性驗證失敗',
-      HttpStatus.CONFLICT,
-    );
   }
 }

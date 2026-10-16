@@ -1,11 +1,9 @@
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '#app/app.module';
 import {
   configureApp,
+  createFastifyAdapter,
   registerFastifyPlugins,
 } from '#app/bootstrap/app.bootstrap';
 import type { E2eServer } from './api-response.helper';
@@ -23,8 +21,9 @@ export async function createSecurityE2eApp(
   const moduleRef = await override(
     Test.createTestingModule({ imports: [AppModule] }),
   ).compile();
+  // 與正式環境相同的 trustProxy，限流測試才能以 X-Forwarded-For 隔離 client IP
   const app = moduleRef.createNestApplication<NestFastifyApplication>(
-    new FastifyAdapter(),
+    createFastifyAdapter(),
     { bodyParser: false },
   );
   configureApp(app);

@@ -135,7 +135,7 @@ erDiagram
         json metadata_json
     }
 
-    esignVerificationRecords["esign_verification_records QR驗證"] {
+    esignVerificationRecords["esign_verification_records 文件驗證快照"] {
         bigint id PK
         bigint document_id FK, UK
         uuid public_id UK
@@ -184,7 +184,7 @@ erDiagram
 
 - 文件進入 `in_progress` 後，文件、欄位、簽署人及 `signing_payload_json` 必須鎖定；需要修改時建立新文件。
 - `signing_payload_json` 與 `manifest_json` 必須使用固定 canonicalization 規則，再由 server 計算 SHA-256。
-- QR Code 只包含 `/verify/{public_id}` 驗證網址，不包含完整 manifest、員工個資或簽名圖檔。
+- QR Code 只包含單一簽章的 `/verify/{code}` 驗證網址（code 為簽署時寫入 `esign_signature_records.verification_code` 的 22 字隨機代碼），不包含 manifest、員工個資或簽名圖檔；`esign_verification_records` 是結案時寫入的文件驗證快照。
 - PDF、簽名圖檔、manifest、QR Code 與匯出檔案存放於 private object storage；MySQL 的 `esign_file_objects` 只保存 object key、hash 及必要 metadata。
 - `esign_signature_records`、`esign_audit_events` 與 `esign_verification_records` 屬證據資料，不提供一般管理後台修改或刪除。
 - 第一階段不建立 `auth_users`、identity binding、RBAC、provider、session 或 document version 資料表；單一 issuer 驗證完成後直接以員工編號對應 `users.empid`。

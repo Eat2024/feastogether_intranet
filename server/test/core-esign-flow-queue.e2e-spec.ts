@@ -13,6 +13,7 @@ import {
   ESIGN_MAINTENANCE_QUEUE,
 } from '#app/features/esign/esign-queue.constants';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
+import { canonicalSha256 } from '#app/features/esign/services/esign-audit.service';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import {
   PRIVATE_FILE_STORAGE,
@@ -314,6 +315,45 @@ describe('核心電子簽真實 queue e2e', () => {
       );
       expect(Number(completionRows[0].file_count)).toBe(1);
       expect(Number(completionRows[0].audit_count)).toBe(1);
+
+      const snapshots = await db.query<
+        Array<{
+          manifest_json: Record<string, unknown>;
+          manifest_sha256: string;
+          final_pdf_sha256: string;
+          audit_root_hash: string;
+          status: string;
+          issued_at: Date;
+          revoked_at: Date | null;
+          completed_at: Date;
+          completed_pdf_sha256: string;
+          completed_event_hash: string;
+        }>
+      >(
+        `SELECT v.manifest_json, v.manifest_sha256, v.final_pdf_sha256,
+           v.audit_root_hash, v.status, v.issued_at, v.revoked_at, d.completed_at,
+           (SELECT f.sha256 FROM esign_file_objects f WHERE f.document_id = d.id AND f.file_purpose = 'completed_pdf') completed_pdf_sha256,
+           (SELECT a.event_hash FROM esign_audit_events a WHERE a.document_id = d.id AND a.event_type = 'document.completed') completed_event_hash
+         FROM esign_verification_records v
+         JOIN esign_documents d ON d.id = v.document_id
+         WHERE v.document_id = ?`,
+        [documentId],
+      );
+      expect(snapshots).toHaveLength(1);
+      const [snapshot] = snapshots;
+      expect(snapshot.status).toBe('valid');
+      expect(snapshot.revoked_at).toBeNull();
+      expect(snapshot.final_pdf_sha256).toBe(snapshot.completed_pdf_sha256);
+      expect(snapshot.audit_root_hash).toBe(snapshot.completed_event_hash);
+      expect(new Date(snapshot.issued_at).getTime()).toBe(
+        new Date(snapshot.completed_at).getTime(),
+      );
+      expect(canonicalSha256(snapshot.manifest_json)).toBe(
+        snapshot.manifest_sha256,
+      );
+      expect(JSON.stringify(snapshot.manifest_json)).not.toMatch(
+        /queue-candidate|Queue 外部簽署人|E2E003Q1/,
+      );
     } finally {
       await finalizationQueue.resume().catch(() => undefined);
       await worker.close();
@@ -349,6 +389,10 @@ describe('核心電子簽真實 queue e2e', () => {
     await db.query('DELETE FROM esign_audit_events WHERE document_id = ?', [
       id,
     ]);
+    await db.query(
+      'DELETE FROM esign_verification_records WHERE document_id = ?',
+      [id],
+    );
     await db.query(
       'DELETE FROM esign_notification_logs WHERE batch_id IN (SELECT id FROM esign_notification_batches WHERE document_id = ?)',
       [id],

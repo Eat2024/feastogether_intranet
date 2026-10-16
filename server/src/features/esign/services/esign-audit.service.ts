@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AppException } from '#app/common/errors/app.exception';
+import { resourceNotFound } from '../helpers/esign-errors';
 import { AuditEventRepository } from '../repositories/audit-event.repository';
 
 export interface EsignAuditMetadata {
@@ -38,6 +37,43 @@ export function canonicalJson(value: unknown): string {
     .join(',')}}`;
 }
 
+/** canonical JSON 的 SHA-256；簽署 payload 與驗證 manifest 的證據識別共用。 */
+export function canonicalSha256(value: unknown): string {
+  return createHash('sha256')
+    .update(canonicalJson(value), 'utf8')
+    .digest('hex');
+}
+
+export interface EsignAuditHashInput {
+  documentId: number;
+  signerId?: number | null;
+  actorUserId?: number | null;
+  eventType: string;
+  occurredAt: Date;
+  requestId?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+/** 稽核事件 hash：前一筆 event hash 串接本筆 canonical JSON；寫入與驗證共用。 */
+export function auditEventHash(
+  previousEventHash: string | null | undefined,
+  event: EsignAuditHashInput,
+): string {
+  const eventBytes = canonicalJson({
+    actorUserId: event.actorUserId ?? null,
+    documentId: event.documentId,
+    eventType: event.eventType,
+    metadata: event.metadata ?? undefined,
+    occurredAt: event.occurredAt.toISOString(),
+    requestId: event.requestId ?? null,
+    signerId: event.signerId ?? null,
+  });
+  return createHash('sha256')
+    .update(previousEventHash ?? '', 'utf8')
+    .update(eventBytes, 'utf8')
+    .digest('hex');
+}
+
 @Injectable()
 export class EsignAuditService {
   constructor(private readonly repository: AuditEventRepository) {}
@@ -50,32 +86,17 @@ export class EsignAuditService {
       input.documentId,
       manager,
     );
-    if (!document) {
-      throw new AppException(
-        AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
-        '找不到電子簽資源',
-        HttpStatus.NOT_FOUND,
-      );
-    }
+    if (!document) throw resourceNotFound();
 
     const previous = await this.repository.findLatestDocumentEvent(
       input.documentId,
       manager,
     );
     const metadata = this.sanitizeMetadata(input.metadata);
-    const eventBytes = canonicalJson({
-      actorUserId: input.actorUserId ?? null,
-      documentId: input.documentId,
-      eventType: input.eventType,
+    const eventHash = auditEventHash(previous?.eventHash, {
+      ...input,
       metadata,
-      occurredAt: input.occurredAt.toISOString(),
-      requestId: input.requestId ?? null,
-      signerId: input.signerId ?? null,
     });
-    const eventHash = createHash('sha256')
-      .update(previous?.eventHash ?? '', 'utf8')
-      .update(eventBytes, 'utf8')
-      .digest('hex');
 
     await this.repository.insert(
       {

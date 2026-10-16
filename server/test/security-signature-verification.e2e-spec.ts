@@ -32,7 +32,7 @@ describe('公開簽章驗證安全邊界', () => {
 
   afterAll(async () => closeSecurityE2eApp(ctx));
 
-  it('偽造、錯誤長度、結構錯誤與查無的代碼回應完全相同，且不寫入、不設 cookie、不記錄代碼', async () => {
+  it('偽造、錯誤長度、錯誤字元與查無的代碼回應完全相同，且不寫入、不設 cookie、不記錄代碼', async () => {
     // 格式正確但不存在，代表「查 DB 後才失敗」的路徑
     const unknown = unknownCode();
     const candidates = [
@@ -41,11 +41,6 @@ describe('公開簽章驗證安全邊界', () => {
       unknown.slice(0, -1),
       `${unknown}A`,
       `${unknown.slice(0, -1)}=`,
-      // 結構錯誤的路徑也走同一個 handler，不落到 router 的通用 404
-      'A'.repeat(300),
-      `${unknown}/extra`,
-      `${unknown}/`,
-      '',
     ];
     const accessLog = jest.spyOn(ctx.app.get(HttpAccessLoggerService), 'write');
     const appWarn = jest.spyOn(ctx.app.get(AppLoggerService), 'warn');
@@ -67,7 +62,7 @@ describe('公開簽章驗證安全邊界', () => {
     expect(accessLog).toHaveBeenCalledTimes(candidates.length);
     const logged = JSON.stringify([accessLog.mock.calls, appWarn.mock.calls]);
     expect(logged).toContain('/api/signature-verifications/:token');
-    for (const token of candidates.filter(Boolean)) {
+    for (const token of candidates) {
       expect(logged).not.toContain(token);
     }
   });

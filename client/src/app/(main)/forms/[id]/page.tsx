@@ -15,7 +15,7 @@ import {
 import { getDeptName } from '@/features/forms/orgChart';
 import { FORM_STATUS_META, getProgress, periodText, signedCount } from '@/features/forms/status';
 import { formOptions } from '@/features/forms/options';
-import { remainingWalkIns } from '@/features/forms/sheet/rules';
+import { sheetAddBlock } from '@/features/forms/sheet/rules';
 import SheetTools from '@/features/forms/sheet/SheetTools';
 import StopSigningButton from '@/features/forms/StopSigningButton';
 import { getForm, toClientForm } from '@/features/forms/store';
@@ -134,9 +134,9 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
       {stored.docType === 'sheet' && stored.sheet && (
         <SheetTools
           formId={id}
-          walkInSlots={stored.sheet.walkInSlots}
-          remaining={remainingWalkIns(stored)}
-          canWalkIn={progress.status === 'active' && remainingWalkIns(stored) > 0}
+          addBlock={sheetAddBlock(progress.status)}
+          existingIds={stored.signers.filter((s) => !s.email).map((s) => s.id)}
+          existingEmails={stored.signers.flatMap((s) => (s.email ? [s.email.toLowerCase()] : []))}
         />
       )}
 

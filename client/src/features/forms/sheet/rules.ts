@@ -1,5 +1,5 @@
 // 簽到表的共用規則與資料整理（畫面、Server Action、PDF 共用）
-import type { EFormDoc, SheetInfo, Signer, StaffMember } from '../types';
+import type { EFormDoc, FormStatus, SheetInfo, Signer } from '../types';
 
 /** 簽到表只有一個簽名欄位（簽到格） */
 export const SHEET_SIGN_FIELD_ID = 1;
@@ -11,7 +11,6 @@ export const SHEET_LABEL_MAX = 10;
 export const SHEET_VALUE_MAX = 60;
 export const SHEET_TITLE_MAX = 30;
 export const SHEET_CODE_MAX = 40;
-export const SHEET_WALK_IN_MAX = 100;
 
 export const DEFAULT_SHEET: SheetInfo = {
   title: '教育訓練簽到表',
@@ -23,7 +22,6 @@ export const DEFAULT_SHEET: SheetInfo = {
     { label: '立案編號', value: '' },
     { label: '講師', value: '' },
   ],
-  walkInSlots: 5,
 };
 
 const chars = (s: string) => Array.from(s).length;
@@ -52,11 +50,7 @@ export function validateSheet(input: unknown): SheetInfo | { error: string } {
     fields.push({ label, value });
   }
   if (fields.length > SHEET_FIELDS_MAX) return { error: `表頭欄位最多 ${SHEET_FIELDS_MAX} 個` };
-  const walkInSlots = Number(raw.walkInSlots);
-  if (!Number.isInteger(walkInSlots) || walkInSlots < 0 || walkInSlots > SHEET_WALK_IN_MAX) {
-    return { error: `空白列數需為 0～${SHEET_WALK_IN_MAX}` };
-  }
-  return { title, formCode, fields, walkInSlots };
+  return { title, formCode, fields };
 }
 
 /** 檢查簽到備註；空字串表示不填 */
@@ -68,48 +62,41 @@ export function normalizeRemark(input: unknown): { remark: string } | { error: s
   return { remark };
 }
 
-/** 還可以給名單外人員簽到的空白列數 */
-export function remainingWalkIns(form: EFormDoc): number {
-  if (form.docType !== 'sheet' || !form.sheet) return 0;
-  const used = form.signers.filter((s) => s.walkIn).length;
-  return Math.max(0, form.sheet.walkInSlots - used);
-}
-
-/** 應到人數（名單內）與實到人數（已簽到，含名單外） */
+/** 應到人數（含臨時追加的人）與實到人數（已簽到） */
 export function attendance(form: EFormDoc) {
   return {
-    expected: form.signers.filter((s) => !s.walkIn).length,
+    expected: form.signers.length,
     actual: form.signers.filter((s) => s.status === 'signed').length,
   };
 }
 
-/** 簽到表的一列；signer 為 null 表示空白列 */
+/** 簽到表的一列；signer 為 null 表示空白列（編輯時的預覽） */
 export type SheetRow = { no: number; signer: Signer | null };
 
 /**
- * 簽到表的所有列：名單內的人依加入順序，名單外的人接在後面，最後補上剩餘的空白列。
+ * 簽到表的所有列：原名單依加入順序，臨時追加的人接在後面。
  * only 指定時只保留該簽署人那一列（簽署人視角、個人副本），序號維持原本的位置。
  */
-export function sheetRows(form: EFormDoc, opts: { only?: string; includeBlank?: boolean } = {}): SheetRow[] {
-  const ordered = [...form.signers.filter((s) => !s.walkIn), ...form.signers.filter((s) => s.walkIn)];
-  let rows: SheetRow[] = ordered.map((signer, i) => ({ no: i + 1, signer }));
-  if (opts.only) return rows.filter((r) => r.signer?.id === opts.only);
-  if (opts.includeBlank) {
-    const blank = remainingWalkIns(form);
-    rows = [...rows, ...Array.from({ length: blank }, (_, i) => ({ no: ordered.length + i + 1, signer: null }))];
-  }
-  return rows;
+export function sheetRows(form: EFormDoc, opts: { only?: string } = {}): SheetRow[] {
+  const ordered = [...form.signers.filter((s) => !s.lateAdded), ...form.signers.filter((s) => s.lateAdded)];
+  const rows: SheetRow[] = ordered.map((signer, i) => ({ no: i + 1, signer }));
+  return opts.only ? rows.filter((r) => r.signer?.id === opts.only) : rows;
 }
 
-/** 名單外人員使用空白列簽到時的簽署人資料（送出簽到時才加入文件） */
-export function walkInSigner(staff: StaffMember): Signer {
-  return {
-    id: staff.id,
-    name: staff.name,
-    employeeNo: staff.employeeNo,
-    unit: staff.dept,
-    title: staff.title,
-    status: 'pending',
-    walkIn: true,
-  };
+/**
+ * 簽到表發起後能否追加簽署人；可以時回傳 null，否則回傳原因。
+ * 簽署中可追加；已完成追加後會回到簽署中；已到期需先補簽；已停止不可追加。
+ */
+export function sheetAddBlock(status: FormStatus): string | null {
+  switch (status) {
+    case 'active':
+    case 'completed':
+      return null;
+    case 'expired':
+      return '文件已到期，請先設定補簽再追加簽署人';
+    case 'stopped':
+      return '文件已停止簽署，無法追加簽署人';
+    default:
+      return '文件尚未發起，請在「設定簽署」中加入簽署人';
+  }
 }

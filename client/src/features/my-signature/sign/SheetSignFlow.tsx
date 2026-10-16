@@ -29,7 +29,7 @@ const nowStr = () => {
 
 /**
  * 簽到表的簽到流程：同意授權條款 → 在自己那一列簽到（可填備註）→ 確認送出。
- * 只顯示本人那一列；名單外人員（walkIn）會使用空白列，送出後才加入文件。
+ * 只顯示本人那一列。
  */
 export default function SheetSignFlow({
   form,
@@ -90,11 +90,6 @@ export default function SheetSignFlow({
   return (
     <Stack spacing={3}>
       <StepFlow steps={SHEET_SIGN_STEPS} activeIndex={signature ? 2 : 1} />
-      {me.walkIn && (
-        <Alert severity="info" variant="outlined">
-          你不在原本的簽到名單中，將使用簽到表的空白列簽到。
-        </Alert>
-      )}
       {error && (
         <Alert severity="error" onClose={() => setError(undefined)}>
           {error}
@@ -138,12 +133,9 @@ export default function SheetSignFlow({
       </Typography>
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        {/* 名單外人員簽到前，這份文件還不在他的「我的電子簽」中，不提供返回 */}
-        {!me.walkIn && (
-          <Button size="large" variant="outlined" href="/my-signature" disabled={pending}>
-            取消
-          </Button>
-        )}
+        <Button size="large" variant="outlined" href="/my-signature" disabled={pending}>
+          取消
+        </Button>
         <Button
           size="large"
           variant="contained"

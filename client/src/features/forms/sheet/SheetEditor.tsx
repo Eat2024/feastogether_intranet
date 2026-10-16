@@ -17,7 +17,6 @@ import {
   SHEET_CODE_MAX,
   SHEET_FIELDS_MAX,
   SHEET_TITLE_MAX,
-  SHEET_WALK_IN_MAX,
   validateSheet,
 } from './rules';
 import SheetFieldList, { type SheetFieldItem } from './SheetFieldList';
@@ -33,7 +32,6 @@ export default function SheetEditor({ form, locked = false }: { form?: EFormDoc;
   const [meta, setMeta] = useState<Omit<SheetInfo, 'fields'>>(() => ({
     title: initial.title,
     formCode: initial.formCode,
-    walkInSlots: initial.walkInSlots,
   }));
   // 表頭欄位另外加上 id，拖曳排序時才能正確辨識每一列
   const nextId = useRef(initial.fields.length);
@@ -140,25 +138,6 @@ export default function SheetEditor({ form, locked = false }: { form?: EFormDoc;
             </Button>
           </Box>
 
-          <Box>
-            <Typography variant="subheading" component="div" sx={{ mb: 1.5 }}>
-              空白列
-            </Typography>
-            <TextField
-              size="small"
-              type="number"
-              label="空白列數"
-              value={sheet.walkInSlots}
-              disabled={disabled}
-              onChange={(e) => update({ walkInSlots: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
-              slotProps={{ htmlInput: { min: 0, max: SHEET_WALK_IN_MAX } }}
-              sx={{ width: 160 }}
-              helperText={`0～${SHEET_WALK_IN_MAX} 列`}
-            />
-            <Typography variant="helper" component="div" sx={{ mt: 1 }}>
-              保留給不在名單中的同仁（例如臨時參加）使用簽到連結簽到，用完即無法再加入。
-            </Typography>
-          </Box>
         </Stack>
       </Paper>
 
@@ -172,7 +151,7 @@ export default function SheetEditor({ form, locked = false }: { form?: EFormDoc;
           attendance={{ expected: 0, actual: 0 }}
         />
         <Typography variant="helper" component="div" sx={{ mt: 1 }}>
-          表格的單位、職稱、姓名會依下一步選擇的簽署人自動帶入。
+          表格的單位、職稱、姓名會依下一步選擇的簽署人自動帶入；發起後如有臨時參加的人，可在檢視頁「追加簽署人」。
         </Typography>
       </Box>
 

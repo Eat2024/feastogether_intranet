@@ -4,13 +4,13 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { addExportRecord } from '@/features/export-history/store';
 import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
-import { getCurrentUser, getStaff } from './orgChart';
+import { getCurrentUser, getOrgTree, getStaff } from './orgChart';
 import { normalizeSignerNote } from './detail/signerNote';
 import { getStoredFile } from './files';
 import { isValidFieldBox } from './signLayout';
 import { validateResign } from './resign';
 import { sheetExportData, type SheetExport } from './sheet/exportData';
-import { validateSheet } from './sheet/rules';
+import { sheetAddBlock, validateSheet } from './sheet/rules';
 import { deriveStatus, pendingCount, signedCount } from './status';
 import {
   getForm,
@@ -288,9 +288,6 @@ export async function saveSheetDocument(input: {
     if (signedCount(form) > 0 || form.status === 'stopped') {
       return { error: '此文件已有人簽署或已停止，無法再修改' };
     }
-    if (form.signers.some((s) => s.walkIn) && sheet.walkInSlots < form.signers.filter((s) => s.walkIn).length) {
-      return { error: '空白列數不可少於已使用的列數' };
-    }
     updateForm(form.id, { name, sheet, docType: 'sheet', upload: undefined });
     revalidateLists();
     if (form.status === 'draft') redirect(`/forms/${form.id}/signers`);
@@ -335,4 +332,73 @@ export async function getSheetExport(input: { formId: string }): Promise<{ error
     count: data.attendance.actual,
   });
   return data;
+}
+
+/** 單次追加的人數上限，避免一次送出過大的資料 */
+const MAX_ADD_SIGNERS = 3000;
+
+/**
+ * 簽到表發起後追加簽署人（組織架構同仁或 Email）。
+ * 新加入的人為待簽署、排在原名單後面，並記錄加入時間與加入人；已在名單中的人會略過。
+ * TODO: 串接登入與權限後，限制只有文件建立人或管理者可以追加；並通知新加入的簽署人
+ */
+export async function addSheetSigners(input: {
+  formId: string;
+  signerIds: string[];
+  emailSigners: { email: string; name: string }[];
+}): Promise<{ error: string } | { added: number }> {
+  const form = getForm(input.formId);
+  if (!form || form.docType !== 'sheet') return { error: '只有簽到表可以追加簽署人' };
+  const block = sheetAddBlock(deriveStatus(form));
+  if (block) return { error: block };
+  if (!Array.isArray(input.signerIds) || !Array.isArray(input.emailSigners)) return { error: '追加的名單不正確' };
+  if (input.signerIds.length + input.emailSigners.length === 0) return { error: '請至少選擇一位要追加的人員' };
+  if (input.signerIds.length + input.emailSigners.length > MAX_ADD_SIGNERS) {
+    return { error: `一次最多追加 ${MAX_ADD_SIGNERS} 人` };
+  }
+  const emails = input.emailSigners.map((e) => ({
+    email: normalizeEmail(String(e?.email ?? '')),
+    name: String(e?.name ?? '').trim().slice(0, 50),
+  }));
+  if (emails.some((e) => !isValidEmail(e.email))) return { error: 'Email 格式不正確' };
+
+  const existing = new Set(form.signers.map((s) => s.id));
+  const me = getCurrentUser();
+  const lateAdded = { at: nowStr(), by: { name: me.name, employeeNo: me.employeeNo } };
+  const added: Signer[] = [];
+  for (const sid of new Set(input.signerIds)) {
+    const emp = typeof sid === 'string' ? getStaff(sid) : undefined;
+    if (!emp || existing.has(emp.id)) continue;
+    existing.add(emp.id);
+    added.push({ id: emp.id, name: emp.name, employeeNo: emp.employeeNo, unit: emp.dept, title: emp.title, status: 'pending', lateAdded });
+  }
+  for (const { email, name } of emails) {
+    const id = emailSignerId(email);
+    if (existing.has(id)) continue;
+    existing.add(id);
+    added.push({ id, name: name || email, employeeNo: '', email, status: 'pending', lateAdded });
+  }
+  if (added.length === 0) return { error: '選擇的人員都已在名單中' };
+
+  form.signers.push(...added);
+  revalidateLists();
+  return { added: added.length };
+}
+
+/** 移除臨時追加、尚未簽到的簽署人（加錯人時更正用） */
+export async function removeSheetSigner(input: { formId: string; signerId: string }): Promise<{ error: string } | undefined> {
+  const form = getForm(input.formId);
+  if (!form || form.docType !== 'sheet') return { error: '找不到此簽到表' };
+  const signer = form.signers.find((s) => s.id === input.signerId);
+  if (!signer) return { error: '找不到此簽署人' };
+  if (!signer.lateAdded) return { error: '只能移除臨時追加的簽署人' };
+  if (signer.status !== 'pending') return { error: '已簽到的人無法移除' };
+  if (form.status === 'stopped') return { error: '文件已停止簽署，無法變更名單' };
+  form.signers = form.signers.filter((s) => s.id !== signer.id);
+  revalidateLists();
+}
+
+/** 追加簽署人時選人用的組織架構（開啟對話框時才載入，避免檢視頁一開始就傳整份名冊） */
+export async function loadOrgTree() {
+  return getOrgTree();
 }

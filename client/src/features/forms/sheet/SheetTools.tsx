@@ -1,54 +1,35 @@
 "use client";
 
-import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
+import PersonAddAlt1RoundedIcon from "@mui/icons-material/PersonAddAlt1Rounded";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Snackbar from "@mui/material/Snackbar";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { getSheetExport } from "../actions";
+import AddSignersDialog from "./AddSignersDialog";
 
-// 簽到連結需要網站網址，只在瀏覽器端取得（伺服器端渲染時為空字串）
-const subscribe = () => () => {};
-const useOrigin = () =>
-  useSyncExternalStore(
-    subscribe,
-    () => window.location.origin,
-    () => "",
-  );
-
-/** 檢視頁的簽到表工具：名單外人員的簽到連結、匯出整份簽到表 PDF */
+/** 檢視頁的簽到表工具：追加簽署人（臨時參加的人）、匯出整份簽到表 PDF */
 export default function SheetTools({
   formId,
-  walkInSlots,
-  remaining,
-  canWalkIn,
+  addBlock,
+  existingIds,
+  existingEmails,
 }: {
   formId: string;
-  walkInSlots: number;
-  remaining: number;
-  /** 文件簽署中且還有空白列 */
-  canWalkIn: boolean;
+  /** 目前無法追加的原因；可以追加時為 null */
+  addBlock: string | null;
+  existingIds: string[];
+  existingEmails: string[];
 }) {
-  const origin = useOrigin();
-  const link = origin ? `${origin}/my-signature/${formId}` : "";
   const [busy, setBusy] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
     null,
   );
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setMessage({ ok: true, text: "已複製簽到連結" });
-    } catch {
-      setMessage({ ok: false, text: "無法複製，請手動選取連結" });
-    }
-  };
 
   const exportSheet = async () => {
     setBusy(true);
@@ -71,34 +52,30 @@ export default function SheetTools({
       <Box
         sx={{
           display: "flex",
-          flexDirection: "column",
-
-          // alignItems: "flex-start",
-          // justifyContent: "space-between",
+          justifyContent: "space-between",
+          alignItems: "center",
           gap: 2,
           flexWrap: "wrap",
         }}
       >
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 2,
-            flex: "1 1 auto",
-            minWidth: 0,
-          }}
-        >
-          <Box>
-            <Typography variant="subheading" component="div" sx={{ mb: 0.5 }}>
-              名單外人員簽到
-            </Typography>
-            <Typography variant="helper" component="div" sx={{ mb: 1.5 }}>
-              {walkInSlots === 0
-                ? "此簽到表沒有保留空白列，名單外人員無法簽到。"
-                : `空白列剩 ${remaining} / ${walkInSlots} 列。不在名單中的同仁可透過下方連結使用空白列簽到。`}
-            </Typography>
-          </Box>
+        <Box sx={{ flex: "1 1 320px", minWidth: 0 }}>
+          <Typography variant="subheading" component="div" sx={{ mb: 0.5 }}>
+            簽到名單
+          </Typography>
+          <Typography variant="helper" component="div">
+            {addBlock ??
+              "有臨時參加的人時，可追加組織架構中的同仁或以 Email 加入，追加的人會排在原名單後面。"}
+          </Typography>
+        </Box>
+        <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
+          <Button
+            variant="outlined"
+            startIcon={<PersonAddAlt1RoundedIcon />}
+            disabled={!!addBlock}
+            onClick={() => setAddOpen(true)}
+          >
+            追加簽署人
+          </Button>
           <Button
             variant="contained"
             startIcon={<FileDownloadRoundedIcon />}
@@ -108,37 +85,18 @@ export default function SheetTools({
             匯出簽到表 PDF
           </Button>
         </Box>
-        {walkInSlots > 0 && (
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <TextField
-              size="small"
-              fullWidth
-              value={link}
-              disabled={!canWalkIn}
-              slotProps={{
-                htmlInput: { readOnly: true, "aria-label": "簽到連結" },
-              }}
-              onFocus={(e) => e.target.select()}
-            />
-            <Button
-              variant="outlined"
-              startIcon={<ContentCopyRoundedIcon />}
-              onClick={copy}
-              disabled={!canWalkIn || !link}
-              sx={{ flexShrink: 0 }}
-            >
-              複製
-            </Button>
-          </Box>
-        )}
-        {walkInSlots > 0 && !canWalkIn && (
-          <Typography variant="helper" component="div" sx={{ mt: 1 }}>
-            {remaining === 0
-              ? "空白列已用完。"
-              : "文件目前不在簽署期間，連結暫時無法簽到。"}
-          </Typography>
-        )}
       </Box>
+      <AddSignersDialog
+        open={addOpen}
+        formId={formId}
+        existingIds={existingIds}
+        existingEmails={existingEmails}
+        onClose={() => setAddOpen(false)}
+        onAdded={(count) => {
+          setAddOpen(false);
+          setMessage({ ok: true, text: `已追加 ${count} 位簽署人` });
+        }}
+      />
       <Snackbar
         open={!!message}
         autoHideDuration={3000}

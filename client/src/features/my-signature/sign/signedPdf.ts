@@ -339,7 +339,7 @@ export async function downloadSignedCopy(
   await savePdf(bytes, opts.fileName ?? `${form.docNumber ?? form.id}_${form.name}_已簽署.pdf`, opts.password);
 }
 
-/** 下載整份簽到表（含所有人的簽到與剩餘空白列） */
+/** 下載整份簽到表（含所有人的簽到；最後一頁補滿空白格線，版面與紙本一致） */
 export async function downloadSheet(
   form: EFormDoc,
   rows: SheetRow[],

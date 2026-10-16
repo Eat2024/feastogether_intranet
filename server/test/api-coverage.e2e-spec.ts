@@ -132,7 +132,7 @@ describe('runtime API coverage', () => {
   });
 
   it('公開簽章驗證已註冊、不需 session，無效 token 回統一 404 envelope', async () => {
-    const response = await getSignatureVerification(ctx.server, 'A'.repeat(110))
+    const response = await getSignatureVerification(ctx.server, 'A'.repeat(22))
       .expect(404)
       .expect('Cache-Control', 'no-store')
       .expect('Referrer-Policy', 'no-referrer');

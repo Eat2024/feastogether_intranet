@@ -12,10 +12,11 @@ describe('EsignCompletionAccessService', () => {
       title: '測試文件',
       status: 'active',
     };
+    const verificationCode = 'c'.repeat(22);
     const tokens = {
       digest: jest.fn(() => 'd'.repeat(64)),
       verificationUrl: jest.fn(
-        (id: string) => `https://esign.example.internal/verify/token-of-${id}`,
+        (code: string) => `https://esign.example.internal/verify/${code}`,
       ),
     };
     const service = new EsignCompletionAccessService(
@@ -29,6 +30,7 @@ describe('EsignCompletionAccessService', () => {
       {} as never,
       {} as never,
       {} as never,
+      { findBySignerId: jest.fn(async () => ({ verificationCode })) } as never,
     );
 
     await expect(
@@ -38,7 +40,7 @@ describe('EsignCompletionAccessService', () => {
       status: 'active',
       completedAt: null,
       stoppedAt: null,
-      verificationUrl: `https://esign.example.internal/verify/token-of-${signer.publicId}`,
+      verificationUrl: `https://esign.example.internal/verify/${verificationCode}`,
     });
   });
 });

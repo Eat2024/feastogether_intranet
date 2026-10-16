@@ -57,11 +57,6 @@ process.env.ESIGN_INVITATION_ENCRYPTION_KEY_B64 ??= Buffer.alloc(
   32,
   'e2e',
 ).toString('base64');
-process.env.ESIGN_VERIFICATION_SIGNING_KEY_B64 ??= generateKeyPairSync(
-  'ed25519',
-)
-  .privateKey.export({ type: 'pkcs8', format: 'der' })
-  .toString('base64');
 
 const originalServerAddress = SupertestTest.prototype.serverAddress;
 SupertestTest.prototype.serverAddress = function serverAddressV6Loopback(

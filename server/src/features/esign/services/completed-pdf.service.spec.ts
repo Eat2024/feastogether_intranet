@@ -105,7 +105,8 @@ describe('CompletedPdfService', () => {
     const drawText = jest.spyOn(PDFPage.prototype, 'drawText');
     const drawImage = jest.spyOn(PDFPage.prototype, 'drawImage');
     const drawRectangle = jest.spyOn(PDFPage.prototype, 'drawRectangle');
-    const verificationUrl = `https://esign.example.internal/verify/${'A'.repeat(110)}`;
+    const verificationCode = 'Xy3_kLm9-QwErTyUiOpAsD';
+    const verificationUrl = `https://esign.example.internal/verify/${verificationCode}`;
     const tokens = { verificationUrl: jest.fn(() => verificationUrl) };
     const record = {
       id: 21,
@@ -114,6 +115,7 @@ describe('CompletedPdfService', () => {
       signingPayloadSha256: document.signingPayloadSha256,
       consentVersion: 'v1',
       signedAtUtc: signer.signedAt,
+      verificationCode,
     };
     const service = new CompletedPdfService(
       { getManager: () => manager } as never,
@@ -138,7 +140,7 @@ describe('CompletedPdfService', () => {
     // 欄位 11：x=10%、y=10%、寬 25%、高 10%，PDF 座標原點在左下
     const field = { x: 59.5, y: 842 - 168.4, width: 148.75, height: 84.2 };
     const qrSize = field.height * 0.72;
-    expect(tokens.verificationUrl).toHaveBeenCalledWith(signer.publicId);
+    expect(tokens.verificationUrl).toHaveBeenCalledWith(verificationCode);
     const [qrBackground, ...darkCells] = drawRectangle.mock.calls.map(
       ([options]) => options!,
     );

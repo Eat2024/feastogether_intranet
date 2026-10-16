@@ -6,7 +6,11 @@ describe('EsignSigningService', () => {
   const requestId = 'd94d7587-6fb7-4c06-8ebf-79a608ea23e3';
   const signedAt = new Date('2026-10-13T12:00:00.000Z');
 
-  function setup(repeated?: { signerId: number; signedAtUtc: Date }) {
+  function setup(repeated?: {
+    signerId: number;
+    signedAtUtc: Date;
+    verificationCode?: string;
+  }) {
     const signer = {
       id: 8,
       publicId: signerPublicId,
@@ -41,8 +45,8 @@ describe('EsignSigningService', () => {
     const storage = { store: jest.fn(), delete: jest.fn() };
     const mysql = { getManager: jest.fn(() => manager) };
     const tokens = {
-      verificationUrl: jest.fn(
-        (id: string) => `https://esign.example.internal/verify/token-of-${id}`,
+      verificationUrl: jest.fn((code?: string) =>
+        code ? `https://esign.example.internal/verify/${code}` : null,
       ),
     };
     const service = new EsignSigningService(
@@ -95,8 +99,13 @@ describe('EsignSigningService', () => {
     expect(storage.store).not.toHaveBeenCalled();
   });
 
-  it('簽署結果附上本人簽章驗證網址，重送回相同網址', async () => {
-    const { service, tokens } = setup({ signerId: 8, signedAtUtc: signedAt });
+  it('重送時以簽署紀錄保存的驗證代碼組出相同網址', async () => {
+    const verificationCode = 'c'.repeat(22);
+    const { service, tokens } = setup({
+      signerId: 8,
+      signedAtUtc: signedAt,
+      verificationCode,
+    });
     const principal = { kind: 'internal' as const, userId: 20 };
     const first = await service.sign(signerPublicId, principal, submission, {});
     const second = await service.sign(
@@ -107,10 +116,22 @@ describe('EsignSigningService', () => {
     );
 
     expect(first.verificationUrl).toBe(
-      `https://esign.example.internal/verify/token-of-${signerPublicId}`,
+      `https://esign.example.internal/verify/${verificationCode}`,
     );
     expect(second.verificationUrl).toBe(first.verificationUrl);
-    expect(tokens.verificationUrl).toHaveBeenCalledWith(signerPublicId);
+    expect(tokens.verificationUrl).toHaveBeenCalledWith(verificationCode);
+  });
+
+  it('Spec 04 上線前的簽署紀錄沒有代碼時，驗證網址為 null', async () => {
+    const { service } = setup({ signerId: 8, signedAtUtc: signedAt });
+    await expect(
+      service.sign(
+        signerPublicId,
+        { kind: 'internal', userId: 20 },
+        submission,
+        {},
+      ),
+    ).resolves.toMatchObject({ verificationUrl: null });
   });
 
   it('簽署失敗時不產生驗證網址', async () => {

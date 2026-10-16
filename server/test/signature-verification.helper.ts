@@ -2,9 +2,9 @@ import request from 'supertest';
 import type { DataSource } from 'typeorm';
 import type { E2eServer } from './api-response.helper';
 
-/** 簽章驗證網址：EXTERNAL_SIGNING_ORIGIN/verify/{110 字元 token}（e2e origin 為 localhost:3000）。 */
+/** 簽章驗證網址：EXTERNAL_SIGNING_ORIGIN/verify/{22 字驗證代碼}（e2e origin 為 localhost:3000）。 */
 export const VERIFICATION_URL =
-  /^http:\/\/localhost:3000\/verify\/([A-Za-z0-9_-]{110})$/;
+  /^http:\/\/localhost:3000\/verify\/([A-Za-z0-9_-]{22})$/;
 
 export interface SignatureVerification {
   signature: {
@@ -31,15 +31,15 @@ export function randomClientIp(): string {
   return `198.18.${octet()}.${octet()}`;
 }
 
-/** 以驗證網址或 token 查詢公開簽章驗證；不帶任何 cookie。 */
+/** 以驗證網址或代碼查詢公開簽章驗證；不帶任何 cookie。 */
 export function getSignatureVerification(
   server: E2eServer,
-  urlOrToken: string,
+  urlOrCode: string,
   clientIp = randomClientIp(),
 ) {
-  const token = urlOrToken.split('/verify/').at(-1)!;
+  const code = urlOrCode.split('/verify/').at(-1)!;
   return request(server)
-    .get(`/api/signature-verifications/${token}`)
+    .get(`/api/signature-verifications/${code}`)
     .set('X-Forwarded-For', clientIp);
 }
 

@@ -207,12 +207,11 @@ export class EsignVerificationService {
     );
   }
 
-  /** 公開驗證：驗章失敗不查 DB；只讀、不 lock、不寫任何資料或稽核事件。 */
-  async verify(token: string): Promise<SignatureVerificationDto> {
-    const signerPublicId = this.tokens.verifyVerificationToken(token);
-    if (!signerPublicId) throw this.notFound();
+  /** 公開驗證：代碼格式不符不查 DB；只讀、不 lock、不寫任何資料或稽核事件。 */
+  async verify(code: string): Promise<SignatureVerificationDto> {
+    if (!this.tokens.isVerificationCodeFormat(code)) throw this.notFound();
     const manager = this.mysql.getManager();
-    const evidence = await this.signedEvidence(signerPublicId, manager);
+    const evidence = await this.signedEvidence(code, manager);
     if (!evidenceConsistent(evidence)) {
       throw this.integrityFailed(evidence.document.id);
     }
@@ -223,21 +222,20 @@ export class EsignVerificationService {
     return verificationView(evidence, completedPdfSha256);
   }
 
-  /** 查無簽署人、尚未簽署、無簽署紀錄、文件為草稿或已刪除，一律同一個 404。 */
+  /** 查無代碼、簽署人已刪除或未簽署、文件為草稿或已刪除，一律同一個 404。 */
   private async signedEvidence(
-    signerPublicId: string,
+    code: string,
     manager: EntityManager,
   ): Promise<SignedEvidence> {
-    const signer = await this.signers.findByPublicId(signerPublicId, manager);
+    const record = await this.records.findByVerificationCode(code, manager);
+    if (!record) throw this.notFound();
+    const signer = await this.signers.findById(record.signerId, manager);
     if (signer?.status !== 'signed') throw this.notFound();
-    const [document, record, source] = await Promise.all([
+    const [document, source] = await Promise.all([
       this.documents.findById(signer.documentId, manager),
-      this.records.findBySignerId(signer.id, manager),
       this.files.findDocumentFile(signer.documentId, 'source_pdf', manager),
     ]);
-    if (!document || !record || document.status === 'draft') {
-      throw this.notFound();
-    }
+    if (!document || document.status === 'draft') throw this.notFound();
     return { signer, document, record, sourcePdfSha256: source?.sha256 };
   }
 

@@ -9,6 +9,7 @@ import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-f
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
+import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignAuditService } from './esign-audit.service';
@@ -34,6 +35,7 @@ export class EsignSigningTaskService {
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly users: UserRepository,
+    private readonly records: SignatureRecordRepository,
   ) {}
 
   async list(userId: number, status?: 'pending' | 'signed') {
@@ -115,10 +117,13 @@ export class EsignSigningTaskService {
     >,
     manager = this.mysql.getManager(),
   ) {
-    const [allSigners, allFields, creator] = await Promise.all([
+    const [allSigners, allFields, creator, record] = await Promise.all([
       this.signers.findByDocument(document.id, manager),
       this.fields.findByDocument(document.id, manager),
       this.users.findById(document.createdByUserId, manager),
+      signer.status === 'signed'
+        ? this.records.findBySignerId(signer.id, manager)
+        : null,
     ]);
     const counts = {
       pendingCount: allSigners.filter((item) => item.status === 'pending')
@@ -133,7 +138,7 @@ export class EsignSigningTaskService {
         counts,
         creator ?? undefined,
       ),
-      signer: this.mapper.signer(signer, null),
+      signer: this.mapper.signer(signer, null, record?.verificationCode),
       fields: allFields
         .filter((field) => field.signerId === signer.id)
         .map((field) => this.mapper.field(field, signer.publicId)),

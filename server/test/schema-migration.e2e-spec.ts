@@ -26,7 +26,7 @@ const optionsFor = (database: string) =>
 describe('e-sign schema migrations', () => {
   jest.setTimeout(60_000);
 
-  it('Spec 03 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
+  it('最新 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const dataSource = new DataSource(optionsFor(database));
       await dataSource.initialize();
@@ -60,7 +60,12 @@ describe('e-sign schema migrations', () => {
           BUSINESS_TABLES,
         );
         expect(
-          await hasColumn(dataSource, database, 'esign_signers', 'public_id'),
+          await hasColumn(
+            dataSource,
+            database,
+            'esign_signature_records',
+            'verification_code',
+          ),
         ).toBe(false);
 
         await dataSource.runMigrations();

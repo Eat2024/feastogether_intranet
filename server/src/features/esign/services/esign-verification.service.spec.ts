@@ -15,6 +15,7 @@ const signedAt = new Date('2026-10-16T07:30:00.000Z');
 const completedAt = new Date('2026-10-16T08:00:00.000Z');
 const stoppedAt = new Date('2026-10-16T09:00:00.000Z');
 const sha = (char: string) => char.repeat(64);
+const verificationCode = 'Xy3_kLm9-QwErTyUiOpAsD';
 
 /** 依寫入規則建立一條合法稽核鏈；metadata 為 null 模擬 DB 讀回的空 JSON。 */
 function auditChain(eventTypes: string[]) {
@@ -64,6 +65,7 @@ function setup(status: 'active' | 'completed' | 'stopped' = 'completed') {
   const record = {
     id: 21,
     signerId: 8,
+    verificationCode,
     signedAtUtc: signedAt,
     authenticationMethod: 'employee_session',
     consentVersion: 'esign-consent-v1',
@@ -100,11 +102,13 @@ function setup(status: 'active' | 'completed' | 'stopped' = 'completed') {
   const state: { snapshot: Record<string, any> | null } = { snapshot: null };
   const repositories = {
     documents: { findById: jest.fn(async () => document) },
-    signers: { findByPublicId: jest.fn(async () => signer) },
+    signers: { findById: jest.fn(async () => signer) },
     records: {
       // 刻意反序，確認 manifest 依簽署人順序而非紀錄順序
       findBySignerIds: jest.fn(async () => [otherRecord, record]),
-      findBySignerId: jest.fn(async () => record),
+      findByVerificationCode: jest.fn(async (code: string) =>
+        code === verificationCode ? record : null,
+      ),
     },
     files: {
       findDocumentFile: jest.fn(async (_id: number, purpose: string) =>
@@ -120,9 +124,7 @@ function setup(status: 'active' | 'completed' | 'stopped' = 'completed') {
     },
   };
   const tokens = {
-    verifyVerificationToken: jest.fn((token: string) =>
-      token === 'valid-token' ? signerPublicId : null,
-    ),
+    isVerificationCodeFormat: jest.fn((code: string) => code.length === 22),
   };
   const logger = { warn: jest.fn() };
   const service = new EsignVerificationService(
@@ -218,7 +220,7 @@ describe('EsignVerificationService.verify', () => {
   it('完成文件回傳白名單欄位與完成文件摘要', async () => {
     const { service, saveSnapshot } = setup();
     await saveSnapshot();
-    const result = await service.verify('valid-token');
+    const result = await service.verify(verificationCode);
 
     expect(result).toEqual({
       signature: {
@@ -244,7 +246,7 @@ describe('EsignVerificationService.verify', () => {
     '%s 文件回簽章有效、不查快照且 completedPdfSha256 為 null',
     async (status) => {
       const { service, repositories } = setup(status);
-      const result = await service.verify('valid-token');
+      const result = await service.verify(verificationCode);
       expect(result.document).toMatchObject({
         status,
         completedAt: null,
@@ -255,36 +257,34 @@ describe('EsignVerificationService.verify', () => {
     },
   );
 
-  it('驗章失敗時不查 DB，回通用 404', async () => {
+  it('代碼格式不符時不查 DB，回通用 404', async () => {
     const { service, repositories } = setup();
-    await expect(service.verify('forged-token')).rejects.toMatchObject({
+    await expect(service.verify('malformed')).rejects.toMatchObject({
       status: 404,
       message: '查無此簽章或驗證碼無效',
     });
-    expect(repositories.signers.findByPublicId).not.toHaveBeenCalled();
+    expect(repositories.records.findByVerificationCode).not.toHaveBeenCalled();
   });
 
   it.each([
     [
-      '查無簽署人',
+      '查無此代碼',
       (ctx: ReturnType<typeof setup>) => {
-        ctx.repositories.signers.findByPublicId.mockResolvedValue(
+        ctx.repositories.records.findByVerificationCode.mockResolvedValue(
           null as never,
         );
+      },
+    ],
+    [
+      '簽署人已刪除',
+      (ctx: ReturnType<typeof setup>) => {
+        ctx.repositories.signers.findById.mockResolvedValue(null as never);
       },
     ],
     [
       '尚未簽署',
       (ctx: ReturnType<typeof setup>) => {
         ctx.signer.status = 'pending';
-      },
-    ],
-    [
-      '無簽署紀錄',
-      (ctx: ReturnType<typeof setup>) => {
-        ctx.repositories.records.findBySignerId.mockResolvedValue(
-          null as never,
-        );
       },
     ],
     [
@@ -302,7 +302,7 @@ describe('EsignVerificationService.verify', () => {
   ])('%s時回同一個 404', async (_name, arrange) => {
     const ctx = setup('active');
     arrange(ctx);
-    await expect(ctx.service.verify('valid-token')).rejects.toMatchObject({
+    await expect(ctx.service.verify(verificationCode)).rejects.toMatchObject({
       status: 404,
       message: '查無此簽章或驗證碼無效',
     });
@@ -405,7 +405,7 @@ describe('EsignVerificationService.verify', () => {
 
 /** 409 且記錄不含 token、只含 documentId 的告警。 */
 async function expectIntegrityFailure(ctx: ReturnType<typeof setup>) {
-  await expect(ctx.service.verify('valid-token')).rejects.toMatchObject({
+  await expect(ctx.service.verify(verificationCode)).rejects.toMatchObject({
     status: 409,
   });
   expect(ctx.logger.warn).toHaveBeenCalledWith(
@@ -415,6 +415,6 @@ async function expectIntegrityFailure(ctx: ReturnType<typeof setup>) {
     }),
   );
   expect(JSON.stringify(ctx.logger.warn.mock.calls)).not.toContain(
-    'valid-token',
+    verificationCode,
   );
 }

@@ -16,7 +16,9 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { AppException } from '#app/common/errors/app.exception';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
+import { sendHtmlErrorPage } from '#app/common/http/html-error-page';
 import { Public } from '#app/framework/decorators/public.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
@@ -56,19 +58,21 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '開啟外部簽署邀請確認頁',
     description:
-      '回傳含開啟按鈕的 HTML 表單，此 GET 不建立簽署 session。\n\n前端串接參考：外部簽署人點擊 Email 邀請連結進入此後端頁面，再按按鈕送出 POST external-signature-session；不是 Next.js 頁面直接呼叫。',
+      '回傳含開啟按鈕的 HTML 表單，此 GET 不建立簽署 session；token 格式錯誤時回 HTML 錯誤頁。\n\n前端串接參考：外部簽署人點擊 Email 邀請連結進入此後端頁面，再按按鈕送出 POST external-signature-session；不是 Next.js 頁面直接呼叫。',
   })
   @Get('external-signature-invitations/:token')
   getBridge(@Param('token') token: string, @Res() reply: FastifyReply): void {
-    this.assertInvitationTokenFormat(token);
+    this.setInvitationPageHeaders(reply);
+    if (!this.external.isTokenFormat(token)) {
+      this.invitationErrorPage(
+        reply,
+        HttpStatus.BAD_REQUEST,
+        '邀請連結格式錯誤',
+      );
+      return;
+    }
     const nonce = randomBytes(18).toString('base64');
     reply
-      .header('Cache-Control', 'no-store')
-      .header('Referrer-Policy', 'no-referrer')
-      .header(
-        'Content-Security-Policy',
-        `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
-      )
       .type('text/html; charset=utf-8')
       .send(
         '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>開啟電子簽署</title></head><body>' +
@@ -83,28 +87,46 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '建立外部簽署存取 session',
     description:
-      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
+      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁；token 格式錯誤、邀請無效或過期時回 HTML 錯誤頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
   })
   @Post('external-signature-session')
   async createSession(
     @Body('token') token: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    this.assertInvitationTokenFormat(token);
-    const session = await this.external.createSession(token);
-    setExternalAccessCookie(
-      reply,
-      this.config,
-      token,
-      session.invitationExpiresAt,
-    );
-    reply
-      .header('Cache-Control', 'no-store')
-      .header('Referrer-Policy', 'no-referrer')
-      .redirect(
+    this.setInvitationPageHeaders(reply);
+    if (!this.external.isTokenFormat(token)) {
+      this.invitationErrorPage(
+        reply,
+        HttpStatus.BAD_REQUEST,
+        '邀請連結格式錯誤',
+      );
+      return;
+    }
+    try {
+      const session = await this.external.createSession(token);
+      setExternalAccessCookie(
+        reply,
+        this.config,
+        token,
+        session.invitationExpiresAt,
+      );
+      reply.redirect(
         `/external-signatures/${session.signerPublicId}`,
         HttpStatus.SEE_OTHER,
       );
+    } catch (error) {
+      // 非預期錯誤交給全域 handler 記錄
+      if (!(error instanceof AppException)) throw error;
+      const status = error.getStatus();
+      this.invitationErrorPage(
+        reply,
+        status,
+        status >= 500
+          ? '電子簽署服務暫時無法使用，請稍後再試'
+          : '邀請連結無效或已到期',
+      );
+    }
   }
 
   @UseGuards(OriginGuard)
@@ -191,10 +213,24 @@ export class ExternalSignatureController {
     return toSignatureResultView(result);
   }
 
-  private assertInvitationTokenFormat(token: string): void {
-    if (!this.external.isTokenFormat(token)) {
-      throw invalidRequest('邀請連結格式錯誤');
-    }
+  /** 邀請頁由瀏覽器直接開啟（Email 連結、表單送出），不快取、不外送 referrer。 */
+  private setInvitationPageHeaders(reply: FastifyReply): void {
+    reply
+      .header('Cache-Control', 'no-store')
+      .header('Referrer-Policy', 'no-referrer')
+      .header(
+        'Content-Security-Policy',
+        `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+      );
+  }
+
+  /** 邀請頁出錯時回 HTML，不讓外部簽署人看到 JSON。 */
+  private invitationErrorPage(
+    reply: FastifyReply,
+    status: number,
+    message: string,
+  ): void {
+    sendHtmlErrorPage(reply, status, '無法開啟電子簽署文件', message);
   }
 
   private accessToken(request: FastifyRequest): string {

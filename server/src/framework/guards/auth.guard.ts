@@ -41,9 +41,9 @@ export class AuthGuard implements CanActivate {
     if (this.isPublic(context)) return true;
 
     const token = this.extractCookieToken(req);
-    if (!token) throw this.unauthorized('Missing token');
+    if (!token) throw this.unauthorized('請先登入');
     const identity = await this.sessions.verifySessionToken(token);
-    if (!identity) throw this.unauthorized('Invalid, expired or revoked token');
+    if (!identity) throw this.unauthorized('登入已失效，請重新登入');
     if (!Number.isSafeInteger(identity.userId) || identity.userId < 1) {
       throw this.unauthorized('登入身分無效，請重新登入');
     }

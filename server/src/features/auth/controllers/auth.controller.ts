@@ -24,6 +24,7 @@ import {
 } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppException } from '#app/common/errors/app.exception';
+import { sendHtmlErrorPage } from '#app/common/http/html-error-page';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
 import configPath from '#app/config/config.path';
@@ -124,10 +125,7 @@ export class AuthController {
     this.setBridgeHeaders(reply);
     const code = this.credentialFromObject(query);
     if (!code) {
-      reply
-        .status(HttpStatus.BAD_REQUEST)
-        .type('text/html; charset=utf-8')
-        .send(this.errorPage('啟動連結格式錯誤'));
+      this.errorPage(reply, HttpStatus.BAD_REQUEST, '啟動連結格式錯誤');
       return;
     }
     const nonce = randomBytes(18).toString('base64');
@@ -152,10 +150,7 @@ export class AuthController {
     this.setBridgeHeaders(reply);
     const code = this.credentialFromObject(body);
     if (!code) {
-      reply
-        .status(HttpStatus.BAD_REQUEST)
-        .type('text/html; charset=utf-8')
-        .send(this.errorPage('啟動連結格式錯誤'));
+      this.errorPage(reply, HttpStatus.BAD_REQUEST, '啟動連結格式錯誤');
       return;
     }
     try {
@@ -167,14 +162,11 @@ export class AuthController {
         error instanceof AppException
           ? error.getStatus()
           : HttpStatus.SERVICE_UNAVAILABLE;
-      reply
-        .status(status)
-        .type('text/html; charset=utf-8')
-        .send(
-          this.errorPage(
-            status === 503 ? '登入服務暫時無法使用' : '啟動連結無效或已到期',
-          ),
-        );
+      this.errorPage(
+        reply,
+        status,
+        status === 503 ? '登入服務暫時無法使用' : '啟動連結無效或已到期',
+      );
     }
   }
 
@@ -239,7 +231,11 @@ export class AuthController {
     return configured ? configured.split(',').map((value) => value.trim()) : [];
   }
 
-  private errorPage(message: string): string {
-    return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>無法進入電子簽</title></head><body><p>${message}</p></body></html>`;
+  private errorPage(
+    reply: FastifyReply,
+    status: number,
+    message: string,
+  ): void {
+    sendHtmlErrorPage(reply, status, '無法進入電子簽', message);
   }
 }

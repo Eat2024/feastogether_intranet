@@ -54,6 +54,8 @@ export class EsignSignerViewDto {
   status!: EsignSignerStatus;
   signedAt!: string | null;
   invitationDelivery!: EsignInvitationDelivery | null;
+  /** 簽章公開驗證網址；只有 status = signed 時有值 */
+  verificationUrl!: string | null;
 }
 
 export class EsignFieldViewDto {

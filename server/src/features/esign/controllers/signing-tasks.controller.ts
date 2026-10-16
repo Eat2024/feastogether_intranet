@@ -22,7 +22,10 @@ import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
 import { ListSigningTasksQueryDto } from '../dto/document-query.dto';
 import { EsignSigningTaskService } from '../services/esign-signing-task.service';
-import { EsignSigningService } from '../services/esign-signing.service';
+import {
+  EsignSigningService,
+  toSignatureResultView,
+} from '../services/esign-signing.service';
 
 @Controller('esign/signing-tasks')
 export class SigningTasksController {
@@ -88,7 +91,7 @@ export class SigningTasksController {
   @ApiOperation({
     summary: '送出內部員工簽名',
     description:
-      '接收告知同意版本、requestId 與本人各簽名欄位的 PNG；日期欄位由後端填入，並依 requestId 處理重複送出。\n\n前端串接參考：/my-signature/[id] 的 SignFlow 完成告知、閱讀與手寫簽名後，透過 Server Action 的 submitSignatures() 送出。',
+      '接收告知同意版本、requestId 與本人各簽名欄位的 PNG；日期欄位由後端填入，並依 requestId 處理重複送出。成功（含重送）回傳該簽章的公開驗證網址 verificationUrl。\n\n前端串接參考：/my-signature/[id] 的 SignFlow 完成告知、閱讀與手寫簽名後，透過 Server Action 的 submitSignatures() 送出。',
   })
   @Post(':signerPublicId/signatures')
   sign(
@@ -105,11 +108,7 @@ export class SigningTasksController {
       })
       .then((result) => {
         reply.status(result.repeated ? HttpStatus.OK : HttpStatus.CREATED);
-        return {
-          signerPublicId: result.signerPublicId,
-          signedAt: result.signedAt.toISOString(),
-          documentStatus: result.documentStatus,
-        };
+        return toSignatureResultView(result);
       });
   }
   private notFound(): AppException {

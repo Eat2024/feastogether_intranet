@@ -24,4 +24,6 @@ export class EsignSignatureResultDto {
   signerPublicId!: string;
   signedAt!: string;
   documentStatus!: 'active' | 'finalizing' | 'completed';
+  /** 本次簽章的公開驗證網址；重送相同請求時相同 */
+  verificationUrl!: string;
 }

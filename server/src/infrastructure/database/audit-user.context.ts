@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 // audit-user.context.ts
 // 「這個請求是誰在操作」的單一出處：CLS key 與它的兩種取用方式。
 //
@@ -13,10 +14,9 @@
 //
 // 放在 infrastructure 而非 common：本檔需要 common/errors，而 common 是最底層、
 // 全專案無一處自 common 反向 import infrastructure，不能為了這支開先例。
-import { HttpStatus } from '@nestjs/common';
+
 import { ClsService } from 'nestjs-cls';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 
 /** CLS 中存放登入者 ID 的 key（由 AuthGuard 寫入）。 */
 export const CLS_AUDIT_USER_ID = 'auditUserId';
@@ -37,11 +37,7 @@ export function clsUserId(cls: ClsService): number | undefined {
 export function requireClsUserId(cls: ClsService): number {
   const userId = clsUserId(cls);
   if (!userId) {
-    throw new AppException(
-      AppErrorCode.UNAUTHORIZED,
-      '需登入才能操作',
-      HttpStatus.UNAUTHORIZED,
-    );
+    throw new AppException(...AppErrors.LOGIN_REQUIRED);
   }
   return userId;
 }

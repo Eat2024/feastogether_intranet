@@ -1,5 +1,5 @@
-import { HttpStatus, ValidationError } from '@nestjs/common';
-import { AppErrorCode } from './app-error-code';
+import { AppErrors } from './app-errors';
+import { ValidationError } from '@nestjs/common';
 import { AppException } from './app.exception';
 
 /**
@@ -9,12 +9,8 @@ import { AppException } from './app.exception';
 export function validationExceptionFactory(
   errors: ValidationError[],
 ): AppException {
-  const message = flattenConstraints(errors).join('; ') || '請求參數驗證失敗';
-  return new AppException(
-    AppErrorCode.INVALID_REQUEST,
-    message,
-    HttpStatus.BAD_REQUEST,
-  );
+  const message = flattenConstraints(errors).join('; ');
+  return new AppException(...AppErrors.REQUEST_VALIDATION_FAILED(message));
 }
 
 /** 遞迴攤平巢狀 DTO 的所有 constraint 訊息。 */

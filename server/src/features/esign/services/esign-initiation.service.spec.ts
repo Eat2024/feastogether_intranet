@@ -29,7 +29,6 @@ describe('EsignInitiationService', () => {
       {
         id: 21,
         documentId: 3,
-        signerId: 11,
         fieldType: 'signature',
         pageNumber: 1,
         xPercent: '10.000',
@@ -149,7 +148,6 @@ describe('EsignInitiationService', () => {
       ],
       fields: [
         {
-          signerIndex: 0,
           type: 'signature',
           page: 1,
           xPercent: 10,
@@ -176,7 +174,7 @@ describe('EsignInitiationService', () => {
       7,
       expect.arrayContaining([
         expect.objectContaining({
-          signerPublicId: 'c854d925-1d70-49dc-9c81-abf18409ae42',
+          type: 'signature',
         }),
       ]),
       manager,
@@ -219,7 +217,7 @@ describe('EsignInitiationService', () => {
     );
   });
 
-  it('每名簽署人缺少 signature 欄位時維持草稿並拒絕', async () => {
+  it('共用欄位缺少 signature 欄位時維持草稿並拒絕', async () => {
     const { service, document, tokens } = setup({
       fields: [
         {
@@ -240,7 +238,6 @@ describe('EsignInitiationService', () => {
         ],
         fields: [
           {
-            signerIndex: 0,
             type: 'signature',
             page: 1,
             xPercent: 10,
@@ -255,7 +252,7 @@ describe('EsignInitiationService', () => {
         watermark: false,
         allowReject: false,
       }),
-    ).rejects.toThrow('每名簽署人至少需要一個簽名欄位');
+    ).rejects.toThrow('至少需要一個共用簽名欄位');
     expect(document.status).toBe('draft');
     expect(tokens.createInvitationToken).not.toHaveBeenCalled();
   });
@@ -271,7 +268,6 @@ describe('EsignInitiationService', () => {
         ],
         fields: [
           {
-            signerIndex: 0,
             type: 'signature',
             page: 1,
             xPercent: 10,
@@ -313,7 +309,6 @@ describe('EsignInitiationService', () => {
       ],
       fields: [
         {
-          signerIndex: 0,
           type: 'signature',
           page: 1,
           xPercent: 10,

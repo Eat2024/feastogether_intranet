@@ -1,13 +1,8 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  HttpStatus,
-  Injectable,
-} from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { FastifyRequest } from 'fastify';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { getRequestPath } from '#app/framework/http/request.context';
 
 /**
@@ -28,11 +23,7 @@ export class OriginGuard implements CanActivate {
     const origin = req.headers.origin;
     if (origin === undefined) {
       if (this.requiresExplicitOrigin(req)) {
-        throw new AppException(
-          AppErrorCode.CSRF_ORIGIN_REJECTED,
-          '請求來源不允許',
-          HttpStatus.FORBIDDEN,
-        );
+        throw new AppException(...AppErrors.CSRF_ORIGIN_REJECTED);
       }
       return true;
     }
@@ -42,11 +33,7 @@ export class OriginGuard implements CanActivate {
     if (origin === 'null' && req.headers['sec-fetch-site'] === 'same-origin') {
       return true;
     }
-    throw new AppException(
-      AppErrorCode.CSRF_ORIGIN_REJECTED,
-      '請求來源不允許',
-      HttpStatus.FORBIDDEN,
-    );
+    throw new AppException(...AppErrors.CSRF_ORIGIN_REJECTED);
   }
 
   private requiresExplicitOrigin(request: FastifyRequest): boolean {

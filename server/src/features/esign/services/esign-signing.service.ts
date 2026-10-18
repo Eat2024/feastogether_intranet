@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { Inject, Injectable } from '@nestjs/common';
 import { PDFDocument } from 'pdf-lib';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
@@ -17,7 +16,7 @@ import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { canonicalJson, EsignAuditService } from './esign-audit.service';
+import { canonicalSha256, EsignAuditService } from './esign-audit.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
@@ -31,6 +30,19 @@ export type SigningPrincipal =
 export interface SigningRequestContext {
   sourceIp?: string;
   userAgent?: string;
+}
+
+/** 簽署結果的公開欄位；明確裁切，避免內部識別與憑證外洩。 */
+export function toSignatureResultView(
+  result: Awaited<ReturnType<EsignSigningService['sign']>>,
+) {
+  return {
+    signerPublicId: result.signerPublicId,
+    signedAt: result.signedAt.toISOString(),
+    documentStatus: result.documentStatus,
+    verificationUrl: result.verificationUrl,
+    completion: result.completion,
+  };
 }
 
 @Injectable()
@@ -53,7 +65,26 @@ export class EsignSigningService {
     private readonly storage: PrivateFileStorage,
   ) {}
 
+  /** 簽署成功（含重送）後才附上該簽章的驗證網址；失敗路徑一律拋錯，不會發出網址。 */
   async sign(
+    signerPublicId: string,
+    principal: SigningPrincipal,
+    submission: SignatureSubmissionDto,
+    request: SigningRequestContext,
+  ) {
+    const result = await this.submit(
+      signerPublicId,
+      principal,
+      submission,
+      request,
+    );
+    return {
+      ...result,
+      verificationUrl: this.tokens.verificationUrl(result.verificationCode),
+    };
+  }
+
+  private async submit(
     signerPublicId: string,
     principal: SigningPrincipal,
     submission: SignatureSubmissionDto,
@@ -74,33 +105,39 @@ export class EsignSigningService {
       if (principal.kind === 'internal') {
         this.access.assertInternalSigner(document, signer, principal.userId);
       } else {
-        this.access.assertExternalCredential(
+        this.access.assertExternalInvitation(
           document,
           signer,
           principal.invitationDigest,
+          new Date(),
         );
       }
       return {
         signerPublicId,
         signedAt: repeated.signedAtUtc,
         documentStatus: document.status,
+        verificationCode: repeated.verificationCode,
+        completion: {
+          status: signer.completionStatus,
+          readyAt: signer.completionReadyAt?.toISOString() ?? null,
+        },
         repeated: true,
       };
     }
     this.assertPrincipal(document, signer, principal, new Date());
     if (!signer || !document) throw new Error('unreachable');
     const fields = await this.fields.findByDocument(document.id, manager);
-    const ownFields = fields.filter((field) => field.signerId === signer.id);
-    const signatureFields = ownFields.filter(
+    const signatureFields = fields.filter(
       (field) => field.fieldType === 'signature',
     );
-    this.validation.assertFieldsBelongToSigner(ownFields, signer);
+    this.validation.assertFieldsBelongToDocument(fields, signer.documentId);
     const inputByField = this.validateSignatureInputs(
       signatureFields.map((field) => field.id),
       submission,
     );
 
     const stored: Array<{ fieldId: number; file: StoredPrivateFile }> = [];
+    let committed = false;
     try {
       for (const field of signatureFields) {
         const signatureBytes = inputByField.get(field.id)!;
@@ -130,11 +167,35 @@ export class EsignSigningService {
           authenticationEventId,
           tx,
         );
-        if (repeated && lockedSigner && repeated.signerId === lockedSigner.id) {
+        if (
+          repeated &&
+          lockedDocument &&
+          lockedSigner &&
+          repeated.signerId === lockedSigner.id
+        ) {
+          if (principal.kind === 'internal') {
+            this.access.assertInternalSigner(
+              lockedDocument,
+              lockedSigner,
+              principal.userId,
+            );
+          } else {
+            this.access.assertExternalInvitation(
+              lockedDocument,
+              lockedSigner,
+              principal.invitationDigest,
+              new Date(),
+            );
+          }
           return {
             signerPublicId,
             signedAt: repeated.signedAtUtc,
             documentStatus: lockedDocument?.status ?? 'active',
+            verificationCode: repeated.verificationCode,
+            completion: {
+              status: lockedSigner.completionStatus,
+              readyAt: lockedSigner.completionReadyAt?.toISOString() ?? null,
+            },
             repeated: true,
           };
         }
@@ -147,7 +208,8 @@ export class EsignSigningService {
         if (!lockedSigner || !lockedDocument) throw new Error('unreachable');
         this.validation.assertPendingSigner(lockedSigner, lockedDocument.id);
         const existing = await this.records.findBySignerId(lockedSigner.id, tx);
-        if (existing) throw this.conflict('此簽署任務已完成');
+        if (existing)
+          throw new AppException(...AppErrors.ESIGN_SIGNING_TASK_COMPLETED);
 
         const [lockedFields, source] = await Promise.all([
           this.fields.findByDocumentForUpdate(lockedDocument.id, tx),
@@ -162,25 +224,27 @@ export class EsignSigningService {
           source,
           persistedPdf.sha256,
         );
-        const payloadHash = createHash('sha256')
-          .update(canonicalJson(lockedDocument.signingPayloadJson), 'utf8')
-          .digest('hex');
+        const payloadHash = canonicalSha256(lockedDocument.signingPayloadJson);
         this.validation.assertPayloadIntegrity(lockedDocument, payloadHash);
-        const lockedOwnFields = lockedFields.filter(
-          (field) => field.signerId === lockedSigner.id,
+        this.validation.assertFieldsBelongToDocument(
+          lockedFields,
+          lockedSigner.documentId,
         );
-        this.validation.assertFieldsBelongToSigner(
-          lockedOwnFields,
-          lockedSigner,
+        this.validation.assertSigningSnapshot(
+          lockedDocument,
+          persistedPdf.sha256,
+          lockedFields,
         );
         this.validateSignatureInputs(
-          lockedOwnFields
+          lockedFields
             .filter((field) => field.fieldType === 'signature')
             .map((field) => field.id),
           submission,
         );
 
         const signedAt = new Date();
+        this.validation.assertActiveSigningWindow(lockedDocument, signedAt);
+        const verificationCode = this.tokens.createVerificationCode();
         const inserted = await this.records.insert(
           {
             signerId: lockedSigner.id,
@@ -195,6 +259,7 @@ export class EsignSigningService {
             sourceIp: request.sourceIp?.slice(0, 45),
             userAgent: request.userAgent?.slice(0, 500),
             signedAtUtc: signedAt,
+            verificationCode,
           },
           tx,
         );
@@ -216,14 +281,12 @@ export class EsignSigningService {
         );
         lockedSigner.status = 'signed';
         lockedSigner.signedAt = signedAt;
-        lockedSigner.invitationTokenCiphertext = undefined;
-        lockedSigner.invitationExpiresAt = undefined;
-        let receiptToken: string | undefined;
-        if (lockedSigner.signerType === 'email') {
-          const receipt = this.tokens.createReceiptToken();
-          receiptToken = receipt.token;
-          lockedSigner.completionReceiptSha256 = receipt.digest;
-        }
+        lockedSigner.invitationTokenCiphertext = null;
+        lockedSigner.invitationExpiresAt = null;
+        lockedSigner.completionStatus = 'pending';
+        lockedSigner.completionLeaseToken = null;
+        lockedSigner.completionLeaseExpiresAt = null;
+        lockedSigner.completionReadyAt = null;
         await this.signers.save(lockedSigner, tx);
         const auditBase = {
           documentId: lockedDocument.id,
@@ -256,29 +319,35 @@ export class EsignSigningService {
           },
           tx,
         );
-        const allSigners = await this.signers.findByDocumentForUpdate(
+        const counts = await this.signers.completionCounts(
           lockedDocument.id,
           tx,
         );
+        if (counts.total > 0 && counts.pending === 0) {
+          lockedDocument.status = 'finalizing';
+          await this.documents.save(lockedDocument, tx);
+        }
         return {
           signerPublicId,
           signedAt,
           documentStatus: lockedDocument.status,
           documentId: lockedDocument.id,
-          allSigned: allSigners.every((item) => item.status === 'signed'),
-          receiptToken,
+          signerId: lockedSigner.id,
+          completion: { status: lockedSigner.completionStatus, readyAt: null },
+          verificationCode,
           repeated: false,
         };
       });
 
+      committed = !result.repeated;
       if (result.repeated) {
         await this.deleteStored(stored);
-      } else if (result.allSigned && result.documentId) {
-        await this.jobs.enqueueFinalization(result.documentId);
+      } else if (result.documentId && result.signerId) {
+        await this.jobs.enqueueFinalization(result.documentId, result.signerId);
       }
       return result;
     } catch (error) {
-      await this.deleteStored(stored);
+      if (!committed) await this.deleteStored(stored);
       throw error;
     }
   }
@@ -291,11 +360,7 @@ export class EsignSigningService {
   ): void {
     if (!signer || !document) {
       if (principal.kind === 'external') {
-        throw new AppException(
-          AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
-          '外部簽署存取已失效',
-          HttpStatus.UNAUTHORIZED,
-        );
+        throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
       }
       this.access.checkEsignCreator(null, principal.userId);
       return;
@@ -322,7 +387,7 @@ export class EsignSigningService {
     for (const input of submission.signatures) {
       const fieldId = Number(input.fieldId);
       if (!required.has(fieldId) || result.has(fieldId)) {
-        throw this.invalid('簽名欄位不完整或不屬於目前簽署人');
+        throw new AppException(...AppErrors.ESIGN_SIGNATURE_FIELDS_INVALID);
       }
       const encoded = input.pngDataUrl.slice('data:image/png;base64,'.length);
       const bytes = Buffer.from(encoded, 'base64');
@@ -333,12 +398,12 @@ export class EsignSigningService {
           .subarray(0, 8)
           .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
       ) {
-        throw this.invalid('簽名必須是有效 PNG 圖片');
+        throw new AppException(...AppErrors.ESIGN_SIGNATURE_PNG_INVALID);
       }
       result.set(fieldId, bytes);
     }
     if (result.size !== required.size) {
-      throw this.invalid('請完成所有必要簽名欄位');
+      throw new AppException(...AppErrors.ESIGN_SIGNATURES_REQUIRED);
     }
     return result;
   }
@@ -358,31 +423,11 @@ export class EsignSigningService {
       const probe = await PDFDocument.create();
       await probe.embedPng(bytes);
     } catch {
-      throw this.invalid('簽名必須是有效 PNG 圖片');
+      throw new AppException(...AppErrors.ESIGN_SIGNATURE_PNG_INVALID);
     }
   }
 
-  private invalid(message: string): AppException {
-    return new AppException(
-      AppErrorCode.INVALID_REQUEST,
-      message,
-      HttpStatus.BAD_REQUEST,
-    );
-  }
-
-  private conflict(message: string): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_STATE_CONFLICT,
-      message,
-      HttpStatus.CONFLICT,
-    );
-  }
-
   private integrity(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_INTEGRITY_FAILED,
-      '文件完整性驗證失敗',
-      HttpStatus.CONFLICT,
-    );
+    return new AppException(...AppErrors.ESIGN_INTEGRITY_FAILED);
   }
 }

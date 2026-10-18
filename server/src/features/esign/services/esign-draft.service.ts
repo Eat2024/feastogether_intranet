@@ -1,9 +1,9 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { Inject, Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
@@ -60,7 +60,7 @@ export class EsignDraftService {
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly fieldService: EsignFieldService,
-  ) {}
+  ) { }
 
   listCreatedBy(userId: number) {
     return this.documents.findCreatedByUser(userId, this.mysql.getManager());
@@ -138,13 +138,12 @@ export class EsignDraftService {
     pageCount: number,
     manager: EntityManager,
   ): Promise<void> {
-    // 建立當下尚無簽署人，欄位一律存成未指派。
+    // 上傳時保存共用欄位，不需要先設定簽署人。
     const fields = this.fieldService.build(
       documentId,
       creatorUserId,
       inputs,
       pageCount,
-      [],
       manager,
     );
     await this.fields.save(fields, manager);
@@ -177,25 +176,25 @@ export class EsignDraftService {
     try {
       const document = await this.mysql.transaction(async (manager) => {
         // 上傳期間文件可能已被發起，寫入前必須在鎖內重新驗證。
-        const locked = await this.access.checkAndLockDraftDoc(
+        const lockedFile = await this.access.checkAndLockDraftDoc(
           documentId,
           userId,
           manager,
         );
-        if (title !== undefined) locked.title = title;
+        if (title !== undefined) lockedFile.title = title;
         if (newPdf) {
           previous = await this.replaceSourcePdf(documentId, newPdf, manager);
         }
         if (input.fields) {
           await this.replaceUpdateFields(
-            locked,
+            lockedFile,
             userId,
             input.fields,
             newPdf?.metadata,
             manager,
           );
         }
-        const saved = await this.documents.save(locked, manager);
+        const saved = await this.documents.save(lockedFile, manager);
         await this.recordDraftUpdateAudit(documentId, userId, manager);
         return saved;
       });
@@ -216,11 +215,7 @@ export class EsignDraftService {
       input.file === undefined &&
       input.fields === undefined
     ) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '至少需要提供一項草稿更新內容',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(...AppErrors.ESIGN_DRAFT_UPDATE_REQUIRED);
     }
     return input.title === undefined
       ? undefined
@@ -323,7 +318,6 @@ export class EsignDraftService {
       userId,
       inputs,
       newPdfMetadata.pageCount,
-      [],
       manager,
     );
     await this.fields.save(fields, manager);
@@ -376,11 +370,7 @@ export class EsignDraftService {
   private normalizeTitle(title: string): string {
     const normalized = title.trim();
     if (normalized.length < 1 || normalized.length > 200) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '文件名稱必須為 1 至 200 字',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(...AppErrors.ESIGN_DOCUMENT_NAME_INVALID);
     }
     return normalized;
   }
@@ -391,10 +381,6 @@ export class EsignDraftService {
   }
 
   private integrityFailure(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_INTEGRITY_FAILED,
-      '文件完整性驗證失敗',
-      HttpStatus.CONFLICT,
-    );
+    return new AppException(...AppErrors.ESIGN_INTEGRITY_FAILED);
   }
 }

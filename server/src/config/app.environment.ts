@@ -157,10 +157,8 @@ export function validateAppEnvironment(config: Environment): Environment {
     }
   }
 
-  validateExternalOrigin(
-    requiredString(config, 'EXTERNAL_SIGNING_ORIGIN'),
-    environment,
-  );
+  const externalOrigin = requiredString(config, 'EXTERNAL_SIGNING_ORIGIN');
+  validateExternalOrigin(externalOrigin, environment);
   validateEncryptionKey(
     requiredString(config, 'ESIGN_INVITATION_ENCRYPTION_KEY_B64'),
   );
@@ -170,5 +168,7 @@ export function validateAppEnvironment(config: Environment): Environment {
     NODE_ENV: environment,
     ESIGN_STORAGE_DRIVER: storageDriver,
     ESIGN_MAIL_DRIVER: mailDriver,
+    // 驗證網址會印進完成 PDF，必須使用去除空白後的 origin
+    EXTERNAL_SIGNING_ORIGIN: externalOrigin,
   };
 }

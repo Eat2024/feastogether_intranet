@@ -9,6 +9,7 @@ import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-f
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
+import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignAuditService } from './esign-audit.service';
@@ -34,6 +35,7 @@ export class EsignSigningTaskService {
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly users: UserRepository,
+    private readonly records: SignatureRecordRepository,
   ) {}
 
   async list(userId: number, status?: 'pending' | 'signed') {
@@ -57,12 +59,15 @@ export class EsignSigningTaskService {
 
   async open(signerPublicId: string, userId: number) {
     return this.mysql.transaction(async (manager) => {
-      const signer = await this.signers.findByPublicIdForUpdate(
+      const candidate = await this.signers.findByPublicId(
         signerPublicId,
         manager,
       );
-      const document = signer
-        ? await this.documents.findByIdForUpdate(signer.documentId, manager)
+      const document = candidate
+        ? await this.documents.findByIdForUpdate(candidate.documentId, manager)
+        : null;
+      const signer = document
+        ? await this.signers.findByPublicIdForUpdate(signerPublicId, manager)
         : null;
       if (!document || !signer) {
         this.access.checkEsignCreator(null, userId);
@@ -115,15 +120,17 @@ export class EsignSigningTaskService {
     >,
     manager = this.mysql.getManager(),
   ) {
-    const [allSigners, allFields, creator] = await Promise.all([
-      this.signers.findByDocument(document.id, manager),
+    const [totals, allFields, creator, record] = await Promise.all([
+      this.signers.completionCounts(document.id, manager),
       this.fields.findByDocument(document.id, manager),
       this.users.findById(document.createdByUserId, manager),
+      signer.status === 'signed'
+        ? this.records.findBySignerId(signer.id, manager)
+        : null,
     ]);
     const counts = {
-      pendingCount: allSigners.filter((item) => item.status === 'pending')
-        .length,
-      signedCount: allSigners.filter((item) => item.status === 'signed').length,
+      pendingCount: totals.pending,
+      signedCount: totals.signed,
     };
     return {
       signerPublicId: signer.publicId,
@@ -133,10 +140,8 @@ export class EsignSigningTaskService {
         counts,
         creator ?? undefined,
       ),
-      signer: this.mapper.signer(signer, null),
-      fields: allFields
-        .filter((field) => field.signerId === signer.id)
-        .map((field) => this.mapper.field(field, signer.publicId)),
+      signer: this.mapper.signer(signer, null, record?.verificationCode),
+      fields: allFields.map((field) => this.mapper.field(field)),
       consent: this.consent.getActive(),
       ...counts,
     };

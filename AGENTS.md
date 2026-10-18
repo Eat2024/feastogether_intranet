@@ -7,7 +7,7 @@
 - 這是饗賓內部電子簽署系統的 pnpm workspace，包含 `client` 與 `server` 兩個 package。
 - `client/`：Next.js 16 + React 19 + MUI 9，由原始前端專案搬入。
 - `server/`：NestJS 11 + Fastify + TypeORM + MySQL + Redis，來自 `nest_seed` 的基礎架構，含 HTTP server 與獨立 worker entrypoint。
-- 電子簽業務目前仍在 client 的 server-memory mock store，尚未搬到 NestJS/MySQL。不可把骨架存在誤述為業務 API 已完成。
+- 電子簽上傳、發起、簽署與個人副本的後端流程已實作於 NestJS/MySQL；本次 PR 僅交付後端，client 維持原有 mock store 原型，正式 API 串接由獨立前端 PR 交付。不可把原型描述為已完成正式功能。
 - 文件、註解、UI 與可預期的錯誤訊息使用繁體中文。
 
 ## 套件與指令

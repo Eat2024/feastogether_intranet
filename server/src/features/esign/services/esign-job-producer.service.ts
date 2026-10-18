@@ -9,8 +9,6 @@ import {
   ESIGN_EXTERNAL_INVITATION_QUEUE,
 } from '../esign-queue.constants';
 
-const ENQUEUE_TIMEOUT_MS = 500;
-
 @Injectable()
 export class EsignJobProducerService {
   constructor(
@@ -22,50 +20,54 @@ export class EsignJobProducerService {
   ) {}
 
   async enqueueInvitations(notificationLogIds: number[]): Promise<void> {
-    await Promise.all(
-      notificationLogIds.map((notificationLogId) =>
-        this.bestEffort(
-          this.invitationQueue.add(
-            ESIGN_EXTERNAL_INVITATION_JOB,
-            { notificationLogId },
-            { attempts: 1, removeOnComplete: 1000, removeOnFail: 1000 },
-          ),
-          'esign.invitation_enqueue_failed',
-        ),
-      ),
-    );
+    for (let offset = 0; offset < notificationLogIds.length; offset += 100) {
+      try {
+        await this.invitationQueue.addBulk(
+          notificationLogIds
+            .slice(offset, offset + 100)
+            .map((notificationLogId) => ({
+              name: ESIGN_EXTERNAL_INVITATION_JOB,
+              data: { notificationLogId },
+              opts: {
+                attempts: 1,
+                removeOnComplete: 1000,
+                removeOnFail: 1000,
+                deduplication: { id: `invitation-${notificationLogId}` },
+              },
+            })),
+        );
+      } catch {
+        this.logger.warn({
+          event: 'esign.invitation_enqueue_failed',
+          context: EsignJobProducerService.name,
+        });
+        // 已提交的通知紀錄由 maintenance 補送，停止後續批次。
+        break;
+      }
+    }
   }
 
-  enqueueFinalization(documentId: number): Promise<void> {
-    return this.bestEffort(
-      this.finalizationQueue.add(
-        ESIGN_DOCUMENT_FINALIZATION_JOB,
-        { documentId },
-        { attempts: 1, removeOnComplete: 1000, removeOnFail: 1000 },
-      ),
-      'esign.finalization_enqueue_failed',
-    );
-  }
-
-  private async bestEffort(
-    work: Promise<unknown>,
-    event: string,
+  async enqueueFinalization(
+    documentId: number,
+    signerId: number,
   ): Promise<void> {
-    let timer: NodeJS.Timeout | undefined;
     try {
-      await Promise.race([
-        work,
-        new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error('queue timeout')),
-            ENQUEUE_TIMEOUT_MS,
-          );
-        }),
-      ]);
+      await this.finalizationQueue.add(
+        ESIGN_DOCUMENT_FINALIZATION_JOB,
+        { documentId, signerId },
+        {
+          attempts: 1,
+          removeOnComplete: 1000,
+          removeOnFail: 1000,
+          deduplication: { id: `copy-${documentId}-${signerId}` },
+        },
+      );
     } catch {
-      this.logger.warn({ event, context: EsignJobProducerService.name });
-    } finally {
-      if (timer) clearTimeout(timer);
+      // 簽署已提交；保留 pending 由 maintenance 補入列，不回報簽署失敗。
+      this.logger.warn({
+        event: 'esign.finalization_enqueue_failed',
+        context: EsignJobProducerService.name,
+      });
     }
   }
 }

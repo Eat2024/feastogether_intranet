@@ -19,6 +19,9 @@ import { EsignSigner } from './esign-signer.entity';
 ])
 @Index('idx_esign_signature_records_signed_at_utc', ['signedAtUtc'])
 @Index('idx_esign_signature_records_created_at', ['createdAt'])
+@Index('uq_esign_signature_records_verification_code', ['verificationCode'], {
+  unique: true,
+})
 export class EsignSignatureRecord {
   @PrimaryGeneratedColumn({ type: 'bigint', comment: '簽署證據流水號' })
   id!: number;
@@ -106,6 +109,18 @@ export class EsignSignatureRecord {
     comment: '實際簽署時間',
   })
   signedAtUtc!: Date;
+
+  /** Spec 04 上線前的簽署紀錄為 NULL，不回補 */
+  @Column({
+    name: 'verification_code',
+    type: 'char',
+    length: 22,
+    charset: 'ascii',
+    collation: 'ascii_bin',
+    nullable: true,
+    comment: '簽章公開驗證代碼',
+  })
+  verificationCode?: string;
 
   @CreateDateColumn({
     name: 'created_at',

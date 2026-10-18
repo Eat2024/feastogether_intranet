@@ -36,6 +36,7 @@ function dumpSchema(): string {
     '--column-statistics=0',
     // TypeORM 的 migration 執行紀錄表不是應用程式的 schema
     `--ignore-table=${database}.migrations`,
+    `--ignore-table=${database}.typeorm_metadata`,
     '-h',
     String(options.host),
     '-P',

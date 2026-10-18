@@ -88,7 +88,10 @@ describe('HttpAccessLogInterceptor', () => {
   it.each([
     '/api/esign/documents/9/initiations',
     '/esign/documents/9/initiations',
-  ])('發起名單不寫入 access log：%s', async (url) => {
+    '/api/esign/documents',
+    '/api/esign/documents/9/draftSave',
+    '/api/esign/signing-tasks/person/signatures',
+  ])('電子簽文件、簽名與名單不寫入 access log：%s', async (url) => {
     const { interceptor, accessLogger } = makeInterceptor();
     await lastValueFrom(
       interceptor.intercept(
@@ -96,6 +99,7 @@ describe('HttpAccessLogInterceptor', () => {
           baseReq({
             url,
             body: { signers: [{ name: '測試', email: 'test@example.test' }] },
+            query: { q: '測試同仁' },
           }),
           201,
         ),
@@ -103,6 +107,7 @@ describe('HttpAccessLogInterceptor', () => {
       ),
     );
     expect(getWrittenEntry(accessLogger).requestBody).toBeUndefined();
+    expect(getWrittenEntry(accessLogger).query).toBeUndefined();
   });
 
   it('WebView GET 不記 URL query，session POST 不記 body', async () => {
@@ -158,6 +163,31 @@ describe('HttpAccessLogInterceptor', () => {
       url: '/api/auth/webview-launches',
       query: undefined,
     });
+  });
+
+  it('公開簽章驗證只記正規化 path，不留完整 token', async () => {
+    const { interceptor, accessLogger } = makeInterceptor();
+    const token = 'A'.repeat(110);
+    await lastValueFrom(
+      interceptor.intercept(
+        makeContext(
+          baseReq({
+            method: 'GET',
+            url: `/api/signature-verifications/${token}?utm=qr`,
+            query: { utm: 'qr' },
+            body: undefined,
+          }),
+        ),
+        { handle: () => of({}) },
+      ),
+    );
+    const entry = getWrittenEntry(accessLogger);
+    expect(entry).toMatchObject({
+      path: '/api/signature-verifications/:token',
+      url: '/api/signature-verifications/:token',
+      query: undefined,
+    });
+    expect(JSON.stringify(entry)).not.toContain(token);
   });
 
   it('錯誤路徑：非 HttpException → fallback 500 並重新拋出', async () => {

@@ -1,6 +1,6 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { Inject, Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
@@ -8,12 +8,10 @@ import {
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
-import type { FieldInputDto } from '../dto/field.dto';
+import type { FieldPlacementDto } from '../dto/field.dto';
 import type { EsignDocument } from '../entities/esign-document.entity';
-import type { EsignSigner } from '../entities/esign-signer.entity';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
-import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { PdfValidationService } from './pdf-validation.service';
@@ -22,7 +20,6 @@ import { PdfValidationService } from './pdf-validation.service';
 export class EsignFieldService {
   constructor(
     private readonly mysql: MysqlService,
-    private readonly signers: SignerRepository,
     private readonly fields: DocumentFieldRepository,
     private readonly files: FileObjectRepository,
     private readonly access: EsignAccessPolicyService,
@@ -32,9 +29,13 @@ export class EsignFieldService {
     private readonly storage: PrivateFileStorage,
   ) {}
 
-  replace(documentId: number, creatorUserId: number, inputs: FieldInputDto[]) {
+  replace(
+    documentId: number,
+    creatorUserId: number,
+    inputs: FieldPlacementDto[],
+  ) {
     if (inputs.length > 200) {
-      throw this.invalid('欄位數量不可超過 200 個');
+      throw new AppException(...AppErrors.ESIGN_FIELD_LIMIT_EXCEEDED);
     }
     return this.mysql.transaction(async (manager) => {
       const document = await this.access.checkAndLockDraftDoc(
@@ -56,7 +57,7 @@ export class EsignFieldService {
   async buildFields(
     document: EsignDocument,
     creatorUserId: number,
-    inputs: FieldInputDto[],
+    inputs: FieldPlacementDto[],
     manager: EntityManager,
   ) {
     const documentId = document.id;
@@ -66,18 +67,16 @@ export class EsignFieldService {
       'source_pdf',
       manager,
     );
-    if (!source) throw this.invalid('草稿缺少 PDF 文件');
+    if (!source) throw new AppException(...AppErrors.ESIGN_DRAFT_PDF_MISSING);
     const bytes = await readPrivateFile(this.storage, source);
     const metadata = await this.pdf.validatePersistedPdf(bytes);
     this.validation.assertSourceIntegrity(document, source, metadata.sha256);
 
-    const signers = await this.signers.findByDocument(documentId, manager);
     const replacements = this.build(
       documentId,
       creatorUserId,
       inputs,
       metadata.pageCount,
-      signers,
       manager,
     );
 
@@ -97,34 +96,23 @@ export class EsignFieldService {
   build(
     documentId: number,
     creatorUserId: number,
-    inputs: FieldInputDto[],
+    inputs: FieldPlacementDto[],
     pageCount: number,
-    signers: EsignSigner[],
     manager: EntityManager,
   ) {
-    if (inputs.length > 200) throw this.invalid('欄位數量不可超過 200 個');
-    const signerByPublicId = new Map(
-      signers.map((signer) => [signer.publicId, signer]),
-    );
+    if (inputs.length > 200)
+      throw new AppException(...AppErrors.ESIGN_FIELD_LIMIT_EXCEEDED);
     return inputs.map((input) => {
-      // 未帶簽署人的欄位存成未指派，由發起流程確認每個欄位都已指派。
-      const signer = input.signerPublicId
-        ? signerByPublicId.get(input.signerPublicId)
-        : undefined;
-      if (input.signerPublicId && !signer) {
-        throw this.invalid('欄位指定的簽署人不屬於本文件');
-      }
       if (
         input.page > pageCount ||
         input.xPercent + input.widthPercent > 100 ||
         input.yPercent + input.heightPercent > 100
       ) {
-        throw this.invalid('欄位頁碼或位置超出 PDF 範圍');
+        throw new AppException(...AppErrors.ESIGN_FIELD_OUT_OF_BOUNDS);
       }
       return this.fields.create(
         {
           documentId,
-          signerId: signer?.id,
           fieldType: input.type,
           pageNumber: input.page,
           xPercent: input.xPercent.toFixed(3),
@@ -138,13 +126,5 @@ export class EsignFieldService {
         manager,
       );
     });
-  }
-
-  private invalid(message: string): AppException {
-    return new AppException(
-      AppErrorCode.INVALID_REQUEST,
-      message,
-      HttpStatus.BAD_REQUEST,
-    );
   }
 }

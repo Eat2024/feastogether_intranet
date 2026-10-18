@@ -1,3 +1,5 @@
+import { EsignAccessPolicyService } from './esign-access-policy.service';
+import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { ExternalAccessService } from './external-access.service';
 
 describe('ExternalAccessService', () => {
@@ -13,7 +15,10 @@ describe('ExternalAccessService', () => {
       invitationTokenSha256: 'a'.repeat(64),
     };
     const document = { id: 4, status: 'completed' };
-    const access = { assertExternalCredential: jest.fn() };
+    const access = new EsignAccessPolicyService(
+      new EsignDocumentValidationService(),
+      {} as never,
+    );
     const service = new ExternalAccessService(
       { getManager: () => manager } as never,
       { findById: jest.fn(async () => document) } as never,
@@ -40,15 +45,10 @@ describe('ExternalAccessService', () => {
     expect(service.isTokenFormat(`${'A'.repeat(42)}+`)).toBe(false);
   });
 
-  it('已簽署 signer 只可用 digest 綁定做相同 request 冪等辨識，不恢復 task/source 權限', async () => {
-    const { service, signer, document, access } = setup();
-    await expect(service.signingSignerPublicId('A'.repeat(43))).resolves.toBe(
-      signer.publicId,
-    );
-    expect(access.assertExternalCredential).toHaveBeenCalledWith(
-      document,
-      signer,
-      'a'.repeat(64),
-    );
+  it('已簽署邀請不再授予提交或重放存取權限', async () => {
+    const { service } = setup();
+    await expect(
+      service.signingSignerPublicId('A'.repeat(43)),
+    ).rejects.toMatchObject({ status: 401 });
   });
 });

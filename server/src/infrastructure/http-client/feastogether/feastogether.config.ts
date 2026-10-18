@@ -1,7 +1,7 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 
 /**
  * 饗賓 API 連線設定（base URL + X-API-KEY）。
@@ -25,11 +25,7 @@ export class FeastogetherConfig {
   private require(key: string): string {
     const value = this.config.get<string>(key);
     if (!value) {
-      throw new AppException(
-        AppErrorCode.EXTERNAL_AUTH_UNAVAILABLE,
-        '饗賓 API 未設定（缺少連線環境變數）',
-        HttpStatus.BAD_GATEWAY,
-      );
+      throw new AppException(...AppErrors.FEASTOGETHER_CONFIG_MISSING);
     }
     return value;
   }

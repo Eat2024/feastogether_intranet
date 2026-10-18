@@ -18,9 +18,13 @@ export interface EsignToken {
   digest: string;
 }
 
+/** 簽章公開驗證代碼：16 bytes 隨機值的 base64url，固定 22 字 */
+const VERIFICATION_CODE_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+
 @Injectable()
 export class EsignTokenService {
   private readonly key: Buffer;
+  private readonly verificationOrigin: string;
 
   constructor(config: ConfigService) {
     this.key = Buffer.from(
@@ -32,6 +36,24 @@ export class EsignTokenService {
         'ESIGN_INVITATION_ENCRYPTION_KEY_B64 必須是 32 bytes 的 base64',
       );
     }
+    this.verificationOrigin = config.getOrThrow<string>(
+      'EXTERNAL_SIGNING_ORIGIN',
+    );
+  }
+
+  /** 簽署成功時產生的簽章公開驗證代碼，保存在簽署紀錄 */
+  createVerificationCode(): string {
+    return randomBytes(16).toString('base64url');
+  }
+
+  /** 格式不符直接視為查無，不必查 DB */
+  isVerificationCodeFormat(code: string): boolean {
+    return VERIFICATION_CODE_PATTERN.test(code);
+  }
+
+  /** 簽章公開驗證網址；Spec 04 上線前的簽署紀錄沒有代碼，回 null */
+  verificationUrl(code: string | null | undefined): string | null {
+    return code ? `${this.verificationOrigin}/verify/${code}` : null;
   }
 
   createInvitationToken(): EncryptedEsignToken {
@@ -41,11 +63,6 @@ export class EsignTokenService {
       digest: this.digest(token),
       ciphertext: this.encrypt(token),
     };
-  }
-
-  createReceiptToken(): EsignToken {
-    const token = this.randomToken();
-    return { token, digest: this.digest(token) };
   }
 
   digest(token: string): string {

@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsOptional,
@@ -15,7 +16,9 @@ export class OauthCallbackDto {
   @ApiProperty({ description: '授權請求時由本系統產生的 state' })
   @IsString()
   @Length(1, 256)
-  @Matches(/^[\x21-\x7e]+$/, { message: 'state 只允許可見 ASCII 字元' })
+  @Matches(/^[\x21-\x7e]+$/, {
+    message: AppErrors.OAUTH_STATE_FORMAT_INVALID[1],
+  })
   state!: string;
 
   @ApiPropertyOptional({ description: '上游授權碼（與 error 擇一）' })

@@ -1,9 +1,5 @@
-import {
-  ExecutionContext,
-  HttpStatus,
-  Inject,
-  Injectable,
-} from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import {
   getOptionsToken,
@@ -13,9 +9,8 @@ import {
   type ThrottlerModuleOptions,
   type ThrottlerStorage,
 } from '@nestjs/throttler';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
-import { AUTH_RATE_LIMIT_MESSAGE } from '#app/features/auth/auth.constants';
+import { getRequestPath } from '#app/framework/http/request.context';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 
 /**
@@ -48,7 +43,7 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
       message: '取不到 client IP，本次請求不套用速率限制',
       metadata: {
         method: req.method,
-        path: req.url,
+        path: getRequestPath(req),
         xForwardedFor: (req.headers as Record<string, unknown> | undefined)?.[
           'x-forwarded-for'
         ],
@@ -88,13 +83,7 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
 
     // 回傳 rejected promise 而非同步 throw：父類別以 `await` 呼叫本方法，
     // 覆寫時必須維持相同的 Promise 契約，呼叫端才能一律用 .catch/await 接。
-    return Promise.reject(
-      new AppException(
-        AppErrorCode.REFUSE_SERVICE,
-        AUTH_RATE_LIMIT_MESSAGE,
-        HttpStatus.TOO_MANY_REQUESTS,
-      ),
-    );
+    return Promise.reject(new AppException(...AppErrors.AUTH_RATE_LIMITED));
   }
 
   /**
@@ -125,7 +114,7 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
       metadata: {
         ip: req.ip,
         method: req.method,
-        path: req.url,
+        path: getRequestPath(req),
         xForwardedFor: headers['x-forwarded-for'],
         limit: detail.limit,
         totalHits: detail.totalHits,

@@ -43,6 +43,11 @@ export class EsignSourceFileDto {
   sha256!: string;
 }
 
+export class PersonalCompletionDto {
+  status!: 'pending' | 'processing' | 'ready' | 'failed' | null;
+  readyAt!: string | null;
+}
+
 export class EsignSignerViewDto {
   publicId!: string;
   type!: EsignSignerType;
@@ -53,13 +58,14 @@ export class EsignSignerViewDto {
   email!: string | null;
   status!: EsignSignerStatus;
   signedAt!: string | null;
+  completion!: PersonalCompletionDto;
   invitationDelivery!: EsignInvitationDelivery | null;
+  /** 簽章公開驗證網址；只有 status = signed 時有值 */
+  verificationUrl!: string | null;
 }
 
 export class EsignFieldViewDto {
   id!: string;
-  /** 草稿欄位尚未指派簽署人時為 null */
-  signerPublicId!: string | null;
   type!: EsignFieldType;
   page!: number;
   xPercent!: number;

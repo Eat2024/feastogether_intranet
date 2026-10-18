@@ -26,7 +26,77 @@ const optionsFor = (database: string) =>
 describe('e-sign schema migrations', () => {
   jest.setTimeout(60_000);
 
-  it('Spec 03 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
+  it('既有單人完成文件只轉換 owner metadata，不改原檔、完成檔摘要或簽署 payload', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = new DataSource(optionsFor(database));
+      await ds.initialize();
+      try {
+        await ds.runMigrations();
+        await ds.undoLastMigration();
+        await ds.query(
+          "INSERT INTO users (empid,name) VALUES ('MIGRATION001','合成員工')",
+        );
+        await ds.query(
+          "INSERT INTO esign_documents (doc_number,title,created_by_user_id,status,signing_payload_json,signing_payload_sha256) VALUES ('00000000-0000-4000-8000-000000000001','既有單人文件',1,'completed',?,?)",
+          [
+            JSON.stringify({ schemaVersion: 1, original: true }),
+            'a'.repeat(64),
+          ],
+        );
+        await ds.query(
+          "INSERT INTO esign_signers (public_id,document_id,signer_type,user_id,empid_snapshot,name_snapshot,status,signed_at) VALUES ('00000000-0000-4000-8000-000000000002',1,'user',1,'MIGRATION001','合成員工','signed',NOW(6))",
+        );
+        await ds.query(
+          "INSERT INTO esign_signature_records (signer_id,document_sha256,signing_payload_sha256,consent_version,authentication_method,authentication_event_id,signed_at_utc) VALUES (1,?,?,'v1','employee_session','migration-record',NOW(6))",
+          ['b'.repeat(64), 'a'.repeat(64)],
+        );
+        await ds.query(
+          "INSERT INTO esign_file_objects (document_id,file_purpose,object_key,mime_type,file_size,sha256) VALUES (1,'source_pdf','existing-source','application/pdf',123,?),(1,'completed_pdf','existing-completed','application/pdf',456,?)",
+          ['b'.repeat(64), 'c'.repeat(64)],
+        );
+        const before: unknown[] = await ds.query(
+          'SELECT signing_payload_json, signing_payload_sha256 FROM esign_documents WHERE id=1',
+        );
+        await ds.runMigrations();
+        expect(
+          await ds.query(
+            'SELECT signing_payload_json, signing_payload_sha256 FROM esign_documents WHERE id=1',
+          ),
+        ).toEqual(before);
+        const files: Array<{
+          document_id: number | null;
+          signature_record_id: number | null;
+          object_key: string;
+          sha256: string;
+          file_size: string;
+        }> = await ds.query(
+          'SELECT document_id,signature_record_id,object_key,sha256,file_size FROM esign_file_objects ORDER BY id',
+        );
+        expect(files[0]).toMatchObject({
+          document_id: 1,
+          signature_record_id: null,
+          object_key: 'existing-source',
+          sha256: 'b'.repeat(64),
+        });
+        expect(files[1]).toMatchObject({
+          document_id: null,
+          signature_record_id: 1,
+          object_key: 'existing-completed',
+          sha256: 'c'.repeat(64),
+        });
+        expect(Number(files[1].file_size)).toBe(456);
+        expect(
+          await ds.query(
+            'SELECT completion_status FROM esign_signers WHERE id=1',
+          ),
+        ).toEqual([{ completion_status: 'ready' }]);
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
+
+  it('最新 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const dataSource = new DataSource(optionsFor(database));
       await dataSource.initialize();
@@ -60,7 +130,12 @@ describe('e-sign schema migrations', () => {
           BUSINESS_TABLES,
         );
         expect(
-          await hasColumn(dataSource, database, 'esign_signers', 'public_id'),
+          await hasColumn(
+            dataSource,
+            database,
+            'esign_signers',
+            'completion_status',
+          ),
         ).toBe(false);
 
         await dataSource.runMigrations();
@@ -75,7 +150,7 @@ describe('e-sign schema migrations', () => {
 async function listBusinessTables(dataSource: DataSource, database: string) {
   const rows = await dataSource.query<Array<{ TABLE_NAME: string }>>(
     `SELECT TABLE_NAME FROM information_schema.tables
-      WHERE table_schema = ? AND TABLE_NAME <> 'migrations'
+      WHERE table_schema = ? AND TABLE_NAME NOT IN ('migrations','typeorm_metadata')
       ORDER BY TABLE_NAME`,
     [database],
   );

@@ -1,5 +1,9 @@
 # Quickstart: 核心電子簽端到端流程驗收
 
+> **本次 PR 範圍（2026-10-18）**：僅交付後端、migration 與契約；下文的前端設計及整合驗收保留為完整需求，前端實作由獨立 PR 交付。目前 client 為原有 mock 原型，不代表新版後端端到端流程已可由 UI 驗收。
+
+> 2026-10-16 目標模型：共用欄位及個人 PDF。以下為實作完成後的驗收指南，本次尚未執行。
+
 ## 1. 前置條件
 
 - Node.js >= 20.19.0，pnpm 11
@@ -83,10 +87,10 @@ pnpm lint
 - Invitation GET 不查 DB/不寫入，POST 才設 HttpOnly cookie；簽署前可重複開啟，終止後立即失效。
 - 簽署缺欄位、非 PNG、過大 PNG、未同意、同意版本不符、source/payload hash 竄改、截止時間後均不寫成功證據。
 - 同 signer 序列/並發重放最多一筆 signature record，且 signer/evidence/files/audits 無局部成功。
-- 最後兩名 signer 並發只會使一個 worker 取得 finalizing，只有一份 completed PDF 與一次 completed audit。
-- Worker A lease 過期、Worker B 取得新 token 後，A 即使晚到也無法提交 B 的 finalizing 狀態，A 的 orphan output 會被清理。
-- MySQL commit 後模擬 BullMQ enqueue 失敗，maintenance reconciliation 會從 MySQL outbox／document state 補入列，不遺失 invitation 或 finalization。
-- 同一 notification/document 被重複 enqueue 或 BullMQ retry 時，DB claim/unique/lease 仍只產生一次寄送狀態、完成檔案與完成 audit；不得靠固定 business `jobId` 才成立。
+- 最後兩名 signer 並發各自取得個人 lease，文件進入 finalizing，每人只有一份個人 completed PDF，整份流程只有一次 completed audit。
+- Worker A lease 過期、Worker B 取得新 token 後，A 即使晚到也無法提交 B 已接手的個人產製狀態，A 的 orphan output 會被清理。
+- MySQL commit 後模擬 BullMQ enqueue 失敗，maintenance reconciliation 會從 MySQL outbox／signer completion state 補入列，不遺失 invitation 或 finalization。
+- 同一 notification/signer 被重複 enqueue 或 BullMQ retry 時，DB claim/unique/lease 仍只產生一次寄送狀態、完成檔案與完成 audit；不得靠固定 business `jobId` 才成立。
 - 使用真實隔離 Redis 啟動最小 worker application context，驗證 HTTP → BullMQ → processor → DB/file 全鏈路，以及 web process 不會載入 consumer/scheduler。
 - 測試環境使用 fake mailer 與 local temp storage，驗證不連外且與 SMTP/SES、S3 adapter 共用同一 contract；config 測試覆蓋四種環境 mapping 與 production 禁止 fallback。
 - PDF 產製、儲存或完整性驗證失敗時保留已成功簽署，document 不 completed；重試不重複簽署或結案。
@@ -97,64 +101,34 @@ pnpm lint
 - 並發建立第一筆 audit 或追加事件時都只有一條線性 hash chain；creator/signer history response 依角色裁切。
 - Log/error/response 不含 PDF、PNG data URL、Authorization/cookie、invitation token/digest/ciphertext、session、完整 Email 或其他簽署人個資。
 
-## 5. User Story 1：建立與發起
+## 5. User Story 1：先上傳共用欄位，再發起
 
-「發起簽署」只呼叫一次 `POST /api/esign/documents/:id/initiations`，body 必須同時包含 `signers`、`fields`、`signStartAt`、`signEndAt`。每個 field 使用 `signerIndex`（本次 signers 陣列從 0 開始的索引），不是尚未建立的 signerPublicId。後端在同一個 transaction 儲存名單、欄位、active 狀態、固定快照、稽核及通知待辦；任何步驟失敗皆回滾，commit 後才排寄信工作。不再支援只傳期間的舊發起請求。
+1. 建立人上傳測試 PDF，設定兩個 signature 與一個 date，尚不選人；草稿保存成功。
+2. 指定 10 人（至少包含一位外部 Email），帶 3 個不含 signerIndex/signerPublicId 的共用 fields 發起；確認只有 3 個 field ID。
+3. 另驗 6,000 人及 6,001 人名單可完整儲存／發起；不設人數上限。共用欄位仍限 200 個，第 201 個欄位拒絕，不換算人數上限。
+4. 發起後無法更改內容、名單、共用欄位或固定參數。
 
-「儲存設定」不發起，仍使用草稿 `PUT .../draftSave` 與 `PUT .../fields`；這兩隻 API 保留供編輯草稿，不是發起流程的前置呼叫。
+## 6. User Story 2：每人獨立簽署
 
-欄位編輯器使用本機隨應用程式部署的 PDF.js（`pdfjs-dist`，採支援既有 Node 20.19 執行環境的 5.4.624），不將文件傳往外部預覽服務。`/pdf-assets/*` 僅提供 worker、字型與解碼資產；文件仍經有權限檢查的 source-file API 讀取。
+1. A、B 看到同一組 field ID，但看不到對方 PNG、record 或敏感身分資料。
+2. A 提交全部必要簽名後，signed 與 completion pending 同交易成立，worker 產製 A 的副本；其餘人仍 pending，文件仍 active。
+3. B 在不同日期簽署，副本必須使用 B 的時間及簽名，不受 A 影響。
+4. 外部簽署人以邀請簽署；成功回應清除 access cookie，不產生 receipt。舊邀請及 external-completions URL 都無法取得 PDF。
 
-在 `/forms/[id]/signers` 選擇簽署人，拖入或按按鈕新增簽名／日期欄位，可移動、調整尺寸、刪除、切換 PDF 頁面與重新指派所屬簽署人。選取欄位後方向鍵可微調，Shift 加快移動，Delete／Backspace 刪除。每人可有多個欄位；發起前每人至少需一個簽名欄位。儲存並重新開啟後須還原所有欄位；刪除簽署人只移除該人的欄位，不得移動其他人的位置。
+## 7. User Story 3：10 份個人 PDF 與結案
 
-欄位資料驗證可在 Node 22.18+ 執行 `node --experimental-strip-types --test client/tests/field-placement.test.mjs`，不需新增前端測試框架。瀏覽器驗收需另涵蓋拖曳、旋轉／裁切 PDF、儲存後還原、增刪簽署人、PDF 載入失敗重試與窄螢幕嵌入。
-
-1. 以員工 A 的 Spec 2 session 開啟新增文件。
-2. 上傳 2 頁有效 PDF，輸入文件名稱。
-3. 加入內部員工 B 與 external `candidate@example.test`。
-4. 為兩人各設一個 signature field 與 date field，設未來截止時間後發起。
-
-預期：
-
-- Document 進入 active，回應有後端驗證頁數/hash，但沒有 invitation token。
-- DB 的 source file hash 與私有檔案重算相等，signing payload/hash 已固定。
-- External invitation outbox 有且僅有一筆；local Mailpit（或 UAT SES sandbox 的已驗證收件人）收到一封邀請信。
-- 重新上傳、改標題、改簽署人、改欄位與改截止時間全部失敗，原資料零變動。
-
-## 6. User Story 2：內部與外部簽署
-
-### 內部簽署人
-
-1. 員工 B 在待簽清單看到文件，不能看到 external signer Email 或其他簽名。
-2. 開啟固定 PDF、閱讀同意文案，以 Canvas 完成本人所有 signature fields。
-3. 確認簽署，重複送出同 request ID。
-
-預期：第一次建立一筆證據，第二次回同一結果；日期取自 Server `signed_at_utc`，Client `agreedAt` 或本機時鐘不會成為權威。因 external signer 尚未簽，document 仍 active。
-
-### 外部簽署人
-
-1. 從 local Mailpit 或 UAT SES sandbox 開啟 invitation URL，確認 GET 不設 cookie，bridge POST 後才 303 到乾淨 URL。
-2. 關閉瀏覽器，再開同一 invitation URL，仍可進入同一任務。
-3. 完成同意與 Canvas 簽名。
-
-預期：外部人只看到自己的 snapshot/欄位，不有內部 session 或其他系統權限；簽署後 invitation access cookie 清除，重開 invitation 得到通用失效結果。同一瀏覽器取得以 signer public ID 限定 path 的唯讀 receipt cookie，可與其他文件 receipt 並存；它在文件 finalizing 期間不過期，文件完成/停止後可再存取 30 日。清除 cookie 後不可用舊 invitation 復原。
-
-## 7. User Story 3：完成 PDF 與結案
-
-1. 在內外兩人都簽署後保持 worker 運行。
-2. 輪詢 creator 詳情，允許短暫顯示 active/finalizing，最後必須 completed。
-3. Creator、員工 B 可下載 completed PDF；external signer 的原瀏覽器以該 signer path-scoped receipt cookie 可下載；未參與的員工 C 得到 404。
-
-預期：
-
-- Completed PDF 以原 PDF 為底，兩人的簽名只出現在各自欄位，date 與各自 Server 簽署時間一致。
-- Final PDF 重算 hash 與 DB metadata 一致，只有一筆 active completed object 與一次 completion event。
-- completed 文件的 edit/stop/delete/re-upload/sign 均失敗。
+1. A ready 後立即以本人下載端點下載，建立人以 document/signers 路徑下載 A 副本；不必等待其他人。
+2. A 改用 B 的 publicId 或別份 documentId 必須失敗；未授權者不能由回應判斷副本是否 ready。
+3. 10 人全簽後文件為 finalizing；全部 ready 且結案 snapshot 成功後 completed。
+4. 驗證恰有 10 筆有效 completed_pdf，分別關聯不同 record；每份只含本人簽名與日期，無重疊。本人 QR 連到本人 verification code。
+5. 每份 persisted bytes 的 hash 與其 metadata、manifest v2 的本人項目一致；公開驗證只回本人 hash。未結案或停止時公開 completedPdfSha256 仍為 null。
+6. 阻擋一個人的 storage 寫入，其他人 ready 檔案不變；重試只補失敗者。結案 snapshot 失敗不得回滾 ready，maintenance 後續可補結案。
+7. 驗證 lease 過期舊 worker 無法覆寫、兩人並發不重複結案、enqueue 失敗可補入列；使用既有真 Redis queue e2e。
 
 ## 8. User Story 4：停止與全新重發
 
 1. 建立第二份文件，讓一人先簽，creator 填寫原因後停止。
-2. 確認 pending signer 與 external invitation 都立即失效，已簽署證據與 audit 仍可由有權者查看。
+2. 確認 pending signer 與 external invitation 都立即失效，已簽署證據與 audit 仍可由有權者查看；即使停止時尚未產製，既有成功簽署的副本仍可產製並由本人／建立人下載。文件保持 stopped，不自動結案。
 3. 以修正 PDF 建立另一份文件，重新指定同一群人。
 
 預期：新 document id/doc number/source hash/payload hash 皆獨立，所有 signer 從 pending 開始，無舊 signature record/file 或版本關聯。
@@ -179,8 +153,36 @@ pnpm lint
 
 - 拒絕／退回簽署、補簽、依序簽署
 - 催簽、批次通知、完成通知或簡訊
-- 一般匯出、Excel、批次下載
-- QR Code 公開驗證、完整 evidence package、PAdES-LT/LTA 或個人數位憑證
+- 一般匯出、Excel、批次下載（Spec 05）
+- QR Code 公開驗證（Spec 04）、完整 evidence package、PAdES-LT/LTA 或個人數位憑證
 - 同一 document 的修改版本、版本關聯或舊簽署沿用
 - 自行上傳簽名圖、文字字型簽名、手機號碼簽署人
 - 多雲/MinIO storage framework、額外 Email provider、mail template 後台或長期封存政策
+
+## 12. Migration 與全公司規模驗收
+
+- 在獨立測試 DB 驗證 migration up/down/up 及 source、document-owned／record-owned 完成檔各自唯一鍵；既有單人完成檔如調整 owner，bytes/hash 必須不變。不以存在非草稿資料拒絕 migration，不要求舊多人合簽回放。
+- 發布前停止舊 worker，排空舊 finalization 工作，不誤消費舊 payload。
+- 使用合成 6,000 名有效員工、3 個共用欄位，驗證完整選人、儲存、發起、簽署、個人產製及結案；恰有 6,000 筆指派與 6,000 份正確副本。另驗 6,001 人可發起，確保測試基準沒有變成硬上限。
+- 驗證跨候選名單頁面的全選不漏人；欄位仍 3 個、不產生 18,000 個配置。前端進度完整，不能因只顯示一頁而誤判全員完成。
+- 名單含重複／無效員工時整筆發起失敗，無部分 active 名單。
+- 暫停部分副本、模擬 Redis enqueue 失敗及超過單批 maintenance 掃描數量，確認最末一批仍可被補入列，無飢餓或遺失；成功副本不重製。
+- 量測 request bytes、發起耗時、DB 鎖等待、峰值記憶體、queue 積壓、儲存量與結案時間；確認代理／HTTP 限制不阻擋五千多人需求。保留一般文件既有效能目標，大規模結果以實測回報，不假設無限資源。
+
+## 13. 完成檔兩種歸屬的 schema 驗收
+
+- completed_pdf 僅填 document_id 或僅填 signature_record_id 各自成功；兩者皆空、同時填兩者，或帶 document_field_id／verification_record_id／export_job_id 均失敗。
+- 同一 document 重複文件層級 completed_pdf 失敗，同一 record 重複個人 completed_pdf 失敗；同文件不同 record 的個人副本可共存，且不與 source_pdf 唯一性衝突。
+- 在 schema fixture 建立文件層級完成檔，確認個人下載缺少本人副本時不會回退取得它。
+- 此處只驗證資料表示與授權邊界，不建立簽到表 UI、排版、產製或結案流程；本次 10 人簽署仍須產生 10 份個人副本。
+
+## 14. 部署與回復順序
+
+1. 暫停發起與簽署寫入，停止舊 HTTP／worker。備份 DB 與私有檔案；不得在舊 worker 仍可能寫入時修改 schema。
+2. 排空舊 document-only finalization 工作；新 payload 必須同時含 documentId、signerId。只清理這次退役的 queue 工作，不刪除 DB 簽署證據或 PDF。
+3. 由部署流程執行 `pnpm -C server migration:run` 套用 SharedFieldsPersonalCopies；確認 field 無 signer_id、signer 個人狀態、owner XOR 與 generated unique 均存在。
+4. 部署新版 HTTP、client、worker，再恢復寫入。確認 30 秒 maintenance 可從 DB 補入缺少的個人工作；等待中的重複工作會合併，執行時釋放合併鍵，業務冪等仍由 DB 保證。
+5. 用兩名合成員工檢查先簽先下載、第二人 ready 後才結案；檢查停止後保留本人副本及外部邀請失效。
+6. 只有空白隔離測試 DB 執行 up/down/up。已有 completion 狀態時 down 會拒絕，以避免遺失個人歸屬；正式部署後需要回復時先停止寫入，採向前修正，或依已核准的完整 DB／檔案備份回復程序，不覆寫或重算既有證據。
+
+傳輸邊界：本機 6,001 人／3 欄位 initiation JSON 約 192 KB，低於既有 Fastify 預設 1 MiB 與 Next Server Action 2 MiB；沒有調高限制或新增環境變數。部署代理的 body/timeout 設定須依實際 UAT 代理再驗，不能把代理錯誤轉成產品人數限制。

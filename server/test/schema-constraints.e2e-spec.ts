@@ -87,7 +87,7 @@ describe('e-sign schema database constraints', () => {
           `UPDATE esign_signers SET status='rejected',rejected_at=NOW(6) WHERE id=1`,
         );
         await ds.query(
-          `UPDATE esign_signers SET status='signed',signed_at=NOW(6) WHERE id=1`,
+          `UPDATE esign_signers SET status='signed',signed_at=NOW(6),completion_status='pending' WHERE id=1`,
         );
         const signerStates = await ds.query<Array<{ status: string }>>(
           `SELECT status FROM esign_signers WHERE document_id=1 ORDER BY id`,
@@ -98,13 +98,13 @@ describe('e-sign schema database constraints', () => {
         ]);
 
         await ds.query(
-          `INSERT INTO esign_document_fields (document_id,signer_id,field_type,page_number,x_percent,y_percent,width_percent,height_percent)
-            VALUES (1,1,'signature',1,10,10,20,10)`,
+          `INSERT INTO esign_document_fields (document_id,field_type,page_number,x_percent,y_percent,width_percent,height_percent)
+            VALUES (1,'signature',1,10,10,20,10)`,
         );
         await expectRejected(
           ds,
-          `INSERT INTO esign_document_fields (document_id,signer_id,field_type,page_number,x_percent,y_percent,width_percent,height_percent)
-            VALUES (1,1,'signature',1,90,10,20,10)`,
+          `INSERT INTO esign_document_fields (document_id,field_type,page_number,x_percent,y_percent,width_percent,height_percent)
+            VALUES (1,'signature',1,90,10,20,10)`,
         );
 
         await expectRejected(
@@ -140,6 +140,56 @@ describe('e-sign schema database constraints', () => {
           `INSERT INTO esign_file_objects (signature_record_id,file_purpose,object_key,mime_type,file_size,sha256)
             VALUES ((SELECT id FROM esign_signature_records WHERE signer_id=1),'signature_png','signature-without-field','image/png',1,'${'b'.repeat(64)}')`,
         );
+        await expectRejected(
+          ds,
+          `INSERT INTO esign_file_objects (document_id,file_purpose,object_key,mime_type,file_size,sha256) VALUES (1,'source_pdf','duplicate-source','application/pdf',1,'${'a'.repeat(64)}')`,
+        );
+        await ds.query(
+          `INSERT INTO esign_signature_records (signer_id,document_sha256,signing_payload_sha256,consent_version,authentication_method,authentication_event_id,signed_at_utc) VALUES (2,'${'a'.repeat(64)}','${'b'.repeat(64)}','v1','email_invitation','auth-second',NOW(6))`,
+        );
+        await ds.query(
+          `INSERT INTO esign_file_objects (signature_record_id,file_purpose,object_key,mime_type,file_size,sha256) VALUES ((SELECT id FROM esign_signature_records WHERE signer_id=2),'completed_pdf','second-personal-copy','application/pdf',1,'${'e'.repeat(64)}')`,
+        );
+        // 同文件的文件層級完成檔與個人副本可共存；各自仍只有一份。
+        await ds.query(`INSERT INTO esign_file_objects (document_id,file_purpose,object_key,mime_type,file_size,sha256)
+          VALUES (1,'completed_pdf','document-copy','application/pdf',1,'${'c'.repeat(64)}')`);
+        await ds.query(`INSERT INTO esign_file_objects (signature_record_id,file_purpose,object_key,mime_type,file_size,sha256)
+          VALUES ((SELECT id FROM esign_signature_records WHERE signer_id=1),'completed_pdf','personal-copy','application/pdf',1,'${'d'.repeat(64)}')`);
+        await expectRejected(
+          ds,
+          `INSERT INTO esign_file_objects (signature_record_id,file_purpose,object_key,mime_type,file_size,sha256)
+          VALUES ((SELECT id FROM esign_signature_records WHERE signer_id=1),'completed_pdf','duplicate-personal','application/pdf',1,'${'d'.repeat(64)}')`,
+        );
+        await expectRejected(
+          ds,
+          `INSERT INTO esign_file_objects (document_id,file_purpose,object_key,mime_type,file_size,sha256)
+          VALUES (1,'completed_pdf','duplicate-document','application/pdf',1,'${'d'.repeat(64)}')`,
+        );
+        await expectRejected(
+          ds,
+          `INSERT INTO esign_file_objects (document_id,signature_record_id,file_purpose,object_key,mime_type,file_size,sha256)
+          VALUES (1,(SELECT id FROM esign_signature_records WHERE signer_id=1),'completed_pdf','double-owner','application/pdf',1,'${'d'.repeat(64)}')`,
+        );
+        await expectRejected(
+          ds,
+          `INSERT INTO esign_file_objects (file_purpose,object_key,mime_type,file_size,sha256)
+          VALUES ('completed_pdf','no-owner','application/pdf',1,'${'d'.repeat(64)}')`,
+        );
+        await expectRejected(
+          ds,
+          `UPDATE esign_signers SET completion_status='processing' WHERE id=1`,
+        );
+        await expectRejected(
+          ds,
+          `UPDATE esign_signers SET completion_status='ready' WHERE id=1`,
+        );
+        await expectRejected(
+          ds,
+          `UPDATE esign_signers SET completion_status='pending' WHERE id=2`,
+        );
+        await ds.query(
+          `UPDATE esign_signers SET completion_status='ready',completion_ready_at=NOW(6) WHERE id=1`,
+        );
         const checks = await ds.query<Array<{ CONSTRAINT_NAME: string }>>(
           `SELECT CONSTRAINT_NAME FROM information_schema.table_constraints
             WHERE constraint_schema = ? AND constraint_type = 'CHECK'
@@ -153,10 +203,13 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_document_fields_type',
           'chk_esign_documents_sign_period',
           'chk_esign_documents_status',
+          'chk_esign_file_objects_completed_owner',
           'chk_esign_file_objects_owner',
           'chk_esign_file_objects_signature_field',
+          'chk_esign_file_objects_source_owner',
           'chk_esign_notification_logs_channel',
           'chk_esign_notification_logs_result',
+          'chk_esign_signers_completion',
           'chk_esign_signers_identity',
           'chk_esign_signers_status',
         ]);

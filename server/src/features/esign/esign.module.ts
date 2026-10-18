@@ -22,12 +22,14 @@ import { DocumentsController } from './controllers/documents.controller';
 import { SignerCandidatesController } from './controllers/signer-candidates.controller';
 import { SigningTasksController } from './controllers/signing-tasks.controller';
 import { ExternalSignatureController } from './controllers/external-signature.controller';
+import { SignatureVerificationController } from './controllers/signature-verification.controller';
 import { EsignDocumentQueryService } from './services/esign-document-query.service';
 import { EsignSigningTaskService } from './services/esign-signing-task.service';
 import { EsignSigningService } from './services/esign-signing.service';
 import { ExternalAccessService } from './services/external-access.service';
 import { EsignStoppageService } from './services/esign-stoppage.service';
 import { EsignCompletionAccessService } from './services/esign-completion-access.service';
+import { EsignVerificationService } from './services/esign-verification.service';
 
 const esignServices = [
   EsignAccessPolicyService,
@@ -47,6 +49,7 @@ const esignServices = [
   EsignSignerService,
   EsignSignerCandidateService,
   EsignTokenService,
+  EsignVerificationService,
   EsignViewMapper,
   PdfValidationService,
 ];
@@ -58,7 +61,7 @@ const esignServices = [
     LoggingModule,
     MailModule,
     FeastogetherModule,
-    EsignQueueModule,
+    EsignQueueModule.register('producer'),
   ],
   providers: esignServices,
   controllers: [
@@ -66,6 +69,7 @@ const esignServices = [
     SignerCandidatesController,
     SigningTasksController,
     ExternalSignatureController,
+    SignatureVerificationController,
   ],
   exports: [...esignServices, EsignQueueModule],
 })

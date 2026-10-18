@@ -48,8 +48,7 @@ export class UserRepository {
       .where('user.is_active = :active', { active: true })
       .andWhere('user.deleted_at IS NULL')
       .orderBy('user.empid', 'ASC')
-      .addOrderBy('user.id', 'ASC')
-      .take(50);
+      .addOrderBy('user.id', 'ASC');
     const normalized = query?.trim();
     if (normalized) {
       builder.andWhere('(user.empid LIKE :query OR user.name LIKE :query)', {

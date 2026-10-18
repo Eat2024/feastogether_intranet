@@ -1,7 +1,7 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { Injectable } from '@nestjs/common';
 import * as oidc from 'openid-client';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { OAUTH_HTTP_TIMEOUT_SECONDS } from '#app/features/auth/auth.constants';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { getErrorType } from '#app/infrastructure/logging/logHelper/error-type';
@@ -199,11 +199,7 @@ export class OauthClient {
       );
     } catch (error) {
       this.warn('oauth.discovery_failed', { errorType: getErrorType(error) });
-      throw new AppException(
-        AppErrorCode.OAUTH_UNAVAILABLE,
-        '統一登入服務暫時無法使用',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      throw new AppException(...AppErrors.OAUTH_UNAVAILABLE);
     }
   }
 
@@ -215,11 +211,7 @@ export class OauthClient {
       oauthError:
         error instanceof oidc.ResponseBodyError ? error.error : undefined,
     });
-    return new AppException(
-      AppErrorCode.OAUTH_RESPONSE_INVALID,
-      '統一登入身分驗證失敗，請重新登入',
-      HttpStatus.UNAUTHORIZED,
-    );
+    return new AppException(...AppErrors.OAUTH_RESPONSE_INVALID);
   }
 
   private warn(event: string, metadata: Record<string, unknown>): void {

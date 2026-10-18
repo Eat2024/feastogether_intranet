@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import {
   createHash,
   createPublicKey,
@@ -5,10 +6,9 @@ import {
   verify as verifySignature,
   type KeyObject,
 } from 'node:crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { EntityManager } from 'typeorm';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import {
   AUTH_SESSION_STATUS,
@@ -509,26 +509,14 @@ export class AuthService {
   }
 
   private exchangeFailed(): AppException {
-    return new AppException(
-      AppErrorCode.AUTH_EXCHANGE_FAILED,
-      '無法完成登入交換',
-      HttpStatus.UNAUTHORIZED,
-    );
+    return new AppException(...AppErrors.AUTH_EXCHANGE_FAILED);
   }
 
   private unauthorized(): AppException {
-    return new AppException(
-      AppErrorCode.UNAUTHORIZED,
-      '登入狀態無效或已到期',
-      HttpStatus.UNAUTHORIZED,
-    );
+    return new AppException(...AppErrors.AUTH_SESSION_INVALID);
   }
 
   private databaseUnavailable(): AppException {
-    return new AppException(
-      AppErrorCode.AUTH_DB_UNAVAILABLE,
-      '登入服務暫時無法使用',
-      HttpStatus.SERVICE_UNAVAILABLE,
-    );
+    return new AppException(...AppErrors.AUTH_DB_UNAVAILABLE);
   }
 }

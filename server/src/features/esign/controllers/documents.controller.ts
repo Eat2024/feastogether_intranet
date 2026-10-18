@@ -19,7 +19,7 @@ import {
 import type { FastifyReply } from 'fastify';
 import { ConfigService } from '@nestjs/config';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
@@ -55,12 +55,11 @@ export class DocumentsController {
     private readonly stoppages: EsignStoppageService,
     private readonly completions: EsignCompletionAccessService,
     private readonly config: ConfigService,
-  ) { }
+  ) {}
 
   @ApiOperation({
     summary: '列出電子簽文件',
-    description:
-      '依角色與狀態查詢目前員工可見的文件。',
+    description: '依角色與狀態查詢目前員工可見的文件。',
   })
   @Get()
   list(@CurrentUserId() userId: number, @Query() query: ListDocumentsQueryDto) {
@@ -73,7 +72,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '上傳 PDF 並建立草稿',
     description:
-      '以 multipart/form-data 接收 title、file 與可選的 fields（JSON 字串），建立草稿及未指派欄位。',
+      '以 multipart/form-data 接收 title、file 與可選的 fields（JSON 字串），建立草稿及共用欄位。',
   })
   @Post()
   async create(
@@ -82,11 +81,7 @@ export class DocumentsController {
     @Body('file') file: DocumentUpload['file'],
   ) {
     if (!file) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '請上傳 PDF 文件',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(...AppErrors.ESIGN_PDF_REQUIRED);
     }
     const document = await this.drafts.create({
       title: body.title,
@@ -146,7 +141,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '儲存草稿簽署人名單',
     description:
-      '整批取代草稿簽署人並解除既有欄位指派；此 API 不儲存 PDF、欄位位置或發起簽署。',
+      '整批取代草稿簽署人，保留共用欄位；此 API 不儲存 PDF、欄位位置或發起簽署。',
   })
   @Put(':documentId/draftSave')
   async replaceSigners(
@@ -161,9 +156,8 @@ export class DocumentsController {
 
   @UseGuards(OriginGuard)
   @ApiOperation({
-    summary: '整批更新草稿欄位與簽署人指派',
-    description:
-      '驗證原 PDF 完整性、欄位位置與簽署人歸屬後，整批取代欄位；可保留未指派欄位。',
+    summary: '整批更新草稿共用欄位',
+    description: '驗證原 PDF 完整性與欄位位置後，整批取代共用欄位。',
   })
   @Put(':documentId/fields')
   async replaceFields(
@@ -181,7 +175,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '發起文件簽署',
     description:
-      '在同一交易儲存簽署人、欄位、期間與選項，驗證指派後將草稿轉為簽署中；外部邀請於交易提交後入列。',
+      '在同一交易儲存簽署人、欄位、期間與選項，驗證共用欄位後將草稿轉為簽署中；外部邀請於交易提交後入列。',
   })
   @Post(':documentId/initiations')
   async initiate(
@@ -205,8 +199,7 @@ export class DocumentsController {
 
   @ApiOperation({
     summary: '讀取建立人的原始 PDF',
-    description:
-      '驗證建立人權限後回傳原始 PDF 串流，供預覽使用。',
+    description: '驗證建立人權限後回傳原始 PDF 串流，供預覽使用。',
   })
   @Get(':documentId/source-file')
   @Header('Cache-Control', 'private, no-store')
@@ -218,11 +211,7 @@ export class DocumentsController {
   ) {
     const file = await this.queries.creatorSource(this.id(id), userId);
     if (!file) {
-      throw new AppException(
-        AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
-        '找不到電子簽資源',
-        HttpStatus.NOT_FOUND,
-      );
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     }
     allowPdfPreview(reply, this.config.get<string>('AUTH_TRUSTED_ORIGINS'));
     reply
@@ -253,8 +242,7 @@ export class DocumentsController {
 
   @ApiOperation({
     summary: '查詢文件簽署歷程',
-    description:
-      '回傳建立人可見的文件事件與停止原因。',
+    description: '回傳建立人可見的文件事件與停止原因。',
   })
   @Get(':documentId/history')
   history(@Param('documentId') id: string, @CurrentUserId() userId: number) {
@@ -262,25 +250,25 @@ export class DocumentsController {
   }
 
   @ApiOperation({
-    summary: '下載全員簽署完成的 PDF',
-    description:
-      '供建立人或已簽署的內部簽署人下載完成文件',
+    summary: '下載指定簽署人的個人 PDF',
+    description: '僅建立人可依簽署人下載已產製完成的個人副本',
   })
-  @Get(':documentId/completed-file')
+  @Get(':documentId/signers/:signerPublicId/completed-file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
   async completedFile(
     @Param('documentId') id: string,
+    @Param('signerPublicId') signerPublicId: string,
     @CurrentUserId() userId: number,
     @Res() reply: FastifyReply,
   ) {
-    const file = await this.completions.internalFile(this.id(id), userId);
+    const file = await this.completions.creatorFile(
+      this.id(id),
+      signerPublicId,
+      userId,
+    );
     if (!file) {
-      throw new AppException(
-        AppErrorCode.ESIGN_STATE_CONFLICT,
-        '完成文件尚未產生',
-        HttpStatus.CONFLICT,
-      );
+      throw new AppException(...AppErrors.ESIGN_COMPLETED_DOCUMENT_NOT_READY);
     }
     reply
       .type('application/pdf')
@@ -289,17 +277,11 @@ export class DocumentsController {
   }
 
   private id(value: string): number {
-    if (!/^[1-9][0-9]*$/.test(value)) throw this.invalid('文件識別格式錯誤');
+    if (!/^[1-9][0-9]*$/.test(value))
+      throw new AppException(...AppErrors.ESIGN_DOCUMENT_ID_INVALID);
     const id = Number(value);
-    if (!Number.isSafeInteger(id)) throw this.invalid('文件識別格式錯誤');
+    if (!Number.isSafeInteger(id))
+      throw new AppException(...AppErrors.ESIGN_DOCUMENT_ID_INVALID);
     return id;
-  }
-
-  private invalid(message: string): AppException {
-    return new AppException(
-      AppErrorCode.INVALID_REQUEST,
-      message,
-      HttpStatus.BAD_REQUEST,
-    );
   }
 }

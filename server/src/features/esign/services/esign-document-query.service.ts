@@ -14,6 +14,7 @@ import { DocumentFieldRepository } from '../repositories/document-field.reposito
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { NotificationRepository } from '../repositories/notification.repository';
+import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
@@ -37,7 +38,8 @@ export class EsignDocumentQueryService {
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly users: UserRepository,
-  ) { }
+    private readonly records: SignatureRecordRepository,
+  ) {}
 
   async list(
     userId: number,
@@ -105,9 +107,13 @@ export class EsignDocumentQueryService {
       this.files.findDocumentFile(documentId, 'source_pdf', manager),
       this.users.findById(document.createdByUserId, manager),
     ]);
-    const logs = await this.notifications.findBySignerIds(
-      signers.map((signer) => signer.id),
-      manager,
+    const signerIds = signers.map((signer) => signer.id);
+    const [logs, records] = await Promise.all([
+      this.notifications.findBySignerIds(signerIds, manager),
+      this.records.findBySignerIds(signerIds, manager),
+    ]);
+    const codeBySigner = new Map(
+      records.map((record) => [record.signerId, record.verificationCode]),
     );
     const deliveryBySigner = new Map<number, EsignInvitationDelivery>();
     for (const log of logs) {
@@ -128,9 +134,6 @@ export class EsignDocumentQueryService {
       this.validation.assertSourceIntegrity(document, source, metadata.sha256);
       sourceFile = this.mapper.sourceFile(source, metadata.pageCount);
     }
-    const signerPublicIds = new Map(
-      signers.map((signer) => [signer.id, signer.publicId]),
-    );
     return {
       ...this.mapper.documentSummary(document, this.count(signers)),
       sourceFile,
@@ -144,14 +147,10 @@ export class EsignDocumentQueryService {
           signer.signerType === 'email'
             ? (deliveryBySigner.get(signer.id) ?? null)
             : null,
+          codeBySigner.get(signer.id),
         ),
       ),
-      fields: fields.map((field) =>
-        this.mapper.field(
-          field,
-          signerPublicIds.get(field.signerId ?? -1) ?? null,
-        ),
-      ),
+      fields: fields.map((field) => this.mapper.field(field)),
     };
   }
 

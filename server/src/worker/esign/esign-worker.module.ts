@@ -8,6 +8,7 @@ import { PdfValidationService } from '#app/features/esign/services/pdf-validatio
 import { EsignAccessPolicyService } from '#app/features/esign/services/esign-access-policy.service';
 import { EsignStoppageService } from '#app/features/esign/services/esign-stoppage.service';
 import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
+import { EsignVerificationService } from '#app/features/esign/services/esign-verification.service';
 import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
 import { FileStorageModule } from '#app/infrastructure/file-storage/file-storage.module';
 import { LoggingModule } from '#app/infrastructure/logging/logging.module';
@@ -23,7 +24,7 @@ import { DocumentFinalizationProcessor } from './document-finalization.processor
     FileStorageModule,
     LoggingModule,
     MailModule,
-    EsignQueueModule,
+    EsignQueueModule.register('worker'),
   ],
   providers: [
     EsignTokenService,
@@ -34,6 +35,7 @@ import { DocumentFinalizationProcessor } from './document-finalization.processor
     EsignExpiryService,
     PdfValidationService,
     CompletedPdfService,
+    EsignVerificationService,
     ExternalInvitationProcessor,
     DocumentFinalizationProcessor,
     EsignMaintenanceProcessor,

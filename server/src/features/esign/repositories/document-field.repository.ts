@@ -30,17 +30,4 @@ export class DocumentFieldRepository {
   deleteDraftFields(documentId: number, manager: EntityManager) {
     return manager.delete(EsignDocumentField, { documentId });
   }
-
-  /** 保留草稿欄位位置，只解除簽署人關聯；signer_id 為 nullable FK，須寫入 SQL NULL。 */
-  unassignDraftFields(
-    documentId: number,
-    updatedByUserId: number,
-    manager: EntityManager,
-  ) {
-    return manager.update(
-      EsignDocumentField,
-      { documentId },
-      { signerId: () => 'NULL', updatedByUserId },
-    );
-  }
 }

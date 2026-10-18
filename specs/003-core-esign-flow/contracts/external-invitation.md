@@ -37,8 +37,8 @@ Email client
     → Client 透過同源 /api/external-signing-task 操作，JavaScript 不取得 token
   POST signature success
     → invitation 立即失效，清除 access cookie
-    → 另設文件限定的 FT_ESIGN_EXTERNAL_RECEIPT HttpOnly cookie
-    → 僅可查終止狀態與取得 completed PDF
+    → 顯示當次成功結果與 Spec 04 公開驗證入口，不核發簽後存取 cookie
+    → 個人 PDF 由建立人依權限取得
 ```
 
 Bridge response 必須包含：
@@ -60,10 +60,10 @@ X-Content-Type-Options: nosniff
 `FT_ESIGN_EXTERNAL_ACCESS` 不是內部 session，也不建立另一張 session table。每個 external API request 都必須全數通過：
 
 1. Cookie 格式正確且 digest 精確命中一名 `email` signer。
-2. `now <= invitation_expires_at` 且 `now <= document.sign_end_at`。
+2. `now < invitation_expires_at` 且 `now < document.sign_end_at`。
 3. Signer 仍為 `pending`。
 4. Document 仍為 `active`；`finalizing/completed/stopped` 皆無效。
-5. Resource 必須屬於該 signer 同一 document，回應只含本人欄位與必要文件資料。
+5. Resource 必須屬於該 signer 同一 document，回應只含文件共用欄位、本人指派與必要文件資料，不含其他人的填寫結果。
 
 任一條件失敗，回通用 401，並清除 external cookie。不回傳過期、已簽、已停止或 token 不存在的可區分細節。
 
@@ -72,9 +72,9 @@ X-Content-Type-Options: nosniff
 - 開啟 invitation URL 不消耗 token，關閉後可再次開啟。
 - 外部 cookie 最長存活到 invitation expiry，但 DB 條件才是最終權威。
 - 簽署成功的 response 同時清除 access cookie；即使 cookie 沒有清除，signer status 也會使 invitation token 失效。
-- 同一 response 另生成 random receipt token，DB 只存 digest，瀏覽器只存 HttpOnly `FT_ESIGN_EXTERNAL_RECEIPT`。Cookie `Path` 固定為 `/api/external-completions/<signer-public-id>`，同一瀏覽器可同時保留多份文件的同名cookie。Receipt 在文件 finalizing/active 期間不過期，文件 completed/stopped 後 30 日失效；只可查看終止/處理狀態與 completed PDF，不得重開原 PDF 或任何簽署寫入。
-- 清除瀏覽器資料後不提供 receipt 復原；本規格不新增完成通知信或長期外部封存帳號。
 - Creator stop、deadline stop 與 document completion 立即使所有該 document external tokens 失效，不需逐筆刪 digest。
+
+新版 FR-026 不核發簽後 receipt，也不提供 external-completions 查詢／下載介面。外部個人副本由建立人透過受控個人下載資源取得；當次簽署成功回應可包含 Spec 04 verificationUrl，公開驗證不授予 PDF 下載權。邀請失效後不得以重送 requestId 恢復身分或取得其他結果。
 
 ## 7. Email 投遞與重試
 
@@ -111,5 +111,5 @@ SES_FROM=no-reply@example.internal
 ## 9. Origin 與 frame 防護
 
 - Bridge POST、簽署 POST 與清除 cookie DELETE 必須有精確命中 `EXTERNAL_SIGNING_ORIGIN` 的 `Origin`；缺少或不符一律 403，不進入 token/DB 查詢。
-- External 簽署頁與 receipt 頁必須設 `Content-Security-Policy: frame-ancestors 'none'` 或等效 `X-Frame-Options: DENY`。
+- External 簽署頁必須設 `Content-Security-Policy: frame-ancestors 'none'` 或等效 `X-Frame-Options: DENY`。
 - SameSite cookie 、CORS 與 CSP 都不取代 Server-side Origin 驗證。

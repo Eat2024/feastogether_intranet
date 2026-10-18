@@ -1,18 +1,16 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import type { EsignSigner } from '../entities/esign-signer.entity';
 import type { EsignDocumentField } from '../entities/esign-document-field.entity';
-import type { FieldInputDto } from '../dto/field.dto';
 import type { ValidatedPdf } from './pdf-validation.service';
-import { createHash } from 'node:crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { DocumentRepository } from '../repositories/document.repository';
 import { NotificationRepository } from '../repositories/notification.repository';
 import { SignerRepository } from '../repositories/signer.repository';
-import { canonicalJson, EsignAuditService } from './esign-audit.service';
+import { canonicalSha256, EsignAuditService } from './esign-audit.service';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
@@ -20,11 +18,11 @@ import { EsignTokenService } from './esign-token.service';
 import { EsignSignerService } from './esign-signer.service';
 import { EsignFieldService } from './esign-field.service';
 import type { SignerInputDto } from '../dto/signer.dto';
-import type { InitiationFieldDto } from '../dto/initiation.dto';
+import type { FieldPlacementDto } from '../dto/field.dto';
 
 export interface InitiateDocumentInput {
   signers: SignerInputDto[];
-  fields: InitiationFieldDto[];
+  fields: FieldPlacementDto[];
   documentId: number;
   creatorUserId: number;
   signStartAt: Date;
@@ -55,7 +53,7 @@ export class EsignInitiationService {
     private readonly jobs: EsignJobProducerService,
     private readonly signerService: EsignSignerService,
     private readonly fieldService: EsignFieldService,
-  ) { }
+  ) {}
 
   async initiate(input: InitiateDocumentInput) {
     this.validateSigningPeriod(input);
@@ -71,11 +69,10 @@ export class EsignInitiationService {
         input.signers,
         manager,
       );
-      const fieldInputs = this.mapFieldsToSigners(input.fields, signers);
       const { fields, sourceMetadata } = await this.fieldService.buildFields(
         document,
         input.creatorUserId,
-        fieldInputs,
+        input.fields,
         manager,
       );
       this.validateSigningAssignments(
@@ -133,22 +130,8 @@ export class EsignInitiationService {
       !Number.isFinite(input.signEndAt.getTime()) ||
       input.signStartAt >= input.signEndAt
     ) {
-      throw this.invalid('簽署開始時間必須早於截止時間');
+      throw new AppException(...AppErrors.ESIGN_SIGNING_PERIOD_INVALID);
     }
-  }
-
-  private mapFieldsToSigners(
-    fields: InitiationFieldDto[],
-    signers: EsignSigner[],
-  ): FieldInputDto[] {
-    return fields.map(({ signerIndex, ...field }) => {
-      const signer =
-        Number.isInteger(signerIndex) && signerIndex >= 0
-          ? signers[signerIndex]
-          : undefined;
-      if (!signer) throw this.invalid('欄位指定的簽署人不在本次名單中');
-      return { ...field, signerPublicId: signer.publicId };
-    });
   }
 
   private validateSigningAssignments(
@@ -157,32 +140,22 @@ export class EsignInitiationService {
     fields: EsignDocumentField[],
     pageCount: number,
   ): void {
-    if (signers.length < 1 || signers.length > 50) {
-      throw this.invalid('文件必須有 1 至 50 名簽署人');
+    if (signers.length < 1) {
+      throw new AppException(...AppErrors.ESIGN_DOCUMENT_SIGNER_REQUIRED);
     }
-    if (fields.length > 200) throw this.invalid('欄位數量不可超過 200 個');
+    if (fields.length > 200)
+      throw new AppException(...AppErrors.ESIGN_FIELD_LIMIT_EXCEEDED);
 
-    const signerIds = new Set(signers.map((signer) => signer.id));
     if (
       fields.some(
         (field) =>
-          field.signerId === undefined ||
-          !signerIds.has(field.signerId) ||
-          field.documentId !== document.id ||
-          field.pageNumber > pageCount,
+          field.documentId !== document.id || field.pageNumber > pageCount,
       )
     ) {
-      throw this.invalid('文件包含無效或未指派的簽署欄位');
+      throw new AppException(...AppErrors.ESIGN_FIELDS_INVALID);
     }
-    for (const signer of signers) {
-      if (
-        !fields.some(
-          (field) =>
-            field.signerId === signer.id && field.fieldType === 'signature',
-        )
-      ) {
-        throw this.invalid('每名簽署人至少需要一個簽名欄位');
-      }
+    if (!fields.some((field) => field.fieldType === 'signature')) {
+      throw new AppException(...AppErrors.ESIGN_SHARED_SIGNATURE_REQUIRED);
     }
   }
 
@@ -195,6 +168,7 @@ export class EsignInitiationService {
   ): SigningSnapshot {
     const activeConsent = this.consent.getActive();
     const payload = {
+      schemaVersion: 2,
       document: {
         id: String(document.id),
         docNumber: document.docNumber,
@@ -228,7 +202,6 @@ export class EsignInitiationService {
       })),
       fields: fields.map((field) => ({
         id: String(field.id),
-        signerId: String(field.signerId),
         type: field.fieldType,
         page: field.pageNumber,
         xPercent: Number(field.xPercent),
@@ -238,10 +211,7 @@ export class EsignInitiationService {
         sortOrder: field.sortOrder,
       })),
     };
-    const payloadJson = canonicalJson(payload);
-    const payloadSha256 = createHash('sha256')
-      .update(payloadJson, 'utf8')
-      .digest('hex');
+    const payloadSha256 = canonicalSha256(payload);
     return { payload, payloadSha256, consentVersion: activeConsent.version };
   }
 
@@ -357,14 +327,6 @@ export class EsignInitiationService {
         metadata: { status: 'active', consentVersion: consentVersion },
       },
       manager,
-    );
-  }
-
-  private invalid(message: string): AppException {
-    return new AppException(
-      AppErrorCode.INVALID_REQUEST,
-      message,
-      HttpStatus.BAD_REQUEST,
     );
   }
 }

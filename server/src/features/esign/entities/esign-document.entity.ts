@@ -31,9 +31,6 @@ import { User } from '#app/features/users/entities/user.entity';
 @Index('idx_esign_documents_initiated_at', ['initiatedAt'])
 @Index('idx_esign_documents_completed_at', ['completedAt'])
 @Index('idx_esign_documents_stopped_at', ['stoppedAt'])
-@Index('idx_esign_documents_finalization_lease_expires_at', [
-  'finalizationLeaseExpiresAt',
-])
 @Index('idx_esign_documents_created_at', ['createdAt'])
 @Index('idx_esign_documents_updated_at', ['updatedAt'])
 @Index('idx_esign_documents_deleted_at', ['deletedAt'])
@@ -148,26 +145,6 @@ export class EsignDocument extends AuditableEntity {
     comment: '停止原因',
   })
   stopReason?: string;
-
-  @Column({
-    name: 'finalization_lease_token',
-    type: 'char',
-    length: 36,
-    charset: 'ascii',
-    collation: 'ascii_bin',
-    nullable: true,
-    comment: '完成檔案 worker lease UUID',
-  })
-  finalizationLeaseToken?: string;
-
-  @Column({
-    name: 'finalization_lease_expires_at',
-    type: 'datetime',
-    precision: 6,
-    nullable: true,
-    comment: '完成檔案 worker lease 到期時間',
-  })
-  finalizationLeaseExpiresAt?: Date;
 
   @Column({
     name: 'watermark_enabled',

@@ -1,5 +1,5 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { DocumentRepository } from '../repositories/document.repository';
@@ -22,11 +22,7 @@ export class EsignStoppageService {
   stopByCreator(documentId: number, creatorUserId: number, reason: string) {
     const normalized = reason.trim();
     if (normalized.length < 1 || normalized.length > 500) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '停止原因必須為 1 至 500 字',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(...AppErrors.ESIGN_STOP_REASON_INVALID);
     }
     return this.stop(documentId, normalized, new Date(), creatorUserId);
   }
@@ -51,6 +47,8 @@ export class EsignStoppageService {
       if (!document) return false;
       if (document.status === 'stopped' && creatorUserId === undefined)
         return false;
+      if (creatorUserId === undefined && document.status !== 'active')
+        return false;
       this.validation.assertActiveForStop(document);
       const signers = await this.signers.findByDocumentForUpdate(
         documentId,
@@ -66,14 +64,9 @@ export class EsignStoppageService {
       }
       for (const signer of signers) {
         if (signer.status === 'pending') {
-          signer.invitationTokenSha256 = undefined;
-          signer.invitationTokenCiphertext = undefined;
-          signer.invitationExpiresAt = undefined;
-        }
-        if (signer.status === 'signed' && signer.completionReceiptSha256) {
-          signer.completionReceiptExpiresAt = new Date(
-            now.getTime() + 30 * 24 * 60 * 60_000,
-          );
+          signer.invitationTokenSha256 = null;
+          signer.invitationTokenCiphertext = null;
+          signer.invitationExpiresAt = null;
         }
       }
       await this.signers.saveMany(signers, manager);

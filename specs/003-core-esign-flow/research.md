@@ -32,21 +32,21 @@
 
 **Alternatives considered**: 由 Client 送 hash 無法證明實際儲存內容；只在 controller 檢查狀態有 TOCTOU 競態。
 
-## 5. 簽署人與欄位模型
+## 5. 簽署人與共用欄位（2026-10-16 修訂）
 
-**Decision**: 沿用 `esign_signers` 的 user/email 互斥身分與文件內 unique indexes。新增 signer `public_id`、外部邀請 digest/ciphertext/expiry/delivery 欄位。`esign_document_fields` 新增 nullable `signer_id` FK：草稿編輯期可短暫未指派，但發起必須每個欄位屬於同文件 signer，且每名 signer 至少一個簽名欄位；date 欄位由 Server 以同一 `signed_at_utc` 呈現。
+**Decision**: 欄位只屬於 document，不再需要 signer_id。發起仍可原子提交 signers、共用 fields、期間及選項，但 fields 不含 signerIndex。每人簽名檔沿用 `(signature_record_id, document_field_id, file_purpose)` 唯一鍵隔離；本人 record 由可信簽署身分決定。
 
-**Rationale**: 現有 field 沒有 signer 關聯，無法支援多人欄位與最小揭露。新增 FK 比在 JSON 或 object-key 隱藏關聯容易驗證與約束。
+**Rationale**: 原前端 UploadField 沒有 signer owner，signedPdf.ts 以本人簽名產生個人副本；新版需求明確採相同模型。後端現有 owner 過濾、必填 signerIndex 與合併 PDF 是落差。
 
-**Alternatives considered**: 一份全體共用 layout 不能表達每人指定欄位；只用排序或 Client map 無 server-side referential integrity。
+**Alternatives considered**: 複製欄位仍會造成重疊及人數乘數；每人重建 document 則重複原檔與流程。兩者均不採用。
 
-## 6. 外部 Email 邀請與受限存取
+## 6. 外部 Email 邀請與受限存取（2026-10-16 修訂）
 
-**Decision**: 發起時每名 email signer 產生 32-byte CSPRNG base64url token，DB 保存 SHA-256 與最多到 document deadline 的 expiry。為了交易後寄信與重試，token 另以獨立環境金鑰作 AES-256-GCM 加密，成功寄送後立即清除密文，只留 digest。邀請 URL 的 GET 僅回 no-store/no-referrer 同源 bridge；bridge POST 驗證 token 後將原值設為 HttpOnly/Secure/SameSite=Lax 外部 cookie 並 303 導向不含 token 的頁面。每次簽署 API 都重算 digest 並檢查 signer/document/expiry/status。簽署成功時 invitation 立即失效，Server 另產生一個只能查看終止狀態與 completed PDF 的 receipt token，以 digest 存 DB，並用 signer public ID 限定 cookie path，因此同一瀏覽器可同時保留多文件 receipt。Receipt 在文件完成/停止前不過期，終止後保留 30 日；不能用它再簽署、查原始 PDF 或開啟其他文件。
+**Decision**: 保留既有加密 invitation outbox、opaque URL、同源 bridge、HttpOnly cookie 與終止失效。依新版 FR-026 移除新流程簽後 receipt 核發及 external-completions 介面，外部個人副本由建立人取得。這是對現有功能的明確調整，不是只改欄位的副作用。
 
-**Rationale**: URL 在簽署或終止前必須可重開，因此不能在首次開啟就消耗。Bridge 立即移除 address bar 的 bearer secret，HttpOnly 避免交給 Client JavaScript。加密 outbox 讓 SMTP 短暫失敗可重試，又不長期保留可直接使用的明文憑證。獨立 receipt 在不復活 invitation、不新增完成通知 Email 的前提下滿足 external signer 取得完成結果；其時間從終止時才起算，不會因 PDF 反覆產製失敗而提前消失。30 日是第一版窄化存取視窗，長期封存仍不在範圍。
+**Rationale**: 現有 signing/controller/token/completion-access service 具有 receipt 機制，但新版 spec 明確排除簽後外部下載憑證；保留它會使 plan 與 spec 矛盾。
 
-**Alternatives considered**: OTP 為 spec 明確排除；JWT 連同身分放 URL 可被解碼且擴大暴露；首開即失效違反可重開要求；永久保存明文 token 擴大 DB 外洩影響。
+**Alternatives considered**: 保留 receipt 或新完成通知都超出新版 spec；使用者確認舊資料皆為單人且不要求舊流程相容，遷移範圍見 plan。
 
 ## 7. Email 寄送與 BullMQ outbox 邊界
 
@@ -64,17 +64,17 @@
 
 **Alternatives considered**: Client `agreedAt`、signature ID 或 hash 不能當權威；分開寫 signer/evidence/audit 會留局部成功。
 
-## 9. 完成 PDF 與自動結案
+## 9. 個人 PDF 與自動結案（2026-10-16 修訂）
 
-**Decision**: 最後一筆簽署 transaction 只負責成立證據；commit 後 best-effort 將 `documentId` 加入 `esign-document-finalization` queue，不在 HTTP request 進行 PDF I/O。BullMQ processor 以 conditional update 將 `active` 且全員 signed 的文件轉為 `finalizing`，同時寫新 UUID lease token 與 5 分鐘 expiry。重驗 source/evidence hashes 後以 `pdf-lib` 嵌入每人 PNG 與 UTC 轉台北的 `YYYY/MM/DD`，寫入、重讀並驗證 final hash/page count，最後在 transaction 以 `status = finalizing AND finalization_lease_token = :mine` 作 CAS，才能寫 final file metadata、completed audit、`completed_at` 與 `status = completed`。失敗回 `active` 也必須命中同一 token。Maintenance reconciliation 會重新入列全員已簽但尚未 finalizing 的文件，並回收/重入列過期 lease；失去 lease 的舊 processor 必須清理自己的 orphan output，不能提交。
+**Decision**: 每次簽署後 enqueue signer 工作；signer 保存 pending/processing/ready/failed 產製狀態與 lease。沿用 5 分鐘 lease、既有 queue 與 maintenance，worker 只從原檔合成本人的 record/PNG/date/QR。完成檔 owner 為 signature record，個人成功與整體結案分開。
 
-**Rationale**: 保留已成立簽署又不提前結案，也不在 DB lock 期間執行大型 PDF I/O。BullMQ 能立即喚醒 worker 並重試，但 queue delivery 可能重複、延遲或 enqueue 失敗，因此 DB conditional transition 與 fencing token仍是多 worker 唯一仲裁。
+**Rationale**: 現有 CompletedPdfService 讀全部人與所有欄位；document-level lease 只允許全員簽完後一份產物。將鎖與產物粒度改為 signer 才能單人先下載、個別重試且不重疊。
 
-**Alternatives considered**: 在最後簽署 transaction 同步產檔會長時間持鎖且失敗時無法同時保留簽署；只由 Client 下載個人 PDF 不是可保存的全員完成結果；只依賴 BullMQ job existence 去重無法防止 lease 回收後的舊 worker 晚到提交。
+**Alternatives considered**: HTTP 同步產檔拖長交易；新增副本表並無必要；每人新增 queue 亦無必要。唯一 document-purpose 索引不能直接沿用於個人完成檔，詳見 data-model。
 
 ## 10. 過期與停止競態
 
-**Decision**: 簽署視窗統一為半開區間 `sign_start_at <= now < sign_end_at`。`esign-maintenance` queue 使用 BullMQ `upsertJobScheduler` 每 30 秒產生 maintenance job；processor 掃描 `active` 且 `sign_end_at <= now` 的文件，在 transaction lock 後再判斷是否還有 pending signer，有則轉 stopped並寫穩定系統原因/audit。同一 maintenance job 也 reconciliation invitation outbox、全員已簽 active 文件與 stale finalization lease。簽署 service 以同一 server UTC 和 row lock 決定：開始前或 `now >= sign_end_at` 一律不建立證據。手動停止同樣 lock document，僅 creator 可對 active 文件操作，completed/finalizing 不接受一般停止。
+**Decision**: 簽署視窗統一為半開區間 `sign_start_at <= now < sign_end_at`。`esign-maintenance` queue 使用 BullMQ `upsertJobScheduler` 每 30 秒產生 maintenance job；processor 掃描 `active` 且 `sign_end_at <= now` 的文件，在 transaction lock 後再判斷是否還有 pending signer，有則轉 stopped並寫穩定系統原因/audit。同一 maintenance job 也 reconciliation invitation outbox、待產製個人副本、過期 signer lease 與待結案文件。簽署 service 以同一 server UTC 和 row lock 決定：開始前或 `now >= sign_end_at` 一律不建立證據。手動停止同樣 lock document，僅 creator 可對 active/finalizing 文件操作，completed 不接受一般停止，finalizing 可與結案以 document lock 仲裁停止。
 
 **Rationale**: DB lock + server time 產生唯一結果，不依賴 Client 時鐘或掃描剛好在截止點執行。
 
@@ -82,7 +82,7 @@
 
 ## 11. API 與資料揭露
 
-**Decision**: 內部 resource 放在 `/api/esign/*`，使用 Spec 2 employee session；外部 bridge/session/task 是獨立 public controllers，每次自行驗證 external cookie。Creator detail 只回簽署人 snapshot/status，不回簽名圖；signer task 只回本人、本人欄位、文件與整體計數。原始/完成 PDF 使用受權的 stream endpoint 並設 private/no-store headers。
+**Decision**: 內部 resource 放在 `/api/esign/*`，使用 Spec 2 employee session；外部 bridge/session/task 是獨立 public controllers，每次自行驗證 external cookie。Creator detail 只回簽署人 snapshot/status，不回簽名圖；signer task 只回本人、共用欄位、本人產製狀態、文件與整體計數。原始/完成 PDF 使用受權的 stream endpoint 並設 private/no-store headers。
 
 **Rationale**: 將內部 session 與 Email bearer 邊界實體分開，可避免 `@Public()` 路由意外獲得內部功能或查看其他簽署人個資。
 
@@ -90,7 +90,7 @@
 
 ## 12. 既有原型與範圍衝突
 
-**Decision**: Spec 03 頁面移除或隱藏拒簽、補簽、催簽、QR 公開驗證與一般匯出入口，不將這些原型狀態寫入正式 API。Spec 03 建檔時強制 `allow_reject = false`、`watermark_enabled = false`，固定平行簽署，不接受 Client 選項。保留無關 UI 檔案不等於將功能納入 Spec 03。
+**Decision**: Spec 03 頁面移除或隱藏拒簽、補簽、催簽、QR 公開驗證與一般匯出入口，不將這些原型狀態寫入正式 API；QR 簽章驗證由 Spec 04、一般匯出由 Spec 05 實作。Spec 03 固定平行簽署；`allow_reject`、`watermark_enabled` 建立草稿時為 false，發起時由 initiation API 寫入（見 data-model 第 1 節）。保留無關 UI 檔案不等於將功能納入 Spec 03。
 
 **Rationale**: Feature spec FR-034/035 明確排除這些行為，原型不可擴張已核准範圍或被誤述為正式功能。
 
@@ -106,7 +106,7 @@
 
 ## 14. Cookie 寫入的 CSRF 與頁面嵌入
 
-**Decision**: 所有使用 employee session、external access 或 receipt cookie 的 `POST/PUT/PATCH/DELETE` 都沿用 Spec 2 `OriginGuard`，要求 `Origin` 精確命中電子簽同源/受信 origin，並拒絕缺少或不符的 browser write。Invitation bridge POST 也是同源 form，必須通過相同檢查。外部簽署頁設 `frame-ancestors 'none'`；內部頁只允許 Spec 2 `AUTH_TRUSTED_ORIGINS`，不使用 `*`。
+**Decision**: 所有使用 employee session 或 external access cookie 的 `POST/PUT/PATCH/DELETE` 都沿用 Spec 2 `OriginGuard`，要求 `Origin` 精確命中電子簽同源/受信 origin，並拒絕缺少或不符的 browser write。Invitation bridge POST 也是同源 form，必須通過相同檢查。外部簽署頁設 `frame-ancestors 'none'`；內部頁只允許 Spec 2 `AUTH_TRUSTED_ORIGINS`，不使用 `*`。
 
 **Rationale**: SameSite=Lax 不能取代對 same-site hostile origin 的 write 防護，multipart/form-data 也可是 simple cross-origin request。Frame policy 同時降低 clickjacking 風險。
 
@@ -119,3 +119,27 @@
 **Rationale**: 集中 root module 避免每個 worker module 重複 `forRootAsync` 或隱式依賴 import 順序；web/worker 分離避免 HTTP process 消費工作或多實例重複註冊 scheduler。真 queue e2e 能抓出 mock 看不到的 job retention、jobId 去重、module wiring 與 Redis DB isolation 問題。到期停止是 spec MUST，因此 scheduler 不可用必須明確反映服務降級。
 
 **Alternatives considered**: 一條 queue 以多個 job name 分派會讓三種不同 concurrency、retry 與 retention 混在一起；每個 feature worker 各自註冊 Redis root 會形成順序耦合；只測 processor service 而不跑真 queue 無法驗證 producer/consumer 接線。
+
+## 16. 個人完成檔所有權與 QR（2026-10-16）
+
+**Decision**: 個人 completed_pdf 使用 signature_record_id，document_id 留空；保留 document owner 的 completed_pdf 表示能力，兩種 owner 恰選一種；沿用 document-purpose 唯一鍵，新增 generated key 對 completed_pdf 的 record 作唯一約束。完成檔的文件由 record → signer → document 推導。文件結案 snapshot manifest v2 保存每人 hash，公開驗證碼回本人 hash；未結案/停止的公開 hash 仍為 null。
+
+**Rationale**: 現有 nullable owner 欄位足以表達個人副本與未來文件層級簽到表，不需新增 signer_id、副本表或多對多關聯；本次只產製個人副本，未來簽到表的簽署證據集合以其結案 manifest 固定。現有 verification unique(document_id) 可保留，只調整 manifest 與單一 final_pdf_sha256 的限制。
+
+**Alternatives considered**: 直接刪 document-purpose unique 會失去 source 唯一性；只有 nullable 三欄 unique 無法約束 completed_pdf 的 NULL field。每人新增驗證 snapshot 表增加不必要結構。
+
+## 17. 舊資料範圍（使用者補充）
+
+**Decision**: 舊資料只有一名簽署人，使用者不要求處理舊流程相容；撤除非草稿資料阻擋條件，不新增雙模型或完整歷史回放支援。必要時單人完成檔只調整 metadata owner，保留 bytes/hash，不重算證據。
+
+**Rationale**: 先前部署門檻依未知的多人合簽資料而設；使用者已縮小舊資料範圍，無需擴大相容工程。
+
+**Alternatives considered**: 自動刪除資料並非此次指令；完整雙模型支援亦不採用。
+
+## 18. 不設簽署人數上限
+
+**Decision**: 移除 signer 與 initiation DTO 的 ArrayMaxSize(50)、兩個 service 的 50 人驗證，以及 OpenAPI maxItems；保留資格與去重。6,000 人作全流程驗收，6,001 人作無硬上限回歸，兩者都不是產品上限。
+
+**Rationale**: 公司有五千多人，需一次發起全公司簽署。修訂前 SignerRepository.findByDocumentForUpdate 會載入整份名單，maintenance 有 limit(100)，所以僅刪掉 DTO 上限不足；必須批次處理、完整掃描與聚合查詢並驗證前端／傳輸限制。
+
+**Alternatives considered**: 把 50 改成 5,000 或 6,000 仍違反需求；要求拆文件亦不採用。分頁、分批與 worker 有界併發是技術資源控制，不是業務人數上限；先用既有交易與 queue，不新增名單匯入架構。

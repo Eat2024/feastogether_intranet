@@ -1,7 +1,7 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import { timingSafeEqual } from 'node:crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
@@ -96,9 +96,9 @@ export class EsignAccessPolicyService {
       signer.status === 'pending' &&
       !signer.deletedAt &&
       !document.deletedAt &&
-      signer.invitationTokenSha256 !== undefined &&
+      signer.invitationTokenSha256 != null &&
       this.equalDigest(signer.invitationTokenSha256, digest) &&
-      signer.invitationExpiresAt !== undefined &&
+      signer.invitationExpiresAt != null &&
       now < signer.invitationExpiresAt;
     if (!valid) throw this.externalUnauthorized();
 
@@ -107,49 +107,6 @@ export class EsignAccessPolicyService {
     } catch {
       throw this.externalUnauthorized();
     }
-  }
-
-  assertExternalCredential(
-    document: EsignDocument | null,
-    signer: EsignSigner | null,
-    digest: string,
-  ): asserts signer is EsignSigner {
-    if (
-      !document ||
-      !signer ||
-      signer.signerType !== 'email' ||
-      signer.documentId !== document.id ||
-      signer.deletedAt ||
-      document.deletedAt ||
-      !signer.invitationTokenSha256 ||
-      !this.equalDigest(signer.invitationTokenSha256, digest)
-    ) {
-      throw this.externalUnauthorized();
-    }
-  }
-
-  assertReceipt(
-    document: EsignDocument | null,
-    signer: EsignSigner | null,
-    digest: string,
-    now: Date,
-  ): void {
-    const terminal =
-      document?.status === 'completed' || document?.status === 'stopped';
-    const valid =
-      signer !== null &&
-      document !== null &&
-      signer.signerType === 'email' &&
-      signer.documentId === document.id &&
-      signer.status === 'signed' &&
-      !signer.deletedAt &&
-      !document.deletedAt &&
-      signer.completionReceiptSha256 !== undefined &&
-      this.equalDigest(signer.completionReceiptSha256, digest) &&
-      (!terminal ||
-        (signer.completionReceiptExpiresAt !== undefined &&
-          now < signer.completionReceiptExpiresAt));
-    if (!valid) throw this.externalUnauthorized();
   }
 
   private equalDigest(expected: string, actual: string): boolean {
@@ -162,18 +119,10 @@ export class EsignAccessPolicyService {
   }
 
   private notFound(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
-      '找不到電子簽資源',
-      HttpStatus.NOT_FOUND,
-    );
+    return new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
   }
 
   private externalUnauthorized(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
-      '外部簽署存取已失效',
-      HttpStatus.UNAUTHORIZED,
-    );
+    return new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
   }
 }

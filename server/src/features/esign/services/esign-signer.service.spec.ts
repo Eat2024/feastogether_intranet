@@ -12,7 +12,6 @@ describe('EsignSignerService', () => {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
   );
 
   it('外部簽署 Email 只做 trim + lowercase', () => {
@@ -21,7 +20,7 @@ describe('EsignSignerService', () => {
     );
   });
 
-  it('取代簽署人時保留草稿欄位，先解除指派再刪除舊簽署人', async () => {
+  it('取代草稿簽署人不需修改共用欄位', async () => {
     const manager = {} as never;
     const calls: string[] = [];
     const document = Object.assign(new EsignDocument(), {
@@ -37,16 +36,9 @@ describe('EsignSignerService', () => {
       }),
       saveMany: jest.fn(async (values: object[]) => values),
     };
-    const fields = {
-      unassignDraftFields: jest.fn(async () => {
-        calls.push('unassignDraftFields');
-      }),
-      deleteDraftFields: jest.fn(),
-    };
     const replacing = new EsignSignerService(
       {} as never,
       signers as never,
-      fields as never,
       {} as never,
       access as never,
     );
@@ -59,9 +51,7 @@ describe('EsignSignerService', () => {
     );
 
     expect(access.checkAndLockDraftDoc).not.toHaveBeenCalled();
-    expect(fields.unassignDraftFields).toHaveBeenCalledWith(3, 7, manager);
-    expect(fields.deleteDraftFields).not.toHaveBeenCalled();
-    expect(calls).toEqual(['unassignDraftFields', 'deleteDraftSigners']);
+    expect(calls).toEqual(['deleteDraftSigners']);
   });
 
   it.each([
@@ -82,7 +72,6 @@ describe('EsignSignerService', () => {
     };
     const service = new EsignSignerService(
       mysql as never,
-      {} as never,
       {} as never,
       {} as never,
       new EsignAccessPolicyService(
@@ -120,7 +109,6 @@ describe('EsignSignerService', () => {
       } as never,
       {} as never,
       {} as never,
-      {} as never,
       access as never,
     );
     const update = jest
@@ -144,10 +132,11 @@ describe('簽署人批次查詢', () => {
     const manager = {} as never;
     const document = Object.assign(new EsignDocument(), { id: 3 });
     const users = {
-      findByIds: jest.fn(() => Promise.resolve(usersFound)),
+      findByIds: jest.fn((ids: number[]) =>
+        Promise.resolve(usersFound.filter((user) => ids.includes(user.id))),
+      ),
       findById: jest.fn(),
     };
-    const fields = { unassignDraftFields: jest.fn() };
     const signers = {
       create: jest.fn((value: Partial<EsignSigner>) =>
         Object.assign(new EsignSigner(), value),
@@ -158,13 +147,12 @@ describe('簽署人批次查詢', () => {
     const service = new EsignSignerService(
       {} as never,
       signers as never,
-      fields as never,
       users as never,
       {} as never,
     );
     const run = (inputs: SignerInputDto[]) =>
       service.updateSigners(document, 7, inputs, manager);
-    return { run, users, fields, signers, manager };
+    return { run, users, signers, manager };
   };
   const user = (id: number) =>
     Object.assign(new User(), {
@@ -195,13 +183,13 @@ describe('簽署人批次查詢', () => {
     ]);
   });
 
-  it('50 位內部員工只查詢一次', async () => {
-    const found = Array.from({ length: 50 }, (_, index) => user(index + 1));
+  it('6,001 位員工分批查詢且完整保留名單', async () => {
+    const found = Array.from({ length: 6001 }, (_, index) => user(index + 1));
     const { run, users } = setup(found);
     expect(
       await run(found.map(({ id }) => ({ type: 'user', userId: String(id) }))),
-    ).toHaveLength(50);
-    expect(users.findByIds).toHaveBeenCalledTimes(1);
+    ).toHaveLength(6001);
+    expect(users.findByIds).toHaveBeenCalledTimes(13);
     expect(users.findById).not.toHaveBeenCalled();
   });
 
@@ -244,10 +232,9 @@ describe('簽署人批次查詢', () => {
       ],
     },
   ])('$label 在查詢前拒絕，不修改既有名單', async ({ inputs }) => {
-    const { run, users, fields, signers } = setup();
+    const { run, users, signers } = setup();
     await expect(run(inputs)).rejects.toMatchObject({ status: 400 });
     expect(users.findByIds).not.toHaveBeenCalled();
-    expect(fields.unassignDraftFields).not.toHaveBeenCalled();
     expect(signers.deleteDraftSigners).not.toHaveBeenCalled();
     expect(signers.saveMany).not.toHaveBeenCalled();
   });
@@ -260,11 +247,10 @@ describe('簽署人批次查詢', () => {
       found: [Object.assign(user(1), { deletedAt: new Date() })],
     },
   ])('員工$label仍拒絕，且不修改既有名單', async ({ found }) => {
-    const { run, fields, signers } = setup(found);
+    const { run, signers } = setup(found);
     await expect(run([{ type: 'user', userId: '1' }])).rejects.toMatchObject({
       status: 400,
     });
-    expect(fields.unassignDraftFields).not.toHaveBeenCalled();
     expect(signers.deleteDraftSigners).not.toHaveBeenCalled();
     expect(signers.saveMany).not.toHaveBeenCalled();
   });

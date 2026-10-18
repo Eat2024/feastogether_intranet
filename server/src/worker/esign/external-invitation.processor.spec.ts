@@ -18,7 +18,7 @@ describe('ExternalInvitationProcessor', () => {
       signerType: 'email',
       email: 'candidate@example.test',
       status: 'pending',
-      invitationTokenCiphertext: 'encrypted-token',
+      invitationTokenCiphertext: 'encrypted-token' as string | null,
       invitationExpiresAt: document.signEndAt,
       document,
     };
@@ -26,13 +26,14 @@ describe('ExternalInvitationProcessor', () => {
       id: 19,
       result: options?.result ?? 'pending',
       attemptCount: 0,
-      processingStartedAt: undefined as Date | undefined,
-      nextAttemptAt: undefined as Date | undefined,
-      completedAt: undefined as Date | undefined,
-      errorCode: undefined as string | undefined,
+      processingStartedAt: undefined as Date | null | undefined,
+      nextAttemptAt: undefined as Date | null | undefined,
+      completedAt: undefined as Date | null | undefined,
+      errorCode: undefined as string | null | undefined,
       signer,
     };
     const notifications = {
+      lockDocument: jest.fn(() => Promise.resolve(document)),
       findInvitationContextForUpdate: jest.fn(() => Promise.resolve(log)),
       findLogByIdForUpdate: jest.fn(() => Promise.resolve(log)),
       saveLog: jest.fn(() => Promise.resolve()),
@@ -81,7 +82,7 @@ describe('ExternalInvitationProcessor', () => {
     expect(log.result).toBe('delivered');
     expect(log.attemptCount).toBe(1);
     expect(log.completedAt).toEqual(expect.any(Date));
-    expect(signer.invitationTokenCiphertext).toBeUndefined();
+    expect(signer.invitationTokenCiphertext).toBeNull();
     expect(audit.append).toHaveBeenCalledWith(
       expect.objectContaining({
         documentId: 7,
@@ -132,7 +133,7 @@ describe('ExternalInvitationProcessor', () => {
     const { processor, log, signer, mailer, audit } = setup();
     mailer.send.mockImplementation(() => {
       signer.status = 'signed';
-      signer.invitationTokenCiphertext = undefined;
+      signer.invitationTokenCiphertext = null;
       return Promise.resolve();
     });
 
@@ -140,7 +141,19 @@ describe('ExternalInvitationProcessor', () => {
 
     expect(log.result).toBe('failed');
     expect(log.errorCode).toBe('INVITATION_NO_LONGER_ACTIVE');
-    expect(log.nextAttemptAt).toBeUndefined();
+    expect(log.nextAttemptAt).toBeNull();
+    expect(audit.append).not.toHaveBeenCalled();
+  });
+  it('寄送期間文件停止時不提交 delivered，且清除排程欄位為 SQL NULL', async () => {
+    const { processor, document, log, mailer, audit } = setup();
+    mailer.send.mockImplementation(() => {
+      document.status = 'stopped';
+      return Promise.resolve();
+    });
+    await processor.process(job);
+    expect(log.result).toBe('failed');
+    expect(log.processingStartedAt).toBeNull();
+    expect(log.nextAttemptAt).toBeNull();
     expect(audit.append).not.toHaveBeenCalled();
   });
 });

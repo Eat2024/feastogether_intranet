@@ -39,7 +39,7 @@ describe('EsignDocumentValidationService', () => {
     expect(() => service.assertActiveForStop(document())).not.toThrow();
     expect(() =>
       service.assertActiveForStop(document({ status: 'completed' })),
-    ).toThrow('只有簽署中的文件');
+    ).toThrow('只有簽署中或產製中的文件');
 
     const signer = Object.assign(new EsignSigner(), {
       id: 2,
@@ -53,19 +53,18 @@ describe('EsignDocumentValidationService', () => {
     );
   });
 
-  it('欄位必須同時屬於相同 document 與 signer', () => {
+  it('共用欄位必須屬於簽署人的文件', () => {
     const signer = Object.assign(new EsignSigner(), { id: 2, documentId: 1 });
     const field = Object.assign(new EsignDocumentField(), {
       documentId: 1,
-      signerId: 2,
     });
     expect(() =>
-      service.assertFieldsBelongToSigner([field], signer),
+      service.assertFieldsBelongToDocument([field], signer.documentId),
     ).not.toThrow();
-    field.signerId = 3;
-    expect(() => service.assertFieldsBelongToSigner([field], signer)).toThrow(
-      '不相符',
-    );
+    field.documentId = 3;
+    expect(() =>
+      service.assertFieldsBelongToDocument([field], signer.documentId),
+    ).toThrow('不相符');
   });
 
   it('source 與 payload hash 每次以 persisted/recalculated 值比對', () => {
@@ -91,5 +90,49 @@ describe('EsignDocumentValidationService', () => {
     expect(() => service.assertPayloadIntegrity(active, 'tampered')).toThrow(
       '完整性驗證失敗',
     );
+  });
+
+  it('原檔或共用位置被改動，即使各自仍有有效 hash 也不可偏離發起快照', () => {
+    const field = Object.assign(new EsignDocumentField(), {
+      id: 10,
+      documentId: 1,
+      fieldType: 'signature',
+      pageNumber: 1,
+      xPercent: '10.0000',
+      yPercent: '20.0000',
+      widthPercent: '30.0000',
+      heightPercent: '10.0000',
+      sortOrder: 0,
+    });
+    const active = document({
+      signingPayloadJson: {
+        document: { id: '1', sourceFileSha256: 'original' },
+        fields: [
+          {
+            id: '10',
+            type: 'signature',
+            page: 1,
+            xPercent: 10,
+            yPercent: 20,
+            widthPercent: 30,
+            heightPercent: 10,
+            sortOrder: 0,
+          },
+        ],
+      },
+    });
+    expect(() =>
+      service.assertSigningSnapshot(active, 'original', [field]),
+    ).not.toThrow();
+    expect(() =>
+      service.assertSigningSnapshot(active, 'replacement', [field]),
+    ).toThrow('完整性');
+    expect(() => service.assertSigningSnapshot(active, 'original', [])).toThrow(
+      '完整性',
+    );
+    field.xPercent = '11.0000';
+    expect(() =>
+      service.assertSigningSnapshot(active, 'original', [field]),
+    ).toThrow('完整性');
   });
 });

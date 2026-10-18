@@ -10,7 +10,6 @@ describe('EsignFieldService', () => {
     status: 'draft',
     createdByUserId: 7,
   } as EsignDocument;
-  const signerPublicId = 'c854d925-1d70-49dc-9c81-abf18409ae42';
   const placement = {
     page: 1,
     xPercent: 10,
@@ -21,11 +20,6 @@ describe('EsignFieldService', () => {
   };
 
   function setup() {
-    const signers = {
-      findByDocument: jest.fn(async () => [
-        { id: 11, publicId: signerPublicId, documentId: 3 },
-      ]),
-    };
     const fields = {
       create: jest.fn((value: object) => value),
       deleteDraftFields: jest.fn(),
@@ -47,7 +41,6 @@ describe('EsignFieldService', () => {
         transaction: (callback: (value: typeof manager) => unknown) =>
           callback(manager),
       } as never,
-      signers as never,
       fields as never,
       files as never,
       access as never,
@@ -67,7 +60,7 @@ describe('EsignFieldService', () => {
     return { service, fields, access };
   }
 
-  it('未帶簽署人的草稿欄位存成未指派，有帶的對應本文件簽署人', async () => {
+  it('共用欄位無須簽署人即可保存，且不建立個人歸屬', async () => {
     const { service, fields } = setup();
 
     const result = await service.buildFields(
@@ -75,8 +68,8 @@ describe('EsignFieldService', () => {
       7,
       [
         { ...placement, type: 'signature' },
-        { ...placement, type: 'date', signerPublicId: null },
-        { ...placement, type: 'signature', page: 2, signerPublicId },
+        { ...placement, type: 'date' },
+        { ...placement, type: 'signature', page: 2 },
       ],
       manager,
     );
@@ -88,20 +81,16 @@ describe('EsignFieldService', () => {
     });
     expect(result.fields).toHaveLength(3);
     expect(fields.deleteDraftFields).toHaveBeenCalledWith(3, manager);
-    expect(fields.save).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({
-          fieldType: 'signature',
-          signerId: undefined,
-        }),
-        expect.objectContaining({ fieldType: 'date', signerId: undefined }),
-        expect.objectContaining({ fieldType: 'signature', signerId: 11 }),
-      ],
-      manager,
-    );
+    expect(result.fields.map((field) => field.fieldType)).toEqual([
+      'signature',
+      'date',
+      'signature',
+    ]);
+    for (const field of result.fields)
+      expect(field).not.toHaveProperty('signerId');
   });
 
-  it('指定不屬於本文件的簽署人時拒絕，且不刪除既有欄位', async () => {
+  it('欄位超出 PDF 頁數時拒絕，且不刪除既有欄位', async () => {
     const { service, fields } = setup();
 
     await expect(
@@ -112,7 +101,7 @@ describe('EsignFieldService', () => {
           {
             ...placement,
             type: 'signature',
-            signerPublicId: '7d444840-9dc0-41d8-8b3e-1c1d8f5b2a90',
+            page: 3,
           },
         ],
         manager,

@@ -1,4 +1,5 @@
-import { createPrivateKey, randomUUID, sign } from 'node:crypto';
+import { esignTestPng } from './esign-test-png';
+import { createPrivateKey, createHash, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -64,6 +65,10 @@ describe('核心電子簽 US1', () => {
   let outsiderCookie: string;
   let signerCookie: string;
   const documentIds: number[] = [];
+  const personalEmpids = Array.from(
+    { length: 10 },
+    (_, i) => `E2E003P${String(i).padStart(2, '0')}`,
+  );
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
@@ -151,39 +156,91 @@ describe('核心電子簽 US1', () => {
       signerEmpid,
       importedEmpid,
     ]);
+    for (const empid of personalEmpids) {
+      await db.query(
+        'DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE empid = ?)',
+        [empid],
+      );
+      await db.query('DELETE FROM users WHERE empid = ?', [empid]);
+    }
     await closeSecurityE2eApp(ctx);
   });
 
   it('一次發起可從空草稿完成設定；失敗完整回滾既有名單、欄位與通知', async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage();
-    const created = apiData<{ id: string }>(await request(ctx.server)
-      .post('/api/esign/documents').set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000').field('title', '原子發起測試')
-      .attach('file', Buffer.from(await pdf.save()), { filename: 'atomic.pdf', contentType: 'application/pdf' }).expect(201));
+    const created = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .field('title', '原子發起測試')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'atomic.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    );
     const id = Number(created.id);
     documentIds.push(id);
-    const field = { signerIndex: 0, type: 'signature', page: 1, xPercent: 10, yPercent: 10, widthPercent: 25, heightPercent: 10, sortOrder: 0 };
-    const input = {
-      signers: [{ type: 'email', name: '原子測試', email: 'atomic@example.test' }], fields: [field],
-      signStartAt: new Date(Date.now() - 60_000).toISOString(), signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
-      watermark: false, allowReject: false,
+    const field = {
+      type: 'signature',
+      page: 1,
+      xPercent: 10,
+      yPercent: 10,
+      widthPercent: 25,
+      heightPercent: 10,
+      sortOrder: 0,
     };
-    const initiate = (body: object, cookie = creatorCookie) => request(ctx.server)
-      .post(`/api/esign/documents/${id}/initiations`).set('Cookie', cookie).set('Origin', 'http://localhost:3000').send(body);
-    const detail = async () => apiData<DocumentDetail>(await request(ctx.server).get(`/api/esign/documents/${id}`).set('Cookie', creatorCookie).expect(200));
+    const input = {
+      signers: [
+        { type: 'email', name: '原子測試', email: 'atomic@example.test' },
+      ],
+      fields: [field],
+      signStartAt: new Date(Date.now() - 60_000).toISOString(),
+      signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+      watermark: false,
+      allowReject: false,
+    };
+    const initiate = (body: object, cookie = creatorCookie) =>
+      request(ctx.server)
+        .post(`/api/esign/documents/${id}/initiations`)
+        .set('Cookie', cookie)
+        .set('Origin', 'http://localhost:3000')
+        .send(body);
+    const detail = async () =>
+      apiData<DocumentDetail>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
     const empty = await detail();
-    await initiate({ signStartAt: input.signStartAt, signEndAt: input.signEndAt }).expect(400);
+    await initiate({
+      signStartAt: input.signStartAt,
+      signEndAt: input.signEndAt,
+    }).expect(400);
     await initiate(input, outsiderCookie).expect(404);
-    await initiate({ ...input, fields: [{ ...field, type: 'date' }] }).expect(400);
+    await initiate({ ...input, fields: [{ ...field, type: 'date' }] }).expect(
+      400,
+    );
     expect(await detail()).toEqual(empty);
     // 先存一份草稿設定，後續發起失敗不得刪掉這份設定。
-    const saved = apiData<Array<{ publicId: string }>>(await request(ctx.server)
-      .put(`/api/esign/documents/${id}/draftSave`).set('Cookie', creatorCookie).set('Origin', 'http://localhost:3000')
-      .send({ signers: input.signers }).expect(200));
-    const { signerIndex: _index, ...placement } = field;
-    await request(ctx.server).put(`/api/esign/documents/${id}/fields`).set('Cookie', creatorCookie).set('Origin', 'http://localhost:3000')
-      .send({ fields: [{ ...placement, signerPublicId: saved[0].publicId }] }).expect(200);
+    apiData<Array<{ publicId: string }>>(
+      await request(ctx.server)
+        .put(`/api/esign/documents/${id}/draftSave`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({ signers: input.signers })
+        .expect(200),
+    );
+    const placement = field;
+    await request(ctx.server)
+      .put(`/api/esign/documents/${id}/fields`)
+      .set('Cookie', creatorCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send({ fields: [{ ...placement }] })
+      .expect(200);
     const before = await detail();
     for (const invalid of [
       { ...input, fields: [{ ...field, signerIndex: 1 }] },
@@ -195,7 +252,8 @@ describe('核心電子簽 US1', () => {
       await initiate(invalid).expect(400);
       expect(await detail()).toEqual(before);
     }
-    const saveLogs = jest.spyOn(ctx.app.get(NotificationRepository), 'saveLogs')
+    const saveLogs = jest
+      .spyOn(ctx.app.get(NotificationRepository), 'saveLogs')
       .mockRejectedValueOnce(new Error('測試通知寫入失敗'));
     try {
       await initiate(input).expect(500);
@@ -203,137 +261,309 @@ describe('核心電子簽 US1', () => {
       saveLogs.mockRestore();
     }
     expect(await detail()).toEqual(before);
-    const batches = await db.query<Array<{ count: number }>>('SELECT COUNT(*) count FROM esign_notification_batches WHERE document_id = ?', [id]);
+    const batches = await db.query<Array<{ count: number }>>(
+      'SELECT COUNT(*) count FROM esign_notification_batches WHERE document_id = ?',
+      [id],
+    );
     expect(Number(batches[0].count)).toBe(0);
     const results = await Promise.all([initiate(input), initiate(input)]);
-    expect(results.map(result => result.status).sort()).toEqual([201, 409]);
+    expect(results.map((result) => result.status).sort()).toEqual([201, 409]);
     const active = await detail();
     expect(active.status).toBe('active');
     expect(active.signers).toHaveLength(1);
-    const activeBatches = await db.query<Array<{ count: number }>>('SELECT COUNT(*) count FROM esign_notification_batches WHERE document_id = ?', [id]);
+    const activeBatches = await db.query<Array<{ count: number }>>(
+      'SELECT COUNT(*) count FROM esign_notification_batches WHERE document_id = ?',
+      [id],
+    );
     expect(Number(activeBatches[0].count)).toBe(1);
-    const fresh = apiData<{ id: string }>(await request(ctx.server)
-      .post('/api/esign/documents').set('Cookie', creatorCookie).set('Origin', 'http://localhost:3000')
-      .field('title', '不先儲存設定').attach('file', Buffer.from(await pdf.save()), { filename: 'fresh.pdf', contentType: 'application/pdf' }).expect(201));
+    const fresh = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .field('title', '不先儲存設定')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'fresh.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    );
     documentIds.push(Number(fresh.id));
-    const freshResult = apiData<DocumentDetail>(await request(ctx.server)
-      .post(`/api/esign/documents/${fresh.id}/initiations`).set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000').send({ ...input, watermark: true, allowReject: true }).expect(201));
+    const freshResult = apiData<DocumentDetail>(
+      await request(ctx.server)
+        .post(`/api/esign/documents/${fresh.id}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({ ...input, watermark: true, allowReject: true })
+        .expect(201),
+    );
     expect(freshResult.status).toBe('active');
     expect(freshResult.signers).toHaveLength(1);
-    const options = await db.query<Array<{ id: number; watermark_enabled: number; allow_reject: number }>>(
-      'SELECT id, watermark_enabled, allow_reject FROM esign_documents WHERE id IN (?, ?) ORDER BY id', [id, Number(fresh.id)]);
-    expect(options.map((row) => [Number(row.watermark_enabled), Number(row.allow_reject)])).toEqual([[0, 0], [1, 1]]);
+    const options = await db.query<
+      Array<{ id: number; watermark_enabled: number; allow_reject: number }>
+    >(
+      'SELECT id, watermark_enabled, allow_reject FROM esign_documents WHERE id IN (?, ?) ORDER BY id',
+      [id, Number(fresh.id)],
+    );
+    expect(
+      options.map((row) => [
+        Number(row.watermark_enabled),
+        Number(row.allow_reject),
+      ]),
+    ).toEqual([
+      [0, 0],
+      [1, 1],
+    ]);
   });
 
   it('刪除草稿：軟刪除並寫入稽核，之後查無此文件；已發起的文件不可刪除', async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage();
     const bytes = Buffer.from(await pdf.save());
-    const create = async (title: string) => Number(apiData<{ id: string }>(await request(ctx.server)
-      .post('/api/esign/documents').set('Cookie', creatorCookie).set('Origin', 'http://localhost:3000')
-      .field('title', title).attach('file', bytes, { filename: 'delete.pdf', contentType: 'application/pdf' }).expect(201)).id);
-    const remove = (id: number) => request(ctx.server)
-      .delete(`/api/esign/documents/${id}`).set('Cookie', creatorCookie).set('Origin', 'http://localhost:3000');
+    const create = async (title: string) =>
+      Number(
+        apiData<{ id: string }>(
+          await request(ctx.server)
+            .post('/api/esign/documents')
+            .set('Cookie', creatorCookie)
+            .set('Origin', 'http://localhost:3000')
+            .field('title', title)
+            .attach('file', bytes, {
+              filename: 'delete.pdf',
+              contentType: 'application/pdf',
+            })
+            .expect(201),
+        ).id,
+      );
+    const remove = (id: number) =>
+      request(ctx.server)
+        .delete(`/api/esign/documents/${id}`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000');
 
     const draftId = await create('刪除草稿測試');
     documentIds.push(draftId);
     await remove(draftId).expect(204);
-    await request(ctx.server).get(`/api/esign/documents/${draftId}`).set('Cookie', creatorCookie).expect(404);
+    await request(ctx.server)
+      .get(`/api/esign/documents/${draftId}`)
+      .set('Cookie', creatorCookie)
+      .expect(404);
     const events = await db.query<Array<{ event_type: string }>>(
-      'SELECT event_type FROM esign_audit_events WHERE document_id = ? ORDER BY id', [draftId]);
-    expect(events.map((event) => event.event_type)).toEqual(['document.created', 'document.draft_deleted']);
+      'SELECT event_type FROM esign_audit_events WHERE document_id = ? ORDER BY id',
+      [draftId],
+    );
+    expect(events.map((event) => event.event_type)).toEqual([
+      'document.created',
+      'document.draft_deleted',
+    ]);
 
     const activeId = await create('已發起不可刪除');
     documentIds.push(activeId);
-    await request(ctx.server).post(`/api/esign/documents/${activeId}/initiations`).set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000').send({
-        signers: [{ type: 'email', name: '刪除測試', email: 'delete-test@example.test' }],
-        fields: [{ signerIndex: 0, type: 'signature', page: 1, xPercent: 10, yPercent: 10, widthPercent: 25, heightPercent: 10, sortOrder: 0 }],
+    await request(ctx.server)
+      .post(`/api/esign/documents/${activeId}/initiations`)
+      .set('Cookie', creatorCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send({
+        signers: [
+          {
+            type: 'email',
+            name: '刪除測試',
+            email: 'delete-test@example.test',
+          },
+        ],
+        fields: [
+          {
+            type: 'signature',
+            page: 1,
+            xPercent: 10,
+            yPercent: 10,
+            widthPercent: 25,
+            heightPercent: 10,
+            sortOrder: 0,
+          },
+        ],
         signStartAt: new Date(Date.now() - 60_000).toISOString(),
         signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
         watermark: false,
         allowReject: false,
-      }).expect(201);
+      })
+      .expect(201);
     await remove(activeId).expect(409);
   });
 
   it('簽署人候選：本地沒有的完整員編改查饗賓人 API 並建立帳號，之後直接由本地取得', async () => {
     await db.query('DELETE FROM users WHERE empid = ?', [importedEmpid]);
-    const hr = ctx.app.get<{ lookupEligibleStaff: jest.Mock }>(FeastogetherHrService);
+    const hr = ctx.app.get<{ lookupEligibleStaff: jest.Mock }>(
+      FeastogetherHrService,
+    );
     hr.lookupEligibleStaff.mockClear();
-    const search = async (q: string) => apiData<Array<{ id: string; employeeNo: string; name: string }>>(
-      await request(ctx.server).get('/api/esign/signer-candidates').query({ q }).set('Cookie', creatorCookie).expect(200));
+    const search = async (q: string) =>
+      apiData<Array<{ id: string; employeeNo: string; name: string }>>(
+        await request(ctx.server)
+          .get('/api/esign/signer-candidates')
+          .query({ q })
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
 
     const first = await search(importedEmpid);
-    expect(first).toEqual([expect.objectContaining({ employeeNo: importedEmpid, name: '未參與員工' })]);
+    expect(first).toEqual([
+      expect.objectContaining({
+        employeeNo: importedEmpid,
+        name: '未參與員工',
+      }),
+    ]);
     expect(hr.lookupEligibleStaff).toHaveBeenCalledWith(importedEmpid);
-    const rows = await db.query<Array<{ is_active: number }>>('SELECT is_active FROM users WHERE empid = ?', [importedEmpid]);
+    const rows = await db.query<Array<{ is_active: number }>>(
+      'SELECT is_active FROM users WHERE empid = ?',
+      [importedEmpid],
+    );
     expect(rows.map((row) => Number(row.is_active))).toEqual([1]);
 
     // 已匯入的帳號由本地取得；不是完整員編的查詢也不呼叫饗賓人 API
-    expect((await search(importedEmpid)).map((c) => c.id)).toEqual([first[0].id]);
+    expect((await search(importedEmpid)).map((c) => c.id)).toEqual([
+      first[0].id,
+    ]);
     await search(importedEmpid.slice(0, 5));
     expect(hr.lookupEligibleStaff).toHaveBeenCalledTimes(1);
   });
 
-  it('先存未指派的簽名與日期欄位，設定簽署人後欄位保留，發起時再指派', async () => {
+  it('共用簽名與日期欄位可先存，更換名單及發起後均不複製', async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage();
     pdf.addPage();
-    const created = apiData<{ id: string }>(await request(ctx.server)
-      .post('/api/esign/documents').set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000').field('title', '先放欄位測試')
-      .attach('file', Buffer.from(await pdf.save()), { filename: 'fields-first.pdf', contentType: 'application/pdf' }).expect(201));
+    const created = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .field('title', '先放欄位測試')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'fields-first.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    );
     const id = Number(created.id);
     documentIds.push(id);
-    type FieldView = { signerPublicId: string | null; type: string; page: number };
-    const detail = async () => apiData<DocumentDetail & { fields: FieldView[] }>(await request(ctx.server)
-      .get(`/api/esign/documents/${id}`).set('Cookie', creatorCookie).expect(200));
+    type FieldView = { type: string; page: number };
+    const detail = async () =>
+      apiData<DocumentDetail & { fields: FieldView[] }>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
     const placements = [
-      { type: 'signature', page: 1, xPercent: 10, yPercent: 10, widthPercent: 25, heightPercent: 10, sortOrder: 0 },
-      { type: 'date', page: 1, xPercent: 40, yPercent: 10, widthPercent: 20, heightPercent: 5, sortOrder: 1 },
-      { type: 'signature', page: 2, xPercent: 10, yPercent: 60, widthPercent: 25, heightPercent: 10, sortOrder: 2 },
+      {
+        type: 'signature',
+        page: 1,
+        xPercent: 10,
+        yPercent: 10,
+        widthPercent: 25,
+        heightPercent: 10,
+        sortOrder: 0,
+      },
+      {
+        type: 'date',
+        page: 1,
+        xPercent: 40,
+        yPercent: 10,
+        widthPercent: 20,
+        heightPercent: 5,
+        sortOrder: 1,
+      },
+      {
+        type: 'signature',
+        page: 2,
+        xPercent: 10,
+        yPercent: 60,
+        widthPercent: 25,
+        heightPercent: 10,
+        sortOrder: 2,
+      },
     ];
-    const savedFields = apiData<FieldView[]>(await request(ctx.server)
-      .put(`/api/esign/documents/${id}/fields`).set('Cookie', creatorCookie).set('Origin', 'http://localhost:3000')
-      .send({ fields: placements }).expect(200));
-    expect(savedFields.map((field) => field.signerPublicId)).toEqual([null, null, null]);
+    const savedFields = apiData<FieldView[]>(
+      await request(ctx.server)
+        .put(`/api/esign/documents/${id}/fields`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({ fields: placements })
+        .expect(200),
+    );
+    expect(savedFields).toHaveLength(3);
+    savedFields.forEach((field) =>
+      expect(field).not.toHaveProperty('signerPublicId'),
+    );
 
     const signers = [
-      { type: 'email', name: '先放欄位甲', email: 'fields-first-a@example.test' },
-      { type: 'email', name: '先放欄位乙', email: 'fields-first-b@example.test' },
+      {
+        type: 'email',
+        name: '先放欄位甲',
+        email: 'fields-first-a@example.test',
+      },
+      {
+        type: 'email',
+        name: '先放欄位乙',
+        email: 'fields-first-b@example.test',
+      },
     ];
-    await request(ctx.server).put(`/api/esign/documents/${id}/draftSave`).set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000').send({ signers }).expect(200);
+    await request(ctx.server)
+      .put(`/api/esign/documents/${id}/draftSave`)
+      .set('Cookie', creatorCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send({ signers })
+      .expect(200);
     const draft = await detail();
-    expect(draft.fields.map(({ type, page, signerPublicId }) => ({ type, page, signerPublicId }))).toEqual([
-      { type: 'signature', page: 1, signerPublicId: null },
-      { type: 'date', page: 1, signerPublicId: null },
-      { type: 'signature', page: 2, signerPublicId: null },
+    expect(draft.fields.map(({ type, page }) => ({ type, page }))).toEqual([
+      { type: 'signature', page: 1 },
+      { type: 'date', page: 1 },
+      { type: 'signature', page: 2 },
     ]);
 
-    const initiate = (fields: object[]) => request(ctx.server)
-      .post(`/api/esign/documents/${id}/initiations`).set('Cookie', creatorCookie).set('Origin', 'http://localhost:3000')
-      .send({ signers, fields, signStartAt: new Date(Date.now() - 60_000).toISOString(), signEndAt: new Date(Date.now() + 86_400_000).toISOString(), watermark: false, allowReject: false });
-    // 發起時每個欄位都必須指派簽署人
-    await initiate(placements).expect(400);
-    expect(await detail()).toEqual(draft);
-    await initiate(placements.map((placement) => ({ ...placement, signerIndex: placement.page === 2 ? 1 : 0 }))).expect(201);
+    const initiate = (fields: object[]) =>
+      request(ctx.server)
+        .post(`/api/esign/documents/${id}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers,
+          fields,
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+          watermark: false,
+          allowReject: false,
+        });
+    await initiate(placements).expect(201);
     const active = await detail();
     expect(active.status).toBe('active');
-    expect(active).toMatchObject({ createdBy: { name: '建立人', employeeNo: creatorEmpid } });
-    expect(active.fields.map((field) => field.signerPublicId)).toEqual([
-      active.signers[0].publicId,
-      active.signers[0].publicId,
-      active.signers[1].publicId,
-    ]);
+    expect(active).toMatchObject({
+      createdBy: { name: '建立人', employeeNo: creatorEmpid },
+    });
+    expect(active.fields).toHaveLength(3);
+    active.fields.forEach((field) =>
+      expect(field).not.toHaveProperty('signerPublicId'),
+    );
 
     // 列表帶出簽署期間與建立人
-    const list = apiData<Array<{ id: string; signStartAt: string | null; signEndAt: string | null; createdBy: unknown }>>(
-      await request(ctx.server).get('/api/esign/documents').query({ role: 'created' }).set('Cookie', creatorCookie).expect(200));
+    const list = apiData<
+      Array<{
+        id: string;
+        signStartAt: string | null;
+        signEndAt: string | null;
+        createdBy: unknown;
+      }>
+    >(
+      await request(ctx.server)
+        .get('/api/esign/documents')
+        .query({ role: 'created' })
+        .set('Cookie', creatorCookie)
+        .expect(200),
+    );
     const item = list.find((d) => d.id === String(id));
-    expect(item).toMatchObject({ createdBy: { name: '建立人', employeeNo: creatorEmpid } });
+    expect(item).toMatchObject({
+      createdBy: { name: '建立人', employeeNo: creatorEmpid },
+    });
     expect(item?.signStartAt).toEqual(expect.any(String));
     expect(item?.signEndAt).toEqual(expect.any(String));
   });
@@ -347,47 +577,101 @@ describe('核心電子簽 US1', () => {
     onePage.addPage();
     const onePageBytes = Buffer.from(await onePage.save());
     const placements = [
-      { type: 'signature', page: 2, xPercent: 10, yPercent: 60, widthPercent: 25, heightPercent: 10, sortOrder: 0 },
-      { type: 'date', page: 2, xPercent: 40, yPercent: 60, widthPercent: 20, heightPercent: 5, sortOrder: 1 },
+      {
+        type: 'signature',
+        page: 2,
+        xPercent: 10,
+        yPercent: 60,
+        widthPercent: 25,
+        heightPercent: 10,
+        sortOrder: 0,
+      },
+      {
+        type: 'date',
+        page: 2,
+        xPercent: 40,
+        yPercent: 60,
+        widthPercent: 20,
+        heightPercent: 5,
+        sortOrder: 1,
+      },
     ];
-    const upload = (title: string, fields: object[]) => request(ctx.server)
-      .post('/api/esign/documents').set('Cookie', creatorCookie).set('Origin', 'http://localhost:3000')
-      .field('title', title).field('fields', JSON.stringify(fields))
-      .attach('file', twoPageBytes, { filename: 'with-fields.pdf', contentType: 'application/pdf' });
+    const upload = (title: string, fields: object[]) =>
+      request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .field('title', title)
+        .field('fields', JSON.stringify(fields))
+        .attach('file', twoPageBytes, {
+          filename: 'with-fields.pdf',
+          contentType: 'application/pdf',
+        });
 
     const rejectedTitle = `欄位不合法-${randomUUID()}`;
     await upload(rejectedTitle, [{ ...placements[0], page: 3 }]).expect(400);
-    const leaked = await db.query<Array<{ count: number }>>('SELECT COUNT(*) count FROM esign_documents WHERE title = ?', [rejectedTitle]);
+    const leaked = await db.query<Array<{ count: number }>>(
+      'SELECT COUNT(*) count FROM esign_documents WHERE title = ?',
+      [rejectedTitle],
+    );
     expect(Number(leaked[0].count)).toBe(0);
 
-    const created = apiData<{ id: string }>(await upload('一次上傳含欄位', placements).expect(201));
+    const created = apiData<{ id: string }>(
+      await upload('一次上傳含欄位', placements).expect(201),
+    );
     const id = Number(created.id);
     documentIds.push(id);
-    type FieldView = { signerPublicId: string | null; type: string; page: number };
-    const detail = async () => apiData<DocumentDetail & { fields: FieldView[] }>(await request(ctx.server)
-      .get(`/api/esign/documents/${id}`).set('Cookie', creatorCookie).expect(200));
-    const summary = (fields: FieldView[]) => fields.map(({ type, page, signerPublicId }) => ({ type, page, signerPublicId }));
+    type FieldView = { type: string; page: number };
+    const detail = async () =>
+      apiData<DocumentDetail & { fields: FieldView[] }>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+    const summary = (fields: FieldView[]) =>
+      fields.map(({ type, page }) => ({ type, page }));
     expect(summary((await detail()).fields)).toEqual([
-      { type: 'signature', page: 2, signerPublicId: null },
-      { type: 'date', page: 2, signerPublicId: null },
+      { type: 'signature', page: 2 },
+      { type: 'date', page: 2 },
     ]);
 
-    const patch = () => request(ctx.server).patch(`/api/esign/documents/${id}`).set('Cookie', creatorCookie).set('Origin', 'http://localhost:3000');
-    await patch().field('fields', JSON.stringify([placements[1]])).expect(200);
-    expect(summary((await detail()).fields)).toEqual([{ type: 'date', page: 2, signerPublicId: null }]);
+    const patch = () =>
+      request(ctx.server)
+        .patch(`/api/esign/documents/${id}`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000');
+    await patch()
+      .field('fields', JSON.stringify([placements[1]]))
+      .expect(200);
+    expect(summary((await detail()).fields)).toEqual([
+      { type: 'date', page: 2 },
+    ]);
 
     const before = await detail();
-    await patch().field('fields', JSON.stringify([{ ...placements[0], page: 3 }])).expect(400);
+    await patch()
+      .field('fields', JSON.stringify([{ ...placements[0], page: 3 }]))
+      .expect(400);
     // 新 PDF 只有 1 頁，第 2 頁的欄位不合法：PDF 與欄位都不得替換
-    await patch().field('fields', JSON.stringify(placements))
-      .attach('file', onePageBytes, { filename: 'one-page.pdf', contentType: 'application/pdf' }).expect(400);
+    await patch()
+      .field('fields', JSON.stringify(placements))
+      .attach('file', onePageBytes, {
+        filename: 'one-page.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(400);
     expect(await detail()).toEqual(before);
 
-    await patch().field('fields', JSON.stringify([{ ...placements[0], page: 1 }]))
-      .attach('file', onePageBytes, { filename: 'one-page.pdf', contentType: 'application/pdf' }).expect(200);
+    await patch()
+      .field('fields', JSON.stringify([{ ...placements[0], page: 1 }]))
+      .attach('file', onePageBytes, {
+        filename: 'one-page.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(200);
     const replaced = await detail();
     expect(replaced.sourceFile.pageCount).toBe(1);
-    expect(summary(replaced.fields)).toEqual([{ type: 'signature', page: 1, signerPublicId: null }]);
+    expect(summary(replaced.fields)).toEqual([{ type: 'signature', page: 1 }]);
   });
 
   it('建立、設定外部 signer/field、發起與鎖定，且越權統一 404', async () => {
@@ -407,9 +691,12 @@ describe('核心電子簽 US1', () => {
       .expect(201);
     const createdId = apiData<{ id: string }>(createdResponse).id;
     expect(apiData(createdResponse)).toEqual({ id: createdId });
-    const created = apiData<DocumentDetail>(await request(ctx.server)
-      .get(`/api/esign/documents/${createdId}`)
-      .set('Cookie', creatorCookie).expect(200));
+    const created = apiData<DocumentDetail>(
+      await request(ctx.server)
+        .get(`/api/esign/documents/${createdId}`)
+        .set('Cookie', creatorCookie)
+        .expect(200),
+    );
     const documentId = Number(created.id);
     documentIds.push(documentId);
     expect(created.status).toBe('draft');
@@ -473,7 +760,6 @@ describe('核心電子簽 US1', () => {
       .send({
         fields: [
           {
-            signerPublicId: signers[0].publicId,
             type: 'signature',
             page: 1,
             xPercent: 10,
@@ -491,8 +777,22 @@ describe('核心電子簽 US1', () => {
       .set('Cookie', creatorCookie)
       .set('Origin', 'http://localhost:3000')
       .send({
-        signers: [{ type: 'email', name: '外部簽署人', email: 'Candidate@Example.test' }],
-        fields: Array.from({ length: 1 }, (_, index) => ({ signerIndex: index, type: 'signature', page: 1, xPercent: 10, yPercent: 10 + index * 20, widthPercent: 25, heightPercent: 10, sortOrder: index })),
+        signers: [
+          {
+            type: 'email',
+            name: '外部簽署人',
+            email: 'Candidate@Example.test',
+          },
+        ],
+        fields: Array.from({ length: 1 }, (_, index) => ({
+          type: 'signature',
+          page: 1,
+          xPercent: 10,
+          yPercent: 10 + index * 20,
+          widthPercent: 25,
+          heightPercent: 10,
+          sortOrder: index,
+        })),
         signStartAt: new Date(Date.now() - 60_000).toISOString(),
         signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
         watermark: false,
@@ -500,7 +800,8 @@ describe('核心電子簽 US1', () => {
       })
       .expect(201);
     expect(apiData<DocumentDetail>(initiatedResponse).status).toBe('active');
-    signers[0].publicId = apiData<DocumentDetail>(initiatedResponse).signers[0].publicId;
+    signers[0].publicId =
+      apiData<DocumentDetail>(initiatedResponse).signers[0].publicId;
 
     await request(ctx.server)
       .patch(`/api/esign/documents/${documentId}`)
@@ -619,11 +920,14 @@ describe('核心電子簽 US1', () => {
       ),
     );
     expect(repeatedCalls.map((response) => response.status).sort()).toEqual([
-      200, 201,
+      201, 401,
     ]);
     const signed = repeatedCalls.find((response) => response.status === 201)!;
     const signedBody = apiData<Record<string, unknown>>(signed);
-    expect(signedBody).toMatchObject({ documentStatus: 'active' });
+    expect(signedBody).toMatchObject({
+      documentStatus: 'finalizing',
+      completion: { status: 'pending', readyAt: null },
+    });
     expect(signedBody).not.toHaveProperty('receiptToken');
     const verificationUrl = String(signedBody.verificationUrl);
     expect(verificationUrl).toMatch(VERIFICATION_URL);
@@ -635,12 +939,7 @@ describe('核心電子簽 US1', () => {
     expect(storedCodes).toEqual([
       { verification_code: VERIFICATION_URL.exec(verificationUrl)![1] },
     ]);
-    expect(
-      repeatedCalls.map(
-        (response) =>
-          apiData<{ verificationUrl: string }>(response).verificationUrl,
-      ),
-    ).toEqual([verificationUrl, verificationUrl]);
+
     expect(verificationUrl).not.toMatch(
       new RegExp(`candidate|外部簽署人|Spec 03|${signers[0].publicId}`, 'i'),
     );
@@ -663,7 +962,7 @@ describe('核心電子簽 US1', () => {
       },
       document: {
         title: 'Spec 03 測試文件',
-        status: 'active',
+        status: 'finalizing',
         signedSourceSha256: created.sourceFile.sha256,
         completedAt: null,
         stoppedAt: null,
@@ -673,12 +972,8 @@ describe('核心電子簽 US1', () => {
     expect(firstCookie(signed.headers['set-cookie'])).toContain(
       'FT_ESIGN_EXTERNAL_ACCESS=;',
     );
-    expect(String(signed.headers['set-cookie'])).toContain(
+    expect(String(signed.headers['set-cookie'])).not.toContain(
       'FT_ESIGN_EXTERNAL_RECEIPT=',
-    );
-    const receiptCookie = cookieNamed(
-      signed.headers['set-cookie'],
-      'FT_ESIGN_EXTERNAL_RECEIPT',
     );
 
     const signingAudits = await db.query<
@@ -704,15 +999,12 @@ describe('核心電子簽 US1', () => {
     expect(Number(signingRows[0].record_count)).toBe(1);
     expect(Number(signingRows[0].file_count)).toBe(1);
 
-    const resent = await request(ctx.server)
+    await request(ctx.server)
       .post('/api/external-signing-task/signatures')
       .set('Cookie', externalCookie)
       .set('Origin', 'http://localhost:3000')
       .send(signatureSubmission)
-      .expect(200);
-    expect(apiData<{ verificationUrl: string }>(resent).verificationUrl).toBe(
-      verificationUrl,
-    );
+      .expect(401);
 
     await request(ctx.server)
       .post('/api/external-signing-task')
@@ -730,7 +1022,14 @@ describe('核心電子簽 US1', () => {
     });
     try {
       const processor = worker.get(DocumentFinalizationProcessor);
-      const job = { data: { documentId } } as Job<{ documentId: number }>;
+      const [owner] = await db.query<Array<{ id: number }>>(
+        'SELECT id FROM esign_signers WHERE document_id = ?',
+        [documentId],
+      );
+      const job = { data: { documentId, signerId: Number(owner.id) } } as Job<{
+        documentId: number;
+        signerId: number;
+      }>;
       // 以同文件既有快照觸發 unique 衝突：快照寫入失敗時整筆結案 rollback，可安全重試
       await db.query(
         `INSERT INTO esign_verification_records
@@ -745,13 +1044,13 @@ describe('核心電子簽 US1', () => {
         Array<{ status: string; file_count: number; event_count: number }>
       >(
         `SELECT d.status,
-          (SELECT COUNT(*) FROM esign_file_objects f WHERE f.document_id = d.id AND f.file_purpose = 'completed_pdf') file_count,
+          (SELECT COUNT(*) FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = d.id AND f.file_purpose = 'completed_pdf') file_count,
           (SELECT COUNT(*) FROM esign_audit_events a WHERE a.document_id = d.id AND a.event_type = 'document.completed') event_count
          FROM esign_documents d WHERE d.id = ?`,
         [documentId],
       );
-      expect(rolledBack[0].status).toBe('active');
-      expect(Number(rolledBack[0].file_count)).toBe(0);
+      expect(rolledBack[0].status).toBe('finalizing');
+      expect(Number(rolledBack[0].file_count)).toBe(1);
       expect(Number(rolledBack[0].event_count)).toBe(0);
       await db.query(
         'DELETE FROM esign_verification_records WHERE document_id = ?',
@@ -774,24 +1073,24 @@ describe('核心電子簽 US1', () => {
     );
     expect(completed[0]?.status).toBe('completed');
     await request(ctx.server)
-      .get(`/api/esign/documents/${documentId}/completed-file`)
+      .get(
+        `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/completed-file`,
+      )
       .set('Cookie', creatorCookie)
       .expect(200)
       .expect('Content-Type', /application\/pdf/);
     await request(ctx.server)
-      .get(`/api/esign/documents/${documentId}/completed-file`)
+      .get(
+        `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/completed-file`,
+      )
       .set('Cookie', outsiderCookie)
       .expect(404);
-    const completionStatus = await request(ctx.server)
+    await request(ctx.server)
       .get(`/api/external-completions/${signers[0].publicId}`)
-      .set('Cookie', receiptCookie)
-      .expect(200);
-    expect(
-      apiData<{ status: string; verificationUrl: string }>(completionStatus),
-    ).toMatchObject({ status: 'completed', verificationUrl });
+      .expect(404);
     const completedFiles = await db.query<Array<{ sha256: string }>>(
-      `SELECT sha256 FROM esign_file_objects
-       WHERE document_id = ? AND file_purpose = 'completed_pdf'`,
+      `SELECT f.sha256 FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id
+       WHERE s.document_id = ? AND f.file_purpose = 'completed_pdf'`,
       [documentId],
     );
     const rowsBeforeVerification = await esignRowCounts(db);
@@ -814,17 +1113,7 @@ describe('核心電子簽 US1', () => {
     });
     await request(ctx.server)
       .get(`/api/external-completions/${signers[0].publicId}/completed-file`)
-      .set('Cookie', receiptCookie)
-      .expect(200)
-      .expect('Content-Type', /application\/pdf/);
-    const cleared = await request(ctx.server)
-      .delete(`/api/external-completions/${signers[0].publicId}/session`)
-      .set('Cookie', receiptCookie)
-      .set('Origin', 'http://localhost:3000')
-      .expect(204);
-    expect(String(cleared.headers['set-cookie'])).toContain(
-      'FT_ESIGN_EXTERNAL_RECEIPT=;',
-    );
+      .expect(404);
 
     // 快照與完成文件摘要不一致時，驗證失敗而非顯示有效
     await db.query(
@@ -854,9 +1143,12 @@ describe('核心電子簽 US1', () => {
       })
       .expect(201);
     const createdId = apiData<{ id: string }>(createdResponse).id;
-    const created = apiData<DocumentDetail>(await request(ctx.server)
-      .get(`/api/esign/documents/${createdId}`)
-      .set('Cookie', creatorCookie).expect(200));
+    const created = apiData<DocumentDetail>(
+      await request(ctx.server)
+        .get(`/api/esign/documents/${createdId}`)
+        .set('Cookie', creatorCookie)
+        .expect(200),
+    );
     const stoppedDocumentId = Number(created.id);
     documentIds.push(stoppedDocumentId);
 
@@ -878,7 +1170,6 @@ describe('核心電子簽 US1', () => {
       .set('Origin', 'http://localhost:3000')
       .send({
         fields: signers.map((signer, index) => ({
-          signerPublicId: signer.publicId,
           type: 'signature',
           page: 1,
           xPercent: 10,
@@ -894,8 +1185,19 @@ describe('核心電子簽 US1', () => {
       .set('Cookie', creatorCookie)
       .set('Origin', 'http://localhost:3000')
       .send({
-        signers: [{ type: 'email', name: '已簽人', email: 'signed@example.test' }, { type: 'email', name: '待簽人', email: 'pending@example.test' }],
-        fields: Array.from({ length: 2 }, (_, index) => ({ signerIndex: index, type: 'signature', page: 1, xPercent: 10, yPercent: 10 + index * 20, widthPercent: 25, heightPercent: 10, sortOrder: index })),
+        signers: [
+          { type: 'email', name: '已簽人', email: 'signed@example.test' },
+          { type: 'email', name: '待簽人', email: 'pending@example.test' },
+        ],
+        fields: Array.from({ length: 2 }, (_, index) => ({
+          type: 'signature',
+          page: 1,
+          xPercent: 10,
+          yPercent: 10 + index * 20,
+          widthPercent: 25,
+          heightPercent: 10,
+          sortOrder: index,
+        })),
         signStartAt: new Date(Date.now() - 60_000).toISOString(),
         signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
         watermark: false,
@@ -937,13 +1239,9 @@ describe('核心電子簽 US1', () => {
           requestId: randomUUID(),
           consentVersion: task.consent.version,
           accepted: true,
-          signatures: [
-            {
-              fieldId: task.fields.find((field) => field.type === 'signature')!
-                .id,
-              pngDataUrl: PNG_DATA_URL,
-            },
-          ],
+          signatures: task.fields
+            .filter((field) => field.type === 'signature')
+            .map((field) => ({ fieldId: field.id, pngDataUrl: PNG_DATA_URL })),
         })
         .expect(201),
     );
@@ -989,15 +1287,9 @@ describe('核心電子簽 US1', () => {
           requestId: randomUUID(),
           consentVersion: pendingTask.consent.version,
           accepted: true,
-          signatures: [
-            {
-              fieldId: pendingTask.fields.find(
-                (field) => field.type === 'signature',
-              )!.id,
-              pngDataUrl:
-                'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
-            },
-          ],
+          signatures: pendingTask.fields
+            .filter((field) => field.type === 'signature')
+            .map((field) => ({ fieldId: field.id, pngDataUrl: PNG_DATA_URL })),
         }),
     ]);
     expect([201, 401, 409]).toContain(racedSignature.status);
@@ -1028,6 +1320,24 @@ describe('核心電子簽 US1', () => {
     );
     expect(stoppedRows[0].status).toBe('stopped');
     expect(Number(stoppedRows[0].stop_count)).toBe(1);
+    const stoppedLogs = await db.query<Array<{ id: number }>>(
+      'SELECT l.id FROM esign_notification_logs l JOIN esign_signers s ON s.id=l.signer_id WHERE s.document_id=?',
+      [stoppedDocumentId],
+    );
+    for (const log of stoppedLogs) {
+      const eligible = await ctx.app
+        .get(NotificationRepository)
+        .findEligibleInvitationLogIds(
+          new Date(),
+          new Date(Date.now() - 300_000),
+          db.manager,
+          Number(log.id) - 1,
+        );
+      expect(eligible.some((row) => Number(row.id) === Number(log.id))).toBe(
+        false,
+      );
+    }
+
     expect(
       apiData<SignatureVerification>(
         await getSignatureVerification(
@@ -1061,9 +1371,12 @@ describe('核心電子簽 US1', () => {
     documentIds.push(Number(replacementResult.id));
     expect(Object.keys(replacementResult)).toEqual(['id']);
     expect(typeof replacementResult.id).toBe('string');
-    const replacement = apiData<DocumentDetail>(await request(ctx.server)
-      .get(`/api/esign/documents/${replacementResult.id}`)
-      .set('Cookie', creatorCookie).expect(200));
+    const replacement = apiData<DocumentDetail>(
+      await request(ctx.server)
+        .get(`/api/esign/documents/${replacementResult.id}`)
+        .set('Cookie', creatorCookie)
+        .expect(200),
+    );
     expect(replacement.id).not.toBe(created.id);
     expect(replacement.sourceFile.sha256).not.toBe(created.sourceFile.sha256);
     expect(replacement.status).toBe('draft');
@@ -1127,7 +1440,6 @@ describe('核心電子簽 US1', () => {
       .send({
         fields: [
           {
-            signerPublicId: assigned[0].publicId,
             type: 'signature',
             page: 1,
             xPercent: 10,
@@ -1145,19 +1457,37 @@ describe('核心電子簽 US1', () => {
       .set('Origin', 'http://localhost:3000')
       .send({
         signers: [{ type: 'user', userId: String(users[0].id) }],
-        fields: Array.from({ length: 1 }, (_, index) => ({ signerIndex: index, type: 'signature', page: 1, xPercent: 10, yPercent: 10 + index * 20, widthPercent: 25, heightPercent: 10, sortOrder: index })),
+        fields: Array.from({ length: 1 }, (_, index) => ({
+          type: 'signature',
+          page: 1,
+          xPercent: 10,
+          yPercent: 10 + index * 20,
+          widthPercent: 25,
+          heightPercent: 10,
+          sortOrder: index,
+        })),
         signStartAt: new Date(Date.now() - 60_000).toISOString(),
         signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
         watermark: false,
         allowReject: false,
       })
       .expect(201);
-    assigned[0].publicId = apiData<DocumentDetail>(initiated).signers[0].publicId;
+    assigned[0].publicId =
+      apiData<DocumentDetail>(initiated).signers[0].publicId;
 
     // 內部簽署人的任務列表帶出簽署期間與發起人
-    const myTasks = apiData<Array<{ signerPublicId: string; document: object }>>(
-      await request(ctx.server).get('/api/esign/signing-tasks').set('Cookie', signerCookie).expect(200));
-    expect(myTasks.find((task) => task.signerPublicId === assigned[0].publicId)?.document).toMatchObject({
+    const myTasks = apiData<
+      Array<{ signerPublicId: string; document: object }>
+    >(
+      await request(ctx.server)
+        .get('/api/esign/signing-tasks')
+        .set('Cookie', signerCookie)
+        .expect(200),
+    );
+    expect(
+      myTasks.find((task) => task.signerPublicId === assigned[0].publicId)
+        ?.document,
+    ).toMatchObject({
       createdBy: { name: '建立人', employeeNo: creatorEmpid },
       signStartAt: expect.any(String),
       signEndAt: expect.any(String),
@@ -1286,6 +1616,249 @@ describe('核心電子簽 US1', () => {
     ).toBe('employee_session');
   });
 
+  it('10 人共用 3 欄位各產一份 PDF，先簽先下載、跨人拒絕、全 ready 才結案', async () => {
+    const cookies: string[] = [],
+      userIds: number[] = [];
+    for (const empid of personalEmpids) {
+      cookies.push(await login(empid));
+      const [user] = await db.query<Array<{ id: number }>>(
+        'SELECT id FROM users WHERE empid = ?',
+        [empid],
+      );
+      userIds.push(Number(user.id));
+    }
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const created = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .field('title', '10 人個人副本')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'personal.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    );
+    const id = Number(created.id);
+    documentIds.push(id);
+    const fields = ['signature', 'date', 'signature'].map((type, i) => ({
+      type,
+      page: 1,
+      xPercent: 10,
+      yPercent: 10 + i * 20,
+      widthPercent: 25,
+      heightPercent: 10,
+      sortOrder: i,
+    }));
+    const active = apiData<DocumentDetail>(
+      await request(ctx.server)
+        .post('/api/esign/documents/' + id + '/initiations')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: userIds.map((userId) => ({
+            type: 'user',
+            userId: String(userId),
+          })),
+          fields,
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+          watermark: false,
+          allowReject: false,
+        })
+        .expect(201),
+    );
+    const owners = await db.query<Array<{ id: number; public_id: string }>>(
+      'SELECT id, public_id FROM esign_signers WHERE document_id = ? ORDER BY sort_order',
+      [id],
+    );
+    const queue = ctx.app.get<Queue>(
+      getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
+    );
+    await queue.pause();
+    const worker = await NestFactory.createApplicationContext(WorkerModule, {
+      logger: false,
+    });
+    const processor = worker.get(DocumentFinalizationProcessor);
+    const process = (i: number) =>
+      processor.process({
+        data: { documentId: id, signerId: Number(owners[i].id) },
+      } as Job<{ documentId: number; signerId: number }>);
+    const taskIds: string[][] = [];
+    const sign = async (i: number) => {
+      const publicId = active.signers[i].publicId;
+      const task = apiData<SigningTask>(
+        await request(ctx.server)
+          .post('/api/esign/signing-tasks/' + publicId)
+          .set('Cookie', cookies[i])
+          .set('Origin', 'http://localhost:3000')
+          .expect(201),
+      );
+      taskIds[i] = task.fields.map((field) => field.id);
+      const submission = {
+        requestId: randomUUID(),
+        consentVersion: task.consent.version,
+        accepted: true,
+        signatures: task.fields
+          .filter((field) => field.type === 'signature')
+          .map((field) => ({
+            fieldId: field.id,
+            pngDataUrl:
+              'data:image/png;base64,' + esignTestPng(i + 1).toString('base64'),
+          })),
+      };
+      await request(ctx.server)
+        .post('/api/esign/signing-tasks/' + publicId + '/signatures')
+        .set('Cookie', cookies[i])
+        .set('Origin', 'http://localhost:3000')
+        .send(submission)
+        .expect(201);
+      // 同 request 重送只回既有證據，不再保存 PNG。
+      await request(ctx.server)
+        .post('/api/esign/signing-tasks/' + publicId + '/signatures')
+        .set('Cookie', cookies[i])
+        .set('Origin', 'http://localhost:3000')
+        .send(submission)
+        .expect(200);
+    };
+    try {
+      const firstTask = apiData<SigningTask>(
+        await request(ctx.server)
+          .post('/api/esign/signing-tasks/' + active.signers[0].publicId)
+          .set('Cookie', cookies[0])
+          .set('Origin', 'http://localhost:3000')
+          .expect(201),
+      );
+      const firstField = firstTask.fields.find(
+        (field) => field.type === 'signature',
+      )!;
+      await db.query(
+        'UPDATE esign_document_fields SET x_percent=x_percent+1 WHERE id=?',
+        [firstField.id],
+      );
+      const tampered = await request(ctx.server)
+        .post(
+          '/api/esign/signing-tasks/' +
+            active.signers[0].publicId +
+            '/signatures',
+        )
+        .set('Cookie', cookies[0])
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          requestId: randomUUID(),
+          consentVersion: firstTask.consent.version,
+          accepted: true,
+          signatures: firstTask.fields
+            .filter((field) => field.type === 'signature')
+            .map((field) => ({
+              fieldId: field.id,
+              pngDataUrl:
+                'data:image/png;base64,' + esignTestPng(1).toString('base64'),
+            })),
+        })
+        .expect(409);
+      expect(apiError(tampered).code).toBe('ESIGN_INTEGRITY_FAILED');
+      await db.query(
+        'UPDATE esign_document_fields SET x_percent=x_percent-1 WHERE id=?',
+        [firstField.id],
+      );
+      await sign(0);
+      await process(0);
+      const [progress] = await db.query<Array<{ status: string }>>(
+        'SELECT status FROM esign_documents WHERE id = ?',
+        [id],
+      );
+      expect(progress.status).toBe('active');
+      const ownPath =
+        '/api/esign/signing-tasks/' + owners[0].public_id + '/completed-file';
+      await request(ctx.server)
+        .get(ownPath)
+        .set('Cookie', cookies[0])
+        .expect(200);
+      await request(ctx.server)
+        .get(ownPath)
+        .set('Cookie', cookies[1])
+        .expect(404);
+      await request(ctx.server)
+        .get(
+          '/api/esign/signing-tasks/' + owners[1].public_id + '/completed-file',
+        )
+        .set('Cookie', cookies[1])
+        .expect(409);
+      for (let i = 1; i < 8; i += 1) {
+        await sign(i);
+        await process(i);
+      }
+      await Promise.all([sign(8), sign(9)]);
+      const [waiting] = await db.query<Array<{ status: string }>>(
+        'SELECT status FROM esign_documents WHERE id = ?',
+        [id],
+      );
+      expect(waiting.status).toBe('finalizing');
+      await Promise.all([process(8), process(9)]);
+      for (const ids of taskIds) expect(ids).toEqual(taskIds[0]);
+      expect(taskIds[0]).toHaveLength(3);
+      const files = await db.query<
+        Array<{
+          signer_id: number;
+          public_id: string;
+          sha256: string;
+          document_id: number | null;
+        }>
+      >(
+        "SELECT r.signer_id, s.public_id, f.sha256, f.document_id FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = ? AND f.file_purpose = 'completed_pdf' ORDER BY s.sort_order",
+        [id],
+      );
+      expect(files).toHaveLength(10);
+      expect(new Set(files.map((file) => file.sha256)).size).toBe(10);
+      for (let i = 0; i < files.length; i += 1) {
+        expect(files[i].document_id).toBeNull();
+        expect(Number(files[i].signer_id)).toBe(Number(owners[i].id));
+        const response = await request(ctx.server)
+          .get(
+            '/api/esign/documents/' +
+              id +
+              '/signers/' +
+              files[i].public_id +
+              '/completed-file',
+          )
+          .set('Cookie', creatorCookie)
+          .expect(200);
+        expect(
+          createHash('sha256')
+            .update(response.body as Buffer)
+            .digest('hex'),
+        ).toBe(files[i].sha256);
+        expect(
+          (await PDFDocument.load(response.body as Buffer)).getPageCount(),
+        ).toBe(1);
+      }
+      await process(0);
+      const [result] = await db.query<
+        Array<{
+          status: string;
+          events: number;
+          records: number;
+          fields: number;
+        }>
+      >(
+        "SELECT d.status, (SELECT COUNT(*) FROM esign_audit_events a WHERE a.document_id = d.id AND a.event_type = 'document.completed') events, (SELECT COUNT(*) FROM esign_signature_records r JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = d.id) records, (SELECT COUNT(*) FROM esign_document_fields f WHERE f.document_id = d.id) fields FROM esign_documents d WHERE d.id = ?",
+        [id],
+      );
+      expect(result).toMatchObject({
+        status: 'completed',
+        events: 1,
+        records: 10,
+        fields: 3,
+      });
+    } finally {
+      await worker.close();
+      await queue.resume();
+    }
+  }, 30_000);
+
   async function login(empid: string): Promise<string> {
     const launched = await request(ctx.server)
       .post('/api/auth/webview-launches')
@@ -1310,16 +1883,6 @@ function firstCookie(value: unknown): string {
   const cookie = Array.isArray(value) ? value[0] : value;
   if (typeof cookie !== 'string') throw new Error('缺少 cookie');
   return cookie;
-}
-
-function cookieNamed(value: unknown, name: string): string {
-  const cookies = Array.isArray(value) ? value : [value];
-  const raw = cookies.find(
-    (cookie): cookie is string =>
-      typeof cookie === 'string' && cookie.startsWith(`${name}=`),
-  );
-  if (!raw) throw new Error(`缺少 ${name} cookie`);
-  return raw.split(';', 1)[0];
 }
 
 function createLaunchJwt(empid: string): string {

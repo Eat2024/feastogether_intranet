@@ -1,6 +1,10 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { createHash } from 'node:crypto';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
+  concatTransformationMatrix,
+  pushGraphicsState,
+  popGraphicsState,
   PDFDocument,
   type PDFImage,
   type PDFPage,
@@ -8,7 +12,6 @@ import {
   rgb,
 } from 'pdf-lib';
 import { type BitMatrix, create as createQr } from 'qrcode';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
@@ -33,6 +36,35 @@ interface Box {
   y: number;
   width: number;
   height: number;
+}
+
+/** 與 PDF.js 相同，百分比以 MediaBox/CropBox 交集的旋轉後可視區域為準。 */
+function beginVisiblePage(page: PDFPage): { width: number; height: number } {
+  const media = page.getMediaBox();
+  const crop = page.getCropBox();
+  const x = Math.max(media.x, crop.x);
+  const y = Math.max(media.y, crop.y);
+  const right = Math.min(media.x + media.width, crop.x + crop.width);
+  const top = Math.min(media.y + media.height, crop.y + crop.height);
+  const box =
+    right > x && top > y ? { x, y, width: right - x, height: top - y } : media;
+  const rotation = ((page.getRotation().angle % 360) + 360) % 360;
+  const transforms: Record<
+    number,
+    [number, number, number, number, number, number]
+  > = {
+    0: [1, 0, 0, 1, box.x, box.y],
+    90: [0, 1, -1, 0, box.x + box.width, box.y],
+    180: [-1, 0, 0, -1, box.x + box.width, box.y + box.height],
+    270: [0, -1, 1, 0, box.x, box.y + box.height],
+  };
+  page.pushOperators(
+    pushGraphicsState(),
+    concatTransformationMatrix(...(transforms[rotation] ?? transforms[0])),
+  );
+  return rotation === 90 || rotation === 270
+    ? { width: box.height, height: box.width }
+    : { width: box.width, height: box.height };
 }
 
 /**
@@ -118,16 +150,25 @@ export class CompletedPdfService {
     private readonly storage: PrivateFileStorage,
   ) {}
 
-  async create(documentId: number) {
+  async create(documentId: number, signerId: number) {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
-    if (!document || document.status !== 'finalizing') throw this.integrity();
-    const [signers, fields, source] = await Promise.all([
-      this.signers.findByDocument(documentId, manager),
+    if (
+      !document ||
+      !['active', 'finalizing', 'stopped'].includes(document.status)
+    )
+      throw this.integrity();
+    const [signer, fields, source] = await Promise.all([
+      this.signers.findById(signerId, manager),
       this.fields.findByDocument(documentId, manager),
       this.files.findDocumentFile(documentId, 'source_pdf', manager),
     ]);
-    if (!source || signers.some((signer) => signer.status !== 'signed')) {
+    if (
+      !source ||
+      !signer ||
+      signer.documentId !== documentId ||
+      signer.status !== 'signed'
+    ) {
       throw this.integrity();
     }
     const sourceBytes = await readPrivateFile(this.storage, source);
@@ -143,36 +184,32 @@ export class CompletedPdfService {
       canonicalSha256(document.signingPayloadJson),
     );
 
-    const records = await this.records.findBySignerIds(
-      signers.map((signer) => signer.id),
-      manager,
+    this.validation.assertFieldsBelongToDocument(fields, documentId);
+    this.validation.assertSigningSnapshot(
+      document,
+      sourceMetadata.sha256,
+      fields,
     );
-    const recordBySigner = new Map(
-      records.map((record) => [record.signerId, record]),
-    );
-    if (recordBySigner.size !== signers.length) throw this.integrity();
-    const signatureFiles = (
-      await Promise.all(
-        records.map((record) =>
-          this.files.findSignatureFiles(record.id, manager),
-        ),
-      )
-    ).flat();
-    const consentVersion = this.consentVersion(document.signingPayloadJson);
+    const record = await this.records.findBySignerId(signerId, manager);
     if (
-      records.some(
-        (record) =>
-          record.documentSha256 !== sourceMetadata.sha256 ||
-          record.signingPayloadSha256 !== document.signingPayloadSha256 ||
-          record.consentVersion !== consentVersion,
-      )
+      !record ||
+      record.signerId !== signerId ||
+      record.documentSha256 !== sourceMetadata.sha256 ||
+      record.signingPayloadSha256 !== document.signingPayloadSha256 ||
+      record.consentVersion !==
+        this.consentVersion(document.signingPayloadJson) ||
+      !signer.signedAt ||
+      signer.signedAt.getTime() !== record.signedAtUtc.getTime()
     ) {
       throw this.integrity();
     }
+    const signatureFiles = await this.files.findSignatureFiles(
+      record.id,
+      manager,
+    );
     const signatureByField = new Map(
       signatureFiles.map((file) => [file.documentFieldId, file]),
     );
-    const signerById = new Map(signers.map((signer) => [signer.id, signer]));
     const output = await PDFDocument.load(sourceBytes, {
       updateMetadata: false,
     });
@@ -180,24 +217,19 @@ export class CompletedPdfService {
     const signatureFields = fields.filter(
       (field) => field.fieldType === 'signature',
     );
-    if (signatureFiles.length !== signatureFields.length) {
+    if (
+      signatureFields.length === 0 ||
+      signatureByField.size !== signatureFields.length ||
+      signatureFiles.length !== signatureFields.length
+    ) {
       throw this.integrity();
     }
 
     for (const field of fields) {
-      const signer = signerById.get(field.signerId ?? -1);
-      const record = signer ? recordBySigner.get(signer.id) : undefined;
-      const page = output.getPage(field.pageNumber - 1);
-      if (
-        !signer ||
-        !record ||
-        !page ||
-        !signer.signedAt ||
-        signer.signedAt.getTime() !== record.signedAtUtc.getTime()
-      ) {
+      if (field.pageNumber < 1 || field.pageNumber > output.getPageCount())
         throw this.integrity();
-      }
-      const { width: pageWidth, height: pageHeight } = page.getSize();
+      const page = output.getPage(field.pageNumber - 1);
+      const { width: pageWidth, height: pageHeight } = beginVisiblePage(page);
       const x = (Number(field.xPercent) / 100) * pageWidth;
       const width = (Number(field.widthPercent) / 100) * pageWidth;
       const height = (Number(field.heightPercent) / 100) * pageHeight;
@@ -213,29 +245,36 @@ export class CompletedPdfService {
         );
         const layout = signatureFieldLayout({ x, y, width, height }, png);
         page.drawImage(png, layout.signature);
-        // Spec 04 上線前的簽署紀錄沒有驗證代碼，不畫 QR
         const verificationUrl = this.tokens.verificationUrl(
           record.verificationCode,
         );
-        if (verificationUrl) drawVectorQr(page, verificationUrl, layout.qr);
+        if (!verificationUrl) throw this.integrity();
+        drawVectorQr(page, verificationUrl, layout.qr);
       } else if (field.fieldType === 'date') {
-        page.drawText(this.taipeiDate(record.signedAtUtc), {
+        const date = this.taipeiDate(record.signedAtUtc);
+        const size = Math.min(
+          12,
+          height * 0.6,
+          width / font.widthOfTextAtSize(date, 1),
+        );
+        page.drawText(date, {
           x,
-          y: y + Math.max(0, (height - 12) / 2),
-          size: Math.min(12, Math.max(8, height * 0.6)),
+          y: y + (height - size) / 2,
+          size,
           font,
           color: rgb(0, 0, 0),
         });
       } else {
         throw this.integrity();
       }
+      page.pushOperators(popGraphicsState());
     }
 
     const rendered = Buffer.from(
       await output.save({ useObjectStreams: false }),
     );
     const stored = await this.storage.store({
-      directory: `documents/${document.docNumber}/completed`,
+      directory: `documents/${document.docNumber}/completed/${signer.publicId}`,
       extension: 'pdf',
       mimeType: 'application/pdf',
       bytes: rendered,
@@ -250,7 +289,13 @@ export class CompletedPdfService {
       ) {
         throw this.integrity();
       }
-      return { stored, metadata: persisted };
+      return {
+        stored,
+        metadata: persisted,
+        signatureRecordId: record.id,
+        sourceSha256: sourceMetadata.sha256,
+        signingPayloadSha256: record.signingPayloadSha256,
+      };
     } catch (error) {
       await this.storage.delete(stored).catch(() => undefined);
       throw error;
@@ -305,10 +350,6 @@ export class CompletedPdfService {
   }
 
   private integrity(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_INTEGRITY_FAILED,
-      '文件完整性驗證失敗',
-      HttpStatus.CONFLICT,
-    );
+    return new AppException(...AppErrors.ESIGN_INTEGRITY_FAILED);
   }
 }

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { apiErrorEnvelope } from '#app/common/http/api-error-response';
+import { AppErrors } from '#app/common/errors/app-errors';
 import { getRequestPath } from '#app/framework/http/request.context';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 
@@ -46,7 +47,7 @@ export class ExceptionHandler implements ExceptionFilter {
 
     const errorCode = isHttpException
       ? this.toErrorCode(normalizedError?.error)
-      : 'INTERNAL_ERROR';
+      : AppErrors.INTERNAL_ERROR[0];
 
     // 非 HttpException = 未預期錯誤（回 500）：記 error 級含 stack，便於除錯。
     // HttpException 為預期的業務 / 驗證錯誤，不在此噪音記錄。
@@ -84,7 +85,7 @@ export class ExceptionHandler implements ExceptionFilter {
       return message.filter((item): item is string => typeof item === 'string');
     }
 
-    return '系統發生未預期錯誤';
+    return AppErrors.INTERNAL_ERROR[1];
   }
 
   private toErrorCode(error: unknown): string {

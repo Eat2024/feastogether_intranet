@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { ApiOperation } from '@nestjs/swagger';
 import {
   Body,
@@ -15,12 +16,12 @@ import {
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ConfigService } from '@nestjs/config';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
 import { ListSigningTasksQueryDto } from '../dto/document-query.dto';
+import { EsignCompletionAccessService } from '../services/esign-completion-access.service';
 import { EsignSigningTaskService } from '../services/esign-signing-task.service';
 import {
   EsignSigningService,
@@ -33,7 +34,8 @@ export class SigningTasksController {
     private readonly tasks: EsignSigningTaskService,
     private readonly signing: EsignSigningService,
     private readonly config: ConfigService,
-  ) { }
+    private readonly completions: EsignCompletionAccessService,
+  ) {}
 
   @ApiOperation({
     summary: '列出本人的簽署任務',
@@ -111,11 +113,25 @@ export class SigningTasksController {
         return toSignatureResultView(result);
       });
   }
+  @ApiOperation({ summary: '下載本人的個人已簽署 PDF' })
+  @Get(':signerPublicId/completed-file')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async completedFile(
+    @Param('signerPublicId') signerPublicId: string,
+    @CurrentUserId() userId: number,
+    @Res() reply: FastifyReply,
+  ) {
+    const file = await this.completions.signerFile(signerPublicId, userId);
+    if (!file)
+      throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
+    reply
+      .type('application/pdf')
+      .header('Content-Disposition', 'attachment; filename="completed.pdf"')
+      .send(file.bytes);
+  }
+
   private notFound(): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
-      '找不到電子簽資源',
-      HttpStatus.NOT_FOUND,
-    );
+    return new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
   }
 }

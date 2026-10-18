@@ -1,3 +1,5 @@
+import { EsignAccessPolicyService } from './esign-access-policy.service';
+import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignSigningService } from './esign-signing.service';
 
 describe('EsignSigningService', () => {
@@ -34,12 +36,11 @@ describe('EsignSigningService', () => {
     };
     const access = {
       assertInternalSigner: jest.fn(),
-      assertExternalCredential: jest.fn(),
       assertExternalInvitation: jest.fn(),
     };
     const validation = {
       assertActiveSigningWindow: jest.fn(),
-      assertFieldsBelongToSigner: jest.fn(),
+      assertFieldsBelongToDocument: jest.fn(),
     };
     const fields = { findByDocument: jest.fn(async () => [] as object[]) };
     const storage = { store: jest.fn(), delete: jest.fn() };
@@ -75,27 +76,48 @@ describe('EsignSigningService', () => {
     signatures: [],
   };
 
-  it.each([
-    ['internal', { kind: 'internal' as const, userId: 20 }],
-    [
-      'external',
-      { kind: 'external' as const, invitationDigest: 'a'.repeat(64) },
-    ],
-  ])('同一 request 的 %s 重送在狀態終止後仍回既有結果且不重存 PNG', async (_name, principal) => {
-    const { service, access, storage } = setup({ signerId: 8, signedAtUtc: signedAt });
+  it('同一內部 request 在文件結案後仍回既有結果且不重存 PNG', async () => {
+    const { service, access, storage } = setup({
+      signerId: 8,
+      signedAtUtc: signedAt,
+    });
     await expect(
-      service.sign(signerPublicId, principal, submission, {}),
+      service.sign(
+        signerPublicId,
+        { kind: 'internal', userId: 20 },
+        submission,
+        {},
+      ),
     ).resolves.toMatchObject({
       signerPublicId,
       signedAt,
       documentStatus: 'completed',
       repeated: true,
     });
-    if (principal.kind === 'internal') {
-      expect(access.assertInternalSigner).toHaveBeenCalled();
-    } else {
-      expect(access.assertExternalCredential).toHaveBeenCalled();
-    }
+    expect(access.assertInternalSigner).toHaveBeenCalled();
+    expect(storage.store).not.toHaveBeenCalled();
+  });
+
+  it('外部邀請簽完即失效，同 request 不繞過真實存取規則', async () => {
+    const { service, access, storage } = setup({
+      signerId: 8,
+      signedAtUtc: signedAt,
+    });
+    const policy = new EsignAccessPolicyService(
+      new EsignDocumentValidationService(),
+      {} as never,
+    );
+    access.assertExternalInvitation.mockImplementation(
+      policy.assertExternalInvitation.bind(policy),
+    );
+    await expect(
+      service.sign(
+        signerPublicId,
+        { kind: 'external', invitationDigest: 'a'.repeat(64) },
+        submission,
+        {},
+      ),
+    ).rejects.toMatchObject({ status: 401 });
     expect(storage.store).not.toHaveBeenCalled();
   });
 
@@ -137,7 +159,7 @@ describe('EsignSigningService', () => {
   it('簽署失敗時不產生驗證網址', async () => {
     const { service, fields, tokens } = setup();
     fields.findByDocument.mockResolvedValue([
-      { id: 11, signerId: 8, documentId: 4, fieldType: 'signature' },
+      { id: 11, documentId: 4, fieldType: 'signature' },
     ]);
     await expect(
       service.sign(
@@ -153,7 +175,7 @@ describe('EsignSigningService', () => {
   it('不是同一 request 時仍須完成所有本人 signature fields', async () => {
     const { service, storage, fields } = setup();
     fields.findByDocument.mockResolvedValue([
-      { id: 11, signerId: 8, documentId: 4, fieldType: 'signature' },
+      { id: 11, documentId: 4, fieldType: 'signature' },
     ]);
     await expect(
       service.sign(

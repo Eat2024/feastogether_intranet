@@ -43,12 +43,15 @@ export class ExternalAccessService {
   async createSession(token: string) {
     const digest = this.tokens.digest(token);
     return this.mysql.transaction(async (manager) => {
-      const signer = await this.signers.findByInvitationDigestForUpdate(
+      const candidate = await this.signers.findByInvitationDigest(
         digest,
         manager,
       );
-      const document = signer
-        ? await this.documents.findByIdForUpdate(signer.documentId, manager)
+      const document = candidate
+        ? await this.documents.findByIdForUpdate(candidate.documentId, manager)
+        : null;
+      const signer = document
+        ? await this.signers.findByInvitationDigestForUpdate(digest, manager)
         : null;
       if (!signer || !document) {
         this.access.assertExternalInvitation(
@@ -84,10 +87,22 @@ export class ExternalAccessService {
   async task(token: string, appendOpened: boolean) {
     const digest = this.tokens.digest(token);
     const run = async (manager: ReturnType<MysqlService['getManager']>) => {
-      const signer = await this.signers.findByInvitationDigest(digest, manager);
-      const document = signer
-        ? await this.documents.findById(signer.documentId, manager)
+      const candidate = await this.signers.findByInvitationDigest(
+        digest,
+        manager,
+      );
+      const document = candidate
+        ? appendOpened
+          ? await this.documents.findByIdForUpdate(
+              candidate.documentId,
+              manager,
+            )
+          : await this.documents.findById(candidate.documentId, manager)
         : null;
+      const signer =
+        document && appendOpened
+          ? await this.signers.findByInvitationDigestForUpdate(digest, manager)
+          : candidate;
       if (!signer || !document) {
         this.access.assertExternalInvitation(
           document,
@@ -114,23 +129,19 @@ export class ExternalAccessService {
           manager,
         );
       }
-      const [allSigners, allFields] = await Promise.all([
-        this.signers.findByDocument(document.id, manager),
+      const [totals, allFields] = await Promise.all([
+        this.signers.completionCounts(document.id, manager),
         this.fields.findByDocument(document.id, manager),
       ]);
       const counts = {
-        pendingCount: allSigners.filter((item) => item.status === 'pending')
-          .length,
-        signedCount: allSigners.filter((item) => item.status === 'signed')
-          .length,
+        pendingCount: totals.pending,
+        signedCount: totals.signed,
       };
       return {
         signerPublicId: signer.publicId,
         document: this.mapper.documentSummary(document, counts),
         signer: this.mapper.signer(signer, null),
-        fields: allFields
-          .filter((field) => field.signerId === signer.id)
-          .map((field) => this.mapper.field(field, signer.publicId)),
+        fields: allFields.map((field) => this.mapper.field(field)),
         consent: this.consent.getActive(),
         ...counts,
       };
@@ -176,7 +187,8 @@ export class ExternalAccessService {
     const document = signer
       ? await this.documents.findById(signer.documentId, manager)
       : null;
-    this.access.assertExternalCredential(document, signer, digest);
+    this.access.assertExternalInvitation(document, signer, digest, new Date());
+    if (!signer) throw new Error('unreachable');
     return signer.publicId;
   }
 }

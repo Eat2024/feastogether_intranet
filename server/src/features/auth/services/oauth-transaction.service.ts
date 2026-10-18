@@ -1,7 +1,7 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { createHash, randomBytes } from 'crypto';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { OAUTH_TX_TTL_SECONDS } from '#app/features/auth/auth.constants';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import type { OauthLoginChallenge } from '#app/infrastructure/http-client/oauth/oauth.client';
@@ -72,20 +72,12 @@ export class OauthTransactionService {
     try {
       return await run();
     } catch {
-      throw new AppException(
-        AppErrorCode.OAUTH_UNAVAILABLE,
-        '登入服務暫時無法使用，請稍後再試',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      throw new AppException(...AppErrors.OAUTH_UNAVAILABLE_LOGIN_UNAVAILABLE);
     }
   }
 
   private invalid(): AppException {
-    return new AppException(
-      AppErrorCode.OAUTH_TRANSACTION_INVALID,
-      '登入交易無效或已過期，請重新發起登入',
-      HttpStatus.BAD_REQUEST,
-    );
+    return new AppException(...AppErrors.OAUTH_TRANSACTION_INVALID);
   }
 }
 

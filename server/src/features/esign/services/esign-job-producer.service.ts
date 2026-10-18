@@ -22,26 +22,43 @@ export class EsignJobProducerService {
   ) {}
 
   async enqueueInvitations(notificationLogIds: number[]): Promise<void> {
-    await Promise.all(
-      notificationLogIds.map((notificationLogId) =>
-        this.bestEffort(
-          this.invitationQueue.add(
-            ESIGN_EXTERNAL_INVITATION_JOB,
-            { notificationLogId },
-            { attempts: 1, removeOnComplete: 1000, removeOnFail: 1000 },
-          ),
-          'esign.invitation_enqueue_failed',
+    for (let offset = 0; offset < notificationLogIds.length; offset += 100) {
+      const queued = await this.bestEffort(
+        this.invitationQueue.addBulk(
+          notificationLogIds
+            .slice(offset, offset + 100)
+            .map((notificationLogId) => ({
+              name: ESIGN_EXTERNAL_INVITATION_JOB,
+              data: { notificationLogId },
+              opts: {
+                attempts: 1,
+                removeOnComplete: 1000,
+                removeOnFail: 1000,
+                deduplication: { id: `invitation-${notificationLogId}` },
+              },
+            })),
         ),
-      ),
-    );
+        'esign.invitation_enqueue_failed',
+      );
+      // Redis 失效時讓既有 maintenance 接續，避免累積未完成的連線請求。
+      if (!queued) break;
+    }
   }
 
-  enqueueFinalization(documentId: number): Promise<void> {
-    return this.bestEffort(
+  async enqueueFinalization(
+    documentId: number,
+    signerId: number,
+  ): Promise<void> {
+    await this.bestEffort(
       this.finalizationQueue.add(
         ESIGN_DOCUMENT_FINALIZATION_JOB,
-        { documentId },
-        { attempts: 1, removeOnComplete: 1000, removeOnFail: 1000 },
+        { documentId, signerId },
+        {
+          attempts: 1,
+          removeOnComplete: 1000,
+          removeOnFail: 1000,
+          deduplication: { id: `copy-${documentId}-${signerId}` },
+        },
       ),
       'esign.finalization_enqueue_failed',
     );
@@ -50,7 +67,7 @@ export class EsignJobProducerService {
   private async bestEffort(
     work: Promise<unknown>,
     event: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     let timer: NodeJS.Timeout | undefined;
     try {
       await Promise.race([
@@ -62,8 +79,10 @@ export class EsignJobProducerService {
           );
         }),
       ]);
+      return true;
     } catch {
       this.logger.warn({ event, context: EsignJobProducerService.name });
+      return false;
     } finally {
       if (timer) clearTimeout(timer);
     }

@@ -134,9 +134,6 @@ export class EsignDocumentQueryService {
       this.validation.assertSourceIntegrity(document, source, metadata.sha256);
       sourceFile = this.mapper.sourceFile(source, metadata.pageCount);
     }
-    const signerPublicIds = new Map(
-      signers.map((signer) => [signer.id, signer.publicId]),
-    );
     return {
       ...this.mapper.documentSummary(document, this.count(signers)),
       sourceFile,
@@ -153,12 +150,7 @@ export class EsignDocumentQueryService {
           codeBySigner.get(signer.id),
         ),
       ),
-      fields: fields.map((field) =>
-        this.mapper.field(
-          field,
-          signerPublicIds.get(field.signerId ?? -1) ?? null,
-        ),
-      ),
+      fields: fields.map((field) => this.mapper.field(field)),
     };
   }
 

@@ -18,7 +18,8 @@ export class AuditEventRepository {
   findLatestDocumentEvent(documentId: number, manager: EntityManager) {
     return manager.findOne(EsignAuditEvent, {
       where: { documentId },
-      order: { occurredAt: 'DESC', id: 'DESC' },
+      // 以鎖內追加順序接續 hash；事件發生時間可能早於取得文件鎖。
+      order: { id: 'DESC' },
     });
   }
 

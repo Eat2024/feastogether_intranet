@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import request from 'supertest';
 import {
   closeSecurityE2eApp,
@@ -50,31 +52,7 @@ describe('runtime API coverage', () => {
     expect(body.data.origins).toContain('http://localhost:3000');
   });
 
-  it.each([
-    ['GET', '/api/esign/signer-candidates'],
-    ['GET', '/api/esign/documents'],
-    ['POST', '/api/esign/documents'],
-    ['GET', '/api/esign/documents/1'],
-    ['PATCH', '/api/esign/documents/1'],
-    ['DELETE', '/api/esign/documents/1'],
-    ['PUT', '/api/esign/documents/1/draftSave'],
-    ['PUT', '/api/esign/documents/1/fields'],
-    ['POST', '/api/esign/documents/1/initiations'],
-    ['POST', '/api/esign/documents/1/stoppages'],
-    ['GET', '/api/esign/documents/1/source-file'],
-    ['GET', '/api/esign/documents/1/history'],
-    ['GET', '/api/esign/documents/1/completed-file'],
-    ['GET', '/api/esign/signing-tasks'],
-    ['POST', '/api/esign/signing-tasks/550e8400-e29b-41d4-a716-446655440000'],
-    [
-      'GET',
-      '/api/esign/signing-tasks/550e8400-e29b-41d4-a716-446655440000/source-file',
-    ],
-    [
-      'POST',
-      '/api/esign/signing-tasks/550e8400-e29b-41d4-a716-446655440000/signatures',
-    ],
-  ] as const)(
+  it.each(internalOperations())(
     '%s %s 已註冊且受 employee session 保護',
     async (method, path) => {
       const response = await request(ctx.server)
@@ -118,17 +96,17 @@ describe('runtime API coverage', () => {
       .expect(400);
   });
 
-  it('3 個 external completion operations 已註冊且只接受 receipt', async () => {
+  it('已移除的 external completion operations 不再提供存取', async () => {
     const signerPublicId = '550e8400-e29b-41d4-a716-446655440000';
     await request(ctx.server)
       .get(`/api/external-completions/${signerPublicId}`)
-      .expect(401);
+      .expect(404);
     await request(ctx.server)
       .get(`/api/external-completions/${signerPublicId}/completed-file`)
-      .expect(401);
+      .expect(404);
     await request(ctx.server)
       .get(`/api/external-completions/${signerPublicId}/history`)
-      .expect(401);
+      .expect(404);
   });
 
   it('公開簽章驗證已註冊、不需 session，無效 token 回統一 404 envelope', async () => {
@@ -142,3 +120,36 @@ describe('runtime API coverage', () => {
     });
   });
 });
+
+/** 從 contract 的 paths 區讀取 operations，避免新增路由卻漏掉 session gate 驗收。 */
+function internalOperations(): Array<[string, string]> {
+  const spec = readFileSync(
+    resolve(
+      __dirname,
+      '../../specs/003-core-esign-flow/contracts/openapi.yaml',
+    ),
+    'utf8',
+  );
+  const operations: Array<[string, string]> = [];
+  let path = '';
+  for (const line of spec.split('\n')) {
+    if (line === 'components:') break;
+    const pathMatch = /^  (\/[^:]+):$/.exec(line);
+    if (pathMatch) path = pathMatch[1];
+    const method = /^    (get|post|put|patch|delete):$/.exec(line);
+    if (method && path.startsWith('/esign/'))
+      operations.push([
+        method[1].toUpperCase(),
+        '/api' +
+          path
+            .replace('{documentId}', '1')
+            .replace(
+              '{signerPublicId}',
+              '550e8400-e29b-41d4-a716-446655440000',
+            ),
+      ]);
+  }
+  if (operations.length === 0)
+    throw new Error('無法讀取電子簽 contract operations');
+  return operations;
+}

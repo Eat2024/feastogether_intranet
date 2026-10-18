@@ -1,12 +1,11 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import {
   CallHandler,
   ExecutionContext,
-  HttpStatus,
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 
 export interface DocumentUpload {
@@ -37,9 +36,12 @@ export class DocumentUploadInterceptor implements NestInterceptor {
       if (part.type === 'file') {
         if (part.fieldname !== 'file') {
           await part.toBuffer();
-          throw this.invalid(`不支援的欄位：${part.fieldname}`);
+          throw new AppException(
+            ...AppErrors.ESIGN_UPLOAD_FIELD_UNSUPPORTED(part.fieldname),
+          );
         }
-        if (file) throw this.invalid('一次只能上傳一個檔案');
+        if (file)
+          throw new AppException(...AppErrors.ESIGN_SINGLE_UPLOAD_REQUIRED);
         file = {
           bytes: await part.toBuffer(),
           originalFileName: part.filename,
@@ -47,19 +49,13 @@ export class DocumentUploadInterceptor implements NestInterceptor {
         };
       } else if (typeof part.value === 'string') {
         if (!TEXT_FIELDS.has(part.fieldname)) {
-          throw this.invalid(`不支援的欄位：${part.fieldname}`);
+          throw new AppException(
+            ...AppErrors.ESIGN_UPLOAD_FIELD_UNSUPPORTED(part.fieldname),
+          );
         }
         fields[part.fieldname] = part.value;
       }
     }
     return { fields, file };
-  }
-
-  private invalid(message: string): AppException {
-    return new AppException(
-      AppErrorCode.INVALID_REQUEST,
-      message,
-      HttpStatus.BAD_REQUEST,
-    );
   }
 }

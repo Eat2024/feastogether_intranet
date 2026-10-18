@@ -1,18 +1,20 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { Inject, Injectable } from '@nestjs/common';
+import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   PRIVATE_FILE_STORAGE,
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
-import { AuditEventRepository } from '../repositories/audit-event.repository';
+import type { EsignDocument } from '../entities/esign-document.entity';
+import type { EsignSigner } from '../entities/esign-signer.entity';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { EsignDocumentValidationService } from './esign-document-validation.service';
-import { EsignTokenService } from './esign-token.service';
+import { canonicalSha256 } from './esign-audit.service';
 import { PdfValidationService } from './pdf-validation.service';
 
 @Injectable()
@@ -22,121 +24,83 @@ export class EsignCompletionAccessService {
     private readonly documents: DocumentRepository,
     private readonly signers: SignerRepository,
     private readonly files: FileObjectRepository,
-    private readonly audits: AuditEventRepository,
-    private readonly tokens: EsignTokenService,
     private readonly access: EsignAccessPolicyService,
-    private readonly validation: EsignDocumentValidationService,
     private readonly pdf: PdfValidationService,
-    @Inject(PRIVATE_FILE_STORAGE)
-    private readonly storage: PrivateFileStorage,
+    @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
     private readonly records: SignatureRecordRepository,
   ) {}
 
-  async internalFile(documentId: number, userId: number) {
+  async creatorFile(
+    documentId: number,
+    signerPublicId: string,
+    userId: number,
+  ) {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
-    const signer = document
-      ? (await this.signers.findByDocument(documentId, manager)).find(
-          (candidate) => candidate.userId === userId,
-        ) ?? null
-      : null;
-    this.access.assertCreatorOrSignedInternalSigner(document, signer, userId);
-    if (!document || document.status !== 'completed') return null;
-    return this.completedFile(document.id);
+    this.access.checkEsignCreator(document, userId);
+    const signer = await this.signers.findByPublicId(signerPublicId, manager);
+    if (!signer || signer.documentId !== documentId) throw this.notFound();
+    return this.completedFile(document, signer);
   }
 
-  async receiptStatus(signerPublicId: string, token: string) {
-    const { signer, document } = await this.receiptContext(
-      signerPublicId,
-      token,
-    );
-    // 完成回執只在簽署成功後核發，持有者必有簽署紀錄
-    const record = await this.records.findBySignerId(
-      signer.id,
-      this.mysql.getManager(),
-    );
-    return {
-      title: document.title,
-      status: document.status,
-      completedAt: document.completedAt?.toISOString() ?? null,
-      stoppedAt: document.stoppedAt?.toISOString() ?? null,
-      verificationUrl: this.tokens.verificationUrl(record?.verificationCode),
-    };
-  }
-
-  async receiptFile(signerPublicId: string, token: string) {
-    const { document } = await this.receiptContext(signerPublicId, token);
-    if (document.status !== 'completed') return null;
-    return this.completedFile(document.id);
-  }
-
-  async receiptHistory(signerPublicId: string, token: string) {
-    const { signer, document } = await this.receiptContext(
-      signerPublicId,
-      token,
-    );
-    const events = await this.audits.findDocumentEvents(
-      document.id,
-      this.mysql.getManager(),
-    );
-    const allowed = new Set([
-      'external_invitation.opened',
-      'document.opened',
-      'signature.completed',
-      'document.completed',
-      'document.stopped_by_creator',
-      'document.stopped_by_deadline',
-    ]);
-    return events
-      .filter(
-        (event) =>
-          allowed.has(event.eventType) &&
-          (event.signerId === undefined || event.signerId === signer.id),
-      )
-      .map((event) => ({
-        type: event.eventType,
-        occurredAt: event.occurredAt.toISOString(),
-        actor: event.signerId === signer.id ? '本人' : '系統',
-        reason:
-          typeof event.metadataJson?.reason === 'string'
-            ? event.metadataJson.reason
-            : null,
-      }));
-  }
-
-  private async receiptContext(signerPublicId: string, token: string) {
+  async signerFile(signerPublicId: string, userId: number) {
     const manager = this.mysql.getManager();
-    const digest = this.tokens.digest(token);
-    const signer = await this.signers.findByReceiptDigest(digest, manager);
+    const signer = await this.signers.findByPublicId(signerPublicId, manager);
     const document = signer
       ? await this.documents.findById(signer.documentId, manager)
       : null;
-    if (!signer || signer.publicId !== signerPublicId || !document) {
-      this.access.assertReceipt(document, signer, digest, new Date());
-      throw new Error('unreachable');
-    }
-    this.access.assertReceipt(document, signer, digest, new Date());
-    return { signer, document };
+    if (!signer || !document) throw this.notFound();
+    this.access.assertInternalSigner(document, signer, userId);
+    return this.completedFile(document, signer);
   }
 
-  private async completedFile(documentId: number) {
+  private async completedFile(document: EsignDocument, signer: EsignSigner) {
+    if (
+      !['active', 'finalizing', 'completed', 'stopped'].includes(
+        document.status,
+      ) ||
+      signer.status !== 'signed' ||
+      signer.completionStatus !== 'ready'
+    )
+      return null;
     const manager = this.mysql.getManager();
-    const file = await this.files.findDocumentFile(
-      documentId,
-      'completed_pdf',
-      manager,
-    );
-    if (!file) return null;
+    const record = await this.records.findBySignerId(signer.id, manager);
+    if (
+      !record ||
+      record.signerId !== signer.id ||
+      record.signingPayloadSha256 !== document.signingPayloadSha256 ||
+      canonicalSha256(document.signingPayloadJson) !==
+        document.signingPayloadSha256 ||
+      record.signedAtUtc.getTime() !== signer.signedAt?.getTime()
+    )
+      throw this.integrity();
+    const file = await this.files.findCompletedFile(record.id, manager);
+    if (
+      !file ||
+      file.signatureRecordId !== record.id ||
+      file.documentId != null ||
+      file.documentFieldId != null ||
+      file.verificationRecordId != null ||
+      file.exportJobId != null ||
+      file.filePurpose !== 'completed_pdf' ||
+      file.mimeType !== 'application/pdf' ||
+      file.archiveStatus !== 'active'
+    )
+      throw this.integrity();
     const bytes = await readPrivateFile(this.storage, file);
     const metadata = await this.pdf.validatePersistedPdf(bytes);
-    const document = await this.documents.findById(documentId, manager);
-    if (!document) return null;
-    this.validation.assertFileIntegrity(
-      document,
-      file,
-      'completed_pdf',
-      metadata.sha256,
-    );
+    if (
+      metadata.sha256 !== file.sha256 ||
+      bytes.byteLength !== Number(file.fileSize)
+    )
+      throw this.integrity();
     return { bytes, fileName: 'completed.pdf' };
+  }
+
+  private notFound() {
+    return new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+  }
+  private integrity() {
+    return new AppException(...AppErrors.ESIGN_INTEGRITY_FAILED);
   }
 }

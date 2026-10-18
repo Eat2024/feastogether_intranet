@@ -65,11 +65,6 @@ export class EsignTokenService {
     };
   }
 
-  createReceiptToken(): EsignToken {
-    const token = this.randomToken();
-    return { token, digest: this.digest(token) };
-  }
-
   digest(token: string): string {
     return createHash('sha256').update(token, 'utf8').digest('hex');
   }

@@ -1,6 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import type { OauthCallbackDto } from '#app/features/auth/dto/oauth-callback.dto';
 import { OauthClient } from '#app/infrastructure/http-client/oauth/oauth.client';
 import { AuthService, type AuthSession } from './auth.service';
@@ -82,18 +82,10 @@ export class OauthLoginService {
   /** code／error 互斥：上游回 error 視為取消；缺 code 視為交易無效。iss 交由套件對 Discovery issuer 原字串比對。 */
   private acceptedCode(dto: OauthCallbackDto): string {
     if (dto.error !== undefined) {
-      throw new AppException(
-        AppErrorCode.OAUTH_LOGIN_CANCELLED,
-        '統一登入已取消或未完成，請重新登入',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(...AppErrors.OAUTH_LOGIN_CANCELLED);
     }
     if (!dto.code) {
-      throw new AppException(
-        AppErrorCode.OAUTH_TRANSACTION_INVALID,
-        '回呼缺少授權碼，請重新發起登入',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(...AppErrors.OAUTH_CODE_MISSING);
     }
     return dto.code;
   }

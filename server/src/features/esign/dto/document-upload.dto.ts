@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { plainToInstance, Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -23,12 +24,12 @@ function parseFieldsJson({ value }: { value: unknown }): unknown {
   }
 }
 
-/** 草稿欄位：建立當下尚無簽署人，一律存成未指派，發起時再指派。 */
+/** 共用欄位只屬於文件；上傳與發起均不指定欄位簽署人。 */
 class DraftFieldsDto {
   @IsOptional()
   @Transform(parseFieldsJson)
-  @IsArray({ message: '欄位資料必須為 JSON 陣列' })
-  @ArrayMaxSize(200, { message: '欄位數量不可超過 200 個' })
+  @IsArray({ message: AppErrors.ESIGN_FIELDS_ARRAY_REQUIRED[1] })
+  @ArrayMaxSize(200, { message: AppErrors.ESIGN_FIELD_LIMIT_EXCEEDED[1] })
   @ValidateNested({ each: true })
   fields?: FieldPlacementDto[];
 }
@@ -37,8 +38,8 @@ export class CreateDocumentDto extends DraftFieldsDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
-  @IsString({ message: '請提供文件標題' })
-  @Length(1, 200, { message: '文件標題須為 1 至 200 字' })
+  @IsString({ message: AppErrors.ESIGN_TITLE_REQUIRED[1] })
+  @Length(1, 200, { message: AppErrors.ESIGN_TITLE_LENGTH_INVALID[1] })
   title!: string;
 }
 
@@ -47,7 +48,7 @@ export class UpdateDocumentDto extends DraftFieldsDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
-  @IsString({ message: '文件標題必須為文字' })
-  @Length(1, 200, { message: '文件標題須為 1 至 200 字' })
+  @IsString({ message: AppErrors.ESIGN_TITLE_STRING_REQUIRED[1] })
+  @Length(1, 200, { message: AppErrors.ESIGN_TITLE_LENGTH_INVALID[1] })
   title?: string;
 }

@@ -13,3 +13,5 @@ coverage
 !.env.test.example
 *.log
 .DS_Store
+
+server/storage

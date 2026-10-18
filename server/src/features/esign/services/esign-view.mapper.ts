@@ -91,18 +91,18 @@ export class EsignViewMapper {
       email: signer.email ?? null,
       status: signer.status as EsignSignerStatus,
       signedAt: signer.signedAt?.toISOString() ?? null,
+      completion: {
+        status: signer.completionStatus ?? null,
+        readyAt: signer.completionReadyAt?.toISOString() ?? null,
+      },
       invitationDelivery,
       verificationUrl: this.tokens.verificationUrl(verificationCode),
     };
   }
 
-  field(
-    field: EsignDocumentField,
-    signerPublicId: string | null,
-  ): EsignFieldViewDto {
+  field(field: EsignDocumentField): EsignFieldViewDto {
     return {
       id: String(field.id),
-      signerPublicId,
       type: field.fieldType as EsignFieldType,
       page: field.pageNumber,
       xPercent: Number(field.xPercent),

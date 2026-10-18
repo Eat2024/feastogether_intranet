@@ -5,8 +5,6 @@ import {
   IsIn,
   IsInt,
   IsNumber,
-  IsOptional,
-  IsUUID,
   Max,
   Min,
   ValidateNested,
@@ -46,17 +44,10 @@ export class FieldPlacementDto {
   sortOrder!: number;
 }
 
-export class FieldInputDto extends FieldPlacementDto {
-  /** 省略或 null 表示草稿欄位暫不指派；發起時仍要求每個欄位都有簽署人。 */
-  @IsOptional()
-  @IsUUID('4')
-  signerPublicId?: string | null;
-}
-
 export class ReplaceFieldsDto {
   @IsArray()
   @ArrayMaxSize(200)
   @ValidateNested({ each: true })
-  @Type(() => FieldInputDto)
-  fields!: FieldInputDto[];
+  @Type(() => FieldPlacementDto)
+  fields!: FieldPlacementDto[];
 }

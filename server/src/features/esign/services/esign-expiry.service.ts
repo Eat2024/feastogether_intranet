@@ -12,13 +12,20 @@ export class EsignExpiryService {
   ) {}
 
   async reconcile(now = new Date()): Promise<number> {
-    const rows = await this.documents.findExpiredActiveIds(
-      now,
-      this.mysql.getManager(),
-    );
     let stopped = 0;
-    for (const row of rows) {
-      if (await this.stoppage.stopByDeadline(Number(row.id), now)) stopped += 1;
+    let afterId = 0;
+    while (true) {
+      const rows = await this.documents.findExpiredActiveIds(
+        now,
+        this.mysql.getManager(),
+        afterId,
+      );
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        if (await this.stoppage.stopByDeadline(Number(row.id), now))
+          stopped += 1;
+      }
+      afterId = Number(rows[rows.length - 1].id);
     }
     return stopped;
   }

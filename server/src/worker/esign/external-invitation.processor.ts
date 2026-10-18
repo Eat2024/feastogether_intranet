@@ -31,6 +31,8 @@ export class ExternalInvitationProcessor extends WorkerHost {
   }
 
   async process(job: Job<InvitationJobData>): Promise<void> {
+    // 只合併等待中的重複通知；開始處理後仍由 DB lease 與證據唯一約束決定結果。
+    if (job.opts?.deduplication) await job.removeDeduplicationKey();
     const id = job.data?.notificationLogId;
     if (!Number.isSafeInteger(id) || id < 1) return;
     const now = new Date();
@@ -41,7 +43,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
       );
       const stale =
         log?.result === 'processing' &&
-        log.processingStartedAt !== undefined &&
+        log.processingStartedAt != null &&
         log.processingStartedAt.getTime() < now.getTime() - 5 * 60_000;
       const eligible =
         log &&
@@ -71,7 +73,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
       log.result = 'processing';
       log.attemptCount += 1;
       log.processingStartedAt = now;
-      log.errorCode = undefined;
+      log.errorCode = null;
       await this.notifications.saveLog(log, manager);
       return {
         signerId: signer.id,
@@ -101,6 +103,10 @@ export class ExternalInvitationProcessor extends WorkerHost {
     }
 
     await this.mysql.transaction(async (manager) => {
+      const document = await this.notifications.lockDocument(
+        claim.documentId,
+        manager,
+      );
       const log = await this.notifications.findLogByIdForUpdate(id, manager);
       if (
         !log ||
@@ -116,6 +122,9 @@ export class ExternalInvitationProcessor extends WorkerHost {
       if (!signer || signer.id !== claim.signerId) return;
       const completedAt = new Date();
       if (
+        document?.status !== 'active' ||
+        !document.signEndAt ||
+        completedAt >= document.signEndAt ||
         signer.status !== 'pending' ||
         !signer.invitationTokenCiphertext ||
         !signer.invitationExpiresAt ||
@@ -124,17 +133,17 @@ export class ExternalInvitationProcessor extends WorkerHost {
         log.result = 'failed';
         log.errorCode = 'INVITATION_NO_LONGER_ACTIVE';
         log.completedAt = completedAt;
-        log.processingStartedAt = undefined;
-        log.nextAttemptAt = undefined;
+        log.processingStartedAt = null;
+        log.nextAttemptAt = null;
         await this.notifications.saveLog(log, manager);
         return;
       }
       log.result = 'delivered';
       log.completedAt = completedAt;
-      log.processingStartedAt = undefined;
-      log.nextAttemptAt = undefined;
+      log.processingStartedAt = null;
+      log.nextAttemptAt = null;
       signer.invitationDeliveredAt = completedAt;
-      signer.invitationTokenCiphertext = undefined;
+      signer.invitationTokenCiphertext = null;
       await this.notifications.saveLog(log, manager);
       await this.signers.save(signer, manager);
       await this.audit.append(
@@ -161,7 +170,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
       }
       log.result = 'failed';
       log.errorCode = 'MAIL_DELIVERY_FAILED';
-      log.processingStartedAt = undefined;
+      log.processingStartedAt = null;
       log.nextAttemptAt = new Date(
         Date.now() +
           Math.min(30 * 60_000, 30_000 * 2 ** (log.attemptCount - 1)),

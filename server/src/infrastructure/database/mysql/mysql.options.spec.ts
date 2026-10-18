@@ -37,11 +37,11 @@ describe('buildMysqlOptions', () => {
     });
   });
 
-  it('明確註冊電子簽 entities、AuthSession 與四支 migration', () => {
+  it('明確註冊電子簽 entities、AuthSession 與五支 migration', () => {
     const options = buildMysqlOptions(readEnv);
 
     expect(options.entities).toHaveLength(13);
-    expect(options.migrations).toHaveLength(4);
+    expect(options.migrations).toHaveLength(5);
     expect(
       (options.entities as Array<{ name: string }>).map(
         (entity) => entity.name,
@@ -63,6 +63,7 @@ describe('buildMysqlOptions', () => {
       'CreateAuthSessions1791849600000',
       'CoreEsignFlow1791936000000',
       'SignatureVerificationCode1792108800000',
+      'SharedFieldsPersonalCopies1792195200000',
     ]);
   });
 

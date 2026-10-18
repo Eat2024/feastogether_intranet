@@ -22,6 +22,7 @@
 - DB 寫入以 UTC 為準；台北時間僅在 API/UI 邊界轉換，使用現有 date-time helper。
 - schema 由 migration 管理，不開啟 `synchronize`。變更 schema 必須同步 entity、migration、測試與 `schema.sql`。
 - 錯誤使用 `AppException` 與穩定的 `AppErrorCode`；log 使用既有結構化 logger，不記錄 secret、token、cookie 或簽名資料。
+- 業務錯誤的錯誤碼、訊息、HTTP 狀態集中在 `src/common/errors/app-errors.ts`，以 `new AppException(...AppErrors.NAME)` 引用；動態訊息使用該檔的定義函式，DTO 自訂訊息引用定義的 `[1]`。內部程式、啟動與 worker 重試錯誤保留原有例外類型。
 - 測試 DB 名稱必須以 `feastogether_intranet_test` 開頭，不得降低此 fail-closed 保護。
 
 ## 驗證

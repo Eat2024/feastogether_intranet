@@ -27,13 +27,6 @@ import { EsignDocument } from './esign-document.entity';
 @Index('uq_esign_signers_invitation_token_sha256', ['invitationTokenSha256'], {
   unique: true,
 })
-@Index(
-  'uq_esign_signers_completion_receipt_sha256',
-  ['completionReceiptSha256'],
-  {
-    unique: true,
-  },
-)
 @Index('idx_esign_signers_user_status_document', [
   'userId',
   'status',
@@ -49,9 +42,15 @@ import { EsignDocument } from './esign-document.entity';
 @Index('idx_esign_signers_rejected_at', ['rejectedAt'])
 @Index('idx_esign_signers_invitation_expires_at', ['invitationExpiresAt'])
 @Index('idx_esign_signers_invitation_delivered_at', ['invitationDeliveredAt'])
-@Index('idx_esign_signers_completion_receipt_expires_at', [
-  'completionReceiptExpiresAt',
+@Index('idx_esign_signers_completion_lease_expires_at', [
+  'completionLeaseExpiresAt',
 ])
+@Index('idx_esign_signers_completion_ready_at', ['completionReadyAt'])
+@Index('idx_esign_signers_completion_status_id', ['completionStatus', 'id'])
+@Check(
+  'chk_esign_signers_completion',
+  "(`status` = 'pending' AND `completion_status` IS NULL AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`status` = 'signed' AND `completion_status` IS NOT NULL AND ((`completion_status` IN ('pending','failed') AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'processing' AND `completion_lease_token` IS NOT NULL AND `completion_lease_expires_at` IS NOT NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'ready' AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NOT NULL)))",
+)
 @Index('idx_esign_signers_created_at', ['createdAt'])
 @Index('idx_esign_signers_updated_at', ['updatedAt'])
 @Index('idx_esign_signers_deleted_at', ['deletedAt'])
@@ -171,7 +170,7 @@ export class EsignSigner extends UserAuditableEntity {
     nullable: true,
     comment: '外部邀請 token SHA-256',
   })
-  invitationTokenSha256?: string;
+  invitationTokenSha256?: string | null;
 
   @Column({
     name: 'invitation_token_ciphertext',
@@ -179,7 +178,7 @@ export class EsignSigner extends UserAuditableEntity {
     nullable: true,
     comment: '待寄送外部邀請 token 的 AES-256-GCM 密文',
   })
-  invitationTokenCiphertext?: string;
+  invitationTokenCiphertext?: string | null;
 
   @Column({
     name: 'invitation_expires_at',
@@ -188,7 +187,7 @@ export class EsignSigner extends UserAuditableEntity {
     nullable: true,
     comment: '外部邀請到期時間',
   })
-  invitationExpiresAt?: Date;
+  invitationExpiresAt?: Date | null;
 
   @Column({
     name: 'invitation_delivered_at',
@@ -200,24 +199,42 @@ export class EsignSigner extends UserAuditableEntity {
   invitationDeliveredAt?: Date;
 
   @Column({
-    name: 'completion_receipt_sha256',
+    name: 'completion_status',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+    comment: '個人副本產製狀態',
+  })
+  completionStatus!: 'pending' | 'processing' | 'ready' | 'failed' | null;
+
+  @Column({
+    name: 'completion_lease_token',
     type: 'char',
-    length: 64,
+    length: 36,
     charset: 'ascii',
     collation: 'ascii_bin',
     nullable: true,
-    comment: '外部完成收據 token SHA-256',
+    comment: '個人副本 worker lease UUID',
   })
-  completionReceiptSha256?: string;
+  completionLeaseToken!: string | null;
 
   @Column({
-    name: 'completion_receipt_expires_at',
+    name: 'completion_lease_expires_at',
     type: 'datetime',
     precision: 6,
     nullable: true,
-    comment: '外部完成收據到期時間',
+    comment: '個人副本 worker lease 到期時間',
   })
-  completionReceiptExpiresAt?: Date;
+  completionLeaseExpiresAt!: Date | null;
+
+  @Column({
+    name: 'completion_ready_at',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    comment: '個人副本完成時間',
+  })
+  completionReadyAt!: Date | null;
 
   @Column({
     name: 'rejected_at',

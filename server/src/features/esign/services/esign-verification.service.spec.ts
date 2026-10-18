@@ -24,12 +24,19 @@ function auditChain(eventTypes: string[]) {
     const event = {
       id: index + 1,
       documentId: 4,
-      signerId: index === 1 ? 8 : null,
+      signerId: index === 1 ? 8 : index === 2 ? 9 : null,
       actorUserId: null,
       eventType,
       occurredAt: new Date(signedAt.getTime() + index * 1000),
       requestId: null,
-      metadataJson: index === 0 ? null : { status: 'ok' },
+      metadataJson:
+        eventType === 'signer.copy_completed'
+          ? {
+              signatureRecordId: index + 20,
+              completedFileId: index + 30,
+              completedPdfSha256: index === 1 ? sha('f') : sha('e'),
+            }
+          : null,
       previousEventHash: previous ?? null,
       eventHash: '',
     };
@@ -42,12 +49,15 @@ function auditChain(eventTypes: string[]) {
   });
 }
 
-function setup(status: 'active' | 'completed' | 'stopped' = 'completed') {
+function setup(
+  status: 'active' | 'finalizing' | 'completed' | 'stopped' = 'completed',
+) {
   const signer = {
     id: 8,
     publicId: signerPublicId,
     documentId: 4,
     status: 'signed',
+    completionStatus: 'ready',
     nameSnapshot: '王小明',
     empidSnapshot: 'E0001',
     email: 'signer@example.test',
@@ -59,6 +69,7 @@ function setup(status: 'active' | 'completed' | 'stopped' = 'completed') {
     publicId: otherPublicId,
     documentId: 4,
     status: 'signed',
+    completionStatus: 'ready',
     nameSnapshot: '另一位',
     signedAt: new Date(signedAt.getTime() + 60_000),
   };
@@ -70,7 +81,7 @@ function setup(status: 'active' | 'completed' | 'stopped' = 'completed') {
     authenticationMethod: 'employee_session',
     consentVersion: 'esign-consent-v1',
     documentSha256: sha('a'),
-    signingPayloadSha256: sha('b'),
+    signingPayloadSha256: canonicalSha256({ schemaVersion: 2 }),
     sourceIp: '203.0.113.9',
     userAgent: 'secret-agent',
   };
@@ -86,18 +97,33 @@ function setup(status: 'active' | 'completed' | 'stopped' = 'completed') {
     docNumber: '550e8400-e29b-41d4-a716-446655440000',
     title: '測試文件',
     status,
-    signingPayloadSha256: sha('b'),
+    signingPayloadJson: { schemaVersion: 2 },
+    signingPayloadSha256: canonicalSha256({ schemaVersion: 2 }),
     completedAt: status === 'completed' ? completedAt : undefined,
     stoppedAt: status === 'stopped' ? stoppedAt : undefined,
   };
   const events = auditChain([
     'document.created',
-    'signature.completed',
+    'signer.copy_completed',
+    'signer.copy_completed',
     'document.completed',
   ]);
   const files = {
     source: { sha256: sha('a') },
-    completed: { sha256: sha('f') },
+    completed: {
+      id: 31,
+      signatureRecordId: 21,
+      filePurpose: 'completed_pdf',
+      archiveStatus: 'active',
+      sha256: sha('f'),
+    },
+    other: {
+      id: 32,
+      signatureRecordId: 22,
+      filePurpose: 'completed_pdf',
+      archiveStatus: 'active',
+      sha256: sha('e'),
+    },
   };
   const state: { snapshot: Record<string, any> | null } = { snapshot: null };
   const repositories = {
@@ -111,6 +137,8 @@ function setup(status: 'active' | 'completed' | 'stopped' = 'completed') {
       ),
     },
     files: {
+      findCompletedFile: jest.fn(async () => files.completed),
+      findCompletedFiles: jest.fn(async () => [files.other, files.completed]),
       findDocumentFile: jest.fn(async (_id: number, purpose: string) =>
         purpose === 'source_pdf' ? files.source : files.completed,
       ),
@@ -143,9 +171,8 @@ function setup(status: 'active' | 'completed' | 'stopped' = 'completed') {
       {
         document: document as never,
         signers: [signer, other] as never,
-        finalPdfSha256: files.completed.sha256,
         completedAt,
-        auditRootHash: events[2].eventHash,
+        auditRootHash: events[3].eventHash,
       },
       {} as never,
     );
@@ -171,8 +198,8 @@ describe('EsignVerificationService.saveSnapshot', () => {
 
     expect(snapshot).toMatchObject({
       documentId: 4,
-      finalPdfSha256: sha('f'),
-      auditRootHash: events[2].eventHash,
+      finalPdfSha256: null,
+      auditRootHash: events[3].eventHash,
       status: 'valid',
       issuedAt: completedAt,
     });
@@ -185,15 +212,20 @@ describe('EsignVerificationService.saveSnapshot', () => {
       document: {
         docNumber: '550e8400-e29b-41d4-a716-446655440000',
         sourcePdfSha256: sha('a'),
-        signingPayloadSha256: sha('b'),
-        finalPdfSha256: sha('f'),
+        signingPayloadSha256: canonicalSha256({ schemaVersion: 2 }),
         completedAt: completedAt.toISOString(),
       },
       signers: [
-        expect.objectContaining({ signerPublicId }),
+        expect.objectContaining({
+          signerPublicId,
+          signatureRecordId: 21,
+          completedFileId: 31,
+          completedPdfSha256: sha('f'),
+          copyCompletedEventHash: events[1].eventHash,
+        }),
         expect.objectContaining({ signerPublicId: otherPublicId }),
       ],
-      auditRootHash: events[2].eventHash,
+      auditRootHash: events[3].eventHash,
     });
     expect(snapshot.manifestSha256).toBe(
       createHash('sha256')
@@ -242,7 +274,7 @@ describe('EsignVerificationService.verify', () => {
     );
   });
 
-  it.each(['active', 'stopped'] as const)(
+  it.each(['active', 'finalizing', 'stopped'] as const)(
     '%s 文件回簽章有效、不查快照且 completedPdfSha256 為 null',
     async (status) => {
       const { service, repositories } = setup(status);

@@ -1,7 +1,7 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { parseAesKey } from '#app/features/auth/helpers/secret-crypto';
 
 /** 允許以 http 對接的 issuer 主機（僅本機／測試 loopback；UAT 以上一律 https）。 */
@@ -104,11 +104,7 @@ export class OauthConfig {
   private require(key: string): string {
     const value = this.config.get<string>(key);
     if (!value) {
-      throw new AppException(
-        AppErrorCode.OAUTH_UNAVAILABLE,
-        `OAuth 設定未就緒（缺少 ${key}）`,
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      throw new AppException(...AppErrors.OAUTH_CONFIG_MISSING(key));
     }
     return value;
   }
@@ -123,10 +119,6 @@ export class OauthConfig {
 
   /** 設定值存在但格式錯誤：訊息只帶變數名與規則，不帶實際值。 */
   private invalid(key: string, reason: string): AppException {
-    return new AppException(
-      AppErrorCode.OAUTH_UNAVAILABLE,
-      `OAuth 設定錯誤：${key} ${reason}`,
-      HttpStatus.SERVICE_UNAVAILABLE,
-    );
+    return new AppException(...AppErrors.OAUTH_CONFIG_INVALID(key, reason));
   }
 }

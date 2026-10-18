@@ -1,7 +1,7 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { StaffLookupDto } from '../types/staff-lookup.dto';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { FeastogetherClient } from '../feastogether.client';
@@ -114,17 +114,9 @@ function withQuery(path: string, query: Record<string, string>): string {
 
 /** 員工查詢／匯入失敗的固定對外訊息。 */
 export function staffLookupError(): AppException {
-  return new AppException(
-    AppErrorCode.STAFF_LOOKUP_FAILED,
-    '系統有錯，請詢問IT部門',
-    HttpStatus.BAD_GATEWAY,
-  );
+  return new AppException(...AppErrors.STAFF_LOOKUP_FAILED);
 }
 
 function staffRejectedError(): AppException {
-  return new AppException(
-    AppErrorCode.AUTH_EXCHANGE_FAILED,
-    '無法完成登入交換',
-    HttpStatus.UNAUTHORIZED,
-  );
+  return new AppException(...AppErrors.AUTH_EXCHANGE_FAILED);
 }

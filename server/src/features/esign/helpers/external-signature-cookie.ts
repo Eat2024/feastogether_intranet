@@ -3,7 +3,6 @@ import type { FastifyReply } from 'fastify';
 import { AppEnvironment } from '#app/config/app.environment';
 
 export const EXTERNAL_ACCESS_COOKIE = 'FT_ESIGN_EXTERNAL_ACCESS';
-export const EXTERNAL_RECEIPT_COOKIE = 'FT_ESIGN_EXTERNAL_RECEIPT';
 export const EXTERNAL_ACCESS_PATH = '/api/external-signing-task';
 
 function secure(config: ConfigService): boolean {
@@ -31,29 +30,4 @@ export function setExternalAccessCookie(
 
 export function clearExternalAccessCookie(reply: FastifyReply): void {
   reply.clearCookie(EXTERNAL_ACCESS_COOKIE, { path: EXTERNAL_ACCESS_PATH });
-}
-
-export function setExternalReceiptCookie(
-  reply: FastifyReply,
-  config: ConfigService,
-  signerPublicId: string,
-  token: string,
-): void {
-  reply.setCookie(EXTERNAL_RECEIPT_COOKIE, token, {
-    httpOnly: true,
-    secure: secure(config),
-    sameSite: 'lax',
-    path: `/api/external-completions/${signerPublicId}`,
-  });
-}
-
-export function clearExternalReceiptCookie(
-  reply: FastifyReply,
-  signerPublicId?: string,
-): void {
-  if (signerPublicId) {
-    reply.clearCookie(EXTERNAL_RECEIPT_COOKIE, {
-      path: `/api/external-completions/${signerPublicId}`,
-    });
-  }
 }

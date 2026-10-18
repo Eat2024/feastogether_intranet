@@ -166,12 +166,12 @@ flowchart TD
     notifySigner --> authenticate[公司帳號登入與簽署前驗證]
     authenticate --> showDocument[呈現已鎖定文件]
     showDocument --> captureIntent[確認電子形式與簽署意圖]
-    captureIntent --> submitSignature[提交簽署或拒絕]
+    captureIntent --> submitSignature[提交本人簽署]
     submitSignature --> appendAudit[寫入不可變稽核事件]
-    appendAudit --> allCompleted{全部完成}
-    allCompleted -- 否 --> notifySigner
-    allCompleted -- 是 --> finalizePdf[Worker 產生最終 PDF]
-    finalizePdf --> createEvidence[產生 manifest 與稽核報告]
+    appendAudit --> finalizePdf[Worker 立即產製本人 PDF]
+    finalizePdf --> allCompleted{全員 signed 且個人副本 ready}
+    allCompleted -- 否 --> waitOthers[保留個人下載並等待其他人]
+    allCompleted -- 是 --> createEvidence[提交 manifest v2 與結案事件]
     createEvidence --> sealDocument[平台封存簽章與可信時間戳記]
     sealDocument --> immutableStorage[寫入受控物件儲存]
 ```
@@ -504,7 +504,7 @@ Spec 2 先處理內部員工 WebView 入口與通用 session，不處理離職�
 - 內部簽署人及具單一文件受限存取權的 Email 簽署人可閱讀文件、表達明確簽署意圖並完成簽署；Email 控制權必須經 server 驗證，不得只相信 client 宣告。
 - Email 外部簽署採獨立、限時且只綁定 signer／document 的 session；內部員工則使用 Spec 2 建立的正式員工 session。
 - 每次成功簽署保存文件摘要、簽署人快照、同意版本、驗證事件、簽署時間及最小必要 append-only 稽核事件。
-- 所有簽署人完成後產生最終 PDF，驗證必要產物成功後將文件切換為 `completed`。
+- 每人簽完即產製本人 PDF；全員 signed 且每份副本 ready 後，以獨立交易保存 manifest v2 並將文件切換為 `completed`。
 - 發起後發現錯誤時，只能停止原流程並建立新文件；不提供原地修改、文件版本、簽署沿用或新舊文件版本關聯。
 - 提供建立人與簽署人完成上述流程所需的最小列表、詳情及受控檔案存取。
 
@@ -605,3 +605,15 @@ Spec 3 只涵蓋成功簽署主路徑及 Email 邀請所需的最小通知，不
 - [RFC 3161 Time-Stamp Protocol](https://www.rfc-editor.org/info/rfc3161/)
 - [NIST FIPS 186-5 Digital Signature Standard](https://csrc.nist.gov/pubs/fips/186-5/final)
 - [個人資料保護法](https://law.moj.gov.tw/LawClass/LawAll.aspx?PCode=I0050021)
+
+## 共用欄位、個人副本與規模邊界（2026-10-16）
+
+上傳時只保存共用 signature／date 位置，不指定簽署人；發起時指定完整名單、期間與選項並固定 payload。每份文件最多 200 個共用欄位，不乘簽署人數。簽署人數沒有固定上限；6,000／6,001 人是驗收樣本，傳輸大小與處理時間仍受部署資源限制。
+
+個人完成 PDF 以 esign_file_objects.signature_record_id 擁有，經 record → signer 回到同一 document。10 人會形成 10 份本人副本，不新增 10 份文件流程。完成檔亦允許 document owner，兩種 owner 必須互斥；未來簽到表的多筆參與證據放在 manifest，本次不實作該流程。
+
+簽署後即排工作，5 分鐘 lease 位於 signer。只有等待中的 queue 工作做技術性合併，worker 開始時釋放該合併鍵；DB claim、fencing token、唯一約束與 ready 狀態仍是唯一業務權威。既有 30 秒 maintenance 掃描完整候選，失效 queue 可由 DB 狀態補回。
+
+建立人可下載任一 ready 副本，內部員工只能下載本人副本。停止不刪已簽證據，既有 signed 副本繼續產製，stopped 不再結案。外部邀請簽完即失效，移除 receipt，完成 PDF 由建立人提供。
+
+新 snapshot 使用 manifest v2，保存各 record/file/hash/copy event；final_pdf_sha256 為 NULL。公開驗證僅 completed 回本人的檔案摘要，其餘狀態為 NULL。migration 僅轉換舊單人完成檔 owner metadata，不更動 bytes/hash/payload；部署及回滾依 specs/003-core-esign-flow/quickstart.md。

@@ -154,7 +154,6 @@ describe('EsignDraftService', () => {
       9,
       [placement],
       2,
-      [],
       manager,
     );
     expect(fields.save).toHaveBeenCalledWith(
@@ -204,7 +203,6 @@ describe('EsignDraftService', () => {
       9,
       [placement],
       2,
-      [],
       manager,
     );
     expect(fields.save).toHaveBeenCalledWith(

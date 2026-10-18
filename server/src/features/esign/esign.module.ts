@@ -61,7 +61,7 @@ const esignServices = [
     LoggingModule,
     MailModule,
     FeastogetherModule,
-    EsignQueueModule,
+    EsignQueueModule.register('producer'),
   ],
   providers: esignServices,
   controllers: [

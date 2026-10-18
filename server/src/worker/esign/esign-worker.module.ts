@@ -24,7 +24,7 @@ import { DocumentFinalizationProcessor } from './document-finalization.processor
     FileStorageModule,
     LoggingModule,
     MailModule,
-    EsignQueueModule,
+    EsignQueueModule.register('worker'),
   ],
   providers: [
     EsignTokenService,

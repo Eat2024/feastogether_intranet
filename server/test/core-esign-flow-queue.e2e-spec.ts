@@ -105,6 +105,11 @@ describe('核心電子簽真實 queue e2e', () => {
   });
 
   it('HTTP commit 後只以 local ID 入列，worker 對重複 dispatch 仍只寄送及結案一次', async () => {
+    expect(finalizationQueue.opts.connection).toMatchObject({
+      maxRetriesPerRequest: 0,
+      enableOfflineQueue: false,
+      commandTimeout: 500,
+    });
     const creatorCookie = await login(creatorEmpid);
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -214,6 +219,16 @@ describe('核心電子簽真實 queue e2e', () => {
       logger: false,
     });
     try {
+      const workerQueue = worker.get<Queue>(
+        getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
+      );
+      expect(workerQueue.opts.connection).toMatchObject({
+        maxRetriesPerRequest: null,
+      });
+      expect(workerQueue.opts.connection).not.toHaveProperty('commandTimeout');
+      expect(workerQueue.opts.connection).not.toHaveProperty(
+        'enableOfflineQueue',
+      );
       await waitFor(async () => {
         const rows = await db.query<Array<{ result: string }>>(
           'SELECT result FROM esign_notification_logs WHERE id = ?',

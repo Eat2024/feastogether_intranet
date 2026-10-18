@@ -1,5 +1,12 @@
 # Spec 03 共用欄位／個人副本 CR 驗收紀錄
 
+## PR review：簡化入列錯誤處理（2026-10-18）
+
+- 移除 job producer 的 `bestEffort`／`Promise.race`，改為直接 `try/catch`；簽署／發起已提交後，入列失敗只記錄告警，由既有 maintenance 補送。Email 邀請保留每批 100 筆及失敗後停止後續批次。
+- HTTP producer 與 worker 使用各自的 BullMQ 連線設定。Producer 關閉 offline queue、不重試單一命令，connect／command timeout 為 500ms；worker 維持 `maxRetriesPerRequest: null`，不繼承 producer 的命令 timeout。啟動仍需要可用 Redis，未新增離線啟動能力。
+- 單元測試 88 suites／659 tests 通過。真實 MySQL／Redis queue e2e 驗證 HTTP producer 與獨立 worker 的設定隔離、寄信及個人副本處理。
+- 另以本機 TCP 代理延遲 Redis 回應：producer 命令於約 501ms 拋錯，恢復回應後可再次入列。逾時不等於取消 Redis 端操作；原有 deduplication、DB lease 與狀態檢查仍負責避免重複結果。
+
 **交付範圍更新（2026-10-18）**：依使用者要求，本次 PR 僅保留後端、migration、API 契約與規格文件。`client/` 的修改及新增檔案已備份至 repository 外並移出本次差異，原有 mock 修改也另存備份。前端正式串接、公開驗證頁及 script 修正改由獨立 PR 交付；目前 client 回到 HEAD 的原型，不可用它驗收新版後端完整流程。
 
 下方 2026-10-16 的前端實作、瀏覽器與整合驗收為拆分前的歷史證據，不代表目前工作樹仍包含該前端功能。後端原始碼、migration 與已執行的本機 migration 不因本次拆分而撤回。T100、T106、T117、T122、T128、T132 改為待前端 PR 交付；T133 的完整人工驗收仍待整合環境完成。

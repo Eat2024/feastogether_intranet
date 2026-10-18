@@ -9,8 +9,6 @@ import {
   ESIGN_EXTERNAL_INVITATION_QUEUE,
 } from '../esign-queue.constants';
 
-const ENQUEUE_TIMEOUT_MS = 500;
-
 @Injectable()
 export class EsignJobProducerService {
   constructor(
@@ -23,8 +21,8 @@ export class EsignJobProducerService {
 
   async enqueueInvitations(notificationLogIds: number[]): Promise<void> {
     for (let offset = 0; offset < notificationLogIds.length; offset += 100) {
-      const queued = await this.bestEffort(
-        this.invitationQueue.addBulk(
+      try {
+        await this.invitationQueue.addBulk(
           notificationLogIds
             .slice(offset, offset + 100)
             .map((notificationLogId) => ({
@@ -37,11 +35,15 @@ export class EsignJobProducerService {
                 deduplication: { id: `invitation-${notificationLogId}` },
               },
             })),
-        ),
-        'esign.invitation_enqueue_failed',
-      );
-      // Redis 失效時讓既有 maintenance 接續，避免累積未完成的連線請求。
-      if (!queued) break;
+        );
+      } catch {
+        this.logger.warn({
+          event: 'esign.invitation_enqueue_failed',
+          context: EsignJobProducerService.name,
+        });
+        // 已提交的通知紀錄由 maintenance 補送，停止後續批次。
+        break;
+      }
     }
   }
 
@@ -49,8 +51,8 @@ export class EsignJobProducerService {
     documentId: number,
     signerId: number,
   ): Promise<void> {
-    await this.bestEffort(
-      this.finalizationQueue.add(
+    try {
+      await this.finalizationQueue.add(
         ESIGN_DOCUMENT_FINALIZATION_JOB,
         { documentId, signerId },
         {
@@ -59,32 +61,13 @@ export class EsignJobProducerService {
           removeOnFail: 1000,
           deduplication: { id: `copy-${documentId}-${signerId}` },
         },
-      ),
-      'esign.finalization_enqueue_failed',
-    );
-  }
-
-  private async bestEffort(
-    work: Promise<unknown>,
-    event: string,
-  ): Promise<boolean> {
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        work,
-        new Promise((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error('queue timeout')),
-            ENQUEUE_TIMEOUT_MS,
-          );
-        }),
-      ]);
-      return true;
+      );
     } catch {
-      this.logger.warn({ event, context: EsignJobProducerService.name });
-      return false;
-    } finally {
-      if (timer) clearTimeout(timer);
+      // 簽署已提交；保留 pending 由 maintenance 補入列，不回報簽署失敗。
+      this.logger.warn({
+        event: 'esign.finalization_enqueue_failed',
+        context: EsignJobProducerService.name,
+      });
     }
   }
 }

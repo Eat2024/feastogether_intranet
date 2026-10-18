@@ -111,7 +111,11 @@ export class HttpAccessLogInterceptor implements NestInterceptor {
   }
 
   private shouldLogQuery(request: FastifyRequest): boolean {
-    return !QUERY_EXCLUDED_PATHS.includes(getRequestPath(request));
+    const path = getRequestPath(request);
+    return (
+      !/^(\/api)?\/esign(?:\/|$)/.test(path) &&
+      !QUERY_EXCLUDED_PATHS.includes(path)
+    );
   }
 
   private safeUrl(request: FastifyRequest): string {
@@ -121,13 +125,8 @@ export class HttpAccessLogInterceptor implements NestInterceptor {
   }
 
   private shouldLogRequestBody(request: FastifyRequest): boolean {
-    // 原子發起請求包含完整簽署人名單，不寫入姓名／Email 等個資。
-    if (
-      /^(\/api)?\/esign\/documents\/[^/]+\/initiations\/?$/.test(
-        getRequestPath(request),
-      )
-    )
-      return false;
+    // 電子簽請求包含文件 bytes、手寫 PNG 或完整名單，一律不記錄 body。
+    if (/^(\/api)?\/esign(?:\/|$)/.test(getRequestPath(request))) return false;
     const body = request.body;
     if (!body || typeof body !== 'object') return false;
     if (Object.keys(body).length === 0) return false;

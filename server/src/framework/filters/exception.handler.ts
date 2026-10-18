@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import {
   ArgumentsHost,
   Catch,
@@ -23,29 +24,10 @@ interface ApiError {
  * 框架或套件丟出的 HttpException（路由不存在、JSON 格式錯誤、內容過大等）沒有穩定錯誤碼，
  * 依 HTTP status 對應固定的錯誤碼與繁中訊息，不回傳原始英文訊息或請求路徑。
  */
-const FRAMEWORK_ERRORS: Partial<Record<number, ApiError>> = {
-  [HttpStatus.FORBIDDEN]: {
-    code: AppErrorCode.FORBIDDEN,
-    message: '沒有權限執行此操作',
-  },
-  [HttpStatus.NOT_FOUND]: {
-    code: AppErrorCode.NOT_FOUND,
-    message: '找不到請求的資源',
-  },
-  [HttpStatus.PAYLOAD_TOO_LARGE]: {
-    code: AppErrorCode.INVALID_REQUEST,
-    message: '請求內容超過大小限制',
-  },
-};
-
-const INVALID_REQUEST: ApiError = {
-  code: AppErrorCode.INVALID_REQUEST,
-  message: '請求格式錯誤',
-};
-
-const UNEXPECTED: ApiError = {
-  code: AppErrorCode.INTERNAL_ERROR,
-  message: '系統發生未預期錯誤',
+const FRAMEWORK_ERRORS = {
+  [HttpStatus.FORBIDDEN]: AppErrors.HTTP_FORBIDDEN,
+  [HttpStatus.NOT_FOUND]: AppErrors.HTTP_NOT_FOUND,
+  [HttpStatus.PAYLOAD_TOO_LARGE]: AppErrors.HTTP_PAYLOAD_TOO_LARGE,
 };
 
 @Injectable()
@@ -92,7 +74,14 @@ export class ExceptionHandler implements ExceptionFilter {
       const { details } = exception.getResponse() as { details?: unknown };
       return { code: exception.code, message: exception.message, details };
     }
-    if (status >= 500) return UNEXPECTED;
-    return FRAMEWORK_ERRORS[status] ?? INVALID_REQUEST;
+    const definition =
+      status >= 500
+        ? AppErrors.INTERNAL_ERROR
+        : ((
+            FRAMEWORK_ERRORS as Partial<
+              Record<number, readonly [AppErrorCode, string, HttpStatus]>
+            >
+          )[status] ?? AppErrors.REQUEST_FORMAT_INVALID);
+    return { code: definition[0], message: definition[1] };
   }
 }

@@ -24,6 +24,19 @@ import { EsignVerificationRecord } from './esign-verification-record.entity';
   'chk_esign_file_objects_signature_field',
   "(`file_purpose` = 'signature_png' AND `signature_record_id` IS NOT NULL AND `document_field_id` IS NOT NULL) OR (`file_purpose` <> 'signature_png' AND `document_field_id` IS NULL)",
 )
+@Check(
+  'chk_esign_file_objects_completed_owner',
+  "`file_purpose` <> 'completed_pdf' OR (((`document_id` IS NOT NULL AND `signature_record_id` IS NULL) OR (`document_id` IS NULL AND `signature_record_id` IS NOT NULL)) AND `document_field_id` IS NULL AND `verification_record_id` IS NULL AND `export_job_id` IS NULL)",
+)
+@Check(
+  'chk_esign_file_objects_source_owner',
+  "`file_purpose` <> 'source_pdf' OR (`document_id` IS NOT NULL AND `signature_record_id` IS NULL AND `document_field_id` IS NULL AND `verification_record_id` IS NULL AND `export_job_id` IS NULL)",
+)
+@Index(
+  'uq_esign_file_objects_completed_signature',
+  ['completedSignatureRecordId'],
+  { unique: true },
+)
 @Index('idx_esign_file_objects_document_id', ['documentId'])
 @Index('idx_esign_file_objects_signature_record_id', ['signatureRecordId'])
 @Index('idx_esign_file_objects_document_field_id', ['documentFieldId'])
@@ -46,6 +59,20 @@ import { EsignVerificationRecord } from './esign-verification-record.entity';
 @Index('idx_esign_file_objects_archive_status', ['archiveStatus'])
 @Index('idx_esign_file_objects_created_at', ['createdAt'])
 export class EsignFileObject {
+  @Column({
+    name: 'completed_signature_record_id',
+    type: 'bigint',
+    nullable: true,
+    asExpression:
+      "CASE WHEN `file_purpose` = 'completed_pdf' THEN `signature_record_id` ELSE NULL END",
+    generatedType: 'VIRTUAL',
+    select: false,
+    insert: false,
+    update: false,
+    comment: '個人完成檔唯一簽署證據 ID',
+  })
+  completedSignatureRecordId?: number;
+
   @PrimaryGeneratedColumn({ type: 'bigint', comment: '檔案 metadata 流水號' })
   id!: number;
 

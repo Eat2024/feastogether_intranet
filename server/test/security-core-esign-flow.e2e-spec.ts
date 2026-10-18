@@ -94,4 +94,22 @@ describe('核心電子簽安全邊界', () => {
       .expect(401);
     expect(JSON.stringify(invalid.body)).not.toContain(token);
   });
+
+  it('舊 receipt 無法存取個人副本，退役路徑不再提供下載', async () => {
+    const signerId = '00000000-0000-4000-8000-000000000001';
+    for (const path of [
+      `/api/esign/documents/1/signers/${signerId}/completed-file`,
+      `/api/esign/signing-tasks/${signerId}/completed-file`,
+    ]) {
+      const response = await request(ctx.server)
+        .get(path)
+        .set('Cookie', `FT_ESIGN_EXTERNAL_RECEIPT=${token}`)
+        .expect(401);
+      expect(JSON.stringify(response.body)).not.toContain(token);
+    }
+    await request(ctx.server)
+      .get('/api/external-completions/completed-file')
+      .set('Cookie', `FT_ESIGN_EXTERNAL_RECEIPT=${token}`)
+      .expect(404);
+  });
 });

@@ -10,7 +10,6 @@ import {
 import { UserAuditableEntity } from '#app/infrastructure/database/user-auditable.entity';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from './esign-document.entity';
-import { EsignSigner } from './esign-signer.entity';
 
 @Entity({ name: 'esign_document_fields', comment: '文件簽署欄位' })
 @Check('chk_esign_document_fields_type', "`field_type` IN ('signature','date')")
@@ -26,7 +25,6 @@ import { EsignSigner } from './esign-signer.entity';
   'id',
 ])
 @Index('idx_esign_document_fields_created_at', ['createdAt'])
-@Index('idx_esign_document_fields_signer_id', ['signerId'])
 @Index('idx_esign_document_fields_updated_at', ['updatedAt'])
 @Index('idx_esign_document_fields_deleted_at', ['deletedAt'])
 export class EsignDocumentField extends UserAuditableEntity {
@@ -42,21 +40,6 @@ export class EsignDocumentField extends UserAuditableEntity {
     foreignKeyConstraintName: 'fk_esign_document_fields_document',
   })
   document?: EsignDocument;
-
-  @Column({
-    name: 'signer_id',
-    type: 'bigint',
-    nullable: true,
-    comment: '欄位所屬簽署人 ID',
-  })
-  signerId?: number;
-
-  @ManyToOne(() => EsignSigner, { nullable: true, onDelete: 'RESTRICT' })
-  @JoinColumn({
-    name: 'signer_id',
-    foreignKeyConstraintName: 'fk_esign_document_fields_signer',
-  })
-  signer?: EsignSigner;
 
   @Column({
     name: 'field_type',

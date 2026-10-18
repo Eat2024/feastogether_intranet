@@ -91,6 +91,43 @@ describe('EsignAuditService', () => {
     ).toBeUndefined();
   });
 
+  it('個人產物事件固定 record、檔案 ID 與摘要，不接受非法 owner metadata', async () => {
+    const { repository, service } = setup();
+    await service.append(
+      {
+        documentId: 10,
+        signerId: 20,
+        eventType: 'signer.copy_completed',
+        occurredAt: new Date(),
+        metadata: {
+          signatureRecordId: 30,
+          completedFileId: 40,
+          completedPdfSha256: 'a'.repeat(64),
+        },
+      },
+      manager,
+    );
+    expect(repository.insert.mock.calls[0]?.[0].metadataJson).toEqual({
+      signatureRecordId: 30,
+      completedFileId: 40,
+      completedPdfSha256: 'a'.repeat(64),
+    });
+    await service.append(
+      {
+        documentId: 10,
+        eventType: 'signer.copy_failed',
+        occurredAt: new Date(),
+        metadata: {
+          signatureRecordId: -1,
+          completedFileId: NaN,
+          completedPdfSha256: 'not-a-hash',
+        },
+      },
+      manager,
+    );
+    expect(repository.insert.mock.calls[1]?.[0].metadataJson).toBeUndefined();
+  });
+
   it('metadata 只接受白名單，避免 Email、token、IP 與簽名進入 audit', async () => {
     const { repository, service } = setup();
     await service.append(

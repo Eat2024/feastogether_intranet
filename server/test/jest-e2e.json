@@ -1,11 +1,19 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "(?:^|/)(?:oauth-runtime|oauth-login|password-login|request-id|api-coverage|dev-login|webview-session|core-esign-flow|core-esign-flow-queue)\\.e2e-spec\\.ts$",
-  "testPathIgnorePatterns": ["/node_modules/"],
+  "testRegex": "(?:^|/)(?:oauth-runtime|oauth-login|password-login|request-id|api-coverage|dev-login|webview-session|core-esign-flow|core-esign-flow-queue|core-esign-flow-scale)\\.e2e-spec\\.ts$",
+  "testPathIgnorePatterns": [
+    "/node_modules/"
+  ],
   "globalSetup": "<rootDir>/test/global-setup.ts",
-  "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
+  "setupFiles": [
+    "<rootDir>/test/setup-e2e.ts"
+  ],
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },

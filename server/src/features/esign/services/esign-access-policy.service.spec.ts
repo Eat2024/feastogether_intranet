@@ -120,43 +120,4 @@ describe('EsignAccessPolicyService', () => {
       policy.assertExternalInvitation(doc, signer, 'a'.repeat(64), now),
     ).toThrow('外部簽署存取已失效');
   });
-
-  it('external credential 可辨識已簽 signer，但不重新授予 invitation 權限', () => {
-    const doc = document();
-    const signer = Object.assign(new EsignSigner(), {
-      signerType: 'email',
-      documentId: 1,
-      status: 'signed',
-      invitationTokenSha256: 'a'.repeat(64),
-    });
-    expect(() =>
-      policy.assertExternalCredential(doc, signer, 'a'.repeat(64)),
-    ).not.toThrow();
-    expect(() =>
-      policy.assertExternalInvitation(doc, signer, 'a'.repeat(64), now),
-    ).toThrow('外部簽署存取已失效');
-  });
-
-  it('receipt 只允許已簽 external signer，終止後受 expiry 約束', () => {
-    const doc = document();
-    doc.status = 'completed';
-    const signer = Object.assign(new EsignSigner(), {
-      signerType: 'email',
-      documentId: 1,
-      status: 'signed',
-      completionReceiptSha256: 'c'.repeat(64),
-      completionReceiptExpiresAt: new Date('2026-11-12T12:00:00.000Z'),
-    });
-    expect(() =>
-      policy.assertReceipt(doc, signer, 'c'.repeat(64), now),
-    ).not.toThrow();
-    expect(() =>
-      policy.assertReceipt(
-        doc,
-        signer,
-        'c'.repeat(64),
-        new Date('2026-11-12T12:00:00.000Z'),
-      ),
-    ).toThrow('外部簽署存取已失效');
-  });
 });

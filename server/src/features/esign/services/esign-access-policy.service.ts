@@ -1,12 +1,10 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import { timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
+import { AppException } from '#app/common/errors/app.exception';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
-import {
-  externalUnauthorized,
-  resourceNotFound,
-} from '../helpers/esign-errors';
 import { DocumentRepository } from '../repositories/document.repository';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 
@@ -44,7 +42,7 @@ export class EsignAccessPolicyService {
       document.createdByUserId !== userId ||
       document.deletedAt
     ) {
-      throw resourceNotFound();
+      throw this.notFound();
     }
   }
 
@@ -60,7 +58,7 @@ export class EsignAccessPolicyService {
       signer.deletedAt ||
       document.deletedAt
     ) {
-      throw resourceNotFound();
+      throw this.notFound();
     }
   }
 
@@ -81,7 +79,7 @@ export class EsignAccessPolicyService {
     ) {
       return;
     }
-    throw resourceNotFound();
+    throw this.notFound();
   }
 
   assertExternalInvitation(
@@ -98,60 +96,17 @@ export class EsignAccessPolicyService {
       signer.status === 'pending' &&
       !signer.deletedAt &&
       !document.deletedAt &&
-      signer.invitationTokenSha256 !== undefined &&
+      signer.invitationTokenSha256 != null &&
       this.equalDigest(signer.invitationTokenSha256, digest) &&
-      signer.invitationExpiresAt !== undefined &&
+      signer.invitationExpiresAt != null &&
       now < signer.invitationExpiresAt;
-    if (!valid) throw externalUnauthorized();
+    if (!valid) throw this.externalUnauthorized();
 
     try {
       this.documents.assertActiveSigningWindow(document, now);
     } catch {
-      throw externalUnauthorized();
+      throw this.externalUnauthorized();
     }
-  }
-
-  assertExternalCredential(
-    document: EsignDocument | null,
-    signer: EsignSigner | null,
-    digest: string,
-  ): asserts signer is EsignSigner {
-    if (
-      !document ||
-      !signer ||
-      signer.signerType !== 'email' ||
-      signer.documentId !== document.id ||
-      signer.deletedAt ||
-      document.deletedAt ||
-      !signer.invitationTokenSha256 ||
-      !this.equalDigest(signer.invitationTokenSha256, digest)
-    ) {
-      throw externalUnauthorized();
-    }
-  }
-
-  assertReceipt(
-    document: EsignDocument | null,
-    signer: EsignSigner | null,
-    digest: string,
-    now: Date,
-  ): void {
-    const terminal =
-      document?.status === 'completed' || document?.status === 'stopped';
-    const valid =
-      signer !== null &&
-      document !== null &&
-      signer.signerType === 'email' &&
-      signer.documentId === document.id &&
-      signer.status === 'signed' &&
-      !signer.deletedAt &&
-      !document.deletedAt &&
-      signer.completionReceiptSha256 !== undefined &&
-      this.equalDigest(signer.completionReceiptSha256, digest) &&
-      (!terminal ||
-        (signer.completionReceiptExpiresAt !== undefined &&
-          now < signer.completionReceiptExpiresAt));
-    if (!valid) throw externalUnauthorized();
   }
 
   private equalDigest(expected: string, actual: string): boolean {
@@ -161,5 +116,13 @@ export class EsignAccessPolicyService {
       expectedBytes.byteLength === actualBytes.byteLength &&
       timingSafeEqual(expectedBytes, actualBytes)
     );
+  }
+
+  private notFound(): AppException {
+    return new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+  }
+
+  private externalUnauthorized(): AppException {
+    return new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
   }
 }

@@ -1,6 +1,5 @@
-import { HttpStatus } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { FeastogetherApiError } from './feastogether.client';
 
 /**
@@ -13,17 +12,9 @@ import { FeastogetherApiError } from './feastogether.client';
 export function mapFeastogetherUpstreamError(error: unknown): unknown {
   if (error instanceof FeastogetherApiError) {
     if (error.status === 401 || error.status === 403) {
-      return new AppException(
-        AppErrorCode.UNAUTHORIZED,
-        '饗賓授權已失效，請重新登入',
-        HttpStatus.UNAUTHORIZED,
-      );
+      return new AppException(...AppErrors.FEASTOGETHER_UNAUTHORIZED);
     }
-    return new AppException(
-      AppErrorCode.EATOGETHER_API_SERVICE_UNAVAILABLE,
-      '饗賓服務暫時無法使用',
-      HttpStatus.BAD_GATEWAY,
-    );
+    return new AppException(...AppErrors.FEASTOGETHER_UNAVAILABLE);
   }
   return error;
 }

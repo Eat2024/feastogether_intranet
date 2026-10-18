@@ -1,6 +1,5 @@
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsEmail,
@@ -35,7 +34,6 @@ export class SignerInputDto {
 export class ReplaceSignersDto {
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(50)
   @ValidateNested({ each: true })
   @Type(() => SignerInputDto)
   signers!: SignerInputDto[];

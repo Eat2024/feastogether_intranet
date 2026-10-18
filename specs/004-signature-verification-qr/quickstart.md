@@ -1,5 +1,7 @@
 # Quickstart: 簽章驗證 QR Code 驗收
 
+> **2026-10-18 合併註記**：下方原執行紀錄保留為歷史；涉及 receipt、document finalization lease、manifest v1 或單一 final_pdf_sha256 的設計已由 Spec 03 個人副本 CR 取代。現行模型見本目錄 data-model.md 與 contracts/openapi.yaml；驗證採 signer lease、個人完成檔與 manifest v2。前端仍由獨立 PR 交付。
+
 ## 1. 前置條件
 
 - Spec 03 的 HTTP server、BullMQ worker、MySQL、Redis 與 Client 已可依 `specs/003-core-esign-flow/quickstart.md` 運作。
@@ -47,7 +49,7 @@ pnpm lint
 預期：
 
 - 該文件恰好一筆 `esign_verification_records`，`status = valid`、`issued_at` 等於 `completed_at`。
-- `final_pdf_sha256` 等於 completed PDF file object 的 `sha256`；`audit_root_hash` 等於 `document.completed` 事件的 `event_hash`；`manifest_sha256` 可由 canonical manifest 重算。
+- `final_pdf_sha256` 為 NULL；manifest v2 的每人 `completedPdfSha256` 等於對應 record-owned completed PDF file object 的 `sha256`；`audit_root_hash` 等於 `document.completed` 事件的 `event_hash`；`manifest_sha256` 可由 canonical manifest 重算。
 - Manifest 不含姓名、Email 或員編。
 
 ## 6. User Story 3：公開查驗

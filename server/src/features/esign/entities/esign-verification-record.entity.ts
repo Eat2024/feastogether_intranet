@@ -69,9 +69,10 @@ export class EsignVerificationRecord {
     length: 64,
     charset: 'ascii',
     collation: 'ascii_bin',
+    nullable: true,
     comment: '最終 PDF SHA-256',
   })
-  finalPdfSha256!: string;
+  finalPdfSha256!: string | null;
 
   @Column({
     name: 'audit_root_hash',

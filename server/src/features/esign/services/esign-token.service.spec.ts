@@ -35,16 +35,6 @@ describe('EsignTokenService', () => {
     ).toThrow('外部邀請憑證無法解密');
   });
 
-  it('receipt 與 invitation 每次獨立產生且 receipt 不保存密文', () => {
-    const service = serviceWithKey(randomBytes(32));
-    const invitation = service.createInvitationToken();
-    const receipt = service.createReceiptToken();
-
-    expect(receipt.token).not.toBe(invitation.token);
-    expect(receipt.digest).not.toBe(invitation.digest);
-    expect(receipt).not.toHaveProperty('ciphertext');
-  });
-
   it('拒絕非 32-byte encryption key', () => {
     expect(() => serviceWithKey(Buffer.from('short'))).toThrow('32 bytes');
   });

@@ -4,6 +4,8 @@ description: "簽章驗證 QR Code 的可執行實作任務"
 
 # Tasks: 簽章驗證 QR Code
 
+> **2026-10-18 合併註記**：下方原執行紀錄保留為歷史；涉及 receipt、document finalization lease、manifest v1 或單一 final_pdf_sha256 的設計已由 Spec 03 個人副本 CR 取代。現行模型見本目錄 data-model.md 與 contracts/openapi.yaml；驗證採 signer lease、個人完成檔與 manifest v2。前端仍由獨立 PR 交付。
+
 **Input**: Design documents from `/specs/004-signature-verification-qr/`
 
 **Prerequisites**: `plan.md`、`spec.md`、`research.md`、`data-model.md`、`contracts/openapi.yaml`、`quickstart.md`；Spec 03 的簽署與結案流程

@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
@@ -9,11 +10,11 @@ import type {
   SignatureVerificationDocumentDto,
   SignatureVerificationDto,
 } from '../dto/signature-verification.dto';
+import type { EsignFileObject } from '../entities/esign-file-object.entity';
 import type { EsignAuditEvent } from '../entities/esign-audit-event.entity';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import type { EsignSignatureRecord } from '../entities/esign-signature-record.entity';
 import type { EsignSigner } from '../entities/esign-signer.entity';
-import { integrityFailed, resourceNotFound } from '../helpers/esign-errors';
 import { AuditEventRepository } from '../repositories/audit-event.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
@@ -27,14 +28,13 @@ import {
 } from './esign-audit.service';
 import { EsignTokenService } from './esign-token.service';
 
-export const VERIFICATION_MANIFEST_SCHEMA = 'esign-verification-manifest-v1';
+export const VERIFICATION_MANIFEST_SCHEMA = 'esign-verification-manifest-v2';
 
 /** 結案 transaction 內已鎖定、即將標示完成的文件狀態。 */
 export interface VerificationSnapshotInput {
   document: EsignDocument;
   /** 依 sort_order、id 排序的全部簽署人 */
   signers: EsignSigner[];
-  finalPdfSha256: string;
   completedAt: Date;
   /** 同 transaction 寫入的 document.completed event hash */
   auditRootHash: string;
@@ -52,22 +52,29 @@ interface SignedEvidence {
 function manifestDocument(
   document: EsignDocument,
   sourcePdfSha256: string | undefined,
-  finalPdfSha256: string | undefined,
   completedAt: Date | undefined,
 ) {
   return {
     docNumber: document.docNumber,
     sourcePdfSha256,
     signingPayloadSha256: document.signingPayloadSha256,
-    finalPdfSha256,
     completedAt: completedAt?.toISOString(),
   };
 }
 
 /** Manifest 的簽署人項目；只放摘要與時間，不放姓名、Email、員編、IP 或簽名圖。 */
-function manifestSigner(signer: EsignSigner, record: EsignSignatureRecord) {
+function manifestSigner(
+  signer: EsignSigner,
+  record: EsignSignatureRecord,
+  file: EsignFileObject,
+  copyEvent: EsignAuditEvent,
+) {
   return {
     signerPublicId: signer.publicId,
+    signatureRecordId: record.id,
+    completedFileId: file.id,
+    completedPdfSha256: file.sha256,
+    copyCompletedEventHash: copyEvent.eventHash,
     signedAt: record.signedAtUtc.toISOString(),
     authenticationMethod: record.authenticationMethod,
     consentVersion: record.consentVersion,
@@ -86,7 +93,8 @@ function evidenceConsistent({
   return (
     signer.signedAt?.getTime() === record.signedAtUtc.getTime() &&
     record.signingPayloadSha256 === document.signingPayloadSha256 &&
-    record.documentSha256 === sourcePdfSha256
+    record.documentSha256 === sourcePdfSha256 &&
+    record.signerId === signer.id
   );
 }
 
@@ -97,21 +105,23 @@ function evidenceConsistent({
 function reachesAuditRoot(
   events: EsignAuditEvent[],
   auditRootHash: string,
-): boolean {
+): Set<string> | null {
+  const visited = new Set<string>();
   const byHash = new Map(events.map((event) => [event.eventHash, event]));
   let current = byHash.get(auditRootHash);
-  if (current?.eventType !== 'document.completed') return false;
+  if (current?.eventType !== 'document.completed') return null;
   for (let step = 0; current && step < events.length; step += 1) {
     const previous = current.previousEventHash ?? undefined;
     const recalculated = auditEventHash(previous, {
       ...current,
       metadata: current.metadataJson,
     });
-    if (recalculated !== current.eventHash) return false;
-    if (previous === undefined) return true;
+    if (recalculated !== current.eventHash) return null;
+    visited.add(current.eventHash);
+    if (previous === undefined) return visited;
     current = byHash.get(previous);
   }
-  return false;
+  return null;
 }
 
 /** 取出 manifest 中本人的項目；manifest 形狀不可信，非預期結構一律視為缺漏。 */
@@ -120,6 +130,30 @@ function manifestEntryOf(manifest: Record<string, unknown>, publicId: string) {
   if (!Array.isArray(signers)) return undefined;
   return (signers as Array<Record<string, unknown>>).find(
     (entry) => entry?.signerPublicId === publicId,
+  );
+}
+
+/** 產物歸屬與個人完成稽核必須指向同一份證據。 */
+function copyConsistent(
+  file: EsignFileObject,
+  record: EsignSignatureRecord,
+  event: EsignAuditEvent,
+  documentId: number,
+): boolean {
+  const metadata = event.metadataJson as Record<string, unknown> | undefined;
+  return (
+    file.signatureRecordId === record.id &&
+    file.documentId == null &&
+    file.documentFieldId == null &&
+    file.verificationRecordId == null &&
+    file.exportJobId == null &&
+    file.filePurpose === 'completed_pdf' &&
+    file.archiveStatus === 'active' &&
+    event.documentId === documentId &&
+    event.signerId === record.signerId &&
+    metadata?.signatureRecordId === record.id &&
+    metadata.completedFileId === file.id &&
+    metadata.completedPdfSha256 === file.sha256
   );
 }
 
@@ -166,30 +200,71 @@ export class EsignVerificationService {
     manager: EntityManager,
   ): Promise<void> {
     const { document, signers } = input;
-    const [source, records] = await Promise.all([
+    const [source, events] = await Promise.all([
       this.files.findDocumentFile(document.id, 'source_pdf', manager),
-      this.records.findBySignerIds(
-        signers.map((signer) => signer.id),
-        manager,
-      ),
+      this.audits.findDocumentEvents(document.id, manager),
     ]);
-    const recordBySigner = new Map(
-      records.map((record) => [record.signerId, record]),
+    const chain = reachesAuditRoot(events, input.auditRootHash);
+    if (
+      !source ||
+      !chain ||
+      signers.length === 0 ||
+      canonicalSha256(document.signingPayloadJson) !==
+        document.signingPayloadSha256
+    )
+      throw this.integrity();
+    const copies = new Map(
+      events
+        .filter(
+          (event) =>
+            event.eventType === 'signer.copy_completed' &&
+            chain.has(event.eventHash),
+        )
+        .map((event) => [event.signerId, event]),
     );
-    if (!source || signers.some((signer) => !recordBySigner.has(signer.id))) {
-      throw integrityFailed();
+    const entries: ReturnType<typeof manifestSigner>[] = [];
+    for (let offset = 0; offset < signers.length; offset += 250) {
+      const batch = signers.slice(offset, offset + 250);
+      const records = await this.records.findBySignerIds(
+        batch.map((signer) => signer.id),
+        manager,
+      );
+      const files = await this.files.findCompletedFiles(
+        records.map((record) => record.id),
+        manager,
+      );
+      const recordBySigner = new Map(
+        records.map((record) => [record.signerId, record]),
+      );
+      const fileByRecord = new Map(
+        files.map((file) => [file.signatureRecordId, file]),
+      );
+      for (const signer of batch) {
+        const record = recordBySigner.get(signer.id);
+        const file = record && fileByRecord.get(record.id);
+        const event = copies.get(signer.id);
+        if (
+          !record ||
+          !file ||
+          !event ||
+          signer.status !== 'signed' ||
+          signer.completionStatus !== 'ready' ||
+          !evidenceConsistent({
+            signer,
+            document,
+            record,
+            sourcePdfSha256: source.sha256,
+          }) ||
+          !copyConsistent(file, record, event, document.id)
+        )
+          throw this.integrity();
+        entries.push(manifestSigner(signer, record, file, event));
+      }
     }
     const manifest = {
       schemaVersion: VERIFICATION_MANIFEST_SCHEMA,
-      document: manifestDocument(
-        document,
-        source.sha256,
-        input.finalPdfSha256,
-        input.completedAt,
-      ),
-      signers: signers.map((signer) =>
-        manifestSigner(signer, recordBySigner.get(signer.id)!),
-      ),
+      document: manifestDocument(document, source.sha256, input.completedAt),
+      signers: entries,
       auditRootHash: input.auditRootHash,
     };
     await this.snapshots.insert(
@@ -198,7 +273,7 @@ export class EsignVerificationService {
         publicId: randomUUID(),
         manifestJson: manifest,
         manifestSha256: canonicalSha256(manifest),
-        finalPdfSha256: input.finalPdfSha256,
+        finalPdfSha256: null,
         auditRootHash: input.auditRootHash,
         status: 'valid',
         issuedAt: input.completedAt,
@@ -209,11 +284,15 @@ export class EsignVerificationService {
 
   /** 公開驗證：代碼格式不符不查 DB；只讀、不 lock、不寫任何資料或稽核事件。 */
   async verify(code: string): Promise<SignatureVerificationDto> {
+    if (!this.tokens.isVerificationCodeFormat(code)) throw this.notFound();
     const manager = this.mysql.getManager();
     const evidence = await this.signedEvidence(code, manager);
-    if (!evidence) throw resourceNotFound('查無此簽章或驗證碼無效');
-    if (!evidenceConsistent(evidence)) {
-      throw this.inconsistent(evidence.document.id);
+    if (
+      !evidenceConsistent(evidence) ||
+      canonicalSha256(evidence.document.signingPayloadJson) !==
+        evidence.document.signingPayloadSha256
+    ) {
+      throw this.integrityFailed(evidence.document.id);
     }
     const completedPdfSha256 =
       evidence.document.status === 'completed'
@@ -222,21 +301,20 @@ export class EsignVerificationService {
     return verificationView(evidence, completedPdfSha256);
   }
 
-  /** 格式錯誤、查無代碼、未簽署、文件為草稿或已刪除都回 null，由 verify() 回同一個 404。 */
+  /** 查無代碼、簽署人已刪除或未簽署、文件為草稿或已刪除，一律同一個 404。 */
   private async signedEvidence(
     code: string,
     manager: EntityManager,
-  ): Promise<SignedEvidence | null> {
-    if (!this.tokens.isVerificationCodeFormat(code)) return null;
+  ): Promise<SignedEvidence> {
     const record = await this.records.findByVerificationCode(code, manager);
-    if (!record) return null;
+    if (!record) throw this.notFound();
     const signer = await this.signers.findById(record.signerId, manager);
-    if (signer?.status !== 'signed') return null;
+    if (signer?.status !== 'signed') throw this.notFound();
     const [document, source] = await Promise.all([
       this.documents.findById(signer.documentId, manager),
       this.files.findDocumentFile(signer.documentId, 'source_pdf', manager),
     ]);
-    if (!document || document.status === 'draft') return null;
+    if (!document || document.status === 'draft') throw this.notFound();
     return { signer, document, record, sourcePdfSha256: source?.sha256 };
   }
 
@@ -250,37 +328,58 @@ export class EsignVerificationService {
   ): Promise<string> {
     const [snapshot, completedPdf, events] = await Promise.all([
       this.snapshots.findByDocumentId(document.id, manager),
-      this.files.findDocumentFile(document.id, 'completed_pdf', manager),
+      this.files.findCompletedFile(record.id, manager),
       this.audits.findDocumentEvents(document.id, manager),
     ]);
     const manifest = snapshot?.manifestJson ?? {};
     const expectedDocument = manifestDocument(
       document,
       sourcePdfSha256,
-      completedPdf?.sha256,
       document.completedAt,
+    );
+    const chain = snapshot && reachesAuditRoot(events, snapshot.auditRootHash);
+    const copyEvent = events.find(
+      (event) =>
+        event.signerId === signer.id &&
+        event.eventType === 'signer.copy_completed' &&
+        chain?.has(event.eventHash),
     );
     const consistent =
       snapshot?.status === 'valid' &&
+      manifest.schemaVersion === VERIFICATION_MANIFEST_SCHEMA &&
+      signer.completionStatus === 'ready' &&
+      completedPdf &&
+      copyEvent &&
+      copyConsistent(completedPdf, record, copyEvent, document.id) &&
       canonicalSha256(manifest) === snapshot.manifestSha256 &&
-      snapshot.finalPdfSha256 === completedPdf?.sha256 &&
+      snapshot.finalPdfSha256 === null &&
       manifest.auditRootHash === snapshot.auditRootHash &&
       canonicalJson(manifest.document) === canonicalJson(expectedDocument) &&
       canonicalJson(manifestEntryOf(manifest, signer.publicId)) ===
-        canonicalJson(manifestSigner(signer, record)) &&
-      reachesAuditRoot(events, snapshot.auditRootHash);
-    if (!consistent) throw this.inconsistent(document.id);
-    return snapshot.finalPdfSha256;
+        canonicalJson(
+          manifestSigner(signer, record, completedPdf, copyEvent),
+        ) &&
+      chain;
+    if (!consistent) throw this.integrityFailed(document.id);
+    return completedPdf.sha256;
+  }
+
+  private notFound(): AppException {
+    return new AppException(...AppErrors.ESIGN_VERIFICATION_NOT_FOUND);
   }
 
   /** 公開驗證不一致：記錄不含 token 的告警後回 409，回應不揭露哪一項不一致。 */
-  private inconsistent(documentId: number): AppException {
+  private integrityFailed(documentId: number): AppException {
     this.logger.warn({
       context: EsignVerificationService.name,
       event: 'esign.verification_integrity_failed',
       message: '簽章驗證資料不一致',
       metadata: { documentId },
     });
-    return integrityFailed();
+    return this.integrity();
+  }
+
+  private integrity(): AppException {
+    return new AppException(...AppErrors.ESIGN_INTEGRITY_FAILED);
   }
 }

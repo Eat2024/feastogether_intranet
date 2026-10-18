@@ -8,6 +8,8 @@
 
 **Input**: User description: "每位簽署人送出簽名後，為該簽章產生由系統私鑰簽署的驗證網址；前端將網址轉成 QR Code，完成 PDF 在簽名欄位印上 QR Code；任何人掃描後由系統驗章並回傳簽章資料；文件結案時將文件驗證快照寫入 esign_verification_records。"
 
+> **2026-10-18 相容更新**：以 Spec 03 共用欄位／個人副本 CR 為準；每人一份 PDF、signer lease、manifest v2。公開驗證完成檔摘要為本人副本摘要，非單一合併 PDF；外部簽完邀請失效，不恢復 receipt API。
+
 ## Clarifications
 
 ### Session 2026-10-16
@@ -145,7 +147,7 @@
 
 ## Dependencies
 
-- Spec 03 的簽署證據、外部受限存取與 receipt、完成 PDF 產製及 finalization lease 必須可用。
+- Spec 03 的簽署證據、外部受限存取、個人 PDF 產製及 signer completion lease 必須可用。
 - 既有 `esign_verification_records` 資料表（Spec 01）作為文件驗證快照，不新增資料表或欄位。
 - 簽署畫面的佔位圖與簽署後顯示 QR（FR-004）由前端工程師實作，不在本規格工項內，並依賴 Client 串接 Spec 03 正式 API；在此之前只能以 Server 自動化測試驗收。
 - 公開驗證頁由前端工程師依本規格的 contract 提供，不在本規格工項內；掃描後畫面的人工驗收依賴該頁完成。

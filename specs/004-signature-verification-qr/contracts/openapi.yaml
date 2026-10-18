@@ -8,7 +8,7 @@ info:
     - 新增 `getSignatureVerification`：不需登入、不使用任何 cookie 的公開驗證查詢。
     - 擴充 Spec 03 回應：`SignatureResult`（signMySigningTask、signExternalSigningTask）、
       `SignerView`（getDocument、listMySigningTasks、openMySigningTask、openExternalSigningTask）
-      與 getExternalCompletion 的 data，新增 `verificationUrl`。
+      的 data 新增 `verificationUrl`；外部完成回執 API 已由 Spec 03 個人副本 CR 移除。
 servers:
   - url: /api
 
@@ -98,7 +98,7 @@ components:
             completedPdfSha256:
               type: [string, "null"]
               pattern: "^[0-9a-f]{64}$"
-              description: 只有 completed 時有值，等於驗證快照的 final_pdf_sha256
+              description: 只有 completed 時有值，等於 manifest v2 本人項目與個人 completed_pdf 的摘要；快照 final_pdf_sha256 為 null
     SignatureVerificationSuccess:
       allOf:
         - $ref: "#/components/schemas/SuccessBase"
@@ -120,9 +120,3 @@ components:
           type: [string, "null"]
           format: uri
           description: 簽章公開驗證網址；只有 status = signed 時有值
-    ExternalCompletionExtension:
-      description: 擴充 Spec 03 getExternalCompletion 的 data，新增必填欄位
-      type: object
-      required: [verificationUrl]
-      properties:
-        verificationUrl: { type: string, format: uri, description: 本人簽章的公開驗證網址 }

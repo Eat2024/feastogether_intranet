@@ -17,7 +17,7 @@ export class SignatureVerificationDocumentDto {
   signedSourceSha256!: string;
   completedAt!: string | null;
   stoppedAt!: string | null;
-  /** 只有 completed 時有值，等於驗證快照的 final_pdf_sha256 */
+  /** 只有 completed 時有值，等於 manifest v2 本人項目及個人完成 PDF 的摘要 */
   completedPdfSha256!: string | null;
 }
 

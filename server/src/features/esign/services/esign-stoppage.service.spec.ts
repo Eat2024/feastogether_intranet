@@ -16,7 +16,7 @@ describe('EsignStoppageService', () => {
         invitationTokenSha256: 'signed-digest',
         invitationTokenCiphertext: undefined,
         invitationExpiresAt: new Date('2026-10-13T12:00:00.000Z'),
-        completionReceiptSha256: 'receipt',
+        completionStatus: 'ready',
       },
       {
         status: 'pending',
@@ -41,7 +41,8 @@ describe('EsignStoppageService', () => {
     const access = { checkEsignCreator: jest.fn() };
     const validation = {
       assertActiveForStop: jest.fn((value: { status: string }) => {
-        if (value.status !== 'active') throw new Error('只有簽署中的文件可以停止');
+        if (!['active', 'finalizing'].includes(value.status))
+          throw new Error('只有簽署中的文件可以停止');
       }),
     };
     const audit = { append: jest.fn() };
@@ -64,18 +65,21 @@ describe('EsignStoppageService', () => {
 
     await expect(service.stopByCreator(3, 7, '資料有誤')).resolves.toBe(true);
     expect(access.checkEsignCreator).toHaveBeenCalled();
-    expect(document).toMatchObject({ status: 'stopped', stopReason: '資料有誤' });
+    expect(document).toMatchObject({
+      status: 'stopped',
+      stopReason: '資料有誤',
+    });
     expect(signers[0].invitationTokenSha256).toBe('signed-digest');
-    expect(signers[0].completionReceiptExpiresAt).toBeInstanceOf(Date);
-    expect(signers[1].invitationTokenSha256).toBeUndefined();
-    expect(signers[1].invitationTokenCiphertext).toBeUndefined();
+    expect(signers[0].completionStatus).toBe('ready');
+    expect(signers[1].invitationTokenSha256).toBeNull();
+    expect(signers[1].invitationTokenCiphertext).toBeNull();
     expect(audit.append).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'document.stopped_by_creator' }),
       manager,
     );
   });
 
-  it.each(['finalizing', 'completed'])('%s 不可手動停止', async (status) => {
+  it.each(['completed'])('%s 不可手動停止', async (status) => {
     const { service, documents } = setup(status);
     await expect(service.stopByCreator(3, 7, '停止')).rejects.toThrow(
       '只有簽署中的文件可以停止',

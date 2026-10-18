@@ -1,7 +1,8 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
-import { resourceNotFound } from '../helpers/esign-errors';
+import { AppException } from '#app/common/errors/app.exception';
 import { AuditEventRepository } from '../repositories/audit-event.repository';
 
 export interface EsignAuditMetadata {
@@ -9,6 +10,9 @@ export interface EsignAuditMetadata {
   reason?: string;
   consentVersion?: string;
   errorCode?: string;
+  signatureRecordId?: number;
+  completedFileId?: number;
+  completedPdfSha256?: string;
 }
 
 export interface AppendEsignAuditEvent {
@@ -86,7 +90,9 @@ export class EsignAuditService {
       input.documentId,
       manager,
     );
-    if (!document) throw resourceNotFound();
+    if (!document) {
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    }
 
     const previous = await this.repository.findLatestDocumentEvent(
       input.documentId,
@@ -117,9 +123,9 @@ export class EsignAuditService {
 
   private sanitizeMetadata(
     metadata: EsignAuditMetadata | undefined,
-  ): Record<string, string> | undefined {
+  ): Record<string, string | number> | undefined {
     if (!metadata) return undefined;
-    const result: Record<string, string> = {};
+    const result: Record<string, string | number> = {};
     for (const key of [
       'status',
       'reason',
@@ -130,6 +136,17 @@ export class EsignAuditService {
       if (typeof value === 'string' && value.trim() !== '') {
         result[key] = value.slice(0, 500);
       }
+    }
+    for (const key of ['signatureRecordId', 'completedFileId'] as const) {
+      const value = metadata[key];
+      if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0)
+        result[key] = value;
+    }
+    if (
+      metadata.completedPdfSha256 &&
+      /^[0-9a-f]{64}$/.test(metadata.completedPdfSha256)
+    ) {
+      result.completedPdfSha256 = metadata.completedPdfSha256;
     }
     return Object.keys(result).length > 0 ? result : undefined;
   }

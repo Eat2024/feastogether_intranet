@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { randomBytes } from 'node:crypto';
 import {
   Body,
@@ -24,8 +25,6 @@ import {
 } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppException } from '#app/common/errors/app.exception';
-import { sendHtmlErrorPage } from '#app/common/http/html-error-page';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
 import configPath from '#app/config/config.path';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
@@ -87,18 +86,10 @@ export class AuthController {
         ? /^Bearer ([^\s]+)$/.exec(authorization)
         : null;
     if (authorization === undefined) {
-      throw new AppException(
-        AppErrorCode.AUTH_EXCHANGE_FAILED,
-        '無法完成登入交換',
-        HttpStatus.UNAUTHORIZED,
-      );
+      throw new AppException(...AppErrors.AUTH_EXCHANGE_FAILED);
     }
     if (!matched) {
-      throw new AppException(
-        AppErrorCode.INVALID_REQUEST,
-        '請求格式錯誤',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new AppException(...AppErrors.REQUEST_FORMAT_INVALID);
     }
     return this.authService.createWebviewLaunch(matched[1]);
   }
@@ -125,7 +116,10 @@ export class AuthController {
     this.setBridgeHeaders(reply);
     const code = this.credentialFromObject(query);
     if (!code) {
-      this.errorPage(reply, HttpStatus.BAD_REQUEST, '啟動連結格式錯誤');
+      reply
+        .status(AppErrors.AUTH_LAUNCH_FORMAT_INVALID[2])
+        .type('text/html; charset=utf-8')
+        .send(this.errorPage(AppErrors.AUTH_LAUNCH_FORMAT_INVALID[1]));
       return;
     }
     const nonce = randomBytes(18).toString('base64');
@@ -150,7 +144,10 @@ export class AuthController {
     this.setBridgeHeaders(reply);
     const code = this.credentialFromObject(body);
     if (!code) {
-      this.errorPage(reply, HttpStatus.BAD_REQUEST, '啟動連結格式錯誤');
+      reply
+        .status(AppErrors.AUTH_LAUNCH_FORMAT_INVALID[2])
+        .type('text/html; charset=utf-8')
+        .send(this.errorPage(AppErrors.AUTH_LAUNCH_FORMAT_INVALID[1]));
       return;
     }
     try {
@@ -161,12 +158,17 @@ export class AuthController {
       const status =
         error instanceof AppException
           ? error.getStatus()
-          : HttpStatus.SERVICE_UNAVAILABLE;
-      this.errorPage(
-        reply,
-        status,
-        status === 503 ? '登入服務暫時無法使用' : '啟動連結無效或已到期',
-      );
+          : AppErrors.AUTH_DB_UNAVAILABLE[2];
+      reply
+        .status(status)
+        .type('text/html; charset=utf-8')
+        .send(
+          this.errorPage(
+            status === Number(AppErrors.AUTH_DB_UNAVAILABLE[2])
+              ? AppErrors.AUTH_DB_UNAVAILABLE[1]
+              : AppErrors.AUTH_LAUNCH_INVALID[1],
+          ),
+        );
     }
   }
 
@@ -231,11 +233,7 @@ export class AuthController {
     return configured ? configured.split(',').map((value) => value.trim()) : [];
   }
 
-  private errorPage(
-    reply: FastifyReply,
-    status: number,
-    message: string,
-  ): void {
-    sendHtmlErrorPage(reply, status, '無法進入電子簽', message);
+  private errorPage(message: string): string {
+    return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>無法進入電子簽</title></head><body><p>${message}</p></body></html>`;
   }
 }

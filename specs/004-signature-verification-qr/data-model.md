@@ -6,7 +6,7 @@
 
 ## 1. EsignVerificationRecord（既有 `esign_verification_records`）
 
-每份完成文件一筆的文件驗證快照，在 Spec 03 Finalize 的第二個 transaction 內寫入。只為功能上線後結案的文件建立；上線前已完成的文件不回補。
+每份完成文件一筆的文件驗證快照，在 Spec 03 全員副本 ready 後的獨立結案 transaction 內寫入。只為功能上線後結案的文件建立；上線前已完成的文件不回補。
 
 | 欄位 | 規則 |
 | --- | --- |
@@ -14,7 +14,7 @@
 | `public_id` | Server 產生的 UUID v4；本規格不對外使用，保留給日後文件層級驗證入口 |
 | `manifest_json` | canonical manifest，格式見下方 |
 | `manifest_sha256` | canonical manifest UTF-8 bytes 的 SHA-256 |
-| `final_pdf_sha256` | 等於同 transaction 寫入的 `completed_pdf` file object `sha256` |
+| `final_pdf_sha256` | 個人副本模式為 NULL；各人的完成檔摘要存於 manifest v2 的對應 signer 項目 |
 | `audit_root_hash` | 同 transaction append 的 `document.completed` 事件 `event_hash` |
 | `status` | 本規格只寫 `valid`；不實作 `revoked` / `superseded` |
 | `issued_at` | 等於 document `completed_at` |
@@ -28,17 +28,20 @@ Repository 沿用既有 `insert`，新增依 `document_id` 查詢；不使用 `r
 
 ```json
 {
-  "schemaVersion": "esign-verification-manifest-v1",
+  "schemaVersion": "esign-verification-manifest-v2",
   "document": {
     "docNumber": "uuid",
     "sourcePdfSha256": "64-hex",
     "signingPayloadSha256": "64-hex",
-    "finalPdfSha256": "64-hex",
     "completedAt": "2026-10-16T08:00:00.000Z"
   },
   "signers": [
     {
       "signerPublicId": "uuid",
+      "signatureRecordId": 1,
+      "completedFileId": 2,
+      "completedPdfSha256": "64-hex",
+      "copyCompletedEventHash": "64-hex",
       "signedAt": "2026-10-16T07:30:00.000Z",
       "authenticationMethod": "employee_session",
       "consentVersion": "esign-consent-v1",
@@ -67,13 +70,13 @@ Manifest 不含姓名、Email、員編、IP、User-Agent 或簽名圖；姓名�
 | `esign_signers` | 由簽署紀錄的 `signer_id` 取得；`status` 必須為 `signed`；`name_snapshot` 作為回傳姓名 |
 | `esign_signature_records` | 以 `verification_code` 查找；`signed_at_utc`、`authentication_method`、`document_sha256`；與快照中本人項目比對 |
 | `esign_documents` | `title`、`status`、`completed_at`、`stopped_at`；draft 或已刪除視為查無 |
-| `esign_file_objects` | active `completed_pdf` 的 `sha256` 必須等於快照 `final_pdf_sha256` |
+| `esign_file_objects` | 以本人的 signature record 找到 active `completed_pdf`，其 `sha256` 必須等於 manifest 本人項目的 `completedPdfSha256` |
 | `esign_audit_events` | 從第一筆重算 hash chain，必須能到達 `audit_root_hash` |
 
 ## 4. State transitions（擴充 Spec 03）
 
 ```text
-finalizing --verified final PDF（含 QR） + verification snapshot--> completed
+finalizing --全員 signed／個人 PDF ready + manifest v2 驗證快照--> completed
 ```
 
 其餘 Spec 03 狀態轉換不變。公開驗證不造成任何狀態轉換。
@@ -81,5 +84,5 @@ finalizing --verified final PDF（含 QR） + verification snapshot--> completed
 ## 5. Transaction boundaries（擴充 Spec 03）
 
 1. **Sign**: 在同一 transaction 的簽署紀錄寫入 `verification_code`；commit 後以代碼組出驗證網址回應。
-2. **Finalize**: transaction 外產生的完成 PDF 包含各簽名欄位的 QR；第二個 transaction 命中 lease token 後，依序寫 completed file metadata、signers、document status、`document.completed` audit 與驗證快照，任一失敗整筆 rollback。失去 lease 的 worker 不得寫入快照。
+2. **個人副本與結案**: transaction 外產生本人的 PDF 與 QR；提交時確認 signer 的 completion lease，保存個人檔案 metadata 與 ready 狀態。另開 transaction 鎖 document，確認全員 signed／ready，保存 document.completed audit 與 manifest v2 快照，失敗整筆 rollback，重試不重製既有個人 PDF。
 3. **Public verification**: 只讀，不開 transaction、不 lock、不寫 audit 或任何資料；代碼格式不符時不查 DB。

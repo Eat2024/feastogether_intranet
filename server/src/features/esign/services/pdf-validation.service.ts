@@ -1,8 +1,8 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { createHash } from 'node:crypto';
 import { basename, extname } from 'node:path';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { EncryptedPDFError, PDFDocument } from 'pdf-lib';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 
 export const MAX_PDF_SIZE = 20 * 1024 * 1024;
@@ -29,7 +29,7 @@ export class PdfValidationService {
       input.contentType !== 'application/pdf' ||
       extname(fileName).toLowerCase() !== '.pdf'
     ) {
-      throw this.invalidPdf('只接受 PDF 檔案');
+      throw new AppException(...AppErrors.ESIGN_PDF_ONLY);
     }
     return this.validatePersistedPdf(input.bytes);
   }
@@ -37,17 +37,13 @@ export class PdfValidationService {
   async validatePersistedPdf(bytesLike: Uint8Array): Promise<ValidatedPdf> {
     const bytes = Buffer.from(bytesLike);
     if (bytes.byteLength === 0) {
-      throw this.invalidPdf('PDF 檔案不可為空');
+      throw new AppException(...AppErrors.ESIGN_PDF_EMPTY);
     }
     if (bytes.byteLength > MAX_PDF_SIZE) {
-      throw new AppException(
-        AppErrorCode.ESIGN_INVALID_PDF,
-        'PDF 檔案不可超過 20 MiB',
-        HttpStatus.PAYLOAD_TOO_LARGE,
-      );
+      throw new AppException(...AppErrors.ESIGN_PDF_TOO_LARGE);
     }
     if (!bytes.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
-      throw this.invalidPdf('檔案內容不是有效 PDF');
+      throw new AppException(...AppErrors.ESIGN_PDF_CONTENT_INVALID);
     }
 
     let document: PDFDocument;
@@ -63,14 +59,14 @@ export class PdfValidationService {
           (error.constructor.name === 'EncryptedPDFError' ||
             error.message.toLowerCase().includes('encrypted')))
       ) {
-        throw this.invalidPdf('不接受加密 PDF');
+        throw new AppException(...AppErrors.ESIGN_PDF_ENCRYPTED);
       }
-      throw this.invalidPdf('PDF 檔案損壞或無法讀取');
+      throw new AppException(...AppErrors.ESIGN_PDF_UNREADABLE);
     }
 
     const pageCount = document.getPageCount();
     if (pageCount < 1 || pageCount > MAX_PDF_PAGES) {
-      throw this.invalidPdf('PDF 頁數必須介於 1 至 100 頁');
+      throw new AppException(...AppErrors.ESIGN_PDF_PAGE_COUNT_INVALID);
     }
 
     return {
@@ -79,13 +75,5 @@ export class PdfValidationService {
       pageCount,
       sha256: createHash('sha256').update(bytes).digest('hex'),
     };
-  }
-
-  private invalidPdf(message: string): AppException {
-    return new AppException(
-      AppErrorCode.ESIGN_INVALID_PDF,
-      message,
-      HttpStatus.BAD_REQUEST,
-    );
   }
 }

@@ -1,19 +1,17 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { Injectable } from '@nestjs/common';
+import { AppException } from '#app/common/errors/app.exception';
 import { EsignDocumentField } from '../entities/esign-document-field.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignFileObject } from '../entities/esign-file-object.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
-import {
-  integrityFailed,
-  invalidRequest,
-  stateConflict,
-} from '../helpers/esign-errors';
+import { canonicalJson } from './esign-audit.service';
 
 @Injectable()
 export class EsignDocumentValidationService {
   checkStillDraft(document: EsignDocument): void {
     if (document.status !== 'draft' || document.deletedAt) {
-      throw stateConflict('文件已發起，無法修改草稿');
+      throw new AppException(...AppErrors.ESIGN_DRAFT_NOT_EDITABLE);
     }
   }
 
@@ -25,7 +23,7 @@ export class EsignDocumentValidationService {
       now < document.signStartAt ||
       now >= document.signEndAt
     ) {
-      throw stateConflict('文件目前不在可簽署期間');
+      throw new AppException(...AppErrors.ESIGN_OUTSIDE_SIGNING_WINDOW);
     }
   }
 
@@ -35,23 +33,18 @@ export class EsignDocumentValidationService {
       signer.status !== 'pending' ||
       signer.deletedAt
     ) {
-      throw stateConflict('簽署任務目前無法操作');
+      throw new AppException(...AppErrors.ESIGN_SIGNING_TASK_UNAVAILABLE);
     }
   }
 
-  assertFieldsBelongToSigner(
+  assertFieldsBelongToDocument(
     fields: EsignDocumentField[],
-    signer: EsignSigner,
+    documentId: number,
   ): void {
     if (
-      fields.some(
-        (field) =>
-          field.documentId !== signer.documentId ||
-          field.signerId !== signer.id ||
-          field.deletedAt,
-      )
+      fields.some((field) => field.documentId !== documentId || field.deletedAt)
     ) {
-      throw invalidRequest('簽署欄位與文件或簽署人不相符');
+      throw new AppException(...AppErrors.ESIGN_FIELD_DOCUMENT_MISMATCH);
     }
   }
 
@@ -61,6 +54,37 @@ export class EsignDocumentValidationService {
     persistedSha256: string,
   ): void {
     this.assertFileIntegrity(document, source, 'source_pdf', persistedSha256);
+  }
+
+  /** 目前讀出的原檔與共用位置必須仍等於發起時固定的內容。 */
+  assertSigningSnapshot(
+    document: EsignDocument,
+    sourceSha256: string,
+    fields: EsignDocumentField[],
+  ): void {
+    const payload = document.signingPayloadJson;
+    const snapshotDocument = payload?.document;
+    const currentFields = fields.map((field) => ({
+      id: String(field.id),
+      type: field.fieldType,
+      page: field.pageNumber,
+      xPercent: Number(field.xPercent),
+      yPercent: Number(field.yPercent),
+      widthPercent: Number(field.widthPercent),
+      heightPercent: Number(field.heightPercent),
+      sortOrder: field.sortOrder,
+    }));
+    if (
+      !snapshotDocument ||
+      typeof snapshotDocument !== 'object' ||
+      !('sourceFileSha256' in snapshotDocument) ||
+      snapshotDocument.sourceFileSha256 !== sourceSha256 ||
+      !Array.isArray(payload?.fields) ||
+      canonicalJson(payload.fields.map(canonicalJson).sort()) !==
+        canonicalJson(currentFields.map(canonicalJson).sort())
+    ) {
+      throw this.integrityFailed();
+    }
   }
 
   assertFileIntegrity(
@@ -75,7 +99,7 @@ export class EsignDocumentValidationService {
       file.archiveStatus !== 'active' ||
       file.sha256 !== persistedSha256
     ) {
-      throw integrityFailed();
+      throw this.integrityFailed();
     }
   }
 
@@ -88,13 +112,13 @@ export class EsignDocumentValidationService {
       !document.signingPayloadSha256 ||
       document.signingPayloadSha256 !== recalculatedSha256
     ) {
-      throw integrityFailed();
+      throw this.integrityFailed();
     }
   }
 
   assertActiveForStop(document: EsignDocument): void {
-    if (document.status !== 'active') {
-      throw stateConflict('只有簽署中的文件可以停止');
+    if (!['active', 'finalizing'].includes(document.status)) {
+      throw new AppException(...AppErrors.ESIGN_DOCUMENT_NOT_STOPPABLE);
     }
   }
 
@@ -109,10 +133,14 @@ export class EsignDocumentValidationService {
           document.status,
         )
       ) {
-        throw stateConflict('簽署文件目前無法讀取');
+        throw new AppException(...AppErrors.ESIGN_SOURCE_UNAVAILABLE);
       }
       return;
     }
     this.assertActiveSigningWindow(document, now);
+  }
+
+  private integrityFailed(): AppException {
+    return new AppException(...AppErrors.ESIGN_INTEGRITY_FAILED);
   }
 }

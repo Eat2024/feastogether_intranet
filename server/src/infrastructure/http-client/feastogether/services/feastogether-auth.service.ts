@@ -1,6 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import {
   FeastogetherApiError,
   FeastogetherClient,
@@ -21,18 +21,10 @@ export class FeastogetherAuthService {
       );
     } catch (error) {
       if (error instanceof FeastogetherApiError && error.status === 401) {
-        throw new AppException(
-          AppErrorCode.INVALID_CREDENTIALS,
-          '員工編號或密碼錯誤',
-          HttpStatus.UNAUTHORIZED,
-        );
+        throw new AppException(...AppErrors.INVALID_CREDENTIALS);
       }
       if (error instanceof FeastogetherApiError && error.status === 403) {
-        throw new AppException(
-          AppErrorCode.ACCOUNT_DISABLED,
-          '帳號已停用，請聯絡資訊人員',
-          HttpStatus.FORBIDDEN,
-        );
+        throw new AppException(...AppErrors.ACCOUNT_DISABLED_CONTACT_IT);
       }
       throw this.unavailable();
     }
@@ -56,10 +48,6 @@ export class FeastogetherAuthService {
   }
 
   private unavailable(): AppException {
-    return new AppException(
-      AppErrorCode.EXTERNAL_AUTH_UNAVAILABLE,
-      '登入服務暫時無法使用，請稍後再試',
-      HttpStatus.BAD_GATEWAY,
-    );
+    return new AppException(...AppErrors.LOGIN_UNAVAILABLE);
   }
 }

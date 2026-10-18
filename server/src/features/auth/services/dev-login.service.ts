@@ -1,6 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import {
   DEV_LOGIN_EMPID,
@@ -33,11 +33,7 @@ export class DevLoginService {
 
   async login(): Promise<DevLoginResult> {
     if (!isDevLoginAllowed(this.config)) {
-      throw new AppException(
-        AppErrorCode.NOT_FOUND,
-        '找不到資源',
-        HttpStatus.NOT_FOUND,
-      );
+      throw new AppException(...AppErrors.NOT_FOUND);
     }
     const user = await this.ensureDevUser();
     const issued = await this.authService.issueSession(Number(user.id));

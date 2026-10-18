@@ -39,7 +39,7 @@ export default async function EditFormPage({
       <PageHeader
         title="編輯文件"
         description={`「${form.name}」${form.docNumber ? `（${form.docNumber}）` : ''}－ ${
-          form.docType === 'sheet' ? '設定簽到表的表頭資訊與空白列。' : '上傳 PDF 文件，逐頁預覽並指定簽名要落在哪裡。'
+          form.docType === 'sheet' ? '設定簽到表的表頭資訊。' : '上傳 PDF 文件，逐頁預覽並指定簽名要落在哪裡。'
         }`}
       />
       {form.docType === 'sheet' ? <SheetEditor form={form} locked={locked} /> : <UploadEditor form={form} locked={locked} />}

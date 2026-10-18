@@ -78,7 +78,7 @@ export class EsignNotificationLog {
     nullable: true,
     comment: '穩定錯誤碼',
   })
-  errorCode?: string;
+  errorCode?: string | null;
 
   @Column({
     name: 'attempt_count',
@@ -96,7 +96,7 @@ export class EsignNotificationLog {
     nullable: true,
     comment: '下次可重試時間',
   })
-  nextAttemptAt?: Date;
+  nextAttemptAt?: Date | null;
 
   @Column({
     name: 'processing_started_at',
@@ -105,7 +105,7 @@ export class EsignNotificationLog {
     nullable: true,
     comment: '本次處理開始時間',
   })
-  processingStartedAt?: Date;
+  processingStartedAt?: Date | null;
 
   @Column({
     name: 'completed_at',

@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { Transform } from 'class-transformer';
 import { IsNotEmpty, IsString, Matches, MaxLength } from 'class-validator';
 
@@ -7,12 +8,12 @@ export class LoginDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @Matches(/^[A-Za-z0-9]+$/, { message: '請輸入有效的員工編號' })
+  @Matches(/^[A-Za-z0-9]+$/, { message: AppErrors.EMPLOYEE_ID_INVALID[1] })
   @MaxLength(32)
   empId!: string;
 
   @IsString()
-  @IsNotEmpty({ message: '請輸入密碼' })
+  @IsNotEmpty({ message: AppErrors.PASSWORD_REQUIRED[1] })
   @MaxLength(128)
   password!: string;
 }

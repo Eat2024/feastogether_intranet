@@ -1,5 +1,7 @@
 # Phase 0 Research: 簽章驗證 QR Code
 
+> **2026-10-18 合併註記**：下方原執行紀錄保留為歷史；涉及 receipt、document finalization lease、manifest v1 或單一 final_pdf_sha256 的設計已由 Spec 03 個人副本 CR 取代。現行模型見本目錄 data-model.md 與 contracts/openapi.yaml；驗證採 signer lease、個人完成檔與 manifest v2。前端仍由獨立 PR 交付。
+
 ## 1. 簽章驗證代碼
 
 **Decision**: 每名簽署人一個驗證代碼，在簽署 transaction 內以 16 bytes 隨機值產生（base64url 22 字），寫入 `esign_signature_records.verification_code`（UNIQUE；Spec 04 上線前的紀錄為 NULL，不回補）；驗證網址為 `{EXTERNAL_SIGNING_ORIGIN}/verify/{code}`，只在簽署成功後對外提供。代碼產生、格式檢查與網址組合放在既有 `EsignTokenService`。

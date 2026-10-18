@@ -59,12 +59,15 @@ export class EsignSigningTaskService {
 
   async open(signerPublicId: string, userId: number) {
     return this.mysql.transaction(async (manager) => {
-      const signer = await this.signers.findByPublicIdForUpdate(
+      const candidate = await this.signers.findByPublicId(
         signerPublicId,
         manager,
       );
-      const document = signer
-        ? await this.documents.findByIdForUpdate(signer.documentId, manager)
+      const document = candidate
+        ? await this.documents.findByIdForUpdate(candidate.documentId, manager)
+        : null;
+      const signer = document
+        ? await this.signers.findByPublicIdForUpdate(signerPublicId, manager)
         : null;
       if (!document || !signer) {
         this.access.checkEsignCreator(null, userId);
@@ -117,8 +120,8 @@ export class EsignSigningTaskService {
     >,
     manager = this.mysql.getManager(),
   ) {
-    const [allSigners, allFields, creator, record] = await Promise.all([
-      this.signers.findByDocument(document.id, manager),
+    const [totals, allFields, creator, record] = await Promise.all([
+      this.signers.completionCounts(document.id, manager),
       this.fields.findByDocument(document.id, manager),
       this.users.findById(document.createdByUserId, manager),
       signer.status === 'signed'
@@ -126,9 +129,8 @@ export class EsignSigningTaskService {
         : null,
     ]);
     const counts = {
-      pendingCount: allSigners.filter((item) => item.status === 'pending')
-        .length,
-      signedCount: allSigners.filter((item) => item.status === 'signed').length,
+      pendingCount: totals.pending,
+      signedCount: totals.signed,
     };
     return {
       signerPublicId: signer.publicId,
@@ -139,9 +141,7 @@ export class EsignSigningTaskService {
         creator ?? undefined,
       ),
       signer: this.mapper.signer(signer, null, record?.verificationCode),
-      fields: allFields
-        .filter((field) => field.signerId === signer.id)
-        .map((field) => this.mapper.field(field, signer.publicId)),
+      fields: allFields.map((field) => this.mapper.field(field)),
       consent: this.consent.getActive(),
       ...counts,
     };

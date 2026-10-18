@@ -1,6 +1,7 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { invalidRequest } from '../helpers/esign-errors';
+import { AppException } from '#app/common/errors/app.exception';
 
 export const ACTIVE_ESIGN_CONSENT_VERSION = 'esign-consent-v1';
 export const ACTIVE_ESIGN_CONSENT_TEXT =
@@ -27,7 +28,7 @@ export class EsignConsentService {
   assertAccepted(version: string, accepted: boolean): EsignConsent {
     const active = this.getActive();
     if (!accepted || version !== active.version) {
-      throw invalidRequest('請閱讀並接受目前的電子簽署告知');
+      throw new AppException(...AppErrors.ESIGN_CONSENT_REQUIRED);
     }
     return active;
   }

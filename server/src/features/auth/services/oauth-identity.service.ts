@@ -1,7 +1,7 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { User } from '#app/features/users/entities/user.entity';
@@ -38,11 +38,7 @@ export class OauthIdentityService {
   async resolve(profile: VerifiedOauthProfile): Promise<User> {
     const empId = profile.userNumber;
     if (!empId) {
-      throw new AppException(
-        AppErrorCode.OAUTH_RESPONSE_INVALID,
-        '統一登入未提供員工編號，無法對應帳號',
-        HttpStatus.UNAUTHORIZED,
-      );
+      throw new AppException(...AppErrors.OAUTH_EMPLOYEE_ID_MISSING);
     }
     for (let attempt = 1; ; attempt += 1) {
       try {
@@ -66,11 +62,7 @@ export class OauthIdentityService {
     const existing = await this.repo.findUserByEmpIdForUpdate(empId, manager);
     if (!existing) return this.createUser(empId, profile, manager);
     if (existing.deletedAt || !existing.isActive) {
-      throw new AppException(
-        AppErrorCode.ACCOUNT_DISABLED,
-        '帳號已停用',
-        HttpStatus.FORBIDDEN,
-      );
+      throw new AppException(...AppErrors.ACCOUNT_DISABLED);
     }
     // 只更新姓名、最後登入時間與最近一次 sub；姓名缺值不清空既有資料（FR-007）。
     existing.name = profile.name ?? existing.name;

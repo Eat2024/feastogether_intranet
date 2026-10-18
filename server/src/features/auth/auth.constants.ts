@@ -40,9 +40,3 @@ export const AUTH_RATE_LIMIT_SHORT_TTL_SECONDS = 60;
 export const AUTH_RATE_LIMIT_LONG_NAME = 'long';
 export const AUTH_RATE_LIMIT_LONG_LIMIT = 50;
 export const AUTH_RATE_LIMIT_LONG_TTL_SECONDS = 300;
-
-/**
- * 超限回應訊息。刻意不含數字與帳號資訊——不洩漏剩餘額度，
- * 也不透露該工號是否存在（憲章 IV：錯誤訊息不得洩漏內部細節）。
- */
-export const AUTH_RATE_LIMIT_MESSAGE = '系統拒絕服務，請聯絡IT人員';

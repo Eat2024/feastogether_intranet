@@ -93,6 +93,10 @@ erDiagram
         string title_snapshot
         string status
         datetime signed_at
+        string completion_status
+        uuid completion_lease_token
+        datetime completion_lease_expires_at
+        datetime completion_ready_at
         datetime rejected_at
     }
 
@@ -113,6 +117,7 @@ erDiagram
         bigint id PK
         bigint document_id FK
         bigint signature_record_id FK
+        bigint completed_signature_record_id UK
         bigint verification_record_id FK
         bigint export_job_id FK
         string file_purpose
@@ -188,3 +193,13 @@ erDiagram
 - PDF、簽名圖檔、manifest、QR Code 與匯出檔案存放於 private object storage；MySQL 的 `esign_file_objects` 只保存 object key、hash 及必要 metadata。
 - `esign_signature_records`、`esign_audit_events` 與 `esign_verification_records` 屬證據資料，不提供一般管理後台修改或刪除。
 - 第一階段不建立 `auth_users`、identity binding、RBAC、provider、session 或 document version 資料表；單一 issuer 驗證完成後直接以員工編號對應 `users.empid`。
+
+## 共用欄位與個人副本（2026-10-16）
+
+一份 document 配 10 位 signer，各有一筆 signature record 與一份 record-owned completed_pdf，共 10 份個人 PDF；共用 3 個欄位仍只有 3 筆 field。簽署人數不設固定上限。
+
+completed_pdf 的 document_id 與 signature_record_id 為互斥 owner。未來簽到表可用一份 document-owned PDF，由 manifest 記錄多筆參與證據；本次不實作簽到表，也不增加 junction table。來源 PDF 的 owner 永遠為 document。
+
+個人 signed 即排入產製，ready 可在 active／finalizing／stopped／completed 下載；全員 signed／ready 才提交 manifest v2 與 completed。manifest 保存各個人檔摘要，新 snapshot 的 final_pdf_sha256 為 NULL。
+
+外部邀請簽完失效，不再發 receipt；個人檔僅建立人與本人內部員工可下載。

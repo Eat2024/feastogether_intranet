@@ -1,7 +1,7 @@
 'use server';
 
-import { getCurrentUserId, getStaff } from '@/features/forms/orgChart';
-import { normalizeRemark, remainingWalkIns, walkInSigner } from '@/features/forms/sheet/rules';
+import { getCurrentUserId } from '@/features/forms/orgChart';
+import { normalizeRemark } from '@/features/forms/sheet/rules';
 import { getSignLayout, signFields } from '@/features/forms/signLayout';
 import { getForm } from '@/features/forms/store';
 import type { Signer } from '@/features/forms/types';
@@ -25,27 +25,15 @@ function nowStr() {
   return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/**
- * 找出目前使用者在此文件的簽署紀錄。
- * 簽到表還有空白列時，名單外的同仁也可以簽到：回傳尚未加入文件的簽署人（walkIn），送出簽到時才加入。
- */
-function findMe(
-  formId: string,
-): { signer: Signer; form: NonNullable<ReturnType<typeof getForm>>; isNew: boolean } | { error: string } {
+function findMe(formId: string): { signer: Signer; form: NonNullable<ReturnType<typeof getForm>> } | { error: string } {
   const form = getForm(formId);
   if (!form) return { error: '找不到此文件' };
   const userId = getCurrentUserId();
-  let signer = form.signers.find((s) => s.id === userId);
-  let isNew = false;
-  if (!signer) {
-    const staff = getStaff(userId);
-    if (!staff || remainingWalkIns(form) === 0) return { error: '你不是此文件的簽署人' };
-    signer = walkInSigner(staff);
-    isNew = true;
-  }
+  const signer = form.signers.find((s) => s.id === userId);
+  if (!signer) return { error: '你不是此文件的簽署人' };
   const block = getSignBlock(form, signer, new Date());
   if (block) return { error: block };
-  return { signer, form, isNew };
+  return { signer, form };
 }
 
 function revalidateLists() {
@@ -65,7 +53,7 @@ export async function signDocument(input: {
 }): Promise<ActionResult> {
   const found = findMe(input.formId);
   if ('error' in found) return found;
-  const { form, signer, isNew } = found;
+  const { form, signer } = found;
   const remark = normalizeRemark(input.remark);
   if ('error' in remark) return remark;
 
@@ -94,11 +82,6 @@ export async function signDocument(input: {
     // 簽到表才有簽署人備註
     ...(form.docType === 'sheet' && remark.remark ? { remark: remark.remark } : {}),
   } satisfies Partial<Signer>);
-  // 名單外人員使用空白列簽到：簽到完成才加入文件（加入前再確認仍有空白列）
-  if (isNew) {
-    if (remainingWalkIns(form) === 0) return { error: '空白列已用完，無法簽到，請聯絡建立人' };
-    form.signers.push(signer);
-  }
   revalidateLists();
   redirect('/my-signature?tab=signed&flash=signed');
 }

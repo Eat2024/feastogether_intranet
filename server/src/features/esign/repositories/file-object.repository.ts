@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { type DeepPartial, type EntityManager } from 'typeorm';
+import { type DeepPartial, type EntityManager, In } from 'typeorm';
 import { EsignFileObject } from '../entities/esign-file-object.entity';
 
 @Injectable()
@@ -13,6 +13,25 @@ export class FileObjectRepository {
       documentId,
       filePurpose,
       archiveStatus: 'active',
+    });
+  }
+
+  findCompletedFile(signatureRecordId: number, manager: EntityManager) {
+    return manager.findOneBy(EsignFileObject, {
+      signatureRecordId,
+      filePurpose: 'completed_pdf',
+      archiveStatus: 'active',
+    });
+  }
+
+  findCompletedFiles(signatureRecordIds: number[], manager: EntityManager) {
+    if (signatureRecordIds.length === 0) return Promise.resolve([]);
+    return manager.find(EsignFileObject, {
+      where: {
+        signatureRecordId: In(signatureRecordIds),
+        filePurpose: 'completed_pdf',
+        archiveStatus: 'active',
+      },
     });
   }
 

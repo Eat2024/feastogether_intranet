@@ -1,8 +1,10 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
+import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   PRIVATE_FILE_STORAGE,
@@ -12,7 +14,6 @@ import {
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 import type { FieldPlacementDto } from '../dto/field.dto';
-import { integrityFailed, invalidRequest } from '../helpers/esign-errors';
 import { DocumentRepository } from '../repositories/document.repository';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
@@ -59,7 +60,7 @@ export class EsignDraftService {
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly fieldService: EsignFieldService,
-  ) {}
+  ) { }
 
   listCreatedBy(userId: number) {
     return this.documents.findCreatedByUser(userId, this.mysql.getManager());
@@ -137,13 +138,12 @@ export class EsignDraftService {
     pageCount: number,
     manager: EntityManager,
   ): Promise<void> {
-    // 建立當下尚無簽署人，欄位一律存成未指派。
+    // 上傳時保存共用欄位，不需要先設定簽署人。
     const fields = this.fieldService.build(
       documentId,
       creatorUserId,
       inputs,
       pageCount,
-      [],
       manager,
     );
     await this.fields.save(fields, manager);
@@ -176,25 +176,25 @@ export class EsignDraftService {
     try {
       const document = await this.mysql.transaction(async (manager) => {
         // 上傳期間文件可能已被發起，寫入前必須在鎖內重新驗證。
-        const locked = await this.access.checkAndLockDraftDoc(
+        const lockedFile = await this.access.checkAndLockDraftDoc(
           documentId,
           userId,
           manager,
         );
-        if (title !== undefined) locked.title = title;
+        if (title !== undefined) lockedFile.title = title;
         if (newPdf) {
           previous = await this.replaceSourcePdf(documentId, newPdf, manager);
         }
         if (input.fields) {
           await this.replaceUpdateFields(
-            locked,
+            lockedFile,
             userId,
             input.fields,
             newPdf?.metadata,
             manager,
           );
         }
-        const saved = await this.documents.save(locked, manager);
+        const saved = await this.documents.save(lockedFile, manager);
         await this.recordDraftUpdateAudit(documentId, userId, manager);
         return saved;
       });
@@ -215,7 +215,7 @@ export class EsignDraftService {
       input.file === undefined &&
       input.fields === undefined
     ) {
-      throw invalidRequest('至少需要提供一項草稿更新內容');
+      throw new AppException(...AppErrors.ESIGN_DRAFT_UPDATE_REQUIRED);
     }
     return input.title === undefined
       ? undefined
@@ -245,7 +245,9 @@ export class EsignDraftService {
     });
     try {
       const metadata = await this.validateStoredPdf(stored);
-      if (metadata.sha256 !== uploadValidation.sha256) throw integrityFailed();
+      if (metadata.sha256 !== uploadValidation.sha256) {
+        throw this.integrityFailure();
+      }
       return {
         stored,
         metadata,
@@ -316,7 +318,6 @@ export class EsignDraftService {
       userId,
       inputs,
       newPdfMetadata.pageCount,
-      [],
       manager,
     );
     await this.fields.save(fields, manager);
@@ -369,7 +370,7 @@ export class EsignDraftService {
   private normalizeTitle(title: string): string {
     const normalized = title.trim();
     if (normalized.length < 1 || normalized.length > 200) {
-      throw invalidRequest('文件名稱必須為 1 至 200 字');
+      throw new AppException(...AppErrors.ESIGN_DOCUMENT_NAME_INVALID);
     }
     return normalized;
   }
@@ -377,5 +378,9 @@ export class EsignDraftService {
   private async validateStoredPdf(stored: StoredPrivateFile) {
     const bytes = await readPrivateFile(this.storage, stored);
     return this.pdf.validatePersistedPdf(bytes);
+  }
+
+  private integrityFailure(): AppException {
+    return new AppException(...AppErrors.ESIGN_INTEGRITY_FAILED);
   }
 }

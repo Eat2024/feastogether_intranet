@@ -1,9 +1,5 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  HttpStatus,
-  Injectable,
-} from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
@@ -11,7 +7,6 @@ import { CLS_AUDIT_USER_ID } from '#app/infrastructure/database/audit-user.conte
 import type { FastifyRequest } from 'fastify';
 import { IS_PUBLIC_KEY } from '#app/framework/decorators/public.decorator';
 import { AppException } from '#app/common/errors/app.exception';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import {
   AuthService,
@@ -41,11 +36,11 @@ export class AuthGuard implements CanActivate {
     if (this.isPublic(context)) return true;
 
     const token = this.extractCookieToken(req);
-    if (!token) throw this.unauthorized('請先登入');
+    if (!token) throw new AppException(...AppErrors.AUTH_TOKEN_MISSING);
     const identity = await this.sessions.verifySessionToken(token);
-    if (!identity) throw this.unauthorized('登入已失效，請重新登入');
+    if (!identity) throw new AppException(...AppErrors.AUTH_TOKEN_INVALID);
     if (!Number.isSafeInteger(identity.userId) || identity.userId < 1) {
-      throw this.unauthorized('登入身分無效，請重新登入');
+      throw new AppException(...AppErrors.AUTH_IDENTITY_INVALID);
     }
 
     this.applyIdentity(req, identity);
@@ -74,14 +69,5 @@ export class AuthGuard implements CanActivate {
     if (this.cls.isActive()) {
       this.cls.set(CLS_AUDIT_USER_ID, payload.sub);
     }
-  }
-
-  /** 統一以穩定 error.code = UNAUTHORIZED 回應（憲章 III；不洩漏細節）。 */
-  private unauthorized(message: string): AppException {
-    return new AppException(
-      AppErrorCode.UNAUTHORIZED,
-      message,
-      HttpStatus.UNAUTHORIZED,
-    );
   }
 }

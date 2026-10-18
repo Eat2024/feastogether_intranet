@@ -4,6 +4,10 @@ description: "核心電子簽端到端流程的可執行實作任務"
 
 # Tasks: 核心電子簽端到端流程
 
+> **PR 拆分（2026-10-18）**：本次僅交付後端、migration 與契約。前端修改已備份並移出工作樹；T100、T106、T117、T122、T128、T132 轉由獨立前端 PR 交付並取消完成勾選。其餘跨前後端任務的勾選保留拆分前歷史證據，前端整合仍須在後續 PR 重驗；T133 尚未完成。
+
+> **目前實作入口（2026-10-16）**：請從下方「Phase 10：本次增量 Setup」的 T089 開始，依本次增量相依順序執行至 T133。T001–T088 與舊執行策略保留為歷史紀錄；舊任務中的欄位綁人、50 人限制、單一合併 PDF、receipt 與 document lease 規則已由新版 spec/plan 取代，不可照舊恢復。T080 尚未勾選的人工驗收由 T133 的新版驗收涵蓋，不代表本次應執行舊模型驗收。本次任務依實測證據更新，不沿用歷史勾選推定完成。
+
 **Input**: Design documents from `/specs/003-core-esign-flow/`
 
 **Prerequisites**: `plan.md`、`spec.md`、`research.md`、`data-model.md`、`contracts/`、`quickstart.md`
@@ -302,7 +306,7 @@ Task T066: stop/restart/history e2e tests
 ### Scope Guardrails
 
 - 不實作拒絕/退回、補簽、依序簽署、催簽、批次通知、完成 Email、SMS 或範本後台。
-- 不實作一般匯出、QR 公開驗證、證據包、PAdES-LT/LTA、個人數位憑證或長期封存。
+- 不實作一般匯出（Spec 05）、QR 公開驗證（Spec 04）、證據包、PAdES-LT/LTA、個人數位憑證或長期封存。
 - 不實作同一 document 的版本、版本關聯、舊簽署沿用、MinIO/多雲 storage framework、額外 Email provider 或 Redis/BullMQ 狀態權威；只實作已確認的 local/S3 storage 與 fake/SMTP/SES mail adapters，且不以固定 documentId/signerId jobId 當業務去重。
 - 外部邀請是唯一 URL credential 例外，只能授權單一 signer/document；receipt 只提供終止狀態與完成 PDF。
 
@@ -327,3 +331,134 @@ Task T066: stop/restart/history e2e tests
 - [X] T086 [P] 依 FR-034 與 T075（contradicts），從 `client/src/components/SideNav.tsx` 移除一般匯出入口，停用 `/forms/[id]/export`、`/forms/[id]/export/file`、`/export-history` 直接路由及正式可達的 QR／拒簽／補簽入口，保留 legacy 原型檔時不得被正式頁面引用
 - [X] T087 依 OpenAPI 與 Constitution IV（partial），強制 JSON unknown property 與 multipart unknown field 拒絕，落實 documents `role/status` 查詢及 creator／signer history authorization，校正 external idempotent 200 contract，並以 API coverage/e2e 驗證 method/status/envelope
 - [X] T088 [P] 依 plan/data-model storage decision（partial），將 source PDF object key 統一為 `documents/<document-public-uuid>/source/<random>.pdf`，替換仍維持同 prefix 且不含 filename/user/email，並更新 local/S3 contract tests
+
+
+---
+
+# 2026-10-16 增量：共用欄位、個人副本與全公司簽署
+
+**依據**：[spec.md](./spec.md)、[plan.md](./plan.md)、[data-model.md](./data-model.md)、[research.md](./research.md)、[OpenAPI](./contracts/openapi.yaml)、[quickstart.md](./quickstart.md)。
+
+**範圍**：不設每份文件簽署人數上限；200 個共用欄位不乘人數；10 人簽完形成 10 份本人副本；6,000 人是規模驗收基準，6,001 人也可發起。舊資料只有單人，不增加舊多人合簽雙軌、不因存在非草稿資料阻擋部署，亦不自動刪資料或重算既有證據。
+
+**測試**：依 Constitution 與 spec 的驗收要求，先補有意義的服務、交易、權限與背景作業測試，再實作；client 沿用 lint/build 與人工驗收，不新增測試框架。測試及壓測只用合成員工、非機密 PDF 與測試簽名。
+
+## Phase 10：本次增量 Setup
+
+**目標**：確認當前程式與已定義契約的落差，不重建原有基礎設施。
+
+- [X] T089 在 `specs/003-core-esign-flow/validation.md` 記錄本次基線：檢查 `server/src/features/esign/` 與 `client/src/features/forms/`、`client/src/features/my-signature/` 的實際 API/mock 路徑、現有變更與可用測試；確認 `specs/004-signature-verification-qr/` 是否已提供（產生 tasks 時不存在），QR 相依以現有 service 與本次 plan 為準，不自行擴大公開個資揭露；歷史完成勾選不得當作現況證明。
+- [X] T090 依 `specs/003-core-esign-flow/contracts/openapi.yaml` 與 `data-model.md` 核對並固定此次 DTO、兩個個人下載路徑、completion 狀態及 manifest v2 形狀，在 `specs/003-core-esign-flow/validation.md` 記錄對應關係；依 FR-038 核對 10 筆個人完成檔經 record → signer 回到同一 document，不新增個別文件流程，並區分 owner 與參與證據清單；若前端大量名單呈現需新增分頁回應，先在同一 OpenAPI 明確定義再實作，維持全選完整名單與總數、不新增人數上限。
+
+## Phase 11：Foundational — 模型與資料庫
+
+**前置**：T089–T090。完成本階段才整合後續故事；不新增 table、套件、環境變數或 scheduler。
+
+- [X] T091 [P] 在 `server/test/schema-constraints.e2e-spec.ts` 與 `server/test/schema-migration.e2e-spec.ts` 先新增個人及文件層級 completed_pdf 各自唯一性、source 唯一性、owner XOR check（兩者皆空／同時填拒絕，各自單填可保存，同文件不同人副本可共存）、signer completion 狀態／lease check、單人既有檔 metadata 轉換及 up/down/up 測試；既有 PDF bytes/hash 不變，非草稿存在本身不得拒絕 migration，測試 DB 名稱保護不得降低。
+- [X] T092 [P] 修改 `server/src/features/esign/entities/esign-document-field.entity.ts`、`esign-signer.entity.ts`、`esign-document.entity.ts`、`esign-file-object.entity.ts`、`esign-verification-record.entity.ts`：移除 field signer owner、退役 document lease；signer completion_status 為「未簽為 NULL；signed 後為 pending／processing／ready／failed」，processing 的 nullable UUID token／UTC expiry 必填且 5 分鐘，ready 必須有 completion_ready_at 且無 lease；completed_pdf 的 document_id 與 signature_record_id 恰有一個非 NULL，document_field_id/verification_record_id/export_job_id 均為 NULL；本次個人副本使用 record owner，未來文件層級完成檔可使用 document owner，source 必須 document owner；verification final_pdf_sha256 改 nullable，新 snapshot 不填單一文件摘要。
+- [X] T093 依 T091–T092 在 `server/src/infrastructure/database/migrations/` 建立新的 timestamp incremental migration（名稱 `SharedFieldsPersonalCopies`），同步 `server/src/infrastructure/database/schema.sql`、`doc/esign-db-schema.sql` 與 `server/src/features/esign/entities/schema-metadata.spec.ts`；保留 source 及文件層級 completed_pdf 的 document-purpose unique，新增 `CASE WHEN file_purpose = 'completed_pdf' THEN signature_record_id ELSE NULL END` generated unique，保留 PNG 的 record/field/purpose unique；必要時將舊單人完成檔 owner 對應唯一 record 並回填 ready，不改 PDF bytes/hash、payload 或舊 snapshot，不修改已套用 migration。
+- [X] T094 修改 `server/src/features/esign/repositories/signer.repository.ts`、`document-field.repository.ts`、`file-object.repository.ts`、`document.repository.ts`、`verification-record.repository.ts`：加入按 record 查個人檔、個人 completion claim/CAS、pending/ready 聚合及穩定游標掃描；不得靠含 NULL 的三欄 unique 保證完成檔唯一，不以 findByDocumentForUpdate 鎖全部人處理每次簽署。
+
+**Checkpoint**：schema 約束與 repository 足以隔離同 field ID 的不同人產物；無新資料表及 signer 總數限制。
+
+## Phase 12：US1 — 共用欄位與不限人數發起（P1）
+
+**獨立驗收**：未選人先保存 3 個欄位；發起 10 人仍為 3 欄位；6,000／6,001 人完整保存與發起，無效名單整筆失敗，發起後不可修改。
+
+- [X] T095 [P] [US1] 在 `server/src/features/esign/services/esign-field.service.spec.ts`、`esign-signer.service.spec.ts`、`esign-initiation.service.spec.ts` 先補共用欄位、換名單不清欄位、不接受 signerIndex/signerPublicId、至少一人／至少一個 signature／最多 200 欄位、移除 50 人限制、重複與無效員工拒絕及原子發起回滾案例；日期可選但不能自行輸入。
+- [X] T096 [US1] 更新 `server/src/features/esign/dto/field.dto.ts`、`initiation.dto.ts`、`signer.dto.ts`、`document-upload.dto.ts`：移除欄位 signerPublicId/signerIndex 與 signer ArrayMaxSize(50)，保留 ArrayMinSize(1)、欄位上限 200、`1 <= page <= source page count`、`0 <= x/y < 100`、`0 < width/height <= 100` 及頁面邊界；舊指派欄位屬未知輸入須拒絕，不靜默接受。
+- [X] T097 [US1] 修改 `server/src/features/esign/services/esign-field.service.ts`、`esign-draft.service.ts`、`esign-signer.service.ts`：欄位只綁 document，更換名單不清位置；移除 50 人 service 驗證；批次查詢有效員工、以 Set 去重及分批保存名單，維持單一交易與身分裁切，不逐人查 DB 或不受控並發。
+- [X] T098 [US1] 修改 `server/src/features/esign/services/esign-initiation.service.ts`：移除 mapFieldsToSigners／每人專屬欄位檢查及人數上限，保存 schemaVersion=2 共用欄位 payload；完整 signers、snapshot、invitation outbox 與 active 狀態同交易成立，批次 SQL 不得局部成功或截斷名單；不重算既有已發起 payload。
+- [X] T099 [US1] 在 `server/test/core-esign-flow.e2e-spec.ts` 補 6,000 與 6,001 人名單保存／發起測試及第 201 欄拒絕、未知屬性拒絕、任一無效員工整筆失敗案例；檢查 `server/src/bootstrap/app.bootstrap.ts`、`client/next.config.ts` 與部署代理文件的實際 bytes／timeout 邊界，必要時只調整有量測依據的既有設定，不以裁切或拆文件通過。
+- [ ] T100 [US1] 更新 `client/src/features/forms/editor/UploadEditor.tsx`、`SignersEditor.tsx`、`StaffTreePicker.tsx`、`client/src/features/forms/actions.ts`、`types.ts` 與相鄰 feature-local API 呼叫：上傳只存共用位置，發起才送完整名單／期間／選項，移除欄位複製及 floor(200/欄位數) 人數限制；候選分頁／部門全選涵蓋完整結果，不只可見頁，不以 mock store 作正式寫入權威。
+
+**Checkpoint**：US1 可先作設定／發起 MVP 展示；不能在個人簽署與下載尚未完成時發布為完整新簽署流程。
+
+## Phase 13：US2 — 每人使用共用欄位獨立簽署（P2）
+
+**獨立驗收**：以 active fixture 讓 A/B 使用同 field ID，兩人的 record/PNG 互不污染；每人簽完即 pending 產製並 enqueue，不等待全員；外部邀請簽完失效。
+
+- [X] T101 [P] [US2] 在 `server/src/features/esign/services/esign-signing.service.spec.ts` 與 `esign-document-validation.service.spec.ts` 先覆蓋同共用 field ID 的兩人各自簽署、缺欄位／跨文件欄位拒絕、唯一 record、簽署與 completion pending 原子寫入、每人 enqueue、最後一人 finalizing、重放與停簽／期限競態；不得從輸入取得他人的 record owner。
+- [X] T102 [US2] 修改 `server/src/features/esign/services/esign-document-validation.service.ts`、`esign-signing-task.service.ts`、`esign-view.mapper.ts` 與 `dto/signing-task.dto.ts`、`esign-common.dto.ts`：驗證欄位屬於文件，不依 signerId 過濾；回共用欄位與本人 completion（status、readyAt），不回他人 PNG、record、completion secrets 或非必要個資。
+- [X] T103 [US2] 修改 `server/src/features/esign/services/esign-signing.service.ts`：依 document → 本人 signer 鎖序，驗原檔/payload/consent 與全部共用 signature fields，PNG 用本人 record + field 存放；簽署成功同交易保存 signed/pending，最後一人透過 DB 聚合進入 finalizing；commit 後每人 enqueue，重送不重複證據，不每次載入或鎖全公司名單。
+- [X] T104 [US2] 更新 `server/src/features/esign/services/esign-job-producer.service.ts` 與 `esign-queue.constants.ts` 的 finalization payload 為 `{documentId, signerId}`，沿用現有 queue，只有非敏感 ID；同步既有 producer 測試，enqueue 失敗不回滾已簽結果、交由 maintenance 補回，不使用固定 business jobId 取代 DB 冪等。
+- [X] T105 [US2] 修改 `server/src/features/esign/controllers/external-signature.controller.ts`、`services/esign-token.service.ts`、`esign-completion-access.service.ts`、`esign-signing.service.ts` 與 `helpers/external-signature-cookie.ts`：依 FR-026 移除 receipt 核發／external-completions 路徑與新流程讀取，不復活已簽邀請；保留當次成功回應與既有 verificationUrl，補 token/service/security 測試，不新增完成通知或外部下載憑證。
+- [ ] T106 [US2] 更新 `client/src/features/my-signature/actions.ts`、`sign/SignFlow.tsx`、`TermsStep.tsx`、`DocumentViewer.tsx` 與外部簽署頁的實際引用：以 server 共用 field ID 提交本人簽名、顯示 server 日期規則／pending 產製狀態；移除 receipt 完成頁呼叫與原型成功結果，維持 HttpOnly 邊界及繁體中文錯誤。
+
+## Phase 14：US3 — 個人副本、下載與全員結案（P3）
+
+**獨立驗收**：A ready 時可先下載；10 人得到 10 份本人 PDF；個人失敗不重製他人檔；全 ready 後只結案一次，QR 回本人摘要。
+
+- [X] T107 [P] [US3] 在 `server/src/features/esign/services/completed-pdf.service.spec.ts` 與 `esign-completion-access.service.spec.ts` 先補兩人相同位置不同 PNG／不同日期／本人 QR、檔案與 record 歸屬、persisted hash 驗證，以及 creator 任選、本人限定、他人 404、未 ready 409、active/stopped 可下載案例，並確認即使存在 document-owned 完成檔，個人缺檔時也不得回退下載該檔。
+- [X] T108 [P] [US3] 在 `server/src/worker/esign/document-finalization.processor.spec.ts` 與 `esign-maintenance.processor.spec.ts` 先補個人 5 分鐘 lease、過期換 token、舊 worker 拒絕提交、重複工作、個人失敗、ready 不覆寫、snapshot 失敗不回滾 ready、跨批掃描無飢餓及全員只結案一次案例。
+- [X] T109 [US3] 修改 `server/src/features/esign/services/completed-pdf.service.ts` 為按 documentId/signerId 產製：從固定原檔只載入本人 record/PNG，允許已 signed 的 active/finalizing/stopped；檢查共用欄位完整性、本人 record/source/payload/consent/hash，以本人 signed_at_utc 產台北日期及 QR，重讀輸出驗證頁數/hash，不改原始檔或合併他人簽名。
+- [X] T110 [US3] 改寫 `server/src/worker/esign/document-finalization.processor.ts` 個人 claim/render/commit/release：document → signer 鎖序、交易外產 PDF、提交以本人 lease token CAS、寫 record-owned completed_pdf/ready/readyAt 與 signer.copy_completed；失敗只改本人 failed，lost lease 清自己的 orphan，ready 不重製，無效舊 job payload 不得當成新版處理。
+- [X] T111 [US3] 在 `server/src/worker/esign/document-finalization.processor.ts` 與 `server/src/features/esign/repositories/document.repository.ts` 實作個人 ready commit 後獨立結案交易：全員 signed/ready 才寫 snapshot、document.completed audit 與 completed；document lock 仲裁一次完成，snapshot 失敗保留 ready 且可重試，stopped 永不結案，不把 failed 副本造成的 finalizing 回退 active。
+- [X] T112 [US3] 更新 `server/src/worker/esign/esign-maintenance.processor.ts`、`esign-worker.module.ts` 與 `server/src/features/esign/repositories/signer.repository.ts`：沿用 30 秒排程，穩定游標分批掃 signed 且 pending/failed 或 lease 過期者（含 stopped）並有界 enqueue；補掃全 ready 的 finalizing 結案，不反覆只處理前 100 筆；維持 invitation/expiry 的獨立責任，不新增 scheduler。
+- [X] T113 [US3] 修改 `server/src/features/esign/services/esign-verification.service.ts` 與 `repositories/verification-record.repository.ts`：保留 document 唯一 snapshot，manifest v2 逐人含 record ID、completed file ID/hash、copyCompletedEventHash，audit root 仍 document.completed；按 verificationCode 找本人摘要，completed 才回 completedPdfSha256，其他狀態 null；逐人 ready 驗 bytes，結案分批讀 metadata，禁止一次把全公司 PDF 載入記憶體。
+- [X] T114 [US3] 在 `server/src/features/esign/services/esign-verification.service.spec.ts` 與 `server/test/security-signature-verification.e2e-spec.ts` 補個人摘要互換／manifest 竄改拒絕、同欄位不同 QR、未結案／停止摘要 null 測試，並在 `specs/003-core-esign-flow/validation.md` 記錄 Spec 04 相依契約；不在 Spec 04 文件缺席時假稱已同步，亦不擴大公開欄位。
+- [X] T115 [US3] 修改 `server/src/features/esign/services/esign-completion-access.service.ts`、`esign-access-policy.service.ts`、`esign-document-validation.service.ts`、`controllers/documents.controller.ts`、`signing-tasks.controller.ts`：實作 creator `/documents/{documentId}/signers/{signerPublicId}/completed-file` 與本人 `/signing-tasks/{signerPublicId}/completed-file`，依 document→signer→record→file 重驗授權及 bytes/hash，active/finalizing/stopped 的 ready 也可讀；舊無 signer 的完成檔路徑不得任取一人檔案；個人下載必須 record owner，不得回退使用文件層級 completed_pdf。
+- [X] T116 [US3] 更新 `server/src/features/esign/services/esign-document-query.service.ts`、`esign-view.mapper.ts` 與相關 query/response DTO，提供 creator 各人 completion 與整體計數、簽署人只回本人；大量名單依 T090 契約分頁／受控回應，DB 總數不由目前頁長度推導，禁止回 object key、receipt 或他人簽名。
+- [ ] T117 [US3] 更新 `client/src/features/forms/detail/SignerTable.tsx`、`ExportSignerCopyButton.tsx`、`client/src/features/my-signature/sign/DownloadSignedCopyButton.tsx`、`ReadOnlyDocument.tsx`、`signedPdf.ts` 及管理／本人頁引用：顯示簽署與副本產製兩種狀態，ready 即可下載 server 本人檔；管理端依人下載、員工只本人，原瀏覽器合成不得作正式完成檔；大量名單分頁／虛擬呈現保留整體進度。
+- [X] T118 [US3] 在 `server/test/core-esign-flow-queue.e2e-spec.ts` 與 `core-esign-flow.e2e-spec.ts` 驗證真 MySQL/隔離 Redis/worker 的 10 人 3 共用欄位→10 份副本、兩人並發、enqueue 失敗、重複 job、stale lease、個人存檔與結案 snapshot 分別失敗後重試；比對每份內容/hash/owner，斷言 ready 不重製及只有一次結案。
+
+## Phase 15：US4 — 停止後保留個人結果（P4）
+
+**獨立驗收**：一人 signed、一人 pending 時停止；已簽者仍可產製／下載，待簽者不得再簽，停止文件不結案；重新發起不得沿用證據。
+
+- [X] T119 [P] [US4] 在 `server/src/features/esign/services/esign-stoppage.service.spec.ts` 與 `esign-document-validation.service.spec.ts` 先補 active/finalizing 可由 creator 停止、completed 拒絕、reason「1–500 字」、stop/finalize 同鎖競態與不修改 record/ready 副本案例。
+- [X] T120 [US4] 更新 `server/src/features/esign/services/esign-stoppage.service.ts`、`esign-expiry.service.ts`、`esign-document-validation.service.ts`：手動停止允許 active/finalizing，deadline 仍只停有 pending 的 active；移除 receipt expiry 寫入，保留成功證據與 ready 副本，停止前 signed 的 pending/failed 產製仍可繼續，不能讓 expiry 停止全員已簽僅等待產檔的文件。
+- [X] T121 [US4] 在 `server/test/core-esign-flow.e2e-spec.ts` 與 `core-esign-flow-queue.e2e-spec.ts` 驗證 stop/deadline 與簽署／產製／結案競態：停止後本人副本可產製和授權下載，pending 拒絕，stopped 永不變 completed；修正文件新建時沒有舊 record/file/payload 沿用。
+- [ ] T122 [US4] 更新 `client/src/features/forms/StopSigningButton.tsx`、`forms/actions.ts`、`detail/SignerTable.tsx` 與 `client/src/features/my-signature/sign/ReadOnlyDocument.tsx`：呈現 finalizing 可停止及 stopped 個人副本狀態，已簽者 ready 可下載、待簽者無簽署動作；重新發起保留全新文件語意，不複製成功證據。
+
+## Phase 16：跨故事整合、全公司規模與交付
+
+**前置**：US1–US4 全部完成；此階段驗收不能以舊 T001–T088 勾選替代。
+
+- [X] T123 [P] 在 `server/test/security-core-esign-flow.e2e-spec.ts` 擴充共用欄位下的 IDOR、跨人／跨文件完成檔、未知輸入、source/payload/PNG/hash 竄改、停止／外部失效與敏感資訊裁切矩陣；保留 OriginGuard、PDF iframe/CSP 與私有 storage 邊界，外部 receipt 不再授權下載。
+- [X] T124 [P] 在 `server/test/api-coverage.e2e-spec.ts` 依 `specs/003-core-esign-flow/contracts/openapi.yaml` 動態核對 operations、DTO/response/envelope、個人下載與移除的 external-completions；不要沿用舊「26 operations」常數，確認 signer arrays 無 maxItems、completion/verificationUrl 與程式一致。
+- [X] T125 在 `server/test/core-esign-flow-scale.e2e-spec.ts` 新增明確可執行的全公司驗收案例，沿用現有 e2e bootstrap 與測試 DB fail-closed：6,000 名合成員工、3 個共用欄位，完成所有簽署／真 worker 產製與結案，斷言 6,000 筆指派、6,000 筆證據、6,000 份正確本人副本且無遺漏重複；另測 6,001 人可保存及發起，不把 fixture 數當上限，使用 fake mailer 不寄真信。
+- [X] T126 執行 T125 與 `specs/003-core-esign-flow/quickstart.md` 的大量名單測試，將 request bytes、發起耗時、DB lock 等待、峰值記憶體、queue 積壓、manifest 大小、PDF 儲存量與結案時間記入 `specs/003-core-esign-flow/validation.md`；覆蓋跨批 maintenance、最末批不飢餓、錯誤中斷後復原與候選全選不漏人，失敗須修正對應程式並重驗，不能改小樣本或增加人數上限。
+- [X] T127 依 T126 實測在 `server/src/features/esign/repositories/signer.repository.ts`、`services/esign-initiation.service.ts`、`services/esign-verification.service.ts`、`server/src/worker/esign/esign-maintenance.processor.ts` 與實際前端名單路徑修正仍存在的 N+1、整份名單鎖、批次截斷／無界 Promise.all 或全檔記憶體問題；無問題時記錄量測依據，不引入額外抽象或無依據優化。
+- [ ] T128 在 `client/src/features/forms/`、`client/src/features/my-signature/` 與對應 `client/src/app/` 正式入口進行整合檢查：新版選人／發起／簽署／下載均只使用正式契約；清除仍可達的舊欄位複製、50 人／floor 上限、合併完成檔與 receipt 呼叫，不刪除無關原型檔或覆蓋其他工程師變更；檢查窄螢幕、鍵盤及 pending/error 顯示。
+- [X] T129 [P] 更新 `server/docs/internal-electronic-signature-platform.md`、`internal-electronic-signature-data-dictionary.md`、`internal-electronic-signature-er-model.md`、`specs/003-core-esign-flow/quickstart.md`：記錄共用欄位、無人數上限、每人 PDF、個人狀態／lease、manifest v2、完成檔兩種互斥歸屬及未來簽到表不在本次實作範圍、外部下載限制及舊單人資料範圍；若 Spec 04 文件已提供，同步其個人摘要與移除 receipt 相依，不擴張 QR 公開資料範圍。
+- [X] T130 在 `specs/003-core-esign-flow/quickstart.md` 補上可操作的部署／回滾順序：停止舊 worker、排空舊 document-only 工作、套用 incremental migration、部署新 HTTP/worker、驗證個人副本與 maintenance；只在獨立測試 DB 做 up/down/up，不刪除正式證據或要求舊多人模型雙軌。
+- [X] T131 執行 server 的 `pnpm -C server test:schema`、`lint:check`、`test`、`build`、`test:e2e`、`test:e2e:security`，確認 T125 的 scale 檔確實被執行；在 `specs/003-core-esign-flow/validation.md` 記錄結果與因環境未完成的項目，不以 fake queue 取代真 Redis 整合驗收。
+- [ ] T132 執行 `pnpm -C client lint`、`pnpm -C client build`、root `pnpm build` 與 `pnpm lint`，將結果記錄在 `specs/003-core-esign-flow/validation.md`；先完成各 package 驗證，跨前後端檢查失敗須修正，禁止宣稱不存在的 client 自動測試已通過。
+- [ ] T133 依 `specs/003-core-esign-flow/quickstart.md` 完成人工驗收並更新 `validation.md`、`checklists/requirements.md`：上傳不選人、同欄位個人副本、先簽先下載、全員才結案、停止保留、建立人／本人權限、全公司完整選人／進度及 PDF 視覺位置；對照 SC-001～SC-014 記錄證據與剩餘限制，分別交代 client/server/migration/config，取代舊 T080 的舊模型人工驗收範圍。
+
+**2026-10-16 收尾**：T089–T132 共 44 項完成。T133 的本機瀏覽器、手寫簽署、個人下載、停止保留、6,001 人全選與 PDF 視覺檢查已完成；正式 Portal／代理／信件／storage 環境與可用性統計未執行，依本節規則保留未勾選。requirements checklist 依 implement skill 為唯讀，未擅改審查標記。完整測試數字、規模量測及限制見 `validation.md`。
+
+## 本次依賴與執行順序
+
+```text
+T089 → T090 → (T091 + T092) → T093 → T094
+  → US1 T095–T100 → US2 T101–T106 → US3 T107–T118
+  → US4 T119–T122 → 整合 T123–T133
+```
+
+- 同故事內先測試再模型／服務／endpoint／UI；沒有 `[P]` 的任務按列出順序執行。
+- T093 依賴 T091/T092；T094 依賴 migration/schema；其後所有故事依賴此基礎。
+- US2 需要 US1 的共用欄位/payload；US3 需要 US2 的本人 record/completion/queue contract；US4 需要 US3 的停止後產製與下載能力。
+- T111 可先定義結案 transaction，但 US3 checkpoint 必須等 T113/T114 的 snapshot 完整性通過；T118 完成後才視為 US3 可交付。
+- T125 依賴前述故事與 queue e2e；T126 → T127；若 T127 有修正，重跑 T125/T126 並更新結果後才完成交付檢查。
+- T131/T132 完成後 T133 收斂人工驗收；環境未能驗證的項目保留未完成，不為交付摘要而勾選。
+
+## 本次可平行的例子
+
+`[P]` 僅表示相同前置條件完成後，檔案責任可分開處理，不授權跳過相依關係。
+
+- 基礎：T091 schema 測試與 T092 entities；之後串行 T093 migration。
+- US1：T095 的 field/signer/initiation 測試可按不同測試檔分工；T097/T098 都碰發起資料流，整合須串行。
+- US2：T101 的 signing 與 document-validation 測試可按檔分工；T103/T105 同改 signing service，必須串行。
+- US3：T107 的 PDF/access 測試與 T108 的 worker/maintenance 測試可平行；T110/T111 同改 processor，必須串行。
+- US4：T119 的 stoppage 與 validation 測試可按檔分工；T120 及 T122 在 server contract 固定後可分前後端處理，最終以 T121 整合。
+- 整合：T123 security 與 T124 API coverage 可平行；T129 文件可在程式契約穩定後獨立更新。實際執行仍依使用者授權的協作方式。
+
+## 本次 MVP 與增量交付策略
+
+1. **設定／發起 MVP**：完成 T089–T100，展示無欄位綁人及無人數上限的完整名單發起；不宣稱可正式簽署下載。
+2. **可用簽署主流程**：完成 US2/US3，讓個人證據、副本、權限與 QR 相依一起成立；不可只上線「前端複製欄位」的半套流程。
+3. **停止與全公司交付**：完成 US4、6,000 人端到端與 6,001 人發起、安全及人工驗收後才判定本次修改完成。
+
+**任務統計**：新增 45 項（T089–T133），Setup 2、Foundational 4、US1 6、US2 6、US3 12、US4 4、整合與交付 11；目前完成 44 項，T133 尚有部署環境驗收。歷史 T001–T088 保留原勾選，不計入本次完成度。

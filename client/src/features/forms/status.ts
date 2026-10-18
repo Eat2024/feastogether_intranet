@@ -1,6 +1,5 @@
 import type { ChipProps } from "@mui/material/Chip";
 import { daysUntil } from "@/lib/dates";
-import { remainingWalkIns } from "./sheet/rules";
 import type { DocType, EFormDoc, FormStatus, ResignRound } from "./types";
 
 export const DOC_TYPE_LABEL: Record<DocType, string> = {
@@ -56,10 +55,7 @@ export function deriveStatus(form: EFormDoc, today: Date = new Date()): FormStat
   if (form.status !== "active") return form.status;
   const { endAt } = signingPeriod(form);
   const ended = !!endAt && daysUntil(endAt, today) < 0;
-  if (form.signers.length > 0 && pendingCount(form) === 0) {
-    // 簽到表還有空白列時，期限內仍開放名單外人員簽到
-    return !ended && remainingWalkIns(form) > 0 ? "active" : "completed";
-  }
+  if (form.signers.length > 0 && pendingCount(form) === 0) return "completed";
   return ended ? "expired" : "active";
 }
 

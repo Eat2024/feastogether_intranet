@@ -81,7 +81,6 @@ DROP TABLE IF EXISTS `esign_document_fields`;
 CREATE TABLE `esign_document_fields` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '欄位流水號',
   `document_id` bigint NOT NULL COMMENT '文件 ID',
-  `signer_id` bigint DEFAULT NULL COMMENT '欄位所屬簽署人 ID',
   `field_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '欄位類型',
   `page_number` int unsigned NOT NULL COMMENT '頁碼',
   `x_percent` decimal(6,3) NOT NULL COMMENT 'X 百分比',
@@ -96,7 +95,6 @@ CREATE TABLE `esign_document_fields` (
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
   PRIMARY KEY (`id`),
   KEY `idx_esign_document_fields_doc_page_sort_id` (`document_id`,`page_number`,`sort_order`,`id`),
-  KEY `idx_esign_document_fields_signer_id` (`signer_id`),
   KEY `idx_esign_document_fields_created_at` (`created_at`),
   KEY `idx_esign_document_fields_updated_at` (`updated_at`),
   KEY `idx_esign_document_fields_deleted_at` (`deleted_at`),
@@ -104,11 +102,10 @@ CREATE TABLE `esign_document_fields` (
   KEY `fk_esign_document_fields_updated_by` (`updated_by_user_id`),
   CONSTRAINT `fk_esign_document_fields_created_by` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_document_fields_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_esign_document_fields_signer` FOREIGN KEY (`signer_id`) REFERENCES `esign_signers` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_esign_document_fields_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
-  ,CONSTRAINT `chk_esign_document_fields_type` CHECK ((`field_type` in (_utf8mb4'signature',_utf8mb4'date')))
-  ,CONSTRAINT `chk_esign_document_fields_page` CHECK ((`page_number` >= 1))
-  ,CONSTRAINT `chk_esign_document_fields_bounds` CHECK (((`x_percent` >= 0) and (`x_percent` < 100) and (`y_percent` >= 0) and (`y_percent` < 100) and (`width_percent` > 0) and (`height_percent` > 0) and ((`x_percent` + `width_percent`) <= 100) and ((`y_percent` + `height_percent`) <= 100)))
+  CONSTRAINT `fk_esign_document_fields_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_document_fields_bounds` CHECK (((`x_percent` >= 0) and (`x_percent` < 100) and (`y_percent` >= 0) and (`y_percent` < 100) and (`width_percent` > 0) and (`height_percent` > 0) and ((`x_percent` + `width_percent`) <= 100) and ((`y_percent` + `height_percent`) <= 100))),
+  CONSTRAINT `chk_esign_document_fields_page` CHECK ((`page_number` >= 1)),
+  CONSTRAINT `chk_esign_document_fields_type` CHECK ((`field_type` in (_utf8mb4'signature',_utf8mb4'date')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件簽署欄位';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_documents`;
@@ -128,8 +125,6 @@ CREATE TABLE `esign_documents` (
   `completed_at` datetime(6) DEFAULT NULL COMMENT '完成時間',
   `stopped_at` datetime(6) DEFAULT NULL COMMENT '停止時間',
   `stop_reason` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '停止原因',
-  `finalization_lease_token` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '完成檔案 worker lease UUID',
-  `finalization_lease_expires_at` datetime(6) DEFAULT NULL COMMENT '完成檔案 worker lease 到期時間',
   `watermark_enabled` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否添加浮水印',
   `allow_reject` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否允許拒絕簽署',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
@@ -143,13 +138,12 @@ CREATE TABLE `esign_documents` (
   KEY `idx_esign_documents_initiated_at` (`initiated_at`),
   KEY `idx_esign_documents_completed_at` (`completed_at`),
   KEY `idx_esign_documents_stopped_at` (`stopped_at`),
-  KEY `idx_esign_documents_finalization_lease_expires_at` (`finalization_lease_expires_at`),
   KEY `idx_esign_documents_created_at` (`created_at`),
   KEY `idx_esign_documents_updated_at` (`updated_at`),
   KEY `idx_esign_documents_deleted_at` (`deleted_at`),
   CONSTRAINT `fk_esign_documents_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped'))),
-  CONSTRAINT `chk_esign_documents_sign_period` CHECK (((`sign_start_at` is null) and (`sign_end_at` is null)) or ((`sign_start_at` is not null) and (`sign_end_at` is not null) and (`sign_start_at` < `sign_end_at`)))
+  CONSTRAINT `chk_esign_documents_sign_period` CHECK ((((`sign_start_at` is null) and (`sign_end_at` is null)) or ((`sign_start_at` is not null) and (`sign_end_at` is not null) and (`sign_start_at` < `sign_end_at`)))),
+  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='電子簽文件';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_export_jobs`;
@@ -197,26 +191,30 @@ CREATE TABLE `esign_file_objects` (
   `sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '檔案 SHA-256',
   `archive_status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'active' COMMENT '封存狀態',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `completed_signature_record_id` bigint GENERATED ALWAYS AS ((case when (`file_purpose` = _utf8mb4'completed_pdf') then `signature_record_id` else NULL end)) VIRTUAL COMMENT '個人完成檔唯一簽署證據 ID',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_file_objects_object_key` (`object_key`),
   UNIQUE KEY `uq_esign_file_objects_document_purpose` (`document_id`,`file_purpose`),
   UNIQUE KEY `uq_esign_file_objects_signature_field_purpose` (`signature_record_id`,`document_field_id`,`file_purpose`),
+  UNIQUE KEY `uq_esign_file_objects_completed_signature` (`completed_signature_record_id`),
   KEY `idx_esign_file_objects_document_id` (`document_id`),
   KEY `idx_esign_file_objects_signature_record_id` (`signature_record_id`),
-  KEY `idx_esign_file_objects_document_field_id` (`document_field_id`),
   KEY `idx_esign_file_objects_verification_record_id` (`verification_record_id`),
   KEY `idx_esign_file_objects_export_job_id` (`export_job_id`),
   KEY `idx_esign_file_objects_file_purpose` (`file_purpose`),
   KEY `idx_esign_file_objects_sha256` (`sha256`),
   KEY `idx_esign_file_objects_archive_status` (`archive_status`),
   KEY `idx_esign_file_objects_created_at` (`created_at`),
+  KEY `idx_esign_file_objects_document_field_id` (`document_field_id`),
   CONSTRAINT `fk_esign_file_objects_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_file_objects_document_field` FOREIGN KEY (`document_field_id`) REFERENCES `esign_document_fields` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_file_objects_export` FOREIGN KEY (`export_job_id`) REFERENCES `esign_export_jobs` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_file_objects_signature` FOREIGN KEY (`signature_record_id`) REFERENCES `esign_signature_records` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_file_objects_verification` FOREIGN KEY (`verification_record_id`) REFERENCES `esign_verification_records` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_file_objects_completed_owner` CHECK (((`file_purpose` <> _utf8mb4'completed_pdf') or ((((`document_id` is not null) and (`signature_record_id` is null)) or ((`document_id` is null) and (`signature_record_id` is not null))) and (`document_field_id` is null) and (`verification_record_id` is null) and (`export_job_id` is null)))),
   CONSTRAINT `chk_esign_file_objects_owner` CHECK (((`document_id` is not null) or (`signature_record_id` is not null) or (`verification_record_id` is not null) or (`export_job_id` is not null))),
-  CONSTRAINT `chk_esign_file_objects_signature_field` CHECK (((`file_purpose` = _utf8mb4'signature_png') and (`signature_record_id` is not null) and (`document_field_id` is not null)) or ((`file_purpose` <> _utf8mb4'signature_png') and (`document_field_id` is null)))
+  CONSTRAINT `chk_esign_file_objects_signature_field` CHECK ((((`file_purpose` = _utf8mb4'signature_png') and (`signature_record_id` is not null) and (`document_field_id` is not null)) or ((`file_purpose` <> _utf8mb4'signature_png') and (`document_field_id` is null)))),
+  CONSTRAINT `chk_esign_file_objects_source_owner` CHECK (((`file_purpose` <> _utf8mb4'source_pdf') or ((`document_id` is not null) and (`signature_record_id` is null) and (`document_field_id` is null) and (`verification_record_id` is null) and (`export_job_id` is null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='私有物件儲存 metadata';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_notification_batches`;
@@ -314,8 +312,6 @@ CREATE TABLE `esign_signers` (
   `invitation_token_ciphertext` text COLLATE utf8mb4_unicode_ci COMMENT '待寄送外部邀請 token 的 AES-256-GCM 密文',
   `invitation_expires_at` datetime(6) DEFAULT NULL COMMENT '外部邀請到期時間',
   `invitation_delivered_at` datetime(6) DEFAULT NULL COMMENT '外部邀請寄送接受時間',
-  `completion_receipt_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '外部完成收據 token SHA-256',
-  `completion_receipt_expires_at` datetime(6) DEFAULT NULL COMMENT '外部完成收據到期時間',
   `rejected_at` datetime(6) DEFAULT NULL COMMENT '拒絕時間',
   `reject_reason` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '拒絕原因',
   `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序',
@@ -324,28 +320,34 @@ CREATE TABLE `esign_signers` (
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  `completion_status` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '個人副本產製狀態',
+  `completion_lease_token` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '個人副本 worker lease UUID',
+  `completion_lease_expires_at` datetime(6) DEFAULT NULL COMMENT '個人副本 worker lease 到期時間',
+  `completion_ready_at` datetime(6) DEFAULT NULL COMMENT '個人副本完成時間',
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_esign_signers_public_id` (`public_id`),
   UNIQUE KEY `uq_esign_signers_document_user` (`document_id`,`user_id`),
   UNIQUE KEY `uq_esign_signers_document_email` (`document_id`,`email`),
-  UNIQUE KEY `uq_esign_signers_public_id` (`public_id`),
   UNIQUE KEY `uq_esign_signers_invitation_token_sha256` (`invitation_token_sha256`),
-  UNIQUE KEY `uq_esign_signers_completion_receipt_sha256` (`completion_receipt_sha256`),
   KEY `idx_esign_signers_user_status_document` (`user_id`,`status`,`document_id`),
   KEY `idx_esign_signers_document_status_sort_id` (`document_id`,`status`,`sort_order`,`id`),
   KEY `idx_esign_signers_signed_at` (`signed_at`),
   KEY `idx_esign_signers_rejected_at` (`rejected_at`),
-  KEY `idx_esign_signers_invitation_expires_at` (`invitation_expires_at`),
-  KEY `idx_esign_signers_invitation_delivered_at` (`invitation_delivered_at`),
-  KEY `idx_esign_signers_completion_receipt_expires_at` (`completion_receipt_expires_at`),
   KEY `idx_esign_signers_created_at` (`created_at`),
   KEY `idx_esign_signers_updated_at` (`updated_at`),
   KEY `idx_esign_signers_deleted_at` (`deleted_at`),
   KEY `fk_esign_signers_created_by` (`created_by_user_id`),
   KEY `fk_esign_signers_updated_by` (`updated_by_user_id`),
+  KEY `idx_esign_signers_invitation_expires_at` (`invitation_expires_at`),
+  KEY `idx_esign_signers_invitation_delivered_at` (`invitation_delivered_at`),
+  KEY `idx_esign_signers_completion_lease_expires_at` (`completion_lease_expires_at`),
+  KEY `idx_esign_signers_completion_ready_at` (`completion_ready_at`),
+  KEY `idx_esign_signers_completion_status_id` (`completion_status`,`id`),
   CONSTRAINT `fk_esign_signers_created_by` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_signers_completion` CHECK ((((`status` = _utf8mb4'pending') and (`completion_status` is null) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`status` = _utf8mb4'signed') and (`completion_status` is not null) and (((`completion_status` in (_utf8mb4'pending',_utf8mb4'failed')) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'processing') and (`completion_lease_token` is not null) and (`completion_lease_expires_at` is not null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'ready') and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is not null)))))),
   CONSTRAINT `chk_esign_signers_identity` CHECK ((((`signer_type` = _utf8mb4'user') and (`user_id` is not null) and (`email` is null) and (`empid_snapshot` is not null) and (`invitation_token_sha256` is null) and (`invitation_token_ciphertext` is null) and (`invitation_expires_at` is null)) or ((`signer_type` = _utf8mb4'email') and (`user_id` is null) and (`email` is not null) and (`empid_snapshot` is null)))),
   CONSTRAINT `chk_esign_signers_status` CHECK ((`status` in (_utf8mb4'pending',_utf8mb4'signed')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件簽署人';
@@ -359,7 +361,7 @@ CREATE TABLE `esign_verification_records` (
   `public_id` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '公開驗證 UUID',
   `manifest_json` json NOT NULL COMMENT '驗證 manifest',
   `manifest_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'manifest SHA-256',
-  `final_pdf_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '最終 PDF SHA-256',
+  `final_pdf_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '最終 PDF SHA-256',
   `audit_root_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '稽核鏈 root hash',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'valid' COMMENT '驗證狀態',
   `issued_at` datetime(6) NOT NULL COMMENT '核發時間',

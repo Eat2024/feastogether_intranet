@@ -52,34 +52,27 @@ export class DocumentRepository {
     );
   }
 
-  findFinalizationCandidates(now: Date, manager: EntityManager) {
+  findFinalizationCandidates(afterId: number, manager: EntityManager) {
     return manager
       .createQueryBuilder(EsignDocument, 'document')
       .select('document.id', 'id')
-      .where(
-        `(document.status = 'active' AND NOT EXISTS (
-          SELECT 1 FROM esign_signers signer
-          WHERE signer.document_id = document.id
-            AND signer.deleted_at IS NULL
-            AND signer.status <> 'signed'
-        ))`,
-      )
-      .orWhere(
-        `(document.status = 'finalizing'
-          AND document.finalization_lease_expires_at <= :now)`,
-        { now },
+      .where("document.status = 'finalizing'")
+      .andWhere('document.id > :afterId', { afterId })
+      .andWhere(
+        `NOT EXISTS (SELECT 1 FROM esign_signers signer WHERE signer.document_id = document.id AND signer.deleted_at IS NULL AND (signer.status <> 'signed' OR signer.completion_status IS NULL OR signer.completion_status <> 'ready'))`,
       )
       .orderBy('document.id', 'ASC')
       .limit(100)
       .getRawMany<{ id: string }>();
   }
 
-  findExpiredActiveIds(now: Date, manager: EntityManager) {
+  findExpiredActiveIds(now: Date, manager: EntityManager, afterId = 0) {
     return manager
       .createQueryBuilder(EsignDocument, 'document')
       .select('document.id', 'id')
       .where("document.status = 'active'")
       .andWhere('document.sign_end_at <= :now', { now })
+      .andWhere('document.id > :afterId', { afterId })
       .andWhere(
         `EXISTS (
           SELECT 1 FROM esign_signers signer

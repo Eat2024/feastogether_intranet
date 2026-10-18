@@ -1,3 +1,4 @@
+import { AppErrors } from '#app/common/errors/app-errors';
 import { ApiOperation } from '@nestjs/swagger';
 import {
   Body,
@@ -14,12 +15,13 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ConfigService } from '@nestjs/config';
-import { resourceNotFound } from '../helpers/esign-errors';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
+import { AppException } from '#app/common/errors/app.exception';
 import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
 import { ListSigningTasksQueryDto } from '../dto/document-query.dto';
+import { EsignCompletionAccessService } from '../services/esign-completion-access.service';
 import { EsignSigningTaskService } from '../services/esign-signing-task.service';
 import {
   EsignSigningService,
@@ -32,7 +34,8 @@ export class SigningTasksController {
     private readonly tasks: EsignSigningTaskService,
     private readonly signing: EsignSigningService,
     private readonly config: ConfigService,
-  ) { }
+    private readonly completions: EsignCompletionAccessService,
+  ) {}
 
   @ApiOperation({
     summary: '列出本人的簽署任務',
@@ -64,7 +67,7 @@ export class SigningTasksController {
   @ApiOperation({
     summary: '讀取內部簽署任務的原始 PDF',
     description:
-      '驗證目前員工為該任務簽署人後，回傳原始 PDF。\n\n前端串接參考：/my-signature/[id]',
+      '驗證目前員工為該任務簽署人後，回傳原始 PDF。\n\n前端串接參考：/my-signature/[id] 透過 sourcePageCount() 計算頁數，文件預覽另經 /files/forms/[id] 代理讀取。',
   })
   @Get(':signerPublicId/source-file')
   @Header('Cache-Control', 'private, no-store')
@@ -75,7 +78,7 @@ export class SigningTasksController {
     @Res() reply: FastifyReply,
   ) {
     const file = await this.tasks.source(signerPublicId, userId);
-    if (!file) throw resourceNotFound();
+    if (!file) throw this.notFound();
     allowPdfPreview(reply, this.config.get<string>('AUTH_TRUSTED_ORIGINS'));
     reply
       .type('application/pdf')
@@ -109,5 +112,26 @@ export class SigningTasksController {
         reply.status(result.repeated ? HttpStatus.OK : HttpStatus.CREATED);
         return toSignatureResultView(result);
       });
+  }
+  @ApiOperation({ summary: '下載本人的個人已簽署 PDF' })
+  @Get(':signerPublicId/completed-file')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async completedFile(
+    @Param('signerPublicId') signerPublicId: string,
+    @CurrentUserId() userId: number,
+    @Res() reply: FastifyReply,
+  ) {
+    const file = await this.completions.signerFile(signerPublicId, userId);
+    if (!file)
+      throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
+    reply
+      .type('application/pdf')
+      .header('Content-Disposition', 'attachment; filename="completed.pdf"')
+      .send(file.bytes);
+  }
+
+  private notFound(): AppException {
+    return new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
   }
 }

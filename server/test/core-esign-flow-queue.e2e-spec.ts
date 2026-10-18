@@ -105,6 +105,11 @@ describe('核心電子簽真實 queue e2e', () => {
   });
 
   it('HTTP commit 後只以 local ID 入列，worker 對重複 dispatch 仍只寄送及結案一次', async () => {
+    expect(finalizationQueue.opts.connection).toMatchObject({
+      maxRetriesPerRequest: 0,
+      enableOfflineQueue: false,
+      commandTimeout: 500,
+    });
     const creatorCookie = await login(creatorEmpid);
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -122,7 +127,7 @@ describe('核心電子簽真實 queue e2e', () => {
     );
     documentId = Number(created.id);
 
-    const signers = apiData<Array<{ publicId: string }>>(
+    apiData<Array<{ publicId: string }>>(
       await request(ctx.server)
         .put(`/api/esign/documents/${documentId}/draftSave`)
         .set('Cookie', creatorCookie)
@@ -145,7 +150,6 @@ describe('核心電子簽真實 queue e2e', () => {
       .send({
         fields: [
           {
-            signerPublicId: signers[0].publicId,
             type: 'signature',
             page: 1,
             xPercent: 10,
@@ -162,8 +166,22 @@ describe('核心電子簽真實 queue e2e', () => {
       .set('Cookie', creatorCookie)
       .set('Origin', 'http://localhost:3000')
       .send({
-        signers: [{ type: 'email', name: 'Queue 外部簽署人', email: 'queue-candidate@example.test' }],
-        fields: Array.from({ length: 1 }, (_, index) => ({ signerIndex: index, type: 'signature', page: 1, xPercent: 10, yPercent: 10 + index * 20, widthPercent: 25, heightPercent: 10, sortOrder: index })),
+        signers: [
+          {
+            type: 'email',
+            name: 'Queue 外部簽署人',
+            email: 'queue-candidate@example.test',
+          },
+        ],
+        fields: Array.from({ length: 1 }, (_, index) => ({
+          type: 'signature',
+          page: 1,
+          xPercent: 10,
+          yPercent: 10 + index * 20,
+          widthPercent: 25,
+          heightPercent: 10,
+          sortOrder: index,
+        })),
         signStartAt: new Date(Date.now() - 60_000).toISOString(),
         signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
         watermark: false,
@@ -175,15 +193,17 @@ describe('核心電子簽真實 queue e2e', () => {
       Array<{
         id: number;
         invitation_token_ciphertext: string;
+        signer_id: number;
       }>
     >(
-      `SELECT l.id, s.invitation_token_ciphertext
+      `SELECT l.id, s.id signer_id, s.invitation_token_ciphertext
        FROM esign_notification_logs l
        JOIN esign_signers s ON s.id = l.signer_id
        WHERE s.document_id = ?`,
       [documentId],
     );
     const notificationLogId = Number(invitationRows[0].id);
+    const signerId = Number(invitationRows[0].signer_id);
     const token = ctx.app
       .get(EsignTokenService)
       .decrypt(invitationRows[0].invitation_token_ciphertext);
@@ -199,6 +219,16 @@ describe('核心電子簽真實 queue e2e', () => {
       logger: false,
     });
     try {
+      const workerQueue = worker.get<Queue>(
+        getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
+      );
+      expect(workerQueue.opts.connection).toMatchObject({
+        maxRetriesPerRequest: null,
+      });
+      expect(workerQueue.opts.connection).not.toHaveProperty('commandTimeout');
+      expect(workerQueue.opts.connection).not.toHaveProperty(
+        'enableOfflineQueue',
+      );
       await waitFor(async () => {
         const rows = await db.query<Array<{ result: string }>>(
           'SELECT result FROM esign_notification_logs WHERE id = ?',
@@ -206,6 +236,15 @@ describe('核心電子簽真實 queue e2e', () => {
         );
         return rows[0]?.result === 'delivered';
       });
+      const cleared = await db.query<
+        Array<{ ciphertext: null; processing: null; retry: null }>
+      >(
+        'SELECT s.invitation_token_ciphertext ciphertext, l.processing_started_at processing, l.next_attempt_at retry FROM esign_notification_logs l JOIN esign_signers s ON s.id=l.signer_id WHERE l.id=?',
+        [notificationLogId],
+      );
+      expect(cleared).toEqual([
+        { ciphertext: null, processing: null, retry: null },
+      ]);
       const duplicateInvitations = await Promise.all([
         invitationQueue.add(ESIGN_EXTERNAL_INVITATION_JOB, {
           notificationLogId,
@@ -281,16 +320,15 @@ describe('核心電子簽真實 queue e2e', () => {
           .filter((job) => job.data.documentId === documentId)
           .map((job) => job.remove()),
       );
-      await worker
-        .get(EsignMaintenanceProcessor)
-        .process({ data: {} } as Job);
+      await worker.get(EsignMaintenanceProcessor).process({ data: {} } as Job);
+      await worker.get(EsignMaintenanceProcessor).process({ data: {} } as Job);
       const reconciledJobs = await finalizationQueue.getJobs([
         'waiting',
         'delayed',
       ]);
       expect(
-        reconciledJobs.some((job) => job.data.documentId === documentId),
-      ).toBe(true);
+        reconciledJobs.filter((job) => job.data.documentId === documentId),
+      ).toHaveLength(1);
       await finalizationQueue.resume();
 
       await waitFor(async () => {
@@ -301,15 +339,21 @@ describe('核心電子簽真實 queue e2e', () => {
         return rows[0]?.status === 'completed';
       });
       const duplicateFinalizations = await Promise.all([
-        finalizationQueue.add(ESIGN_DOCUMENT_FINALIZATION_JOB, { documentId }),
-        finalizationQueue.add(ESIGN_DOCUMENT_FINALIZATION_JOB, { documentId }),
+        finalizationQueue.add(ESIGN_DOCUMENT_FINALIZATION_JOB, {
+          documentId,
+          signerId,
+        }),
+        finalizationQueue.add(ESIGN_DOCUMENT_FINALIZATION_JOB, {
+          documentId,
+          signerId,
+        }),
       ]);
       await waitForJobs(duplicateFinalizations);
       const completionRows = await db.query<
         Array<{ file_count: number; audit_count: number }>
       >(
         `SELECT
-           (SELECT COUNT(*) FROM esign_file_objects WHERE document_id = ? AND file_purpose = 'completed_pdf') file_count,
+           (SELECT COUNT(*) FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = ? AND f.file_purpose = 'completed_pdf') file_count,
            (SELECT COUNT(*) FROM esign_audit_events WHERE document_id = ? AND event_type = 'document.completed') audit_count`,
         [documentId, documentId],
       );
@@ -332,7 +376,7 @@ describe('核心電子簽真實 queue e2e', () => {
       >(
         `SELECT v.manifest_json, v.manifest_sha256, v.final_pdf_sha256,
            v.audit_root_hash, v.status, v.issued_at, v.revoked_at, d.completed_at,
-           (SELECT f.sha256 FROM esign_file_objects f WHERE f.document_id = d.id AND f.file_purpose = 'completed_pdf') completed_pdf_sha256,
+           (SELECT f.sha256 FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = d.id AND f.file_purpose = 'completed_pdf') completed_pdf_sha256,
            (SELECT a.event_hash FROM esign_audit_events a WHERE a.document_id = d.id AND a.event_type = 'document.completed') completed_event_hash
          FROM esign_verification_records v
          JOIN esign_documents d ON d.id = v.document_id
@@ -343,7 +387,15 @@ describe('核心電子簽真實 queue e2e', () => {
       const [snapshot] = snapshots;
       expect(snapshot.status).toBe('valid');
       expect(snapshot.revoked_at).toBeNull();
-      expect(snapshot.final_pdf_sha256).toBe(snapshot.completed_pdf_sha256);
+      expect(snapshot.final_pdf_sha256).toBeNull();
+      expect(snapshot.manifest_json).toMatchObject({
+        schemaVersion: 'esign-verification-manifest-v2',
+        signers: [
+          expect.objectContaining({
+            completedPdfSha256: snapshot.completed_pdf_sha256,
+          }),
+        ],
+      });
       expect(snapshot.audit_root_hash).toBe(snapshot.completed_event_hash);
       expect(new Date(snapshot.issued_at).getTime()).toBe(
         new Date(snapshot.completed_at).getTime(),

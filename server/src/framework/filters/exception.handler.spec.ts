@@ -1,4 +1,11 @@
-import { ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+} from '@nestjs/common';
+import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { AppException } from '#app/common/errors/app.exception';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { ExceptionHandler } from './exception.handler';
 
@@ -66,40 +73,98 @@ describe('ExceptionHandler', () => {
     expect(sent.body).not.toHaveProperty('path');
   });
 
-  it('HttpException → 用其狀態碼，且不記 error（屬預期錯誤）', () => {
+  it('AppException → 用其狀態碼、錯誤碼與訊息，且不記 error（屬預期錯誤）', () => {
     const { host, sent } = makeHost();
 
-    handler.catch(new HttpException('forbidden', HttpStatus.FORBIDDEN), host);
+    handler.catch(
+      new AppException(
+        AppErrorCode.ESIGN_STATE_CONFLICT,
+        '文件已發起，無法修改草稿',
+        HttpStatus.CONFLICT,
+      ),
+      host,
+    );
 
-    expect(sent.status).toBe(HttpStatus.FORBIDDEN);
+    expect(sent.status).toBe(HttpStatus.CONFLICT);
     expect(logger.error).not.toHaveBeenCalled();
-    expect(sent.body).toMatchObject({
+    expect(sent.body).toEqual({
       success: false,
-      error: { code: 'HTTP_ERROR', message: 'forbidden' },
+      error: {
+        code: 'ESIGN_STATE_CONFLICT',
+        message: '文件已發起，無法修改草稿',
+      },
+      timestamp: expect.any(String) as unknown,
     });
-    expect(sent.body).toHaveProperty('timestamp');
-    expect(sent.body).not.toHaveProperty('path');
   });
 
-  it('HttpException 有 details 時結構化轉送，未提供時不新增欄位', () => {
+  it('AppException 有 details 時結構化轉送', () => {
     const { host, sent } = makeHost();
     handler.catch(
-      new HttpException(
-        {
-          error: 'NOT_FOUND',
-          message: '資料已更新',
-          details: { currentRevision: 4 },
-        },
+      new AppException(
+        AppErrorCode.ESIGN_STATE_CONFLICT,
+        '資料已更新',
         HttpStatus.CONFLICT,
+        { currentRevision: 4 },
       ),
       host,
     );
     expect(sent.body).toMatchObject({
       error: {
-        code: 'NOT_FOUND',
+        code: 'ESIGN_STATE_CONFLICT',
         message: '資料已更新',
         details: { currentRevision: 4 },
       },
     });
   });
+
+  it.each([
+    [
+      new NotFoundException('Cannot GET /api/x/secret'),
+      404,
+      'NOT_FOUND',
+      '找不到請求的資源',
+    ],
+    [
+      new HttpException('forbidden', HttpStatus.FORBIDDEN),
+      403,
+      'FORBIDDEN',
+      '沒有權限執行此操作',
+    ],
+    [
+      new HttpException('Body too large', HttpStatus.PAYLOAD_TOO_LARGE),
+      413,
+      'INVALID_REQUEST',
+      '請求內容超過大小限制',
+    ],
+    [
+      new HttpException(
+        'Unsupported Media Type',
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+      ),
+      415,
+      'INVALID_REQUEST',
+      '請求格式錯誤',
+    ],
+    [
+      new HttpException('Bad Gateway', HttpStatus.BAD_GATEWAY),
+      502,
+      'INTERNAL_ERROR',
+      '系統發生未預期錯誤',
+    ],
+  ])(
+    '框架錯誤 %#：依 status 回固定的錯誤碼與繁中訊息，不回傳原始訊息',
+    (exception, status, code, message) => {
+      const { host, sent } = makeHost();
+
+      handler.catch(exception, host);
+
+      expect(sent.status).toBe(status);
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(sent.body).toMatchObject({
+        success: false,
+        error: { code, message },
+      });
+      expect(JSON.stringify(sent.body)).not.toContain(exception.message);
+    },
+  );
 });

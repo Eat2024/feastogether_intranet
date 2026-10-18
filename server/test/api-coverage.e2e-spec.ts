@@ -119,6 +119,17 @@ describe('runtime API coverage', () => {
       error: { code: 'ESIGN_RESOURCE_NOT_FOUND' },
     });
   });
+
+  it('公開簽章驗證已註冊、不需 session，無效 token 回統一 404 envelope', async () => {
+    const response = await getSignatureVerification(ctx.server, 'A'.repeat(22))
+      .expect(404)
+      .expect('Cache-Control', 'no-store')
+      .expect('Referrer-Policy', 'no-referrer');
+    expect(response.body).toMatchObject({
+      success: false,
+      error: { code: 'ESIGN_RESOURCE_NOT_FOUND' },
+    });
+  });
 });
 
 /** 從 contract 的 paths 區讀取 operations，避免新增路由卻漏掉 session gate 驗收。 */

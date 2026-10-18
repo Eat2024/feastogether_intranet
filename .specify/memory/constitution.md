@@ -1,3 +1,18 @@
+<!--
+Sync Impact Report（審查用，commit 前由審查者確認後移除）
+- Version change: 1.2.0 → 1.3.0（MINOR：Principle III 新增一個範圍明確的例外條款，
+  實質擴充既有規範；未移除或重新定義任何原則）
+- Modified principles: III. 最小權限與資料最小化（新增「公開簽章驗證」例外）
+- Added sections: 無
+- Removed sections: 無
+- 修訂原因: Spec 04 需在完成 PDF 印上簽章驗證 QR；專案負責人於 2026-10-16 決定，
+  為供公司內部稽核查驗，公開驗證頁顯示簽署人完整姓名與文件標題。
+- 影響: Spec 01 FR-016「公開驗證不得公開未遮罩個資」、server/docs 資料字典與平台規劃的
+  公開驗證揭露規則須同步改為引用本例外；Spec 04 FR-009 已符合本條款。
+- 遷移: 無既有資料或程式需遷移（公開驗證尚未實作）。
+- Templates: plan/spec/tasks templates 在執行時讀取 constitution，無需修改。
+- Follow-up TODOs: 正式上線前由法務確認公開揭露完整姓名的適法性。
+-->
 # 饗賓內部電子簽署系統 Constitution
 
 ## Core Principles
@@ -35,6 +50,13 @@
   MUST NOT 寫入 access log、application log、analytics、錯誤訊息或 Referrer。
 - 外部簽署邀請例外 MUST NOT 擴張為一般登入、內部員工 session、跨文件授權或可解碼
   的身分 token；Server MUST 在每次授權時重新驗證邀請狀態與文件狀態。
+- 第二個明確例外是 feature spec 要求的公開簽章驗證，供公司內部稽核查驗已簽署文件：
+  - 驗證網址 MAY 包含 Server 簽發、可證明來源且不含個資的驗證識別；該識別 MUST NOT
+    授予登入、session、寫入、原始或完成文件下載，只能查詢單一簽章的驗證結果。
+  - 驗證回應 MAY 揭露簽署人於發起時固定的完整姓名與文件標題，作為查驗必要資料；
+    MUST NOT 揭露 Email、員編、部門、職稱、來源 IP、User-Agent、簽名圖、文件內容或
+    其他簽署人資料。
+  - 公開驗證 MUST 只讀並限制查詢頻率，不得設定 cookie、寫入業務資料或稽核事件。
 - 每個內部或公開 endpoint MUST 明確界定身分來源、允許操作與資料揭露範圍。
 - 檔案與簽署產物 MUST 存於受控儲存；資料庫只保存必要 metadata 與關聯。
 
@@ -103,4 +125,4 @@
   進入實作或交付。
 - Sync Impact Report 是修訂審查資料，commit 前 MUST 由審查者確認並移除。
 
-**Version**: 1.2.0 | **Ratified**: 2026-10-12 | **Last Amended**: 2026-10-12
+**Version**: 1.3.0 | **Ratified**: 2026-10-12 | **Last Amended**: 2026-10-16

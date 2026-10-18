@@ -386,9 +386,17 @@ HTTP process 只註冊 BullMQ producer；獨立 worker 才載入 invitation、fi
 - storage：`ESIGN_STORAGE_DRIVER`、`ESIGN_STORAGE_ROOT`、`ESIGN_S3_BUCKET`、`AWS_REGION`。
 - mail：`ESIGN_MAIL_DRIVER`、`SMTP_*`、`SES_FROM`。
 - external access：`EXTERNAL_SIGNING_ORIGIN`、`ESIGN_INVITATION_ENCRYPTION_KEY_B64`。
+- 簽章驗證（Spec 04）：不新增環境變數，驗證網址使用 `EXTERNAL_SIGNING_ORIGIN`；migration `1792108800000-SignatureVerificationCode.ts` 新增 `esign_signature_records.verification_code`。
 - queue：沿用 `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_DB`，不新增第二套 Redis 設定。
 
-Spec 03 的正式範圍只含建立/發起、內外部簽署、完成 PDF、自動結案、手動停止與到期停止。不含拒簽/退回、補簽、催簽、完成通知、一般匯出、QR 公開驗證、文件版本、證據包、PAdES-LT/LTA 或長期封存；repository 內保留的原型檔案或預留 schema 不代表這些功能已正式開放。
+Spec 03 的正式範圍只含建立/發起、內外部簽署、完成 PDF、自動結案、手動停止與到期停止。不含拒簽/退回、補簽、催簽、完成通知、一般匯出（Spec 5）、QR 公開驗證（Spec 4）、文件版本、證據包、PAdES-LT/LTA 或長期封存；repository 內保留的原型檔案或預留 schema 不代表這些功能已正式開放。
+
+Spec 04 已實作 server 端簽章驗證，只新增 `esign_signature_records.verification_code` 欄位：
+
+- 簽署成功（含以相同 `requestId` 重送）後，簽署結果、signer view（文件詳情、本人任務、外部任務）回傳 `verificationUrl = {EXTERNAL_SIGNING_ORIGIN}/verify/{code}`；尚未簽署者為 `null`。代碼為簽署 transaction 內產生的 16 bytes 隨機值（base64url 22 字），寫入簽署紀錄後不再修改。
+- Worker 產製個人副本時在本人的每個簽名欄位右下角以向量方塊畫 QR（欄位高度 72%、錯誤修正 M），簽名在左側剩餘寬度內等比置中；個人副本先提交 ready，全員 ready 後另開結案 transaction，以 `document.completed` event hash 為 `audit_root_hash` 寫入 manifest v2 驗證快照；結案失敗 rollback 後重試，不重製已完成副本。
+- `GET /api/signature-verifications/{code}` 為 `@Public()`、不讀寫 cookie、只讀不寫 audit，沿用登入端點 Redis 限流；格式錯誤、查無或未簽署一律同一個 404，完成文件的快照、完成 PDF 摘要、本人快照項目或稽核鏈不一致回 409 `ESIGN_INTEGRITY_FAILED`。Access log 與限流 log 的路徑正規化為 `/signature-verifications/:token`。
+- 限制：簽署畫面佔位圖、簽署後 QR 顯示與公開驗證頁 `/verify/[code]` 由前端另行串接；不回補上線前的簽署紀錄與已結案文件（沒有驗證代碼，完成 PDF 也不畫 QR）；不強制簽名欄位最小高度（欄位過窄時 QR 縮到不超過可用寬度一半以保留簽名，可掃描的最小尺寸待列印驗收決定）；QR 依規格無留白，掃描穩定度同樣待列印驗收。
 
 資料庫僅保存：
 
@@ -510,14 +518,26 @@ Spec 2 先處理內部員工 WebView 入口與通用 session，不處理離職�
 
 Spec 3 只涵蓋成功簽署主路徑及 Email 邀請所需的最小通知，不包含拒絕／退回、依序簽署、批次催簽、匯出、公開驗證、長期封存或數位憑證。
 
-### Spec 4：簽署前重新驗證
+### Spec 4：簽章驗證 QR Code
+
+- 每名簽署人成功簽署後，發出由系統私鑰簽署、不含個資的單一簽章驗證網址。
+- 完成 PDF 在各簽名欄位內印上對應簽署人的驗證 QR Code。
+- 結案時在同一 transaction 寫入文件驗證快照（`esign_verification_records`），固定原始與完成文件摘要、各簽署結果與稽核鏈終點。
+- 任何人可不登入查驗簽章與其綁定的文件；依 Constitution III 公開簽章驗證例外，只揭露簽署人完整姓名、文件標題與驗證所需摘要。
+
+### Spec 5：匯出
+
+- 單一文件 PDF 與簽署紀錄清單匯出。
+- 匯出背景工作狀態、匯出歷史及受控下載（`esign_export_jobs`）。
+
+### Spec 6：簽署前重新驗證
 
 - 依文件風險定義內部員工簽署前的重新驗證要求，不將一般登入直接視為完成簽署驗證。
 - 將驗證結果綁定特定簽署人、文件、文件摘要與短效一次性 authentication event。
 - 定義可接受的驗證新鮮度、驗證強度與過期條件。
 - 防止驗證事件跨文件、跨簽署人或重複使用，並保存必要且最小化的驗證證據。
 
-### Spec 5：簽署例外與通知營運
+### Spec 7：簽署例外與通知營運
 
 - 允許文件依設定接受拒絕簽署，保存拒絕原因與終止狀態，不建立成功簽署紀錄。
 - 簽署開始／截止時間、逾期處理，以及文件停止後禁止繼續簽署。
@@ -525,16 +545,15 @@ Spec 3 只涵蓋成功簽署主路徑及 Email 邀請所需的最小通知，不
 - 明確定義平行簽署；若未來需要依序簽署，必須另立需求，不預先實作。
 - 補強並發提交、重複操作及 worker 重試的一致性。
 
-### Spec 6：證據包、下載、匯出與公開驗證
+### Spec 8：證據包、下載與文件層級驗證
 
-- 產生 canonical manifest、完整 audit trail 及人類可讀稽核報告。
-- 建立不可預測的公開驗證 ID 與 QR Code，重新驗證最終 PDF hash、manifest hash 及 audit chain。
-- 公開驗證只揭露最小必要資訊，不公開文件內容、完整員編、簽名圖片或未遮罩個資。
+- 以 Spec 4 的驗證快照為基礎，產生完整 audit trail 及人類可讀稽核報告。
+- 以驗證快照的 `public_id` 提供文件層級公開驗證入口；單一簽章的驗證 QR 由 Spec 4 提供。
+- 公開驗證依 Constitution III 公開簽章驗證例外，只揭露簽署人完整姓名、文件標題與驗證所需摘要，不公開文件內容、簽名圖片或其他未遮罩個資。
 - 受權限控管的完成 PDF 下載、下載稽核及選配浮水印。
-- 單一文件 PDF 與簽署紀錄清單匯出、背景工作狀態、匯出歷史及受控下載。
 - 驗證紀錄撤銷或取代時保留原紀錄並追加稽核事件。
 
-### Spec 7：強化封存與長期驗證
+### Spec 9：強化封存與長期驗證
 
 - 平台憑證封存簽章。
 - RFC 3161 可信時間戳記。
@@ -543,7 +562,7 @@ Spec 3 只涵蓋成功簽署主路徑及 Email 邀請所需的最小通知，不
 - Object lock、備份、復原演練、保存期限及合法銷毀流程。
 - 第三方資安、個資與長期驗證稽核。
 
-### Spec 8：高風險文件數位簽章
+### Spec 10：高風險文件數位簽章
 
 - 盤點需要《電子簽章法》第 6 條推定效果的文件類型。
 - 串接主管機關許可的憑證機構或遠端簽署服務。

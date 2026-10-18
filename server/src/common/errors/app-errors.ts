@@ -9,6 +9,31 @@ export type AppErrorDefinition = readonly [
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  HTTP_FORBIDDEN: [
+    AppErrorCode.FORBIDDEN,
+    '沒有權限執行此操作',
+    HttpStatus.FORBIDDEN,
+  ],
+  HTTP_NOT_FOUND: [
+    AppErrorCode.NOT_FOUND,
+    '找不到請求的資源',
+    HttpStatus.NOT_FOUND,
+  ],
+  HTTP_PAYLOAD_TOO_LARGE: [
+    AppErrorCode.INVALID_REQUEST,
+    '請求內容超過大小限制',
+    HttpStatus.PAYLOAD_TOO_LARGE,
+  ],
+  ESIGN_INVITATION_SERVICE_UNAVAILABLE: [
+    AppErrorCode.ESIGN_UNAVAILABLE,
+    '電子簽署服務暫時無法使用，請稍後再試',
+    HttpStatus.SERVICE_UNAVAILABLE,
+  ],
+  ESIGN_INVITATION_EXPIRED: [
+    AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
+    '邀請連結無效或已到期',
+    HttpStatus.UNAUTHORIZED,
+  ],
   ACCOUNT_DISABLED: [
     AppErrorCode.ACCOUNT_DISABLED,
     '帳號已停用',
@@ -56,12 +81,12 @@ export const AppErrors = {
   ],
   AUTH_TOKEN_INVALID: [
     AppErrorCode.UNAUTHORIZED,
-    'Invalid, expired or revoked token',
+    '登入已失效，請重新登入',
     HttpStatus.UNAUTHORIZED,
   ],
   AUTH_TOKEN_MISSING: [
     AppErrorCode.UNAUTHORIZED,
-    'Missing token',
+    '請先登入',
     HttpStatus.UNAUTHORIZED,
   ],
   CSRF_ORIGIN_REJECTED: [

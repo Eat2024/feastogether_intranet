@@ -1,0 +1,122 @@
+openapi: 3.1.0
+info:
+  title: 簽章驗證 QR Code API（Spec 04 增量）
+  version: 1.0.0
+  description: |
+    本檔只列 Spec 04 新增或擴充的部分，其餘沿用 `specs/003-core-esign-flow/contracts/openapi.yaml`。
+
+    - 新增 `getSignatureVerification`：不需登入、不使用任何 cookie 的公開驗證查詢。
+    - 擴充 Spec 03 回應：`SignatureResult`（signMySigningTask、signExternalSigningTask）、
+      `SignerView`（getDocument、listMySigningTasks、openMySigningTask、openExternalSigningTask）
+      的 data 新增 `verificationUrl`；外部完成回執 API 已由 Spec 03 個人副本 CR 移除。
+servers:
+  - url: /api
+
+paths:
+  /signature-verifications/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        description: 簽署成功時產生的驗證代碼（16 bytes 隨機值的 base64url），固定 22 字元
+        schema: { type: string, pattern: "^[A-Za-z0-9_-]{22}$" }
+    get:
+      operationId: getSignatureVerification
+      summary: 任何人以驗證代碼查詢單一簽章的驗證結果
+      description: |
+        不需登入、不讀也不設 cookie，依 client IP 限流（每 60 秒 10 次、每 300 秒 50 次）；
+        只讀 DB，不寫任何資料或稽核事件。
+        格式錯誤、查無代碼或尚未簽署一律回相同 404，不揭露原因。
+        文件 completed 時另比對驗證快照、完成文件摘要與稽核鏈，不一致回 409。
+      security: []
+      responses:
+        "200":
+          description: 驗證通過；只含 spec FR-009 白名單欄位
+          headers:
+            Cache-Control: { schema: { type: string, const: "no-store" } }
+            Referrer-Policy: { schema: { type: string, const: no-referrer } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignatureVerificationSuccess" }
+        "404":
+          description: 查無此簽章或驗證碼無效
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "409":
+          description: 簽署證據、驗證快照、完成文件摘要或稽核鏈不一致（ESIGN_INTEGRITY_FAILED）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429":
+          description: 查詢過於頻繁
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+components:
+  schemas:
+    ErrorEnvelope:
+      description: 沿用 Spec 03 的錯誤 envelope
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, const: false }
+        error: { type: object }
+    SuccessBase:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean, const: true }
+
+    SignatureVerification:
+      type: object
+      additionalProperties: false
+      required: [signature, document]
+      properties:
+        signature:
+          type: object
+          additionalProperties: false
+          required: [signerName, signedAt, authenticationMethod]
+          properties:
+            signerName: { type: string, description: 發起時固定的簽署人完整姓名 }
+            signedAt: { type: string, format: date-time }
+            authenticationMethod: { type: string, enum: [employee_session, email_invitation] }
+        document:
+          type: object
+          additionalProperties: false
+          required: [title, status, signedSourceSha256]
+          properties:
+            title: { type: string }
+            status: { type: string, enum: [active, finalizing, completed, stopped] }
+            signedSourceSha256:
+              type: string
+              pattern: "^[0-9a-f]{64}$"
+              description: 簽署當下重算的原始 PDF 摘要（signature record 的 document_sha256）
+            completedAt: { type: [string, "null"], format: date-time }
+            stoppedAt: { type: [string, "null"], format: date-time }
+            completedPdfSha256:
+              type: [string, "null"]
+              pattern: "^[0-9a-f]{64}$"
+              description: 只有 completed 時有值，等於 manifest v2 本人項目與個人 completed_pdf 的摘要；快照 final_pdf_sha256 為 null
+    SignatureVerificationSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties: { data: { $ref: "#/components/schemas/SignatureVerification" } }
+
+    SignatureResultExtension:
+      description: 擴充 Spec 03 `SignatureResult`，新增必填欄位；重送相同請求時回傳相同網址
+      type: object
+      required: [verificationUrl]
+      properties:
+        verificationUrl: { type: string, format: uri, description: 本次簽章的公開驗證網址 }
+    SignerViewExtension:
+      description: 擴充 Spec 03 `SignerView`
+      type: object
+      properties:
+        verificationUrl:
+          type: [string, "null"]
+          format: uri
+          description: 簽章公開驗證網址；只有 status = signed 時有值

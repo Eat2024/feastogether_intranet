@@ -42,18 +42,41 @@ describe('核心電子簽安全邊界', () => {
     expect(apiError(response).message).not.toContain(token);
   });
 
-  it('受信任 Origin 才進 credential 驗證，失效憑證只回通用 401', async () => {
+  it('受信任 Origin 才進 credential 驗證，失效憑證只回通用 401 HTML 錯誤頁', async () => {
     const response = await request(ctx.server)
       .post('/api/external-signature-session')
       .set('Origin', 'http://localhost:3000')
       .type('form')
       .send({ token })
-      .expect(401);
-    expect(apiError(response)).toEqual({
-      code: 'ESIGN_EXTERNAL_UNAUTHORIZED',
-      message: '外部簽署存取已失效',
-    });
-    expect(JSON.stringify(response.body)).not.toContain(token);
+      .expect(401)
+      .expect('Content-Type', /^text\/html/)
+      .expect('Cache-Control', 'no-store')
+      .expect('Referrer-Policy', 'no-referrer');
+    expect(response.text).toContain('邀請連結無效或已到期');
+    expect(response.text).not.toContain(token);
+    expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('邀請 token 格式錯誤時 GET 與 POST 都回 400 HTML 錯誤頁', async () => {
+    const malformed = 'not-a-token';
+    const responses = [
+      await request(ctx.server)
+        .get(`/api/external-signature-invitations/${malformed}`)
+        .expect(400),
+      await request(ctx.server)
+        .post('/api/external-signature-session')
+        .set('Origin', 'http://localhost:3000')
+        .type('form')
+        .send({ token: malformed })
+        .expect(400),
+    ];
+    for (const response of responses) {
+      expect(response.headers['content-type']).toMatch(/^text\/html/);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.text).toContain('邀請連結格式錯誤');
+      expect(response.text).not.toContain(malformed);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    }
   });
 
   it('所有 external cookie write path 都要求 Origin，且錯誤不反射 cookie', async () => {

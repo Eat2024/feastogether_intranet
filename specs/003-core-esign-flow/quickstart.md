@@ -1,5 +1,7 @@
 # Quickstart: 核心電子簽端到端流程驗收
 
+> **Spec 007 更新（2026-10-19）**：以下到期永久停止與補簽範圍外的記載為舊版決策，現由 Spec 007 取代。到期改為 expired，不填停止原因；人工停止維持永久 stopped。原始期限在固定 payload，sign_end_at 為有效期限；已簽證據及個人副本保留。補簽 API 由下一個 ticket 交付；前端正式串接另行交付。
+
 > **本次 PR 範圍（2026-10-18）**：僅交付後端、migration 與契約；下文的前端設計及整合驗收保留為完整需求，前端實作由獨立 PR 交付。目前 client 為原有 mock 原型，不代表新版後端端到端流程已可由 UI 驗收。
 
 > 2026-10-16 目標模型：共用欄位及個人 PDF。以下為實作完成後的驗收指南，本次尚未執行。
@@ -42,7 +44,7 @@ SMTP_SECURE=false
 SMTP_FROM=no-reply@example.test
 ```
 
-MySQL、Redis、Spec 2 auth 與 Client proxy 仍使用現有 `.env.test` / `.env.local` 命名；BullMQ 沿用 `REDIS_HOST/PORT/PASSWORD/DB`，不新增另一組 Redis 設定。驗收時應啟動 HTTP server、BullMQ worker 與 Client；worker 未啟動時外部信件、到期停止與完成 PDF 不會自動處理。
+MySQL、Redis、Spec 2 auth 與 Client proxy 仍使用現有 `.env.test` / `.env.local` 命名；BullMQ 沿用 `REDIS_HOST/PORT/PASSWORD/DB`，不新增另一組 Redis 設定。驗收時應啟動 HTTP server、BullMQ worker 與 Client；worker 未啟動時外部信件、到期落盤與完成 PDF 不會自動處理。
 
 環境綁定固定為：local=`smtp + local`、automated test=`fake + local temp directory`、UAT=`ses + local shared persistent volume`、production=`ses + private S3`。自動化測試由 test bootstrap 明確覆寫成 fake mailer 與每次測試獨立的 temp directory，不沿用上述人工驗收 SMTP。UAT 另設定 `AWS_REGION`、`SES_FROM`；production 另設定 `AWS_REGION`、`SES_FROM`、`ESIGN_S3_BUCKET`，AWS 認證一律由 runtime IAM role/default credential chain 提供，不在 `.env` 放 access key。driver 與環境不符、必要值缺漏或 provider 無權限時必須 fail fast，不可降級至其他 adapter。
 
@@ -138,7 +140,7 @@ pnpm lint
 1. 以測試 clock 建立截止時間已過／即將到達的 active 文件，保留 pending signer。
 2. 直接執行一次 maintenance processor 驗證業務邊界；另以真實 Redis 驗證 `esign-maintenance:30s` scheduler 已註冊且可喚醒 processor，不以長時間 sleep 等待。
 
-預期：document stopped，reason 是穩定的「簽署期限已到」，已簽證據保留，pending signer 後續提交為零成功。重複 job/processor 不新增第二次 stop event；Redis 暫時不可用期間不改變 MySQL 文件狀態，恢復後下一輪 reconciliation 收斂。
+預期：document expired，不填 stoppedAt／stopReason，已簽證據保留，pending signer 後續提交為零成功。重複 job/processor 不新增第二次 document.expired event；Redis 暫時不可用期間不改變 MySQL 文件狀態，恢復後下一輪 reconciliation 收斂。
 
 ## 10. 檔案與資料邊界人工檢查
 

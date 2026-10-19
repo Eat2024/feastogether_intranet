@@ -51,7 +51,9 @@ export class SignerRepository {
       .addSelect('signer.document_id', 'documentId')
       .where('signer.id > :afterId', { afterId })
       .andWhere("signer.status = 'signed'")
-      .andWhere("document.status IN ('active','finalizing','stopped')")
+      .andWhere(
+        "document.status IN ('active','expired','finalizing','stopped')",
+      )
       .andWhere(
         "(signer.completion_status IN ('pending','failed') OR (signer.completion_status = 'processing' AND signer.completion_lease_expires_at <= :now))",
         { now },

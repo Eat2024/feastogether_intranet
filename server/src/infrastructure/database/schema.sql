@@ -143,7 +143,7 @@ CREATE TABLE `esign_documents` (
   KEY `idx_esign_documents_deleted_at` (`deleted_at`),
   CONSTRAINT `fk_esign_documents_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `chk_esign_documents_sign_period` CHECK ((((`sign_start_at` is null) and (`sign_end_at` is null)) or ((`sign_start_at` is not null) and (`sign_end_at` is not null) and (`sign_start_at` < `sign_end_at`)))),
-  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped')))
+  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'expired',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='電子簽文件';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_export_jobs`;

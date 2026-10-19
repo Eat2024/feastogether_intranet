@@ -155,7 +155,7 @@ describe('DocumentFinalizationProcessor 個人副本', () => {
     expect(f.completedPdf.create).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['active', 'stopped'])(
+  it.each(['active', 'expired', 'stopped'])(
     '%s 文件仍產製已簽署者副本，不提前結案',
     async (status) => {
       const f = setup();

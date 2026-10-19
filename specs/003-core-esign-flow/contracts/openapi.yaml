@@ -40,7 +40,7 @@ paths:
           schema: { type: string, enum: [created, assigned] }
         - name: status
           in: query
-          schema: { type: string, enum: [draft, active, finalizing, completed, stopped] }
+          schema: { type: string, enum: [draft, active, expired, finalizing, completed, stopped] }
       responses:
         "200":
           description: 已裁切的文件清單
@@ -259,7 +259,7 @@ paths:
       - $ref: "#/components/parameters/DocumentId"
     post:
       operationId: stopDocument
-      summary: creator 停止未完成的 active 或 finalizing 文件
+      summary: creator 停止未完成的 active、expired 或 finalizing 文件
       requestBody:
         required: true
         content:
@@ -313,7 +313,7 @@ paths:
     get:
       operationId: downloadSignerCompletedFile
       summary: 建立人依簽署人下載 ready 個人副本
-      description: 必須驗證 signer 屬於指定文件且目前員工為建立人；active、finalizing、completed、stopped 均可取得 ready 副本。未授權或目標不存在為 404；尚未 ready 為 409。
+      description: 必須驗證 signer 屬於指定文件且目前員工為建立人；active、expired、finalizing、completed、stopped 均可取得 ready 副本。未授權或目標不存在為 404；尚未 ready 為 409。
       responses:
         "200": { $ref: "#/components/responses/PdfFile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -683,16 +683,19 @@ components:
     DocumentSummary:
       type: object
       additionalProperties: false
-      required: [id, docNumber, title, status, createdAt, pendingCount, signedCount]
+      required: [id, docNumber, title, status, createdAt, pendingCount, signedCount, signEndAt, originalSignEndAt, isReopened]
       properties:
         id: { type: string }
         docNumber: { type: string, format: uuid }
         title: { type: string }
-        status: { type: string, enum: [draft, active, finalizing, completed, stopped] }
+        status: { type: string, enum: [draft, active, expired, finalizing, completed, stopped] }
         createdAt: { type: string, format: date-time }
         initiatedAt: { type: [string, "null"], format: date-time }
         completedAt: { type: [string, "null"], format: date-time }
         stoppedAt: { type: [string, "null"], format: date-time }
+        signEndAt: { type: [string, "null"], format: date-time, description: 目前有效截止時間 }
+        originalSignEndAt: { type: [string, "null"], format: date-time, description: 固定簽署快照中的原始截止時間 }
+        isReopened: { type: boolean, description: 有效期限是否已經由補簽變更 }
         pendingCount: { type: integer, minimum: 0 }
         signedCount: { type: integer, minimum: 0 }
     DocumentListItem:
@@ -812,7 +815,7 @@ components:
         signedAt: { type: string, format: date-time }
         verificationUrl: { type: [string, "null"], format: uri, description: Spec 04 公開驗證入口，不授予檔案下載 }
         completion: { $ref: "#/components/schemas/PersonalCompletion" }
-        documentStatus: { type: string, enum: [active, finalizing, completed, stopped] }
+        documentStatus: { type: string, enum: [active, expired, finalizing, completed, stopped] }
 
     SuccessBase:
       type: object

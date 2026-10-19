@@ -21,9 +21,9 @@
 
 **目的**：先備妥狀態、錯誤及稽核共用契約。完成本階段才開始各故事。
 
-- [ ] T003 在 `server/src/features/esign/entities/esign-document.entity.ts`、`server/src/infrastructure/database/schema.sql` 與新增 `server/src/infrastructure/database/migrations/1792368000000-EsignExpiryReopen.ts` 擴充 status 為「draft / active / expired / finalizing / completed / stopped」；只改 CHECK，不新增欄位、不改既有 stopped。down 遇 expired 或 document.reopened 歷史即拒絕；在 `server/test/schema-migration.e2e-spec.ts`、`server/test/schema-constraints.e2e-spec.ts`、`server/src/features/esign/entities/schema-metadata.spec.ts` 驗證 up/down/up 與有資料時拒絕回滾。（FR-001、016）
-- [ ] T004 [P] 在 `server/src/common/errors/app-error-code.ts`、`server/src/common/errors/app-errors.ts` 與 `server/src/common/errors/app-errors.spec.ts` 定義補簽輸入 400、期限已變更 409、不可補簽 409 與穩定繁體中文訊息，沿用 401／404／完整性錯誤，不洩漏 token 或文件存在性。（FR-017）
-- [ ] T005 [P] 在 `server/src/features/esign/services/esign-audit.service.ts` 及其 `.spec.ts` 擴充 previousSignEndAt、signEndAt、expiredAt 日期白名單；原因「trim 後 1–500 個 Unicode code points」，不得以 UTF-16 slice 截斷；沿用文件鎖與 hash-chain，不建立補簽表。（FR-007、015）
+- [x] T003 在 `server/src/features/esign/entities/esign-document.entity.ts`、`server/src/infrastructure/database/schema.sql` 與新增 `server/src/infrastructure/database/migrations/1792368000000-ExpiredDocuments.ts` 擴充 status 為「draft / active / expired / finalizing / completed / stopped」；只改 CHECK，不新增欄位、不改既有 stopped。down 遇 expired 或 document.reopened 歷史即拒絕；在 `server/test/schema-migration.e2e-spec.ts`、`server/test/schema-constraints.e2e-spec.ts`、`server/src/features/esign/entities/schema-metadata.spec.ts` 驗證 up/down/up 與有資料時拒絕回滾。（FR-001、016）
+- [x] T004 [P] 在 `server/src/common/errors/app-error-code.ts`、`server/src/common/errors/app-errors.ts` 與 `server/src/common/errors/app-errors.spec.ts` 定義補簽輸入 400、期限已變更 409、不可補簽 409 與穩定繁體中文訊息，沿用 401／404／完整性錯誤，不洩漏 token 或文件存在性。（FR-017）
+- [x] T005 [P] 在 `server/src/features/esign/services/esign-audit.service.ts` 及其 `.spec.ts` 擴充 previousSignEndAt、signEndAt、expiredAt 日期白名單；原因「trim 後 1–500 個 Unicode code points」，不得以 UTF-16 slice 截斷；沿用文件鎖與 hash-chain，不建立補簽表。（FR-007、015）
 
 ## Phase 3: US1 — 文件到期後保留補簽可能性（P1）
 
@@ -31,12 +31,12 @@
 
 **Independent Test**：讓部分已簽文件跨過期限，先暫停 worker，再恢復；查詢／篩選／簽署結果始終正確，只有一筆到期事件且沒有永久停止。
 
-- [ ] T006 [P] [US1] 在 `server/src/features/esign/services/esign-document-validation.service.spec.ts` 與 `server/src/features/esign/services/esign-view.mapper.spec.ts` 覆蓋截止前／等於／之後、pending=0、null 期限、finalizing／completed／stopped、同一 now，以及原期限／補簽標記投影。（FR-001、002、014）
-- [ ] T007 [P] [US1] 在 `server/src/worker/esign/esign-maintenance.processor.spec.ts` 與新增 `server/src/features/esign/services/esign-expiry.service.spec.ts` 覆蓋批次 100 筆、重複執行、延遲掃描、新期限競態、未簽邀請清除、已簽證據不變及 expired 稽核，不再預期 stopped_by_deadline。（FR-001、009、015）
-- [ ] T008 [US1] 在 `server/src/features/esign/services/esign-document-validation.service.ts`、`server/src/features/esign/services/esign-view.mapper.ts`、`server/src/features/esign/dto/esign-common.dto.ts`、`server/src/features/esign/dto/document-query.dto.ts` 實作有效狀態與投影：active＋pending>0＋now>=signEndAt 才呈現 expired；「originalSignEndAt：DTO 投影自固定 payload；草稿為 null」、「isReopened：已發起且有效期限不同於原期限；草稿為 false」；不修改 payload/hash。（FR-001、006、014）
-- [ ] T009 [US1] 在 `server/src/features/esign/services/esign-expiry.service.ts`、`server/src/features/esign/services/esign-stoppage.service.ts`、`server/src/features/esign/repositories/document.repository.ts` 與 `server/src/worker/esign/esign-maintenance.processor.ts` 將到期從永久停止分離：鎖內重讀狀態／期限／pending，轉 expired 並清未簽邀請；occurredAt 為處理時間、expiredAt 為截止時間，不填 stoppedAt／stopReason；提供同交易可復用的到期轉換供補簽使用，不新增排程。（FR-001、002、009、015）
-- [ ] T010 [US1] 在 `server/src/features/esign/services/esign-document-query.service.ts`、`server/src/features/esign/services/esign-signing-task.service.ts`、`server/src/features/esign/services/external-access.service.ts` 統一摘要與有效期限，先算有效狀態再篩選，單次請求共用 now；保留 expired 的內部 pending 列表且 GET 不寫業務資料。於 `server/test/core-esign-flow.e2e-spec.ts` 驗證 worker 延遲時列表與篩選。（FR-008、014）
-- [ ] T011 [US1] 在 `server/src/features/esign/services/esign-signing.service.ts` 及其 `.spec.ts` 確保昂貴驗證後、建立證據前重新驗證截止且使用一致簽署時間，合法重送回傳有效 documentStatus；在 `server/src/features/esign/services/completed-pdf.service.ts`、`server/src/worker/esign/document-finalization.processor.ts`、已簽者 source validation 與其既有測試加入 expired 白名單，保留 finalizing → completed。（FR-002、006）
+- [x] T006 [P] [US1] 在 `server/src/features/esign/services/esign-document-validation.service.spec.ts` 與 `server/src/features/esign/services/esign-view.mapper.spec.ts` 覆蓋截止前／等於／之後、pending=0、null 期限、finalizing／completed／stopped、同一 now，以及原期限／補簽標記投影。（FR-001、002、014）
+- [x] T007 [P] [US1] 在 `server/src/worker/esign/esign-maintenance.processor.spec.ts` 與新增 `server/src/features/esign/services/esign-expiry.service.spec.ts` 覆蓋批次 100 筆、重複執行、延遲掃描、新期限競態、未簽邀請清除、已簽證據不變及 expired 稽核，不再預期 stopped_by_deadline。（FR-001、009、015）
+- [x] T008 [US1] 在 `server/src/features/esign/services/esign-document-validation.service.ts`、`server/src/features/esign/services/esign-view.mapper.ts`、`server/src/features/esign/dto/esign-common.dto.ts`、`server/src/features/esign/dto/document-query.dto.ts` 實作有效狀態與投影：active＋pending>0＋now>=signEndAt 才呈現 expired；「originalSignEndAt：DTO 投影自固定 payload；草稿為 null」、「isReopened：已發起且有效期限不同於原期限；草稿為 false」；不修改 payload/hash。（FR-001、006、014）
+- [x] T009 [US1] 在 `server/src/features/esign/services/esign-expiry.service.ts`、`server/src/features/esign/services/esign-stoppage.service.ts`、`server/src/features/esign/repositories/document.repository.ts` 與 `server/src/worker/esign/esign-maintenance.processor.ts` 將到期從永久停止分離：鎖內重讀狀態／期限／pending，轉 expired 並清未簽邀請；occurredAt 為處理時間、expiredAt 為截止時間，不填 stoppedAt／stopReason；提供同交易可復用的到期轉換供補簽使用，不新增排程。（FR-001、002、009、015）
+- [x] T010 [US1] 在 `server/src/features/esign/services/esign-document-query.service.ts`、`server/src/features/esign/services/esign-signing-task.service.ts`、`server/src/features/esign/services/external-access.service.ts` 統一摘要與有效期限，先算有效狀態再篩選，單次請求共用 now；保留 expired 的內部 pending 列表且 GET 不寫業務資料。於 `server/test/core-esign-flow.e2e-spec.ts` 驗證 worker 延遲時列表與篩選。（FR-008、014）
+- [x] T011 [US1] 在 `server/src/features/esign/services/esign-signing.service.ts` 及其 `.spec.ts` 確保昂貴驗證後、建立證據前重新驗證截止且使用一致簽署時間，合法重送回傳有效 documentStatus；在 `server/src/features/esign/services/completed-pdf.service.ts`、`server/src/worker/esign/document-finalization.processor.ts`、已簽者 source validation 與其既有測試加入 expired 白名單，保留 finalizing → completed。（FR-002、006）
 
 **Checkpoint**：US1 可獨立驗收；此時仍沒有完整補簽入口，不宣稱補簽功能完成。
 
@@ -133,3 +133,7 @@ Setup T001–T002
 | FR-017 | T004、T013、T016–T017、T021–T022 |
 
 29 項任務：Setup 2、Foundational 3、US1 6、US2 6、US3 5、US4 3、Polish 4。所有勾選均代表未完成；尚未執行程式測試。
+
+### Ticket 01 驗證配置
+
+T007 的批次 101 筆、並發到期、重跑與新期限防護採 core-esign-flow 真實 DB/HTTP 測試，取代 mock repository 的 expiry 單元測試。已簽副本與重送有效狀態亦在同套件驗收。T023–025 的到期人工停止部分已交付，補簽與歷程裁切留待 ticket 02。

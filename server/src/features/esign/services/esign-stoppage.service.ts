@@ -27,41 +27,23 @@ export class EsignStoppageService {
     return this.stop(documentId, normalized, new Date(), creatorUserId);
   }
 
-  stopByDeadline(documentId: number, now: Date) {
-    return this.stop(documentId, '簽署期限已到', now);
-  }
-
   private stop(
     documentId: number,
     reason: string,
     now: Date,
-    creatorUserId?: number,
+    creatorUserId: number,
   ) {
     return this.mysql.transaction(async (manager) => {
       const document = await this.documents.findByIdForUpdate(
         documentId,
         manager,
       );
-      if (creatorUserId !== undefined)
-        this.access.checkEsignCreator(document, creatorUserId);
-      if (!document) return false;
-      if (document.status === 'stopped' && creatorUserId === undefined)
-        return false;
-      if (creatorUserId === undefined && document.status !== 'active')
-        return false;
+      this.access.checkEsignCreator(document, creatorUserId);
       this.validation.assertActiveForStop(document);
       const signers = await this.signers.findByDocumentForUpdate(
         documentId,
         manager,
       );
-      if (
-        creatorUserId === undefined &&
-        (!document.signEndAt ||
-          now < document.signEndAt ||
-          !signers.some((signer) => signer.status === 'pending'))
-      ) {
-        return false;
-      }
       for (const signer of signers) {
         if (signer.status === 'pending') {
           signer.invitationTokenSha256 = null;
@@ -78,10 +60,7 @@ export class EsignStoppageService {
         {
           documentId,
           actorUserId: creatorUserId,
-          eventType:
-            creatorUserId === undefined
-              ? 'document.stopped_by_deadline'
-              : 'document.stopped_by_creator',
+          eventType: 'document.stopped_by_creator',
           occurredAt: now,
           metadata: { status: 'stopped', reason },
         },

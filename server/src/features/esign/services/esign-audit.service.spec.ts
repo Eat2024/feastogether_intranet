@@ -128,6 +128,29 @@ describe('EsignAuditService', () => {
     expect(repository.insert.mock.calls[1]?.[0].metadataJson).toBeUndefined();
   });
 
+  it('補簽稽核保留 500 個 Unicode 字元與 UTC 期限，忽略非法日期', async () => {
+    const { repository, service } = setup();
+    await service.append(
+      {
+        documentId: 10,
+        eventType: 'document.reopened',
+        occurredAt: new Date(),
+        metadata: {
+          reason: `  ${'𠮷'.repeat(500)}  `,
+          previousSignEndAt: '2026-10-19T00:00:00.000Z',
+          signEndAt: '2026-10-20T00:00:00.000Z',
+          expiredAt: '不是日期',
+        },
+      },
+      manager,
+    );
+    expect(repository.insert.mock.calls[0]?.[0].metadataJson).toEqual({
+      reason: '𠮷'.repeat(500),
+      previousSignEndAt: '2026-10-19T00:00:00.000Z',
+      signEndAt: '2026-10-20T00:00:00.000Z',
+    });
+  });
+
   it('metadata 只接受白名單，避免 Email、token、IP 與簽名進入 audit', async () => {
     const { repository, service } = setup();
     await service.append(

@@ -17,6 +17,7 @@ import {
   EsignSignerViewDto,
   EsignSourceFileDto,
 } from '../dto/esign-common.dto';
+import { effectiveDocumentStatus } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
 
 export interface EsignSignerCounts {
@@ -32,12 +33,33 @@ export class EsignViewMapper {
   documentSummary(
     document: EsignDocument,
     counts: EsignSignerCounts,
+    now = new Date(),
   ): EsignDocumentSummaryDto {
+    const period = document.signingPayloadJson?.period;
+    const originalSignEndAt =
+      document.status !== 'draft' &&
+      period &&
+      typeof period === 'object' &&
+      'endAt' in period &&
+      typeof period.endAt === 'string'
+        ? period.endAt
+        : null;
+    const signEndAt = document.signEndAt?.toISOString() ?? null;
     return {
+      signEndAt,
+      originalSignEndAt,
+      isReopened:
+        originalSignEndAt !== null &&
+        signEndAt !== null &&
+        signEndAt !== originalSignEndAt,
       id: String(document.id),
       docNumber: document.docNumber,
       title: document.title,
-      status: document.status as EsignDocumentStatus,
+      status: effectiveDocumentStatus(
+        document,
+        counts.pendingCount,
+        now,
+      ) as EsignDocumentStatus,
       createdAt: document.createdAt.toISOString(),
       initiatedAt: document.initiatedAt?.toISOString() ?? null,
       completedAt: document.completedAt?.toISOString() ?? null,
@@ -52,9 +74,10 @@ export class EsignViewMapper {
     document: EsignDocument,
     counts: EsignSignerCounts,
     creator: User | undefined,
+    now = new Date(),
   ): EsignDocumentListItemDto {
     return {
-      ...this.documentSummary(document, counts),
+      ...this.documentSummary(document, counts, now),
       signStartAt: document.signStartAt?.toISOString() ?? null,
       signEndAt: document.signEndAt?.toISOString() ?? null,
       createdBy: this.creator(creator),

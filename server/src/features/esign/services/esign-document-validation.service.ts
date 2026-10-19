@@ -7,6 +7,19 @@ import { EsignFileObject } from '../entities/esign-file-object.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
 import { canonicalJson } from './esign-audit.service';
 
+export function effectiveDocumentStatus(
+  document: EsignDocument,
+  pendingCount: number,
+  now: Date,
+): string {
+  return document.status === 'active' &&
+    pendingCount > 0 &&
+    document.signEndAt &&
+    now >= document.signEndAt
+    ? 'expired'
+    : document.status;
+}
+
 @Injectable()
 export class EsignDocumentValidationService {
   checkStillDraft(document: EsignDocument): void {
@@ -117,7 +130,7 @@ export class EsignDocumentValidationService {
   }
 
   assertActiveForStop(document: EsignDocument): void {
-    if (!['active', 'finalizing'].includes(document.status)) {
+    if (!['active', 'expired', 'finalizing'].includes(document.status)) {
       throw new AppException(...AppErrors.ESIGN_DOCUMENT_NOT_STOPPABLE);
     }
   }
@@ -129,7 +142,7 @@ export class EsignDocumentValidationService {
   ): void {
     if (signer.status === 'signed') {
       if (
-        !['active', 'finalizing', 'completed', 'stopped'].includes(
+        !['active', 'expired', 'finalizing', 'completed', 'stopped'].includes(
           document.status,
         )
       ) {

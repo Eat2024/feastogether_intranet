@@ -53,3 +53,17 @@ pnpm -C server test:e2e
 2. 執行與變更範圍對應的 lint、test 與 build。
 3. 根據 `.env.example` 更新文件，但不寫入實際 secret。
 4. 交付摘要說明前端、後端、migration/config 各自的變更與未完成限制。
+
+## Agent skills
+
+### Issue tracker
+
+建立、讀取或結案 tickets 時使用本機 Markdown，遵循 `docs/agents/issue-tracker.md`；不建立 GitHub Issues。
+
+### Triage labels
+
+分類與更新 ticket 狀態時遵循 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+探索領域、命名或評估設計決策時，遵循共用領域配置 `docs/agents/domain.md`。

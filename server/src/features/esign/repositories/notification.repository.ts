@@ -64,6 +64,16 @@ export class NotificationRepository {
     return manager.save(log);
   }
 
+  findByDocumentForUpdate(documentId: number, manager: EntityManager) {
+    return manager
+      .createQueryBuilder(EsignNotificationLog, 'log')
+      .innerJoin('log.signer', 'signer')
+      .where('signer.document_id = :documentId', { documentId })
+      .orderBy('log.id', 'ASC')
+      .setLock('pessimistic_write')
+      .getMany();
+  }
+
   findEligibleInvitationLogIds(
     now: Date,
     staleBefore: Date,
@@ -79,6 +89,9 @@ export class NotificationRepository {
         "((log.result IN ('pending','failed') AND (log.next_attempt_at IS NULL OR log.next_attempt_at <= :now)) OR (log.result = 'processing' AND log.processing_started_at < :staleBefore))",
         { now, staleBefore },
       )
+      .andWhere('(log.error_code IS NULL OR log.error_code <> :superseded)', {
+        superseded: 'INVITATION_SUPERSEDED',
+      })
       .andWhere("signer.status = 'pending' AND document.status = 'active'")
       .andWhere('signer.invitation_token_ciphertext IS NOT NULL')
       .andWhere(

@@ -1,3 +1,4 @@
+import { EsignReopeningService } from '../services/esign-reopening.service';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyCookie from '@fastify/cookie';
 import { Reflector } from '@nestjs/core';
@@ -48,6 +49,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
       providers: [
         { provide: EsignDraftService, useValue: drafts },
         { provide: EsignDocumentQueryService, useValue: queries },
+        { provide: EsignReopeningService, useValue: {} },
         {
           provide: ConfigService,
           useValue: new ConfigService({

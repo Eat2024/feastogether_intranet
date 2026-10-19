@@ -1,4 +1,6 @@
-import { ApiOperation } from '@nestjs/swagger';
+import { ReopenDocumentDto, type ReopeningInput } from '../dto/reopening.dto';
+import { EsignReopeningService } from '../services/esign-reopening.service';
+import { ApiBody, ApiOperation } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -15,6 +17,7 @@ import {
   Res,
   UseGuards,
   UseInterceptors,
+  ValidationPipe,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ConfigService } from '@nestjs/config';
@@ -55,6 +58,7 @@ export class DocumentsController {
     private readonly stoppages: EsignStoppageService,
     private readonly completions: EsignCompletionAccessService,
     private readonly config: ConfigService,
+    private readonly reopenings: EsignReopeningService,
   ) {}
 
   @ApiOperation({
@@ -195,6 +199,46 @@ export class DocumentsController {
       allowReject: body.allowReject,
     });
     return this.queries.creatorDetail(documentId, userId);
+  }
+
+  @UseGuards(OriginGuard)
+  @ApiOperation({
+    summary: '重新開放已到期文件補簽',
+    description:
+      '僅建立人可設定新期限及原因；舊期限不符回 409，保留原簽署證據。',
+  })
+  @ApiBody({ type: ReopenDocumentDto })
+  @Post(':documentId/reopenings')
+  reopen(
+    @Param('documentId') id: string,
+    @CurrentUserId() userId: number,
+    @Body(
+      new ValidationPipe({
+        expectedType: ReopenDocumentDto,
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        exceptionFactory: () =>
+          new AppException(...AppErrors.ESIGN_REOPEN_INPUT_INVALID),
+      }),
+    )
+    body: ReopeningInput,
+  ) {
+    return this.reopenings.reopen(this.id(id), userId, body);
+  }
+
+  @ApiOperation({
+    summary: '取得補簽外部邀請',
+    description: '僅建立人主動讀取目前補簽輪的邀請，不寄信、不輪替憑證。',
+  })
+  @Get(':documentId/reopening-invitations')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('Referrer-Policy', 'no-referrer')
+  reopeningInvitations(
+    @Param('documentId') id: string,
+    @CurrentUserId() userId: number,
+  ) {
+    return this.queries.reopeningInvitations(this.id(id), userId);
   }
 
   @ApiOperation({

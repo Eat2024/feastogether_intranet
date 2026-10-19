@@ -1,6 +1,6 @@
 # Quickstart: 到期與補簽驗收
 
-本文件為實作後驗證指南；目前只有規劃文件，以下功能尚未實作、測試尚未執行。欄位與 HTTP 結果見 [契約](contracts/http-api.md)，資料限制見 [資料模型](data-model.md)。
+本文件為已交付後端的驗證指南；實際驗證結果如下，前端正式串接仍另行交付。欄位與 HTTP 結果見 [契約](contracts/http-api.md)，資料限制見 [資料模型](data-model.md)。
 
 ## 前置條件
 
@@ -45,3 +45,23 @@ pnpm -C server test:e2e:security
 已完成已到期狀態、讀取／篩選、截止與合法重送、到期稽核、已簽個人副本及人工停止。補簽 API／邀請更新由 ticket 02 續作，前端正式串接仍未交付。
 
 驗證：server 單元 89 suites／710 tests、core HTTP/DB 11 tests、core security 7 tests、schema 2 suites／5 tests、build、lint:check 均通過；lint 有既存 warnings、無 errors。完整 e2e/security 套件留待整合驗證。101 筆到期批次、截止當下與 GET 不寫資料、並發只一次事件、證據不變與 expired 副本下載皆有真實 DB 驗收。
+
+## Ticket 02 交付紀錄（2026-10-19）
+
+- 單元：91 suites／738 tests 通過；新 DTO／service／worker 測試採先紅後綠，DB HTTP 先確認端點 404 再完成實作。
+- HTTP／DB／queue／API coverage：10 suites／74 tests 通過（排除獨立執行的 6,000 人 scale suite）；最後涉及 worker／新簽章鏈驗證的 core 與 queue 再驗 2 suites／13 tests 通過。
+- 安全性：6 suites／25 tests 通過。補簽特定的 401／403／404、未知欄位、內部原因裁切、舊 cookie/token 與 no-store/no-referrer 另外集中於 core HTTP 整合測試。
+- Schema：2 suites／5 tests 通過，涵蓋 up/down/up、無 drift、expired/reopened 回滾拒絕。
+- server build 與 lint:check 通過（0 errors，既有及測試型別 warnings 仍存在）；git diff --check 通過。
+
+SC-001 由截止、延遲 worker 與並發到期測試覆蓋；SC-002 由既有已簽者＋內部未簽＋外部未簽的兩輪補簽至 completed、原 snapshot/evidence/副本 bytes 比對覆蓋；SC-003 由授權、輸入、不可補簽狀態與完整性驗證覆蓋；SC-004 由同輪並發、跨輪重送、expiry／stop 競態、資料庫回滾與舊郵件 claim 回寫覆蓋；SC-005 由多輪歷程、新舊資格與新舊簽章公開驗證覆蓋；SC-006 由摘要／清單／signer 歷程的精確欄位斷言覆蓋。
+
+本輪測試以既有 `.env.test` 配合命令環境覆寫 `DB_MYSQL_DB=feastogether_intranet_test_spec007_reopen`、`REDIS_DB=15` 隔離，不修改設定檔。Schema helper 會附加 UUID，改用較短 `feastogether_intranet_test007` 前綴，避免 MySQL 64 字識別字上限；所有測試仍維持 feastogether_intranet_test 前綴的 fail-closed 保護。合成測試資料依 fixture 清理；未操作正式資料。
+
+後端與 migration/config：補簽與外部手動邀請已交付，migration 僅 ticket 01 的 status CHECK；無新 dependency/config。前端：未修改 client，正式 API 接線與完整產品 UI 驗收由獨立 PR 交付。部署／回滾順序同上，本次沒有部署。
+
+## 整合補充驗證與審查（2026-10-19）
+
+- 既有 6,000 人規模 e2e 在 ticket 01 整合版本通過：6,001 人可發起，6,000 人各自簽署、產製個人副本並結案；測試共約 1,051 秒，簽署約 331 秒、產製約 702 秒。此測試針對已到期相容性所影響的既有副本路徑；ticket 02 的補簽、外部邀請與 queue 則由前述完整套件驗證。
+- 以 `b9ae324` 為固定基準進行雙軸 code-review：規格符合性 0 項問題；程式規範 0 項硬性違規，另有 1 項 worker claim 回寫檢查重複的維護性建議，已於 `a8ff3ef` 抽出同一 processor 的私有驗證方法，保留原鎖順序與 nullable 行為。修正後 worker 27 tests、server build 與 lint:check 通過（0 errors，162 warnings）；無未解審查項目。
+- 本機兩張 tickets 均已驗收並整合。PR #13 交付已到期；PR #14 疊在 #13 上交付重新開放補簽。未合併遠端 PR、未部署。

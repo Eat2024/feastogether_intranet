@@ -1,3 +1,6 @@
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
+import { EsignTokenService } from './esign-token.service';
 import { Inject, Injectable } from '@nestjs/common';
 import type { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
@@ -39,6 +42,7 @@ export class EsignDocumentQueryService {
     private readonly storage: PrivateFileStorage,
     private readonly users: UserRepository,
     private readonly records: SignatureRecordRepository,
+    private readonly tokens: EsignTokenService,
   ) {}
 
   async list(
@@ -141,8 +145,9 @@ export class EsignDocumentQueryService {
       this.validation.assertSourceIntegrity(document, source, metadata.sha256);
       sourceFile = this.mapper.sourceFile(source, metadata.pageCount);
     }
+    const summary = this.mapper.documentSummary(document, this.count(signers));
     return {
-      ...this.mapper.documentSummary(document, this.count(signers)),
+      ...summary,
       sourceFile,
       signStartAt: document.signStartAt?.toISOString() ?? null,
       signEndAt: document.signEndAt?.toISOString() ?? null,
@@ -151,7 +156,7 @@ export class EsignDocumentQueryService {
       signers: signers.map((signer) =>
         this.mapper.signer(
           signer,
-          signer.signerType === 'email'
+          signer.signerType === 'email' && !summary.isReopened
             ? (deliveryBySigner.get(signer.id) ?? null)
             : null,
           codeBySigner.get(signer.id),
@@ -159,6 +164,50 @@ export class EsignDocumentQueryService {
       ),
       fields: fields.map((field) => this.mapper.field(field)),
     };
+  }
+
+  reopeningInvitations(documentId: number, userId: number) {
+    return this.mysql.transaction(async (manager) => {
+      const document = await this.documents.findById(documentId, manager);
+      this.policy.checkEsignCreator(document, userId);
+      const signers = await this.signers.findByDocument(documentId, manager);
+      const now = new Date();
+      const summary = this.mapper.documentSummary(
+        document,
+        this.count(signers),
+        now,
+      );
+      if (summary.status !== 'active' || !summary.isReopened) return [];
+      return signers
+        .filter(
+          (signer) =>
+            signer.status === 'pending' && signer.signerType === 'email',
+        )
+        .map((signer) => {
+          try {
+            if (
+              !signer.invitationTokenCiphertext ||
+              !signer.invitationExpiresAt ||
+              signer.invitationExpiresAt <= now ||
+              !document.signEndAt ||
+              signer.invitationExpiresAt > document.signEndAt
+            )
+              throw new Error();
+            const token = this.tokens.decrypt(signer.invitationTokenCiphertext);
+            if (this.tokens.digest(token) !== signer.invitationTokenSha256)
+              throw new Error();
+            return {
+              signerPublicId: signer.publicId,
+              invitationUrl: this.tokens.invitationUrl(token),
+              expiresAt: signer.invitationExpiresAt.toISOString(),
+            };
+          } catch {
+            throw new AppException(
+              ...AppErrors.ESIGN_INVITATION_SERVICE_UNAVAILABLE,
+            );
+          }
+        });
+    });
   }
 
   async creatorSource(documentId: number, userId: number) {
@@ -196,6 +245,7 @@ export class EsignDocumentQueryService {
       'document.stopped_by_creator',
       'document.stopped_by_deadline',
       'document.expired',
+      'document.reopened',
     ]);
     return events
       .filter(
@@ -204,21 +254,39 @@ export class EsignDocumentQueryService {
           documentEvents.has(event.eventType) ||
           event.signerId === signer?.id,
       )
-      .map((event) => ({
-        type: event.eventType,
-        occurredAt: event.occurredAt.toISOString(),
-        actor: isCreator
-          ? event.actorUserId === userId
-            ? '建立人'
-            : '系統'
-          : event.signerId === signer?.id
-            ? '本人'
-            : '系統',
-        reason:
-          typeof event.metadataJson?.reason === 'string'
-            ? event.metadataJson.reason
-            : null,
-      }));
+      .map((event) => {
+        if (event.eventType === 'document.reopened') {
+          const base = {
+            type: event.eventType,
+            occurredAt: event.occurredAt.toISOString(),
+            signEndAt: event.metadataJson?.signEndAt,
+          };
+          return isCreator
+            ? {
+                ...base,
+                actor: '建立人',
+                actorUserId: String(event.actorUserId),
+                previousSignEndAt: event.metadataJson?.previousSignEndAt,
+                reason: event.metadataJson?.reason,
+              }
+            : base;
+        }
+        return {
+          type: event.eventType,
+          occurredAt: event.occurredAt.toISOString(),
+          actor: isCreator
+            ? event.actorUserId === userId
+              ? '建立人'
+              : '系統'
+            : event.signerId === signer?.id
+              ? '本人'
+              : '系統',
+          reason:
+            typeof event.metadataJson?.reason === 'string'
+              ? event.metadataJson.reason
+              : null,
+        };
+      });
   }
 
   private count(signers: Array<{ status: string }>) {

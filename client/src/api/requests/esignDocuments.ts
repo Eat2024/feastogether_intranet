@@ -66,6 +66,27 @@ export const initiateDocument = async ({
 };
 
 /**
+ * @name 停止文件簽署
+ * @description 建立人提供原因（1～500 字）停止簽署中的文件；尚未簽署的人將無法再簽署。回傳停止後的文件詳情
+ */
+export const stopDocument = async ({ id, reason }: { id: string; reason: string }): Promise<EsignDocumentDetail> => {
+  const res = await api<EsignDocumentDetail>({
+    method: 'POST',
+    url: endpoints.ESIGN_DOCUMENT_STOPPAGES(id),
+    data: { reason },
+  });
+  return res.data;
+};
+
+/**
+ * @name 刪除草稿
+ * @description 僅建立人可刪除尚未發起的文件（後端軟刪除並保留稽核紀錄）；成功時回 204 無內容
+ */
+export const deleteDocument = async (id: string): Promise<void> => {
+  await api({ method: 'DELETE', url: endpoints.ESIGN_DOCUMENT(id) });
+};
+
+/**
  * @name 查詢內部簽署人候選
  * @description 以關鍵字或完整八碼員編查詢；本地查無完整員編時，後端會向饗賓人 API 查詢並建立帳號
  */

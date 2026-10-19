@@ -3,8 +3,6 @@
 // 列表的操作按鈕：與原本列表相同的圖示與順序。尚未串接後端的操作先停用並說明原因。
 import type { EsignDocumentListItem } from '@/api/types';
 import TooltipIconButton from '@/components/TooltipIconButton';
-import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
-import DoDisturbIcon from '@mui/icons-material/DoDisturb';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import EventRepeatRoundedIcon from '@mui/icons-material/EventRepeatRounded';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
@@ -12,19 +10,23 @@ import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
 import Box from '@mui/material/Box';
 import type { ReactNode } from 'react';
+import DeleteDocumentButton from './DeleteDocumentButton';
+import StopDocumentButton from './StopDocumentButton';
 
-// 發起簽署已串接（見下方），其餘尚未串接
-const ACTIONS: { label: string; icon: ReactNode }[] = [
+// 尚未串接的操作
+const NOT_CONNECTED: { label: string; icon: ReactNode }[] = [
   { label: '檢視', icon: <VisibilityRoundedIcon /> },
   { label: '匯出', icon: <FileDownloadRoundedIcon /> },
   { label: '編輯', icon: <EditRoundedIcon /> },
   { label: '補簽', icon: <EventRepeatRoundedIcon /> },
-  { label: '停止簽署', icon: <DoDisturbIcon /> },
-  { label: '刪除', icon: <DeleteOutlineRoundedIcon /> },
 ];
 
-// TODO: 串接文件詳情、編輯、停止、刪除等 API 後，依文件狀態啟用對應的操作
-export default function DocumentRowActions({ doc }: { doc: Pick<EsignDocumentListItem, 'id' | 'status'> }) {
+// TODO: 串接文件詳情、編輯、補簽等 API 後，依文件狀態啟用對應的操作
+export default function DocumentRowActions({
+  doc,
+}: {
+  doc: Pick<EsignDocumentListItem, 'id' | 'title' | 'status' | 'pendingCount'>;
+}) {
   return (
     <Box sx={{ display: 'flex', gap: 0.5 }}>
       {/* 草稿才能前往設定簽署並發起 */}
@@ -35,9 +37,13 @@ export default function DocumentRowActions({ doc }: { doc: Pick<EsignDocumentLis
         href={`/forms/${doc.id}/signers`}
         disabled={doc.status !== 'draft'}
       />
-      {ACTIONS.map((a) => (
+      {NOT_CONNECTED.map((a) => (
         <TooltipIconButton key={a.label} label={`${a.label}（尚未串接後端）`} icon={a.icon} disabled />
       ))}
+      {/* 簽署中（含已過結束時間仍有人未簽、畫面顯示為已到期）才能停止 */}
+      <StopDocumentButton doc={doc} disabled={doc.status !== 'active'} />
+      {/* 後端只允許刪除尚未發起的草稿 */}
+      <DeleteDocumentButton doc={doc} disabled={doc.status !== 'draft'} />
     </Box>
   );
 }

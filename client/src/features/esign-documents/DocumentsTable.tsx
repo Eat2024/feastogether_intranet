@@ -111,7 +111,7 @@ export default function DocumentsTable({
                     )}
                   </TableCell>
                   <TableCell>
-                    <DocumentRowActions />
+                    <DocumentRowActions doc={doc} />
                   </TableCell>
                 </TableRow>
               );

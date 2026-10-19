@@ -1,6 +1,10 @@
 "use client";
 
+import { queryKeys } from "@/api/query-keys";
+import { createDocument } from "@/api/requests";
+import { toFieldPlacements } from "@/features/esign-documents/fields";
 import { ACTION_FAILED_MESSAGE, isNavigationError } from "@/lib/actionError";
+import { getErrorMessage } from "@/lib/apiError";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DrawRoundedIcon from "@mui/icons-material/DrawRounded";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
@@ -16,6 +20,8 @@ import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import {
   useEffect,
@@ -314,7 +320,10 @@ function ConfirmPagePreview({
   );
 }
 
-/** 新增／編輯上傳文件（流程第一步） */
+/**
+ * 新增／編輯上傳文件（流程第一步）。
+ * 新增文件時串接後端（POST /api/esign/documents 建立草稿）；編輯既有的 mock 文件仍走 Server Action。
+ */
 export default function UploadEditor({
   form,
   locked = false,
@@ -322,6 +331,21 @@ export default function UploadEditor({
   form?: EFormDoc;
   locked?: boolean;
 }) {
+  // 新增文件時直接送到後端；PDF 由後端保存與驗證，不再上傳到 mock 的 /files/upload
+  const viaBackend = !form;
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const create = useMutation({
+    mutationFn: createDocument,
+    // 錯誤顯示在表單上方，不另外跳全域提示
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: ({ id }) => {
+      void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
+      router.push(`/forms/${id}/signers`);
+    },
+    onError: (err) => setErrors({ submit: getErrorMessage(err, "建立文件失敗，請稍後再試") }),
+  });
   const up = form?.upload;
   const [name, setName] = useState(form?.name ?? "");
   const [fileName, setFileName] = useState(up?.fileName ?? "");
@@ -435,7 +459,8 @@ export default function UploadEditor({
     setFields([]);
     setErrors((e) => ({ ...e, file: undefined }));
     setReading(false);
-    await uploadFile(file, n);
+    if (viaBackend) setPdfFile(file);
+    else await uploadFile(file, n);
   };
 
   const handleFileDrop = (e: DragEvent) => {
@@ -533,8 +558,10 @@ export default function UploadEditor({
     const next: Errors = {};
     if (!name.trim()) next.name = "請輸入文件名稱";
     if (!uploaded) next.file = "請先上傳文件";
-    else if (uploading) next.file = "檔案上傳中，請稍候";
-    else if (uploadedDoc && !fileId) next.file = "檔案尚未上傳成功，請重新上傳";
+    else if (viaBackend && !pdfFile) next.file = "請先上傳文件";
+    // 後端模式由後端保存檔案，沒有 mock 的 fileId
+    else if (!viaBackend && uploading) next.file = "檔案上傳中，請稍候";
+    else if (!viaBackend && uploadedDoc && !fileId) next.file = "檔案尚未上傳成功，請重新上傳";
     else if (!confirmMode && fields.length === 0) {
       next.fields = "請至少指定一個簽名位置，或改用系統簽署確認頁";
     }
@@ -544,6 +571,15 @@ export default function UploadEditor({
 
   const submit = () => {
     if (!validate()) return;
+    if (viaBackend) {
+      create.mutate({
+        title: name.trim(),
+        file: pdfFile!,
+        // 系統簽署確認頁後端尚未支援：建立草稿時不帶欄位，設定簽署頁會提示無法發起
+        fields: confirmMode ? [] : toFieldPlacements(fields),
+      });
+      return;
+    }
     startTransition(async () => {
       try {
         const result = await saveUploadDocument({
@@ -714,9 +750,14 @@ export default function UploadEditor({
                   <Typography variant="subheading" component="div">
                     原文件版面不便標記，改用系統簽署確認頁
                   </Typography>
-                  <Typography variant="helper">
+                  <Typography variant="helper" component="div">
                     適用：掃描文件、不允許改動原版面、找不到合適簽名位置
                   </Typography>
+                  {viaBackend && confirmMode && (
+                    <Typography variant="helper" component="div" sx={{ color: "warning.dark" }}>
+                      後端尚未支援系統簽署確認頁，選擇此方式的文件可以先建立草稿，但暫時無法發起簽署。
+                    </Typography>
+                  )}
                 </Box>
                 <Switch
                   checked={confirmMode}
@@ -977,7 +1018,7 @@ export default function UploadEditor({
           size="large"
           variant="outlined"
           href="/forms"
-          disabled={pending}
+          disabled={pending || create.isPending}
         >
           {locked ? "返回列表" : "取消"}
         </Button>
@@ -986,7 +1027,7 @@ export default function UploadEditor({
             size="large"
             variant="contained"
             onClick={submit}
-            loading={pending}
+            loading={pending || create.isPending || create.isSuccess}
           >
             {isDraftOrNew ? "下一步，設定簽署" : "儲存變更"}
           </Button>

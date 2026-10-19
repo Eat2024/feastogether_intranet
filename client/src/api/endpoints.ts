@@ -4,6 +4,11 @@
 export const endpoints = {
   // 電子簽文件（server/src/features/esign/controllers/documents.controller.ts）
   ESIGN_DOCUMENTS: 'esign/documents',
+  ESIGN_DOCUMENT: (id: string) => `esign/documents/${encodeURIComponent(id)}`,
+  ESIGN_DOCUMENT_INITIATIONS: (id: string) => `esign/documents/${encodeURIComponent(id)}/initiations`,
+  ESIGN_DOCUMENT_SOURCE_FILE: (id: string) => `esign/documents/${encodeURIComponent(id)}/source-file`,
+  // 內部簽署人候選（server/src/features/esign/controllers/signer-candidates.controller.ts）
+  ESIGN_SIGNER_CANDIDATES: 'esign/signer-candidates',
 
   // Health
   HEALTH: 'health',

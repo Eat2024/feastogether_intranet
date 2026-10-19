@@ -10,4 +10,9 @@ export const queryOptions: Record<
     staleTime: minutes(1),
     gcTime: minutes(5),
   },
+  // 設定簽署時讀取草稿；每次進入頁面都以最新資料為準
+  useGetDocumentQuery: {
+    staleTime: 0,
+    gcTime: minutes(5),
+  },
 };

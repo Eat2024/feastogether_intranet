@@ -6,7 +6,7 @@
   ],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "(?:^|/)(?:oauth-runtime|oauth-login|password-login|request-id|api-coverage|dev-login|webview-session|core-esign-flow|core-esign-flow-queue|core-esign-flow-scale)\\.e2e-spec\\.ts$",
+  "testRegex": "(?:^|/)(?:org-chart|oauth-runtime|oauth-login|password-login|request-id|api-coverage|dev-login|webview-session|core-esign-flow|core-esign-flow-queue|core-esign-flow-scale)\\.e2e-spec\\.ts$",
   "testPathIgnorePatterns": [
     "/node_modules/"
   ],

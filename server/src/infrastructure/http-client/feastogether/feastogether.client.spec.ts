@@ -135,4 +135,66 @@ describe('FeastogetherClient logging', () => {
       },
     });
   });
+  it.each([
+    [],
+    { data: [] },
+    { success: 'true', data: [] },
+    { success: false, code: '合成人員', data: [] },
+  ])('組織樹拒絕非成功 envelope %#', async (payload) => {
+    const { client, http, logger } = build();
+    http.get.mockReturnValue(of({ data: payload }));
+    await expect(client.get('/api/v1/hr/org_chart')).rejects.toBeInstanceOf(
+      FeastogetherApiError,
+    );
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('合成人員');
+  });
+
+  it('組織樹使用既有 API Key 與 10 秒 timeout，不傳使用者 Bearer', async () => {
+    const { client, http } = build();
+    http.get.mockReturnValue(of({ data: { success: true, data: [] } }));
+    await expect(
+      client.get('/api/v1/hr/org_chart', { timeoutMs: 10_000 }),
+    ).resolves.toEqual([]);
+    expect(http.get).toHaveBeenCalledWith(
+      'https://upstream.example.com/api/v1/hr/org_chart',
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-KEY': 'secret-api-key',
+        },
+        timeout: 10_000,
+      },
+    );
+  });
+
+  it('組織樹 HTTP 錯誤日誌不包含上游 body 或憑證', async () => {
+    const { client, http, logger } = build();
+    http.get.mockReturnValue(
+      throwError(() => ({
+        isAxiosError: true,
+        name: 'AxiosError',
+        message: '合成人員',
+        response: {
+          status: 403,
+          data: {
+            person_name: '合成人員',
+            person_empid: '00000001',
+            token: 'synthetic-token',
+          },
+        },
+      })),
+    );
+    await expect(client.get('/api/v1/hr/org_chart')).rejects.toBeInstanceOf(
+      FeastogetherApiError,
+    );
+    const logs = JSON.stringify(logger.warn.mock.calls);
+    for (const value of [
+      '合成人員',
+      '00000001',
+      'synthetic-token',
+      'secret-api-key',
+      'responseBody',
+    ])
+      expect(logs).not.toContain(value);
+  });
 });

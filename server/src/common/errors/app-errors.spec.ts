@@ -85,4 +85,16 @@ describe('業務錯誤集中管理', () => {
       message: '請求參數驗證失敗',
     });
   });
+  it('組織樹錯誤與使用者登入錯誤分開', () => {
+    expect(AppErrors.ORG_CHART_UPSTREAM_UNAVAILABLE).toEqual([
+      'ORG_CHART_UPSTREAM_UNAVAILABLE',
+      '組織架構來源暫時無法使用，請稍後再試',
+      502,
+    ]);
+    expect(AppErrors.ORG_CHART_UNAVAILABLE).toEqual([
+      'ORG_CHART_UNAVAILABLE',
+      '組織架構暫時無法使用，請稍後再試',
+      503,
+    ]);
+  });
 });

@@ -39,4 +39,43 @@ describe('FeastogetherDepartmentService', () => {
       code: AppErrorCode.EATOGETHER_API_SERVICE_UNAVAILABLE,
     });
   });
+  it('組織樹合法空陣列保留，指定 timeout 且不帶 token', async () => {
+    const { service, client } = build();
+    client.get.mockResolvedValue([]);
+    await expect(service.getOrgChart()).resolves.toEqual([]);
+    expect(client.get).toHaveBeenCalledWith('/api/v1/hr/org_chart', {
+      timeoutMs: 10_000,
+    });
+  });
+  it('組織樹必要欄位錯誤整批回 502', async () => {
+    const { service, client } = build();
+    client.get.mockResolvedValue([{ department_ch_id: '001' }]);
+    await expect(service.getOrgChart()).rejects.toMatchObject({
+      code: 'ORG_CHART_UPSTREAM_UNAVAILABLE',
+    });
+  });
+
+  it.each([401, 403, 500, null])(
+    '組織樹上游 %s 均映射為 502，不觸發使用者登出',
+    async (status) => {
+      const { service, client } = build();
+      client.get.mockRejectedValue(
+        new FeastogetherApiError(status, { private: 'synthetic' }, 'synthetic'),
+      );
+      await expect(service.getOrgChart()).rejects.toMatchObject({
+        code: 'ORG_CHART_UPSTREAM_UNAVAILABLE',
+        status: 502,
+      });
+    },
+  );
+  it('HTTP 逾時錯誤回傳 502', async () => {
+    const { service, client } = build();
+    client.get.mockRejectedValue(
+      new FeastogetherApiError(null, null, '連線逾時'),
+    );
+    await expect(service.getOrgChart()).rejects.toMatchObject({
+      code: 'ORG_CHART_UPSTREAM_UNAVAILABLE',
+      status: 502,
+    });
+  });
 });

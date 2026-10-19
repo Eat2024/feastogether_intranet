@@ -66,6 +66,12 @@ describe('runtime API coverage', () => {
     },
   );
 
+  it('組織樹路由已註冊且受員工 session 保護', async () => {
+    await request(ctx.server)
+      .get('/api/esign/signer-candidates/org-chart')
+      .expect(401);
+  });
+
   it('6 個 external invitation/task operations 已註冊且維持公開憑證邊界', async () => {
     const token = 'A'.repeat(43);
     await request(ctx.server)

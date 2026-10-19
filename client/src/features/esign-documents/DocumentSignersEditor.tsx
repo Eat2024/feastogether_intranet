@@ -1,7 +1,7 @@
 'use client';
 
-// 設定簽署（後端文件）：選擇簽署人、設定簽署期間與可選功能，以 POST /api/esign/documents/:id/initiations 一次發起。
-// 第一步放的欄位是所有簽署人共用的位置，發起時複製給每一位簽署人。
+// 設定簽署（後端文件）：選擇簽署人與簽署期間，以 POST /api/esign/documents/:id/initiations 一次發起。
+// 第一步放的欄位是所有簽署人共用的位置，後端會替每位簽署人各產生一份個人副本。
 import { useGetDocumentQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
 import { getSignerCandidates, initiateDocument } from '@/api/requests';
@@ -10,7 +10,7 @@ import PageHeader from '@/components/PageHeader';
 import DeadlineRangePicker from '@/features/forms/editor/DeadlineRangePicker';
 import EmailSignerInput, { type EmailSigner } from '@/features/forms/editor/EmailSignerInput';
 import StaffTreePicker from '@/features/forms/editor/StaffTreePicker';
-import { DEFAULT_FORM_OPTIONS, WATERMARK_TEXT, type FormOptions } from '@/features/forms/options';
+import { WATERMARK_TEXT } from '@/features/forms/options';
 import type { OrgDept } from '@/features/forms/types';
 import { getErrorMessage } from '@/lib/apiError';
 import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
@@ -30,13 +30,11 @@ import dayjs from 'dayjs';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
-// 後端限制（server/src/features/esign/dto/initiation.dto.ts）
-const MAX_SIGNERS = 50;
-const MAX_FIELDS = 200;
 const DEADLINE_REQUIRED = '請選擇簽署期間的開始日與結束日';
 const NOT_CONNECTED = '尚未串接後端';
 
-const OPTION_ITEMS: { key: keyof FormOptions; label: string; description: string }[] = [
+// 浮水印與拒絕簽署後端尚未提供，發起時一律送 false；選項先顯示為停用
+const OPTION_ITEMS: { key: 'watermark' | 'allowReject'; label: string; description: string }[] = [
   {
     key: 'watermark',
     label: '匯出文件加上浮水印',
@@ -124,7 +122,6 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [emailSigners, setEmailSigners] = useState<EmailSigner[]>([]);
   const [deadline, setDeadline] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
-  const [options, setOptions] = useState<FormOptions>(DEFAULT_FORM_OPTIONS);
   const [signerError, setSignerError] = useState<string>();
   const [deadlineError, setDeadlineError] = useState<string>();
   const [submitError, setSubmitError] = useState<string>();
@@ -145,9 +142,8 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
     return [...users, ...emails];
   }, [selected, emailSigners, staff]);
 
-  // 草稿欄位是每位簽署人共用的範本，發起時複製給每一位；後端限制總欄位數
+  // 後端要求至少一個共用簽名欄位
   const hasSignatureField = fields.some((f) => f.type === 'signature');
-  const maxSigners = fields.length ? Math.min(MAX_SIGNERS, Math.floor(MAX_FIELDS / fields.length)) : MAX_SIGNERS;
 
   const initiate = useMutation({
     mutationFn: async (): Promise<number> => {
@@ -157,23 +153,20 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
       );
       const body: InitiateDocumentBody = {
         signers: signerInputs,
-        // 每位簽署人都簽同一組位置：依簽署人複製欄位，sortOrder 依簽署人、欄位順序遞增
-        fields: signers.flatMap((_, signerIndex) =>
-          fields.map(({ type, page, xPercent, yPercent, widthPercent, heightPercent }, i) => ({
-            type,
-            page,
-            xPercent,
-            yPercent,
-            widthPercent,
-            heightPercent,
-            sortOrder: signerIndex * fields.length + i,
-            signerIndex,
-          })),
-        ),
+        // 共用欄位：所有簽署人簽同一組位置，照草稿原樣送出
+        fields: fields.map(({ type, page, xPercent, yPercent, widthPercent, heightPercent, sortOrder }) => ({
+          type,
+          page,
+          xPercent,
+          yPercent,
+          widthPercent,
+          heightPercent,
+          sortOrder,
+        })),
         signStartAt: dayBoundary(deadline.start!, 'start'),
         signEndAt: dayBoundary(deadline.end!, 'end'),
-        watermark: options.watermark,
-        allowReject: options.allowReject,
+        watermark: false,
+        allowReject: false,
       };
       await initiateDocument({ id: doc.id, body });
       return signers.length;
@@ -196,13 +189,6 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
     let ok = true;
     if (signers.length === 0) {
       setSignerError('請至少選擇一位需簽署人員');
-      ok = false;
-    } else if (signers.length > maxSigners) {
-      setSignerError(
-        maxSigners < MAX_SIGNERS
-          ? `此文件有 ${fields.length} 個欄位，最多可指定 ${maxSigners} 位簽署人（欄位數 × 簽署人數不可超過 ${MAX_FIELDS}）`
-          : `一份文件最多 ${MAX_SIGNERS} 位簽署人`,
-      );
       ok = false;
     } else if (emailSigners.some((e) => !isValidEmail(normalizeEmail(e.email)))) {
       setSignerError('Email 格式不正確');
@@ -298,18 +284,12 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
                   key={item.key}
                   sx={{ alignItems: 'flex-start', mx: 0 }}
                   control={
-                    <Checkbox
-                      size="small"
-                      checked={options[item.key]}
-                      disabled={busy}
-                      onChange={(e) => setOptions((prev) => ({ ...prev, [item.key]: e.target.checked }))}
-                      sx={{ mt: -0.5 }}
-                    />
+                    <Checkbox size="small" checked={false} disabled sx={{ mt: -0.5 }} />
                   }
                   label={
                     <Box>
                       <Typography variant="content" component="div">
-                        {item.label}
+                        {item.label}（尚未支援）
                       </Typography>
                       <Typography variant="helper" component="div">
                         {item.description}

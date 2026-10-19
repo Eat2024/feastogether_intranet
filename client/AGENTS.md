@@ -63,7 +63,7 @@ pnpm start
 | `api/requests/*.ts` | 每支 API 一個 async 函式，回傳攤開後的 data |
 | `api/queries/*.ts` | 讀取用的 `useGetXxxQuery` hooks |
 | `api/query-keys.ts`、`api/query-options.ts` | query key 與各 hook 的快取時間 |
-| `api/errorCodes.ts` | 後端 `error.code` 對照的繁體中文訊息（`lib/apiError.ts` 的 `getErrorMessage` 使用） |
+| `api/errorCodes.ts` | 後端 `error.code` 對照的繁體中文訊息；`lib/apiError.ts` 的 `getErrorMessage` 優先顯示後端回傳的 message，後端沒給時才用這裡的對照 |
 
 - 新增一支 API 的順序：`endpoints` → `types` → `requests` →（讀取類）`queries` + `query-keys` + `query-options`；各資料夾的 `index.ts` 一併匯出。
 - 讀取用 `useGetXxxQuery`；寫入在元件內直接 `useMutation({ mutationFn: xxx })`，成功後 `queryClient.invalidateQueries({ queryKey: [queryKeys.XXX] })` 更新相關資料。

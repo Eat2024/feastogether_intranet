@@ -66,14 +66,17 @@ export interface EsignSignerView {
   email: string | null;
   status: EsignSignerStatus;
   signedAt: string | null;
+  /** 個人簽署副本的產製狀態；尚未簽署時 status 為 null */
+  completion: { status: 'pending' | 'processing' | 'ready' | 'failed' | null; readyAt: string | null };
   /** 外部（Email）簽署人的邀請寄送結果；內部簽署人為 null */
   invitationDelivery: 'pending' | 'delivered' | 'failed' | null;
+  /** 簽章公開驗證網址；只有 status 為 signed 時有值 */
+  verificationUrl: string | null;
 }
 
+/** 共用欄位：屬於文件、不屬於特定簽署人 */
 export interface EsignFieldView extends EsignFieldPlacement {
   id: string;
-  /** 草稿中尚未指派時為 null */
-  signerPublicId: string | null;
 }
 
 /** GET esign/documents/:id：建立人的文件詳情 */
@@ -92,16 +95,16 @@ export type EsignSignerInput = { type: 'user'; userId: string } | { type: 'email
 
 /** POST esign/documents/:id/initiations */
 export interface InitiateDocumentBody {
-  /** 1～50 位 */
+  /** 至少 1 位 */
   signers: EsignSignerInput[];
-  /** 1～200 個；signerIndex 為 signers 陣列的索引，每位簽署人至少要有一個簽名欄位 */
-  fields: (EsignFieldPlacement & { signerIndex: number })[];
+  /** 共用欄位 1～200 個，至少要有一個簽名欄位；後端會替每位簽署人各產生一份個人副本 */
+  fields: EsignFieldPlacement[];
   /** ISO 8601，開始時間必須早於結束時間 */
   signStartAt: string;
   signEndAt: string;
-  /** 下載／匯出的已簽署 PDF 是否加上浮水印 */
+  /** 浮水印：後端尚未提供，一律傳 false */
   watermark: boolean;
-  /** 是否允許簽署人拒絕簽署 */
+  /** 拒絕簽署：後端尚未提供，一律傳 false */
   allowReject: boolean;
 }
 

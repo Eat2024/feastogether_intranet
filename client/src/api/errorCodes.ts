@@ -1,6 +1,6 @@
 /**
  * 後端 error.code 對照的使用者訊息（後端定義見 server/src/common/errors/app-error-code.ts）。
- * 新增 code 時在此維護，getErrorMessage 會自動套用；沒有對照的 code 會改用後端回傳的 message。
+ * getErrorMessage 優先使用後端回傳的 message，後端沒有給 message 時才使用這裡的對照。
  */
 export const ERROR_CODE_MAP: Record<string, string> = {
   // --- Auth ---

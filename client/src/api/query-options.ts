@@ -15,4 +15,8 @@ export const queryOptions: Record<
     staleTime: 0,
     gcTime: minutes(5),
   },
+  useGetDocumentHistoryQuery: {
+    staleTime: 0,
+    gcTime: minutes(5),
+  },
 };

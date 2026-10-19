@@ -23,7 +23,10 @@ export const DOCUMENT_STATUSES: DocumentListStatus[] = ['draft', 'active', 'expi
 export const DOCUMENT_STATUS_OPTIONS = DOCUMENT_STATUSES.map((s) => ({ value: s, label: DOCUMENT_STATUS_META[s].label }));
 
 /** 簽署中但已超過簽署結束時間、仍有人未簽署時，顯示為已到期 */
-export function documentStatus(doc: EsignDocumentListItem, now: Date = new Date()): DocumentListStatus {
+export function documentStatus(
+  doc: Pick<EsignDocumentListItem, 'status' | 'pendingCount' | 'signEndAt'>,
+  now: Date = new Date(),
+): DocumentListStatus {
   if (doc.status === 'active' && doc.pendingCount > 0 && doc.signEndAt && new Date(doc.signEndAt) < now) {
     return 'expired';
   }

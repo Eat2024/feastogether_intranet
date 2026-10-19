@@ -15,13 +15,11 @@ import StopDocumentButton from './StopDocumentButton';
 
 // 尚未串接的操作
 const NOT_CONNECTED: { label: string; icon: ReactNode }[] = [
-  { label: '檢視', icon: <VisibilityRoundedIcon /> },
-  { label: '匯出', icon: <FileDownloadRoundedIcon /> },
   { label: '編輯', icon: <EditRoundedIcon /> },
   { label: '補簽', icon: <EventRepeatRoundedIcon /> },
 ];
 
-// TODO: 串接文件詳情、編輯、補簽等 API 後，依文件狀態啟用對應的操作
+// TODO: 串接編輯、補簽等 API 後，依文件狀態啟用對應的操作
 export default function DocumentRowActions({
   doc,
 }: {
@@ -36,6 +34,22 @@ export default function DocumentRowActions({
         color="info"
         href={`/forms/${doc.id}/signers`}
         disabled={doc.status !== 'draft'}
+      />
+      {/* 檢視簽署進度與歷程（草稿尚無進度，停用） */}
+      <TooltipIconButton
+        label="檢視"
+        icon={<VisibilityRoundedIcon />}
+        color="info"
+        href={`/forms/${doc.id}`}
+        disabled={doc.status === 'draft'}
+      />
+      {/* 匯出簽署紀錄（草稿尚無簽署資料，停用） */}
+      <TooltipIconButton
+        label="匯出"
+        icon={<FileDownloadRoundedIcon />}
+        color="info"
+        href={`/forms/${doc.id}/export`}
+        disabled={doc.status === 'draft'}
       />
       {NOT_CONNECTED.map((a) => (
         <TooltipIconButton key={a.label} label={`${a.label}（尚未串接後端）`} icon={a.icon} disabled />

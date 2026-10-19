@@ -1,6 +1,6 @@
 import { queryKeys } from '@/api/query-keys';
 import { queryOptions } from '@/api/query-options';
-import { getDocument, getDocuments } from '@/api/requests';
+import { getDocument, getDocumentHistory, getDocuments } from '@/api/requests';
 import type { GetDocumentsParams } from '@/api/types';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
@@ -28,6 +28,23 @@ export function useGetDocumentQuery<TData = Awaited<ReturnType<typeof getDocumen
     queryFn: () => getDocument(id!),
     enabled: id !== null,
     ...queryOptions.useGetDocumentQuery,
+    ...options,
+  });
+}
+
+/** 文件簽署歷程；id 為 null 時不查詢 */
+export function useGetDocumentHistoryQuery<
+  TData = Awaited<ReturnType<typeof getDocumentHistory>>,
+  TError = AxiosError,
+>(
+  id: string | null,
+  options?: Omit<UseQueryOptions<Awaited<ReturnType<typeof getDocumentHistory>>, TError, TData>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: [queryKeys.ESIGN_DOCUMENT_HISTORY, id],
+    queryFn: () => getDocumentHistory(id!),
+    enabled: id !== null,
+    ...queryOptions.useGetDocumentHistoryQuery,
     ...options,
   });
 }

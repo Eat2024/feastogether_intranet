@@ -5,23 +5,22 @@ import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useRef, useState, useTransition } from 'react';
-import { updateSignerNote } from '../actions';
 import { noteLength, SIGNER_NOTE_MAX } from './signerNote';
 
 /**
  * 簽署人表格的「備註」欄：直接顯示輸入框，點擊輸入框後才出現「儲存」「取消」。
  * Enter 儲存、Esc 取消；內容有修改但尚未儲存時，離開輸入框仍保留按鈕，避免誤以為已儲存。
+ * 實際儲存方式由 onSave 決定（mock 版為 Server Action；後端文件尚未支援，暫存在頁面上）。
  */
 export default function SignerNoteCell({
-  formId,
-  signerId,
   signerName,
   note = '',
+  onSave,
 }: {
-  formId: string;
-  signerId: string;
   signerName: string;
   note?: string;
+  /** 儲存備註；回傳儲存後的備註（已去除前後空白）或錯誤訊息 */
+  onSave: (note: string) => Promise<{ note: string } | { error: string }>;
 }) {
   const [value, setValue] = useState(note);
   const [active, setActive] = useState(false);
@@ -56,7 +55,7 @@ export default function SignerNoteCell({
       return;
     }
     startTransition(async () => {
-      const res = await updateSignerNote({ formId, signerId, note: value });
+      const res = await onSave(value);
       if ('error' in res) {
         setError(res.error);
         return;

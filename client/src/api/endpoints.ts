@@ -6,6 +6,9 @@ export const endpoints = {
   ESIGN_DOCUMENTS: 'esign/documents',
   ESIGN_DOCUMENT: (id: string) => `esign/documents/${encodeURIComponent(id)}`,
   ESIGN_DOCUMENT_INITIATIONS: (id: string) => `esign/documents/${encodeURIComponent(id)}/initiations`,
+  ESIGN_DOCUMENT_HISTORY: (id: string) => `esign/documents/${encodeURIComponent(id)}/history`,
+  ESIGN_SIGNER_COMPLETED_FILE: (id: string, signerPublicId: string) =>
+    `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/completed-file`,
   ESIGN_DOCUMENT_STOPPAGES: (id: string) => `esign/documents/${encodeURIComponent(id)}/stoppages`,
   ESIGN_DOCUMENT_SOURCE_FILE: (id: string) => `esign/documents/${encodeURIComponent(id)}/source-file`,
   // 內部簽署人候選（server/src/features/esign/controllers/signer-candidates.controller.ts）

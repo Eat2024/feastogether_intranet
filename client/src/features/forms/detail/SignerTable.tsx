@@ -21,7 +21,7 @@ import Typography from '@mui/material/Typography';
 import { useState, useTransition } from 'react';
 import { ACTION_FAILED_MESSAGE } from '@/lib/actionError';
 import PersonRemoveRoundedIcon from '@mui/icons-material/PersonRemoveRounded';
-import { notifySigners, removeSheetSigner } from '../actions';
+import { notifySigners, removeSheetSigner, updateSignerNote } from '../actions';
 import type { Signer } from '../types';
 import ExportSignerCopyButton from './ExportSignerCopyButton';
 import SignerNoteCell from './SignerNoteCell';
@@ -219,7 +219,11 @@ export default function SignerTable({
                       )}
                     </TableCell>
                     <TableCell sx={{ minWidth: 240 }}>
-                      <SignerNoteCell formId={formId} signerId={s.id} signerName={s.name} note={s.note} />
+                      <SignerNoteCell
+                        signerName={s.name}
+                        note={s.note}
+                        onSave={(note) => updateSignerNote({ formId, signerId: s.id, note })}
+                      />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       <TooltipIconButton

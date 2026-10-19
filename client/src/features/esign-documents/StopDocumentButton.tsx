@@ -1,6 +1,6 @@
 'use client';
 
-// 列表操作欄的「停止簽署」：填寫原因後呼叫 POST /api/esign/documents/:id/stoppages
+// 「停止簽署」（列表操作欄、檢視頁）：填寫原因後呼叫 POST /api/esign/documents/:id/stoppages
 import { queryKeys } from '@/api/query-keys';
 import { stopDocument } from '@/api/requests';
 import type { EsignDocumentListItem } from '@/api/types';
@@ -10,6 +10,7 @@ import TooltipIconButton from '@/components/TooltipIconButton';
 import { getErrorMessage } from '@/lib/apiError';
 import DoDisturbIcon from '@mui/icons-material/DoDisturb';
 import Alert from '@mui/material/Alert';
+import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -20,9 +21,12 @@ const MAX_REASON = 500;
 export default function StopDocumentButton({
   doc,
   disabled,
+  variant = 'icon',
 }: {
   doc: Pick<EsignDocumentListItem, 'id' | 'title' | 'pendingCount'>;
   disabled?: boolean;
+  /** icon：表格操作欄；button：頁面上的文字按鈕 */
+  variant?: 'icon' | 'button';
 }) {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
@@ -36,6 +40,7 @@ export default function StopDocumentButton({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id] });
+      void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT_HISTORY, doc.id] });
       setOpen(false);
       showSnackbar(`已停止「${doc.title}」的簽署`, 'success');
     },
@@ -59,7 +64,20 @@ export default function StopDocumentButton({
 
   return (
     <>
-      <TooltipIconButton label="停止簽署" icon={<DoDisturbIcon />} color="error" disabled={disabled} onClick={openDialog} />
+      {variant === 'button' ? (
+        <Button
+          size="large"
+          variant="outlined"
+          color="error"
+          startIcon={<DoDisturbIcon />}
+          disabled={disabled}
+          onClick={openDialog}
+        >
+          停止簽署
+        </Button>
+      ) : (
+        <TooltipIconButton label="停止簽署" icon={<DoDisturbIcon />} color="error" disabled={disabled} onClick={openDialog} />
+      )}
       <ConfirmDialog
         open={open}
         color="error"

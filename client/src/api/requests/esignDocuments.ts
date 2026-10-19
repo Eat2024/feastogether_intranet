@@ -1,9 +1,11 @@
 import api from '@/api/config';
+import axios from 'axios';
 import { endpoints } from '@/api/endpoints';
 import type {
   CreateDocumentBody,
   EsignDocumentDetail,
   EsignDocumentListItem,
+  EsignHistoryItem,
   EsignSignerCandidate,
   GetDocumentsParams,
   InitiateDocumentBody,
@@ -47,6 +49,15 @@ export const getDocument = async (id: string): Promise<EsignDocumentDetail> => {
 };
 
 /**
+ * @name 查詢文件簽署歷程
+ * @description 建立人可看到文件的所有事件（依時間由舊到新），含停止原因
+ */
+export const getDocumentHistory = async (id: string): Promise<EsignHistoryItem[]> => {
+  const res = await api<EsignHistoryItem[]>({ method: 'GET', url: endpoints.ESIGN_DOCUMENT_HISTORY(id) });
+  return res.data;
+};
+
+/**
  * @name 發起文件簽署
  * @description 一次送出簽署人、欄位指派、簽署期間與可選功能，草稿轉為簽署中；回傳發起後的文件詳情
  */
@@ -84,6 +95,37 @@ export const stopDocument = async ({ id, reason }: { id: string; reason: string 
  */
 export const deleteDocument = async (id: string): Promise<void> => {
   await api({ method: 'DELETE', url: endpoints.ESIGN_DOCUMENT(id) });
+};
+
+/**
+ * @name 下載簽署人的個人簽署副本
+ * @description 僅建立人可下載，且該簽署人的個人副本須已產製完成；回傳 PDF 檔
+ */
+export const downloadSignerCompletedFile = async ({
+  id,
+  signerPublicId,
+}: {
+  id: string;
+  signerPublicId: string;
+}): Promise<Blob> => {
+  try {
+    const res = await api<Blob>({
+      method: 'GET',
+      url: endpoints.ESIGN_SIGNER_COMPLETED_FILE(id, signerPublicId),
+      responseType: 'blob',
+    });
+    return res.data;
+  } catch (error) {
+    // 以 blob 接收時錯誤內容也是 Blob，轉回 JSON 讓 getErrorMessage 讀得到後端訊息
+    if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
+      try {
+        error.response.data = JSON.parse(await error.response.data.text());
+      } catch {
+        // 不是 JSON 時維持原樣
+      }
+    }
+    throw error;
+  }
 };
 
 /**

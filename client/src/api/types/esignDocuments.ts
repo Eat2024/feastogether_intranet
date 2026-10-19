@@ -108,6 +108,17 @@ export interface InitiateDocumentBody {
   allowReject: boolean;
 }
 
+/** GET esign/documents/:id/history 的一筆事件（依發生時間由舊到新） */
+export interface EsignHistoryItem {
+  /** 事件類型，例如 document.initiated、signature.completed、document.stopped_by_creator */
+  type: string;
+  occurredAt: string;
+  /** 建立人檢視時為「建立人」或「系統」 */
+  actor: string | null;
+  /** 停止簽署等事件的原因 */
+  reason: string | null;
+}
+
 /** GET esign/signer-candidates 的一筆資料 */
 export interface EsignSignerCandidate {
   /** 後端 userId，發起簽署時使用 */

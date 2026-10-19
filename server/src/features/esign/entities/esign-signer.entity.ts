@@ -196,7 +196,7 @@ export class EsignSigner extends UserAuditableEntity {
     nullable: true,
     comment: '外部邀請寄送接受時間',
   })
-  invitationDeliveredAt?: Date;
+  invitationDeliveredAt?: Date | null;
 
   @Column({
     name: 'completion_status',

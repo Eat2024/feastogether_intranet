@@ -1,6 +1,6 @@
 # HTTP Contract: 文件已到期與補簽
 
-本文件為契約增量：已到期讀取／篩選與人工停止已實作，補簽端點及歷程擴充待 ticket 02 交付。，沿用 `/api` prefix、全域 success/error envelope 與員工 session。新錯誤需集中定義於 app-errors.ts，實作時同步 Swagger 及正式 OpenAPI。非建立人與不存在文件均沿用 404，避免洩漏存在性。
+本文件為已實作的後端契約增量，沿用 `/api` prefix、全域 success/error envelope 與員工 session。新錯誤需集中定義於 app-errors.ts，實作時同步 Swagger 及正式 OpenAPI。非建立人與不存在文件均沿用 404，避免洩漏存在性。
 
 ## 1. POST /api/esign/documents/{documentId}/reopenings
 
@@ -34,7 +34,7 @@ Request JSON（不接受其他可變業務欄位）：
 
 回傳交易結果，不在提交後依賴 PDF 讀取。不得夾帶 token、signatures 或邀請密文。此 POST 不宣稱回放同一成功回應：成功後相同 expectedSignEndAt 再送回 409；前端重新讀取確認，不以最新期限自動重試。
 
-| 狀況 | HTTP／規劃中的錯誤識別 |
+| 狀況 | HTTP／錯誤識別 |
 | --- | --- |
 | 輸入格式／原因／新期限不合法 | 400 ESIGN_REOPEN_INPUT_INVALID |
 | 無有效登入 | 401 沿用 session 錯誤 |
@@ -42,13 +42,13 @@ Request JSON（不接受其他可變業務欄位）：
 | 不存在／不是建立人 | 404 ESIGN_RESOURCE_NOT_FOUND |
 | expectedSignEndAt 與當前期限不同 | 409 ESIGN_REOPEN_STALE |
 | 非到期／無 pending／已停止／finalizing／已完成 | 409 ESIGN_DOCUMENT_NOT_REOPENABLE |
-| 固定證據不完整或雜湊不符 | 沿用 ESIGN_INTEGRITY_FAILED 的既有狀態與格式 |
+| 固定證據不完整或雜湊不符 | 409 ESIGN_INTEGRITY_FAILED |
 
 授權先於業務狀態錯誤；expected 比對先於可補簽狀態檢查。草稿當前期限為 null，不能補簽。不能提供未來開始時間、簽署人清單或文件內容。
 
 ## 2. GET /api/esign/documents/{documentId}/reopening-invitations
 
-新端點，並非現有能力。建立人主動取得目前補簽輪的有效外部邀請；沿用 session 與 creator 權限。只讀，不產生或輪替 token、不追加業務事件、不寄信。
+建立人主動取得目前補簽輪的有效外部邀請；沿用 session 與 creator 權限。只讀，不產生或輪替 token、不追加業務事件、不寄信。
 
 200 response `data` 為陣列：
 
@@ -83,3 +83,5 @@ URL 沿用 EXTERNAL_SIGNING_ORIGIN 與既有 `/api/external-signature-invitation
 成功後重新讀取文件／待簽／歷程，必要時由建立人主動取得外部新邀請。409 顯示「文件狀態已變更，請重新確認」，重新讀取但不自動再送。停止仍不可恢復。已到期列表不提供簽署送出；補簽標記只在 active 且 isReopened 時顯示為「補簽中」，其餘狀態仍以文件狀態為主。
 
 本次後端計畫不將 mock store 擴寫為正式資料來源，也不順便實作整個 client API 串接。
+
+前端接線位置：`client/src/features/forms/ResignButton.tsx` 處理補簽輸入、`client/src/features/forms/actions.ts` 改接 POST／GET 與 409 重新讀取、`client/src/features/my-signature/tasks.ts` 接收 expired、新有效期限及補簽標記。這些檔案本次未修改，client 仍為 mock 原型。邀請密文缺漏／損毀／digest 不符回 503 ESIGN_UNAVAILABLE。

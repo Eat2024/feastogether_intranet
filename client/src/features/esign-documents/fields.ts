@@ -1,5 +1,5 @@
 // 前端編輯器的欄位（UploadField）與後端欄位格式（EsignFieldPlacement）互轉
-import type { EsignFieldPlacement } from '@/api/types';
+import type { EsignFieldPlacement, EsignFieldView } from '@/api/types';
 import { fieldSize } from '@/features/forms/signLayout';
 import type { UploadField } from '@/features/forms/types';
 
@@ -23,4 +23,19 @@ export function toFieldPlacements(fields: UploadField[]): EsignFieldPlacement[] 
         sortOrder: i,
       };
     });
+}
+
+/** 後端草稿的欄位轉回編輯器欄位（依 sortOrder；id 為編輯器內部用的流水號） */
+export function fromFieldViews(fields: EsignFieldView[]): UploadField[] {
+  return [...fields]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((f, i) => ({
+      id: i + 1,
+      page: f.page,
+      x: f.xPercent,
+      y: f.yPercent,
+      w: f.widthPercent,
+      h: f.heightPercent,
+      type: f.type === 'signature' ? 'sign' : 'date',
+    }));
 }

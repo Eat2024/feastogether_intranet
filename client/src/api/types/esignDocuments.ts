@@ -54,6 +54,16 @@ export interface CreateDocumentBody {
   fields?: EsignFieldPlacement[];
 }
 
+/** PATCH esign/documents/:id：修改草稿（multipart/form-data），至少要有一項 */
+export interface UpdateDocumentBody {
+  id: string;
+  title?: string;
+  /** 換新的 PDF；換 PDF 時會清除舊欄位，需一併傳入 fields */
+  file?: File;
+  /** 整批取代共用欄位（空陣列表示清除所有欄位） */
+  fields?: EsignFieldPlacement[];
+}
+
 export type EsignSignerStatus = 'pending' | 'signed' | 'rejected';
 
 export interface EsignSignerView {

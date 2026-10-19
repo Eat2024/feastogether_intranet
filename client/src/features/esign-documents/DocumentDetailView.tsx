@@ -114,8 +114,8 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
           .join('・')}
         actions={
           <>
-            {/* TODO: 串接 PATCH /api/esign/documents/:id 後開放（後端只允許修改草稿） */}
-            <Tooltip title="尚未串接後端">
+            {/* 後端只允許修改草稿，檢視頁的文件都已發起 */}
+            <Tooltip title="已發起的文件無法修改">
               <span>
                 <Button size="large" variant="outlined" startIcon={<EditRoundedIcon />} disabled>
                   編輯

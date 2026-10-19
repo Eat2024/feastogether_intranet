@@ -9,6 +9,7 @@ import type {
   EsignSignerCandidate,
   GetDocumentsParams,
   InitiateDocumentBody,
+  UpdateDocumentBody,
 } from '@/api/types';
 
 /**
@@ -33,6 +34,24 @@ export const createDocument = async ({ title, file, fields }: CreateDocumentBody
   const res = await api<{ id: string }>({
     method: 'POST',
     url: endpoints.ESIGN_DOCUMENTS,
+    data: body,
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+};
+
+/**
+ * @name 修改草稿
+ * @description 僅建立人可修改尚未發起的文件；可改名稱、換 PDF（會清除舊欄位）、整批取代欄位
+ */
+export const updateDocument = async ({ id, title, file, fields }: UpdateDocumentBody): Promise<{ id: string }> => {
+  const body = new FormData();
+  if (title !== undefined) body.append('title', title);
+  if (fields) body.append('fields', JSON.stringify(fields));
+  if (file) body.append('file', file);
+  const res = await api<{ id: string }>({
+    method: 'PATCH',
+    url: endpoints.ESIGN_DOCUMENT(id),
     data: body,
     headers: { 'Content-Type': 'multipart/form-data' },
   });

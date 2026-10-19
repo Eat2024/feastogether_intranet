@@ -306,14 +306,10 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
       {submitError && <Alert severity="error">{submitError}</Alert>}
 
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-        {/* TODO: 串接 PATCH /api/esign/documents/:id（回到上傳文件）與 PUT draftSave、fields（暫存設定） */}
-        <Tooltip title={NOT_CONNECTED}>
-          <span>
-            <Button size="large" variant="outlined" disabled>
-              上一步，回到上傳文件
-            </Button>
-          </span>
-        </Tooltip>
+        <Button size="large" variant="outlined" href={`/forms/${doc.id}/edit`} disabled={busy}>
+          上一步，回到上傳文件
+        </Button>
+        {/* TODO: 串接 PUT draftSave、fields（暫存設定） */}
         <Tooltip title={NOT_CONNECTED}>
           <span>
             <Button size="large" variant="outlined" disabled>

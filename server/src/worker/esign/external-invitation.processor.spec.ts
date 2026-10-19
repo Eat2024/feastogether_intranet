@@ -89,12 +89,18 @@ describe('ExternalInvitationProcessor', () => {
       mailer.send.mockImplementation(async () => {
         signer.invitationTokenSha256 = 'new-digest';
         signer.invitationTokenCiphertext = 'new-ciphertext';
+        log.result = 'failed';
+        log.errorCode = 'INVITATION_SUPERSEDED';
+        log.processingStartedAt = null;
+        log.nextAttemptAt = null;
         if (failure) throw new Error('傳送失敗');
       });
       await processor.process(job);
       expect(signer.invitationTokenCiphertext).toBe('new-ciphertext');
-      expect(log.result).toBe('processing');
-      expect(log.errorCode).toBeNull();
+      expect(log.result).toBe('failed');
+      expect(log.errorCode).toBe('INVITATION_SUPERSEDED');
+      expect(log.processingStartedAt).toBeNull();
+      expect(log.nextAttemptAt).toBeNull();
     },
   );
 

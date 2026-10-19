@@ -1,7 +1,6 @@
 import { Inject } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
-import type { EntityManager } from 'typeorm';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   INVITATION_MAIL_SENDER,
@@ -13,16 +12,20 @@ import { EsignAuditService } from '#app/features/esign/services/esign-audit.serv
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { ESIGN_EXTERNAL_INVITATION_QUEUE } from '#app/features/esign/esign-queue.constants';
 
-interface InvitationClaim {
-  documentId: number;
-  signerId: number;
-  signerPublicId: string;
-  digest: string;
-  claimedAt: Date;
-}
-
 interface InvitationJobData {
   notificationLogId: number;
+}
+
+interface ClaimedInvitation {
+  signerId: number;
+  signerPublicId: string;
+  documentId: number;
+  recipientEmail: string;
+  documentTitle: string;
+  creatorName: string;
+  signEndAt: Date;
+  token: string;
+  claimedAt: Date;
 }
 
 @Processor(ESIGN_EXTERNAL_INVITATION_QUEUE)
@@ -44,8 +47,22 @@ export class ExternalInvitationProcessor extends WorkerHost {
     if (job.opts?.deduplication) await job.removeDeduplicationKey();
     const id = job.data?.notificationLogId;
     if (!Number.isSafeInteger(id) || id < 1) return;
+    const claim = await this.claimInvitation(id);
+    if (!claim) return;
+
+    try {
+      await this.sendInvitation(claim);
+    } catch {
+      await this.finishFailed(id, claim.claimedAt);
+      return;
+    }
+
+    await this.finishDelivered(id, claim);
+  }
+
+  private async claimInvitation(id: number): Promise<ClaimedInvitation | null> {
     const now = new Date();
-    const claim = await this.mysql.transaction(async (manager) => {
+    return this.mysql.transaction(async (manager) => {
       const log = await this.notifications.findInvitationContextForUpdate(
         id,
         manager,
@@ -70,7 +87,6 @@ export class ExternalInvitationProcessor extends WorkerHost {
         !creator ||
         signer.signerType !== 'email' ||
         !signer.email ||
-        !signer.invitationTokenSha256 ||
         !signer.invitationTokenCiphertext ||
         !signer.invitationExpiresAt ||
         signer.status !== 'pending' ||
@@ -87,7 +103,6 @@ export class ExternalInvitationProcessor extends WorkerHost {
       log.errorCode = null;
       await this.notifications.saveLog(log, manager);
       return {
-        digest: signer.invitationTokenSha256,
         signerId: signer.id,
         signerPublicId: signer.publicId,
         documentId: document.id,
@@ -99,32 +114,46 @@ export class ExternalInvitationProcessor extends WorkerHost {
         claimedAt: now,
       };
     });
-    if (!claim) return;
+  }
 
-    try {
-      await this.mailer.send({
-        recipientEmail: claim.recipientEmail,
-        documentTitle: claim.documentTitle,
-        creatorName: claim.creatorName,
-        signEndAt: claim.signEndAt,
-        invitationToken: claim.token,
-      });
-    } catch {
-      await this.finishFailed(id, claim);
-      return;
-    }
+  private async sendInvitation(claim: ClaimedInvitation): Promise<void> {
+    await this.mailer.send({
+      recipientEmail: claim.recipientEmail,
+      documentTitle: claim.documentTitle,
+      creatorName: claim.creatorName,
+      signEndAt: claim.signEndAt,
+      invitationToken: claim.token,
+    });
+  }
 
+  private async finishDelivered(
+    id: number,
+    claim: ClaimedInvitation,
+  ): Promise<void> {
     await this.mysql.transaction(async (manager) => {
-      const context = await this.lockCurrentClaim(id, claim, manager);
-      if (!context) return;
-      const { document, log, signer } = context;
+      const document = await this.notifications.lockDocument(
+        claim.documentId,
+        manager,
+      );
+      const log = await this.notifications.findLogByIdForUpdate(id, manager);
+      if (
+        !log ||
+        log.result !== 'processing' ||
+        log.processingStartedAt?.getTime() !== claim.claimedAt.getTime()
+      ) {
+        return;
+      }
+      const signer = await this.signers.findByPublicIdForUpdate(
+        claim.signerPublicId,
+        manager,
+      );
+      if (!signer || signer.id !== claim.signerId) return;
       const completedAt = new Date();
       if (
         document?.status !== 'active' ||
         !document.signEndAt ||
         completedAt >= document.signEndAt ||
         signer.status !== 'pending' ||
-        !signer.invitationTokenSha256 ||
         !signer.invitationTokenCiphertext ||
         !signer.invitationExpiresAt ||
         completedAt >= signer.invitationExpiresAt
@@ -157,59 +186,14 @@ export class ExternalInvitationProcessor extends WorkerHost {
     });
   }
 
-  private async lockCurrentClaim(
-    id: number,
-    claim: InvitationClaim,
-    manager: EntityManager,
-  ) {
-    const document = await this.notifications.lockDocument(
-      claim.documentId,
-      manager,
-    );
-    const log = await this.notifications.findLogByIdForUpdate(id, manager);
-    if (
-      !log ||
-      log.result !== 'processing' ||
-      log.processingStartedAt?.getTime() !== claim.claimedAt.getTime()
-    ) {
-      return null;
-    }
-    const signer = await this.signers.findByPublicIdForUpdate(
-      claim.signerPublicId,
-      manager,
-    );
-    if (
-      !signer ||
-      signer.id !== claim.signerId ||
-      signer.invitationTokenSha256 !== claim.digest
-    )
-      return null;
-    return { document, log, signer };
-  }
-
-  private async finishFailed(
-    id: number,
-    claim: InvitationClaim,
-  ): Promise<void> {
+  private async finishFailed(id: number, claimedAt: Date): Promise<void> {
     await this.mysql.transaction(async (manager) => {
-      const context = await this.lockCurrentClaim(id, claim, manager);
-      if (!context) return;
-      const { document, log, signer } = context;
-      const now = new Date();
+      const log = await this.notifications.findLogByIdForUpdate(id, manager);
       if (
-        document?.status !== 'active' ||
-        !document.signEndAt ||
-        now >= document.signEndAt ||
-        signer.status !== 'pending' ||
-        !signer.invitationExpiresAt ||
-        now >= signer.invitationExpiresAt
+        !log ||
+        log.result !== 'processing' ||
+        log.processingStartedAt?.getTime() !== claimedAt.getTime()
       ) {
-        log.result = 'failed';
-        log.errorCode = 'INVITATION_NO_LONGER_ACTIVE';
-        log.completedAt = now;
-        log.processingStartedAt = null;
-        log.nextAttemptAt = null;
-        await this.notifications.saveLog(log, manager);
         return;
       }
       log.result = 'failed';

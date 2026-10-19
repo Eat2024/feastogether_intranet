@@ -12,6 +12,14 @@ import { EsignAuditService } from '#app/features/esign/services/esign-audit.serv
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { ESIGN_EXTERNAL_INVITATION_QUEUE } from '#app/features/esign/esign-queue.constants';
 
+interface InvitationClaim {
+  documentId: number;
+  signerId: number;
+  signerPublicId: string;
+  digest: string;
+  claimedAt: Date;
+}
+
 interface InvitationJobData {
   notificationLogId: number;
 }
@@ -47,6 +55,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
         log.processingStartedAt.getTime() < now.getTime() - 5 * 60_000;
       const eligible =
         log &&
+        log.errorCode !== 'INVITATION_SUPERSEDED' &&
         ((['pending', 'failed'].includes(log.result) &&
           (!log.nextAttemptAt || log.nextAttemptAt <= now)) ||
           stale);
@@ -60,6 +69,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
         !creator ||
         signer.signerType !== 'email' ||
         !signer.email ||
+        !signer.invitationTokenSha256 ||
         !signer.invitationTokenCiphertext ||
         !signer.invitationExpiresAt ||
         signer.status !== 'pending' ||
@@ -76,6 +86,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
       log.errorCode = null;
       await this.notifications.saveLog(log, manager);
       return {
+        digest: signer.invitationTokenSha256,
         signerId: signer.id,
         signerPublicId: signer.publicId,
         documentId: document.id,
@@ -98,7 +109,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
         invitationToken: claim.token,
       });
     } catch {
-      await this.finishFailed(id, claim.claimedAt);
+      await this.finishFailed(id, claim);
       return;
     }
 
@@ -119,13 +130,19 @@ export class ExternalInvitationProcessor extends WorkerHost {
         claim.signerPublicId,
         manager,
       );
-      if (!signer || signer.id !== claim.signerId) return;
+      if (
+        !signer ||
+        signer.id !== claim.signerId ||
+        signer.invitationTokenSha256 !== claim.digest
+      )
+        return;
       const completedAt = new Date();
       if (
         document?.status !== 'active' ||
         !document.signEndAt ||
         completedAt >= document.signEndAt ||
         signer.status !== 'pending' ||
+        !signer.invitationTokenSha256 ||
         !signer.invitationTokenCiphertext ||
         !signer.invitationExpiresAt ||
         completedAt >= signer.invitationExpiresAt
@@ -158,14 +175,48 @@ export class ExternalInvitationProcessor extends WorkerHost {
     });
   }
 
-  private async finishFailed(id: number, claimedAt: Date): Promise<void> {
+  private async finishFailed(
+    id: number,
+    claim: InvitationClaim,
+  ): Promise<void> {
     await this.mysql.transaction(async (manager) => {
+      const document = await this.notifications.lockDocument(
+        claim.documentId,
+        manager,
+      );
       const log = await this.notifications.findLogByIdForUpdate(id, manager);
       if (
         !log ||
         log.result !== 'processing' ||
-        log.processingStartedAt?.getTime() !== claimedAt.getTime()
+        log.processingStartedAt?.getTime() !== claim.claimedAt.getTime()
       ) {
+        return;
+      }
+      const signer = await this.signers.findByPublicIdForUpdate(
+        claim.signerPublicId,
+        manager,
+      );
+      if (
+        !signer ||
+        signer.id !== claim.signerId ||
+        signer.invitationTokenSha256 !== claim.digest
+      )
+        return;
+      const now = new Date();
+      if (
+        document?.status !== 'active' ||
+        !document.signEndAt ||
+        now >= document.signEndAt ||
+        signer.status !== 'pending' ||
+        !signer.invitationExpiresAt ||
+        now >= signer.invitationExpiresAt
+      ) {
+        log.result = 'failed';
+        log.errorCode = 'INVITATION_NO_LONGER_ACTIVE';
+        log.completedAt = now;
+        log.processingStartedAt = null;
+        log.nextAttemptAt = null;
+        await this.notifications.saveLog(log, manager);
         return;
       }
       log.result = 'failed';

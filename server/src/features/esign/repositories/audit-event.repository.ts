@@ -30,7 +30,7 @@ export class AuditEventRepository {
   findDocumentEvents(documentId: number, manager: EntityManager) {
     return manager.find(EsignAuditEvent, {
       where: { documentId },
-      order: { occurredAt: 'ASC', id: 'ASC' },
+      order: { id: 'ASC' },
     });
   }
 }

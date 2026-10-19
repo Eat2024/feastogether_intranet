@@ -1,6 +1,6 @@
 # Phase 0 Research: 核心電子簽端到端流程
 
-> **Spec 007 更新（2026-10-19）**：以下到期永久停止與補簽範圍外的記載為舊版決策，現由 Spec 007 取代。到期改為 expired，不填停止原因；人工停止維持永久 stopped。原始期限在固定 payload，sign_end_at 為有效期限；已簽證據及個人副本保留。補簽 API 由下一個 ticket 交付；前端正式串接另行交付。
+> **Spec 007 更新（2026-10-19）**：以下到期永久停止與補簽範圍外的記載為舊版決策，現由 Spec 007 取代。到期改為 expired，不填停止原因；人工停止維持永久 stopped。原始期限在固定 payload，sign_end_at 為有效期限；已簽證據及個人副本保留。補簽 API 與建立人取得新邀請端點已由 Spec 007 交付，沿用原證據且不自動寄信；前端正式串接另行交付。
 
 ## 1. 正式業務權威與 Client 遷移
 
@@ -118,7 +118,7 @@
 
 **Decision**: 依驗收系統實作建立單一 `BullRootModule`，以既有 `REDIS_HOST/PORT/PASSWORD/DB` 呼叫 `BullModule.forRootAsync`，`maxRetriesPerRequest=null`；不新增第二組 Redis 環境變數。`EsignQueueModule` 註冊並 export 三條 queue：`esign-external-invitation`、`esign-document-finalization`、`esign-maintenance`。HTTP `EsignModule` 只使用前兩條 producer；獨立 `EsignWorkerModule` 才提供三個 processors 與 maintenance scheduler。Processor concurrency 明確設定，job data 只含 non-sensitive local IDs。Scheduler 註冊失敗必須讓 worker 啟動或 readiness fail closed，不能只記 log 後假裝可服務。測試除 mock queue unit tests 外，必須啟動最小 worker application context 與真實隔離 Redis，覆蓋 HTTP/transaction → enqueue/reconciliation → processor → DB/file 的完整鏈路。
 
-**Rationale**: 集中 root module 避免每個 worker module 重複 `forRootAsync` 或隱式依賴 import 順序；web/worker 分離避免 HTTP process 消費工作或多實例重複註冊 scheduler。真 queue e2e 能抓出 mock 看不到的 job retention、jobId 去重、module wiring 與 Redis DB isolation 問題。到期停止是 spec MUST，因此 scheduler 不可用必須明確反映服務降級。
+**Rationale**: 集中 root module 避免每個 worker module 重複 `forRootAsync` 或隱式依賴 import 順序；web/worker 分離避免 HTTP process 消費工作或多實例重複註冊 scheduler。真 queue e2e 能抓出 mock 看不到的 job retention、jobId 去重、module wiring 與 Redis DB isolation 問題。到期落盤是 spec MUST，因此 scheduler 不可用必須明確反映服務降級。
 
 **Alternatives considered**: 一條 queue 以多個 job name 分派會讓三種不同 concurrency、retry 與 retention 混在一起；每個 feature worker 各自註冊 Redis root 會形成順序耦合；只測 processor service 而不跑真 queue 無法驗證 producer/consumer 接線。
 

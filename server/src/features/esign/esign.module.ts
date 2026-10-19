@@ -1,3 +1,5 @@
+import { EsignExpiryService } from './services/esign-expiry.service';
+import { EsignReopeningService } from './services/esign-reopening.service';
 import { RedisModule } from '#app/infrastructure/database/redis/redis.module';
 import { Module } from '@nestjs/common';
 import { FileStorageModule } from '#app/infrastructure/file-storage/file-storage.module';
@@ -33,6 +35,8 @@ import { EsignCompletionAccessService } from './services/esign-completion-access
 import { EsignVerificationService } from './services/esign-verification.service';
 
 const esignServices = [
+  EsignExpiryService,
+  EsignReopeningService,
   EsignAccessPolicyService,
   EsignAuditService,
   EsignConsentService,

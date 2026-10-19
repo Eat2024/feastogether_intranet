@@ -56,6 +56,10 @@ export class EsignTokenService {
     return code ? `${this.verificationOrigin}/verify/${code}` : null;
   }
 
+  invitationUrl(token: string): string {
+    return `${this.verificationOrigin}/api/external-signature-invitations/${token}`;
+  }
+
   createInvitationToken(): EncryptedEsignToken {
     const token = this.randomToken();
     return {

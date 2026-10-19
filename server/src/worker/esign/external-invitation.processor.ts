@@ -1,6 +1,7 @@
 import { Inject } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
+import type { EntityManager } from 'typeorm';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   INVITATION_MAIL_SENDER,
@@ -114,28 +115,9 @@ export class ExternalInvitationProcessor extends WorkerHost {
     }
 
     await this.mysql.transaction(async (manager) => {
-      const document = await this.notifications.lockDocument(
-        claim.documentId,
-        manager,
-      );
-      const log = await this.notifications.findLogByIdForUpdate(id, manager);
-      if (
-        !log ||
-        log.result !== 'processing' ||
-        log.processingStartedAt?.getTime() !== claim.claimedAt.getTime()
-      ) {
-        return;
-      }
-      const signer = await this.signers.findByPublicIdForUpdate(
-        claim.signerPublicId,
-        manager,
-      );
-      if (
-        !signer ||
-        signer.id !== claim.signerId ||
-        signer.invitationTokenSha256 !== claim.digest
-      )
-        return;
+      const context = await this.lockCurrentClaim(id, claim, manager);
+      if (!context) return;
+      const { document, log, signer } = context;
       const completedAt = new Date();
       if (
         document?.status !== 'active' ||
@@ -175,33 +157,44 @@ export class ExternalInvitationProcessor extends WorkerHost {
     });
   }
 
+  private async lockCurrentClaim(
+    id: number,
+    claim: InvitationClaim,
+    manager: EntityManager,
+  ) {
+    const document = await this.notifications.lockDocument(
+      claim.documentId,
+      manager,
+    );
+    const log = await this.notifications.findLogByIdForUpdate(id, manager);
+    if (
+      !log ||
+      log.result !== 'processing' ||
+      log.processingStartedAt?.getTime() !== claim.claimedAt.getTime()
+    ) {
+      return null;
+    }
+    const signer = await this.signers.findByPublicIdForUpdate(
+      claim.signerPublicId,
+      manager,
+    );
+    if (
+      !signer ||
+      signer.id !== claim.signerId ||
+      signer.invitationTokenSha256 !== claim.digest
+    )
+      return null;
+    return { document, log, signer };
+  }
+
   private async finishFailed(
     id: number,
     claim: InvitationClaim,
   ): Promise<void> {
     await this.mysql.transaction(async (manager) => {
-      const document = await this.notifications.lockDocument(
-        claim.documentId,
-        manager,
-      );
-      const log = await this.notifications.findLogByIdForUpdate(id, manager);
-      if (
-        !log ||
-        log.result !== 'processing' ||
-        log.processingStartedAt?.getTime() !== claim.claimedAt.getTime()
-      ) {
-        return;
-      }
-      const signer = await this.signers.findByPublicIdForUpdate(
-        claim.signerPublicId,
-        manager,
-      );
-      if (
-        !signer ||
-        signer.id !== claim.signerId ||
-        signer.invitationTokenSha256 !== claim.digest
-      )
-        return;
+      const context = await this.lockCurrentClaim(id, claim, manager);
+      if (!context) return;
+      const { document, log, signer } = context;
       const now = new Date();
       if (
         document?.status !== 'active' ||

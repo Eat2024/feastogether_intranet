@@ -29,3 +29,7 @@
 - 實作 commit：`05f4fdd`。
 - 已無衝突合併至整合分支 `007-esign-expiry-reopen`，merge commit：`3d1cf6b2764ad824e55ce25b60a5af8a6575fc90`。
 - 合併後 `git diff --check HEAD^1 HEAD` 通過；沿用上述實作驗證結果，未重跑資料庫測試。
+
+## PR 對應
+
+- [PR #14](https://github.com/Eat2024/feastogether_intranet/pull/14)：供獨立審查；ticket 在本機整合分支結案，遠端 PR 尚未合併。

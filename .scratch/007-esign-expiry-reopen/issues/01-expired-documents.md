@@ -33,3 +33,7 @@
 - 實作 commit：`819aa747d89a2232b931d437fc5e6c017dc72c22`。
 - 已無衝突合併至整合分支 `007-esign-expiry-reopen`，merge commit：`8e083d1e1b07d9b33e1eb2b8f9833507e698053b`。
 - 合併後 `git diff --check HEAD^1 HEAD` 通過；沿用上述實作驗證結果，未重跑資料庫測試。
+
+## PR 對應
+
+- [PR #13](https://github.com/Eat2024/feastogether_intranet/pull/13)：供獨立審查；ticket 在本機整合分支結案，遠端 PR 尚未合併。

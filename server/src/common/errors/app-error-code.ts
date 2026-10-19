@@ -2,6 +2,10 @@
  * 穩定業務錯誤碼（單一事實來源）。新增 feature 時於此擴充。
  */
 export const AppErrorCode = {
+  /** 組織架構上游不可用或格式錯誤。 */
+  ORG_CHART_UPSTREAM_UNAVAILABLE: 'ORG_CHART_UPSTREAM_UNAVAILABLE',
+  /** 組織架構快取或更新協調不可用。 */
+  ORG_CHART_UNAVAILABLE: 'ORG_CHART_UNAVAILABLE',
   /** DTO / ValidationPipe 驗證失敗（泛用） */
   INVALID_REQUEST: 'INVALID_REQUEST',
   /** 未帶 / 無效 / 已撤銷 token */

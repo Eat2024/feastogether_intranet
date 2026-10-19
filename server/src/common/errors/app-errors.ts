@@ -9,6 +9,16 @@ export type AppErrorDefinition = readonly [
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  ORG_CHART_UPSTREAM_UNAVAILABLE: [
+    AppErrorCode.ORG_CHART_UPSTREAM_UNAVAILABLE,
+    '組織架構來源暫時無法使用，請稍後再試',
+    HttpStatus.BAD_GATEWAY,
+  ],
+  ORG_CHART_UNAVAILABLE: [
+    AppErrorCode.ORG_CHART_UNAVAILABLE,
+    '組織架構暫時無法使用，請稍後再試',
+    HttpStatus.SERVICE_UNAVAILABLE,
+  ],
   HTTP_FORBIDDEN: [
     AppErrorCode.FORBIDDEN,
     '沒有權限執行此操作',

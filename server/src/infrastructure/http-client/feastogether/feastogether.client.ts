@@ -87,6 +87,7 @@ export class FeastogetherClient {
     const url = `${this.config.baseUrl}${path}`;
     const safePath = path.split('?', 1)[0];
     const omitBody = [
+      '/api/v1/hr/org_chart',
       '/api/v1/hr/staff_lookup',
       '/api/v1/staff/login',
     ].includes(safePath);
@@ -152,9 +153,22 @@ export class FeastogetherClient {
   ): T {
     const safePath = path.split('?', 1)[0];
     const omitBody = [
+      '/api/v1/hr/org_chart',
       '/api/v1/hr/staff_lookup',
       '/api/v1/staff/login',
     ].includes(safePath);
+    if (
+      safePath === '/api/v1/hr/org_chart' &&
+      (!payload || typeof payload !== 'object' || payload.success !== true)
+    ) {
+      this.safeWarn({
+        event: 'feastogether.request_failed',
+        message: '組織架構來源回應格式錯誤',
+        context: FeastogetherClient.name,
+        metadata: { method, path: safePath, errorType: 'InvalidEnvelope' },
+      });
+      throw new FeastogetherApiError(null, null, '組織架構來源回應格式錯誤');
+    }
     if (payload && typeof payload === 'object' && 'success' in payload) {
       if (payload.success === false) {
         this.safeWarn({

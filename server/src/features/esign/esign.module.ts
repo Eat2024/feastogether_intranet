@@ -1,3 +1,4 @@
+import { RedisModule } from '#app/infrastructure/database/redis/redis.module';
 import { Module } from '@nestjs/common';
 import { FileStorageModule } from '#app/infrastructure/file-storage/file-storage.module';
 import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
@@ -56,6 +57,7 @@ const esignServices = [
 
 @Module({
   imports: [
+    RedisModule,
     MysqlModule,
     FileStorageModule,
     LoggingModule,

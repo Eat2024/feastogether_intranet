@@ -59,3 +59,9 @@ SC-001 由截止、延遲 worker 與並發到期測試覆蓋；SC-002 由既有�
 本輪測試以既有 `.env.test` 配合命令環境覆寫 `DB_MYSQL_DB=feastogether_intranet_test_spec007_reopen`、`REDIS_DB=15` 隔離，不修改設定檔。Schema helper 會附加 UUID，改用較短 `feastogether_intranet_test007` 前綴，避免 MySQL 64 字識別字上限；所有測試仍維持 feastogether_intranet_test 前綴的 fail-closed 保護。合成測試資料依 fixture 清理；未操作正式資料。
 
 後端與 migration/config：補簽與外部手動邀請已交付，migration 僅 ticket 01 的 status CHECK；無新 dependency/config。前端：未修改 client，正式 API 接線與完整產品 UI 驗收由獨立 PR 交付。部署／回滾順序同上，本次沒有部署。
+
+## 整合補充驗證與審查（2026-10-19）
+
+- 既有 6,000 人規模 e2e 在 ticket 01 整合版本通過：6,001 人可發起，6,000 人各自簽署、產製個人副本並結案；測試共約 1,051 秒，簽署約 331 秒、產製約 702 秒。此測試針對已到期相容性所影響的既有副本路徑；ticket 02 的補簽、外部邀請與 queue 則由前述完整套件驗證。
+- 以 `b9ae324` 為固定基準進行雙軸 code-review：規格符合性 0 項問題；程式規範 0 項硬性違規，另有 1 項 worker claim 回寫檢查重複的維護性建議，於獨立 review commit 收斂。
+- 本機兩張 tickets 均已驗收並整合。PR #13 交付已到期；PR #14 疊在 #13 上交付重新開放補簽。未合併遠端 PR、未部署。

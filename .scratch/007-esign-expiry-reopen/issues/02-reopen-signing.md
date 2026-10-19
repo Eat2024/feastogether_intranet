@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: 文件到期改為已到期，保留人工停止
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 僅建立人可對已到期且仍有未簽者的文件立即補簽；新期限必須在未來，原因 trim 後 1–500 個 Unicode code points。
 - [x] 比對建立人讀取的期限，防止同輪並發及跨輪舊要求重送；交易失敗不留下部分狀態。
@@ -22,4 +22,10 @@
 
 補簽 API、建立人唯讀新邀請、舊通知退休及世代防護、兩輪歷程及角色裁切已完成。完整 core DB 測試包含並發、交易回滾、兩輪續簽至 completed 與已簽證據／副本保留；API coverage 已由正式契約納入新端點。
 
-驗證：單元 91 suites／738 tests；e2e（不含獨立 scale）10 suites／74 tests；security 6 suites／25 tests；schema 2 suites／5 tests；server build、lint:check（0 errors）及 diff-check 通過。完整記錄在 Spec 007 quickstart。等待合併整合分支後由主代理標記 resolved。
+驗證：單元 91 suites／738 tests；e2e（不含獨立 scale）10 suites／74 tests；security 6 suites／25 tests；schema 2 suites／5 tests；server build、lint:check（0 errors）及 diff-check 通過。完整記錄在 Spec 007 quickstart。
+
+## 整合與結案
+
+- 實作 commit：`05f4fdd`。
+- 已無衝突合併至整合分支 `007-esign-expiry-reopen`，merge commit：`3d1cf6b2764ad824e55ce25b60a5af8a6575fc90`。
+- 合併後 `git diff --check HEAD^1 HEAD` 通過；沿用上述實作驗證結果，未重跑資料庫測試。

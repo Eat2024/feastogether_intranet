@@ -1,3 +1,4 @@
+import { ExpiredDocuments1792368000000 } from '#app/infrastructure/database/migrations/1792368000000-ExpiredDocuments';
 // mysql.options.ts
 // 連線設定單一事實來源：app provider 與 migration CLI 共用，避免兩邊漂移。
 // Nest runtime 由 provider 傳入 ConfigService 讀取器；CLI/seed 直接 import 時才 fallback 到 process.env。
@@ -89,6 +90,7 @@ export function buildMysqlOptions(
       CoreEsignFlow1791936000000,
       SignatureVerificationCode1792108800000,
       SharedFieldsPersonalCopies1792195200000,
+      ExpiredDocuments1792368000000,
     ],
 
     extra: {

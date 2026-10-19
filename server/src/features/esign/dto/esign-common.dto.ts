@@ -1,6 +1,7 @@
 export type EsignDocumentStatus =
   | 'draft'
   | 'active'
+  | 'expired'
   | 'finalizing'
   | 'completed'
   | 'stopped';
@@ -15,6 +16,9 @@ export class EsignDocumentSummaryDto {
   docNumber!: string;
   title!: string;
   status!: EsignDocumentStatus;
+  signEndAt!: string | null;
+  originalSignEndAt!: string | null;
+  isReopened!: boolean;
   createdAt!: string;
   initiatedAt!: string | null;
   completedAt!: string | null;
@@ -31,7 +35,6 @@ export class EsignDocumentCreatorDto {
 /** 文件列表項目：摘要再加上簽署期間與建立人（僅供員工 session 的列表使用） */
 export class EsignDocumentListItemDto extends EsignDocumentSummaryDto {
   signStartAt!: string | null;
-  signEndAt!: string | null;
   /** 建立人帳號不存在時為 null */
   createdBy!: EsignDocumentCreatorDto | null;
 }
@@ -80,7 +83,6 @@ export class EsignDocumentDetailDto extends EsignDocumentSummaryDto {
   createdBy!: EsignDocumentCreatorDto | null;
   sourceFile?: EsignSourceFileDto;
   signStartAt!: string | null;
-  signEndAt!: string | null;
   stopReason!: string | null;
   signers!: EsignSignerViewDto[];
   fields!: EsignFieldViewDto[];

@@ -39,3 +39,9 @@ pnpm -C server test:e2e:security
 先協調停止舊 expiry worker，再更新 schema、HTTP 與 worker；不可混跑舊到期永久停止邏輯。測試與交付報告記錄前端、後端、migration/config 各自進度，不把 API 通過視為前端完成。
 
 本功能不新增環境變數、依賴或排程，不需要修改 .env.example。保留未執行項目與原因；正式串接完成後再驗收對話框、日期顯示、衝突提示、待簽狀態與手動複製邀請。
+
+## Ticket 01 交付紀錄（2026-10-19）
+
+已完成已到期狀態、讀取／篩選、截止與合法重送、到期稽核、已簽個人副本及人工停止。補簽 API／邀請更新由 ticket 02 續作，前端正式串接仍未交付。
+
+驗證：server 單元 89 suites／710 tests、core HTTP/DB 11 tests、core security 7 tests、schema 2 suites／5 tests、build、lint:check 均通過；lint 有既存 warnings、無 errors。完整 e2e/security 套件留待整合驗證。101 筆到期批次、截止當下與 GET 不寫資料、並發只一次事件、證據不變與 expired 副本下載皆有真實 DB 驗收。

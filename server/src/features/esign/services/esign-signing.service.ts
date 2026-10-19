@@ -18,7 +18,10 @@ import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { canonicalSha256, EsignAuditService } from './esign-audit.service';
 import { EsignConsentService } from './esign-consent.service';
-import { EsignDocumentValidationService } from './esign-document-validation.service';
+import {
+  EsignDocumentValidationService,
+  effectiveDocumentStatus,
+} from './esign-document-validation.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
 import { EsignTokenService } from './esign-token.service';
 import { PdfValidationService } from './pdf-validation.service';
@@ -115,7 +118,14 @@ export class EsignSigningService {
       return {
         signerPublicId,
         signedAt: repeated.signedAtUtc,
-        documentStatus: document.status,
+        documentStatus: effectiveDocumentStatus(
+          document,
+          document.status === 'active'
+            ? (await this.signers.completionCounts(document.id, manager))
+                .pending
+            : 0,
+          new Date(),
+        ),
         verificationCode: repeated.verificationCode,
         completion: {
           status: signer.completionStatus,
@@ -190,7 +200,14 @@ export class EsignSigningService {
           return {
             signerPublicId,
             signedAt: repeated.signedAtUtc,
-            documentStatus: lockedDocument?.status ?? 'active',
+            documentStatus: effectiveDocumentStatus(
+              lockedDocument,
+              lockedDocument.status === 'active'
+                ? (await this.signers.completionCounts(lockedDocument.id, tx))
+                    .pending
+                : 0,
+              new Date(),
+            ),
             verificationCode: repeated.verificationCode,
             completion: {
               status: lockedSigner.completionStatus,

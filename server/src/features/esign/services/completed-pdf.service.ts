@@ -155,7 +155,7 @@ export class CompletedPdfService {
     const document = await this.documents.findById(documentId, manager);
     if (
       !document ||
-      !['active', 'finalizing', 'stopped'].includes(document.status)
+      !['active', 'expired', 'finalizing', 'stopped'].includes(document.status)
     )
       throw this.integrity();
     const [signer, fields, source] = await Promise.all([

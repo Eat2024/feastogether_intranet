@@ -129,9 +129,24 @@ export const AppErrors = {
     '文件名稱必須為 1 至 200 字',
     HttpStatus.BAD_REQUEST,
   ],
+  ESIGN_REOPEN_INPUT_INVALID: [
+    AppErrorCode.ESIGN_REOPEN_INPUT_INVALID,
+    '請填寫有效的補簽期限與 1 至 500 字的補簽原因',
+    HttpStatus.BAD_REQUEST,
+  ],
+  ESIGN_REOPEN_STALE: [
+    AppErrorCode.ESIGN_REOPEN_STALE,
+    '文件狀態已變更，請重新確認',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_DOCUMENT_NOT_REOPENABLE: [
+    AppErrorCode.ESIGN_DOCUMENT_NOT_REOPENABLE,
+    '只有仍有未簽署者的已到期文件可以補簽',
+    HttpStatus.CONFLICT,
+  ],
   ESIGN_DOCUMENT_NOT_STOPPABLE: [
     AppErrorCode.ESIGN_STATE_CONFLICT,
-    '只有簽署中或產製中的文件可以停止',
+    '只有簽署中、已到期或產製中的文件可以停止',
     HttpStatus.CONFLICT,
   ],
   ESIGN_DOCUMENT_SIGNER_REQUIRED: [

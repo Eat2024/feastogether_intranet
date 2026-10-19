@@ -1,5 +1,7 @@
 # Data Model: 核心電子簽端到端流程
 
+> **Spec 007 更新（2026-10-19）**：以下到期永久停止與補簽範圍外的記載為舊版決策，現由 Spec 007 取代。到期改為 expired，不填停止原因；人工停止維持永久 stopped。原始期限在固定 payload，sign_end_at 為有效期限；已簽證據及個人副本保留。補簽 API 由下一個 ticket 交付；前端正式串接另行交付。
+
 ## Overview
 
 Spec 03 沿用 Spec 01 建立的電子簽 schema，不建平行文件或證據表。2026-10-16 修訂將欄位改為文件共用、完成檔改由個人簽署證據擁有；在既有 signer 增加產製狀態與 lease，不新增資料表。以下為目標模型，尚未套用 migration。關係資料以 MySQL 為權威；實際 PDF/PNG bytes 在 local/test/UAT 位於私有 persistent volume，production 位於私有 S3。
@@ -11,7 +13,7 @@ Spec 03 沿用 Spec 01 建立的電子簽 schema，不建平行文件或證據�
 | `id` | BIGINT PK，API 內部 resource id |
 | `doc_number` | UUID，unique，建立時由 Server 產生 |
 | `title` | 1–200 字；只能在 draft 修改 |
-| `status` | `draft \| active \| finalizing \| completed \| stopped` |
+| `status` | `draft \| active \| expired \| finalizing \| completed \| stopped` |
 | `created_by_user_id` | FK → active `users.id`；草稿與 creator view 的授權源 |
 | `sign_start_at` | UTC；發起時固定，必須早於 `sign_end_at` |
 | `sign_end_at` | UTC；發起後不可變 |
@@ -20,7 +22,7 @@ Spec 03 沿用 Spec 01 建立的電子簽 schema，不建平行文件或證據�
 | `allow_reject` / `watermark_enabled` | 建立草稿時為 false；發起時由 initiation API 的 `allowReject`、`watermark` 寫入，並納入 canonical payload 的 `options` |
 | `initiated_at` | 發起 transaction 的 Server UTC |
 | `completed_at` | 所有個人副本與結案 snapshot 驗證並保存後的 Server UTC |
-| `stopped_at` / `stop_reason` | 手動或到期停止時寫入；不刪原資料 |
+| `stopped_at` / `stop_reason` | 僅人工停止時寫入；舊版到期停止資料保留；不刪原資料 |
 | `finalization_lease_token` | 舊 document lease 退役；新產製 lease 位於 signer |
 | `finalization_lease_expires_at` | 隨舊 document lease 退役 |
 
@@ -238,8 +240,8 @@ draft --initiate--> active
 draft --delete----> soft-deleted
 active --last successful signature--> finalizing
 finalizing --all personal PDFs ready + snapshot saved--> completed
-active/finalizing --creator stop--> stopped
-active --deadline + pending signer--> stopped
+active/expired/finalizing --creator stop--> stopped
+active --deadline + pending signer--> expired
 ```
 
 個人產製不改 document 狀態；failed/retry 不把 finalizing 改回 active。Stopped 可產製既有成功簽署的副本但永不轉 completed。所有發起後的 source/title/signer/field/period/options 均不可修改。
@@ -266,7 +268,7 @@ Pending invitation 在有效期間可重開；signed/stopped/deadline 立即失�
 1. **Create/update draft**: DB resource authorization + draft conditional write；file replacement 先持久化新 object，transaction 內 hard-delete 舊 source metadata 並寫新 metadata，commit 後才刪舊 bytes。此 hard-delete 僅限尚未發起、尚未形成證據的 draft source；發起後永不使用此路徑。
 2. **Initiate**: document/signer/field locks + source hash verify + payload snapshot/hash + invitation/outbox + audit + active transition；commit 後 best-effort enqueue outbox IDs，失敗不回滾已 commit 文件，由 maintenance reconciliation 補入列。
 3. **Sign**: 固定 document → signer lock 順序，驗身分、期限、source/payload/consent 與共用欄位；寫 record、本人 PNG metadata、signed、completion pending 及 audit。最後一人使 document 進入 finalizing。Commit 後每次 enqueue signer；失敗由 DB 狀態 reconciliation 補回。不再寫 receipt。
-4. **Stop/expire**: document lock 下重驗狀態；手動可停 active/finalizing，到期只停仍有 pending signer 的 active 文件。不得停止已 completed 或刪除個人產物。
+4. **Stop/expire**: document lock 下重驗狀態；手動可停 active/expired/finalizing，到期只將仍有 pending signer 的 active 文件轉為 expired。不得停止已 completed 或刪除個人產物。
 5. **Personal PDF**: 短交易按 document → signer lock claim；交易外產檔；第二短交易重驗 token/source/payload/record/file，寫 metadata + ready + signer.copy_completed。舊 worker 失去 lease 只能清理自己的暫存輸出。失敗只改本人 failed，不影響其他副本。
 6. **Aggregate finalization**: 個人 ready commit 後另開短交易鎖 document，確認所有 signer signed/ready，驗每份檔案摘要與歸屬，保存 manifest v2、document.completed audit、snapshot 與 completed。Stopped 不結案；重複提交 no-op。
 7. **Maintenance**: 沿用 30 秒 scheduler，補入 invitation、signed 且副本未 ready 的 signer（含 stopped）、回收 stale signer lease，並重試所有副本 ready 的 finalizing 文件結案。Queue payload 只傳非敏感 ID，不依賴固定 jobId。

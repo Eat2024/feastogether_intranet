@@ -56,7 +56,7 @@ export class EsignCompletionAccessService {
 
   private async completedFile(document: EsignDocument, signer: EsignSigner) {
     if (
-      !['active', 'finalizing', 'completed', 'stopped'].includes(
+      !['active', 'expired', 'finalizing', 'completed', 'stopped'].includes(
         document.status,
       ) ||
       signer.status !== 'signed' ||

@@ -62,7 +62,7 @@ X-Content-Type-Options: nosniff
 1. Cookie 格式正確且 digest 精確命中一名 `email` signer。
 2. `now < invitation_expires_at` 且 `now < document.sign_end_at`。
 3. Signer 仍為 `pending`。
-4. Document 仍為 `active`；`finalizing/completed/stopped` 皆無效。
+4. Document 仍為 `active`；`expired/finalizing/completed/stopped` 皆無效。
 5. Resource 必須屬於該 signer 同一 document，回應只含文件共用欄位、本人指派與必要文件資料，不含其他人的填寫結果。
 
 任一條件失敗，回通用 401，並清除 external cookie。不回傳過期、已簽、已停止或 token 不存在的可區分細節。

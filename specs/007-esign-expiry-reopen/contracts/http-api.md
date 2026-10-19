@@ -1,6 +1,6 @@
 # HTTP Contract: 文件已到期與補簽
 
-本文件為待實作契約增量，沿用 `/api` prefix、全域 success/error envelope 與員工 session。新錯誤需集中定義於 app-errors.ts，實作時同步 Swagger 及正式 OpenAPI。非建立人與不存在文件均沿用 404，避免洩漏存在性。
+本文件為契約增量：已到期讀取／篩選與人工停止已實作，補簽端點及歷程擴充待 ticket 02 交付。，沿用 `/api` prefix、全域 success/error envelope 與員工 session。新錯誤需集中定義於 app-errors.ts，實作時同步 Swagger 及正式 OpenAPI。非建立人與不存在文件均沿用 404，避免洩漏存在性。
 
 ## 1. POST /api/esign/documents/{documentId}/reopenings
 

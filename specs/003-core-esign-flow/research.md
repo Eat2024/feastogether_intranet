@@ -1,5 +1,7 @@
 # Phase 0 Research: 核心電子簽端到端流程
 
+> **Spec 007 更新（2026-10-19）**：以下到期永久停止與補簽範圍外的記載為舊版決策，現由 Spec 007 取代。到期改為 expired，不填停止原因；人工停止維持永久 stopped。原始期限在固定 payload，sign_end_at 為有效期限；已簽證據及個人副本保留。補簽 API 由下一個 ticket 交付；前端正式串接另行交付。
+
 ## 1. 正式業務權威與 Client 遷移
 
 **Decision**: NestJS/MySQL 成為文件、簽署人、欄位、簽署證據與狀態的唯一權威。Client 現有 UI 可沿用，但 `store.ts`、mock 當前使用者與 Server Actions 不再執行業務寫入，改為調用明確 REST contract。

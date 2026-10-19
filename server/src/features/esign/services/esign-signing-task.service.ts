@@ -39,6 +39,7 @@ export class EsignSigningTaskService {
   ) {}
 
   async list(userId: number, status?: 'pending' | 'signed') {
+    const now = new Date();
     const manager = this.mysql.getManager();
     const signers = await this.signers.findAssignedToUser(userId, manager);
     const filtered = status
@@ -52,7 +53,7 @@ export class EsignSigningTaskService {
         manager,
       );
       if (!document || document.status === 'draft') continue;
-      tasks.push(await this.toTask(document, signer));
+      tasks.push(await this.toTask(document, signer, manager, now));
     }
     return tasks;
   }
@@ -119,6 +120,7 @@ export class EsignSigningTaskService {
       Awaited<ReturnType<SignerRepository['findByPublicId']>>
     >,
     manager = this.mysql.getManager(),
+    now = new Date(),
   ) {
     const [totals, allFields, creator, record] = await Promise.all([
       this.signers.completionCounts(document.id, manager),
@@ -139,6 +141,7 @@ export class EsignSigningTaskService {
         document,
         counts,
         creator ?? undefined,
+        now,
       ),
       signer: this.mapper.signer(signer, null, record?.verificationCode),
       fields: allFields.map((field) => this.mapper.field(field)),

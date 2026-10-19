@@ -32,7 +32,8 @@ describe('e-sign schema migrations', () => {
       await ds.initialize();
       try {
         await ds.runMigrations();
-        await ds.undoLastMigration();
+        await ds.undoLastMigration(); // 已到期狀態
+        await ds.undoLastMigration(); // 個人副本
         await ds.query(
           "INSERT INTO users (empid,name) VALUES ('MIGRATION001','合成員工')",
         );
@@ -96,6 +97,40 @@ describe('e-sign schema migrations', () => {
     });
   });
 
+  it.each(['expired', 'reopened'])(
+    '存在 %s 資料時禁止回滾且不改寫資料',
+    async (kind) => {
+      await withSchemaTestDatabase(async ({ database }) => {
+        const ds = new DataSource(optionsFor(database));
+        await ds.initialize();
+        try {
+          await ds.runMigrations();
+          await ds.query(
+            "INSERT INTO users (empid,name) VALUES ('EXPIRY001','合成員工')",
+          );
+          await ds.query(
+            "INSERT INTO esign_documents (doc_number,title,created_by_user_id,status) VALUES ('00000000-0000-4000-8000-000000000001','到期文件',1,?)",
+            [kind === 'expired' ? 'expired' : 'stopped'],
+          );
+          if (kind === 'reopened')
+            await ds.query(
+              "INSERT INTO esign_audit_events (document_id,event_type,occurred_at,event_hash) VALUES (1,'document.reopened',NOW(6),?)",
+              ['a'.repeat(64)],
+            );
+          const before: unknown = await ds.query(
+            'SELECT * FROM esign_documents',
+          );
+          await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
+          expect(await ds.query('SELECT * FROM esign_documents')).toEqual(
+            before,
+          );
+        } finally {
+          await ds.destroy();
+        }
+      });
+    },
+  );
+
   it('最新 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const dataSource = new DataSource(optionsFor(database));
@@ -136,7 +171,7 @@ describe('e-sign schema migrations', () => {
             'esign_signers',
             'completion_status',
           ),
-        ).toBe(false);
+        ).toBe(true);
 
         await dataSource.runMigrations();
         expect(await schemaSnapshot(dataSource, database)).toEqual(first);

@@ -36,6 +36,12 @@ export const AppErrorCode = {
   ESIGN_EXTERNAL_UNAUTHORIZED: 'ESIGN_EXTERNAL_UNAUTHORIZED',
   /** 電子簽文件或簽署人目前狀態不允許操作。 */
   ESIGN_STATE_CONFLICT: 'ESIGN_STATE_CONFLICT',
+  /** 補簽期限或原因不合法。 */
+  ESIGN_REOPEN_INPUT_INVALID: 'ESIGN_REOPEN_INPUT_INVALID',
+  /** 補簽要求所依據的期限已變更。 */
+  ESIGN_REOPEN_STALE: 'ESIGN_REOPEN_STALE',
+  /** 文件目前不允許補簽。 */
+  ESIGN_DOCUMENT_NOT_REOPENABLE: 'ESIGN_DOCUMENT_NOT_REOPENABLE',
   /** 電子簽文件、payload 或檔案完整性驗證失敗。 */
   ESIGN_INTEGRITY_FAILED: 'ESIGN_INTEGRITY_FAILED',
   /** 電子簽必要的資料庫或私有儲存目前不可用。 */

@@ -1,3 +1,8 @@
+import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
+import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
+import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
+import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
+import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { esignTestPng } from './esign-test-png';
 import { createPrivateKey, createHash, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
@@ -1380,6 +1385,349 @@ describe('核心電子簽 US1', () => {
     expect(replacement.id).not.toBe(created.id);
     expect(replacement.sourceFile.sha256).not.toBe(created.sourceFile.sha256);
     expect(replacement.status).toBe('draft');
+  });
+
+  it('到期掃描跨越 100 筆批次且重複執行不新增事件，舊候選不得覆蓋新期限', async () => {
+    const [creator] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM users WHERE empid=?',
+      [creatorEmpid],
+    );
+    const ids: number[] = [];
+    const now = new Date();
+    for (let i = 0; i < 101; i++) {
+      const docNumber = randomUUID();
+      await db.query(
+        "INSERT INTO esign_documents (doc_number,title,created_by_user_id,status,sign_start_at,sign_end_at) VALUES (?,'批次到期測試',?,'active',?,?)",
+        [
+          docNumber,
+          creator.id,
+          new Date(now.getTime() - 120000),
+          new Date(now.getTime() - 60000),
+        ],
+      );
+      const [row] = await db.query<Array<{ id: number }>>(
+        'SELECT id FROM esign_documents WHERE doc_number=?',
+        [docNumber],
+      );
+      ids.push(Number(row.id));
+      documentIds.push(Number(row.id));
+      await db.query(
+        "INSERT INTO esign_signers (public_id,document_id,signer_type,user_id,empid_snapshot,name_snapshot) VALUES (?,?,'user',?,?,'批次待簽者')",
+        [randomUUID(), row.id, creator.id, creatorEmpid],
+      );
+    }
+    const expiry = new EsignExpiryService(
+      ctx.app.get(MysqlService),
+      ctx.app.get(DocumentRepository),
+      ctx.app.get(SignerRepository),
+      ctx.app.get(EsignAuditService),
+    );
+    // 掃描後期限已更新，鎖內必須以最新期限判定。
+    await db.query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
+      new Date(now.getTime() + 60000),
+      ids[0],
+    ]);
+    expect(await expiry.expireByDeadline(ids[0])).toBe(false);
+    await db.query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
+      new Date(now.getTime() - 60000),
+      ids[0],
+    ]);
+    await expiry.reconcile(now);
+    const list = apiData<Array<{ id: string; status: string }>>(
+      await request(ctx.server)
+        .get('/api/esign/documents?role=created&status=expired')
+        .set('Cookie', creatorCookie)
+        .expect(200),
+    );
+    expect(
+      ids.every((id) =>
+        list.some((doc) => doc.id === String(id) && doc.status === 'expired'),
+      ),
+    ).toBe(true);
+    const before = await esignRowCounts(db);
+    await expiry.reconcile(now);
+    expect(await esignRowCounts(db)).toEqual(before);
+  });
+
+  it('截止當下查詢呈現已到期，並發到期僅一次且已簽證據與個人副本保留', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const { id } = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .field('title', '到期保留證據')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'expiry.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    );
+    documentIds.push(Number(id));
+    const [signedUser] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM users WHERE empid=?',
+      [signerEmpid],
+    );
+    const [pendingUser] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM users WHERE empid=?',
+      [creatorEmpid],
+    );
+    const end = new Date(Date.now() + 60_000);
+    const active = apiData<DocumentDetail>(
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: [
+            { type: 'user', userId: String(signedUser.id) },
+            { type: 'user', userId: String(pendingUser.id) },
+            { type: 'email', name: '外部待簽', email: 'expiry@example.test' },
+          ],
+          fields: [
+            {
+              type: 'signature',
+              page: 1,
+              xPercent: 10,
+              yPercent: 10,
+              widthPercent: 25,
+              heightPercent: 10,
+              sortOrder: 0,
+            },
+          ],
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: end.toISOString(),
+          watermark: false,
+          allowReject: false,
+        })
+        .expect(201),
+    );
+    const task = apiData<SigningTask>(
+      await request(ctx.server)
+        .post(`/api/esign/signing-tasks/${active.signers[0].publicId}`)
+        .set('Cookie', signerCookie)
+        .set('Origin', 'http://localhost:3000')
+        .expect(201),
+    );
+    const submission = {
+      requestId: randomUUID(),
+      consentVersion: task.consent.version,
+      accepted: true,
+      signatures: task.fields.map((field) => ({
+        fieldId: field.id,
+        pngDataUrl: PNG_DATA_URL,
+      })),
+    };
+    const signed = apiData<{ verificationUrl: string }>(
+      await request(ctx.server)
+        .post(
+          `/api/esign/signing-tasks/${active.signers[0].publicId}/signatures`,
+        )
+        .set('Cookie', signerCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send(submission)
+        .expect(201),
+    );
+    const snapshot = () =>
+      db.query(
+        'SELECT signing_payload_json, signing_payload_sha256 FROM esign_documents WHERE id=?',
+        [id],
+      );
+    const evidence = () =>
+      db.query(
+        'SELECT r.* FROM esign_signature_records r JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=?',
+        [id],
+      );
+    const beforeSnapshot: unknown = await snapshot();
+    const beforeEvidence: unknown = await evidence();
+    const beforeCounts = await esignRowCounts(db);
+    jest.useFakeTimers({
+      now: end,
+      doNotFake: [
+        'hrtime',
+        'nextTick',
+        'performance',
+        'queueMicrotask',
+        'setImmediate',
+        'clearImmediate',
+        'setInterval',
+        'clearInterval',
+        'setTimeout',
+        'clearTimeout',
+      ],
+    });
+    try {
+      const detail = apiData<Record<string, unknown>>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+      expect(detail).toMatchObject({
+        status: 'expired',
+        signEndAt: end.toISOString(),
+        originalSignEndAt: end.toISOString(),
+        isReopened: false,
+        stopReason: null,
+      });
+      const expiredList = apiData<Array<{ id: string }>>(
+        await request(ctx.server)
+          .get('/api/esign/documents?status=expired')
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+      expect(expiredList.map((d) => d.id)).toContain(id);
+      const activeList = apiData<Array<{ id: string }>>(
+        await request(ctx.server)
+          .get('/api/esign/documents?status=active')
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+      expect(activeList.map((d) => d.id)).not.toContain(id);
+      const pending = apiData<
+        Array<{ document: { id: string; status: string } }>
+      >(
+        await request(ctx.server)
+          .get('/api/esign/signing-tasks?status=pending')
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+      expect(pending.find((t) => t.document.id === id)?.document.status).toBe(
+        'expired',
+      );
+      expect(await esignRowCounts(db)).toEqual(beforeCounts);
+      expect(
+        await db.query('SELECT status FROM esign_documents WHERE id=?', [id]),
+      ).toEqual([{ status: 'active' }]);
+      await request(ctx.server)
+        .post(
+          `/api/esign/signing-tasks/${active.signers[1].publicId}/signatures`,
+        )
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({ ...submission, requestId: randomUUID() })
+        .expect(409);
+      expect(
+        apiData<{ documentStatus: string }>(
+          await request(ctx.server)
+            .post(
+              `/api/esign/signing-tasks/${active.signers[0].publicId}/signatures`,
+            )
+            .set('Cookie', signerCookie)
+            .set('Origin', 'http://localhost:3000')
+            .send(submission)
+            .expect(200),
+        ).documentStatus,
+      ).toBe('expired');
+      const expiry = new EsignExpiryService(
+        ctx.app.get(MysqlService),
+        ctx.app.get(DocumentRepository),
+        ctx.app.get(SignerRepository),
+        ctx.app.get(EsignAuditService),
+      );
+      expect(
+        await Promise.all([
+          expiry.expireByDeadline(Number(id)),
+          expiry.expireByDeadline(Number(id)),
+        ]),
+      ).toEqual(expect.arrayContaining([true, false]));
+      const history = apiData<Array<{ type: string }>>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}/history`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+      expect(history.filter((e) => e.type === 'document.expired')).toHaveLength(
+        1,
+      );
+      const signerHistory = apiData<Array<{ type: string }>>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}/history`)
+          .set('Cookie', signerCookie)
+          .expect(200),
+      );
+      expect(
+        signerHistory.some((event) => event.type === 'document.expired'),
+      ).toBe(true);
+      expect(
+        history.some((e) => e.type === 'document.stopped_by_deadline'),
+      ).toBe(false);
+      expect(await snapshot()).toEqual(beforeSnapshot);
+      expect(await evidence()).toEqual(beforeEvidence);
+      await request(ctx.server)
+        .get(
+          `/api/esign/signing-tasks/${active.signers[0].publicId}/source-file`,
+        )
+        .set('Cookie', signerCookie)
+        .expect(200);
+      await request(ctx.server)
+        .get(
+          `/api/esign/signing-tasks/${active.signers[1].publicId}/source-file`,
+        )
+        .set('Cookie', creatorCookie)
+        .expect(409);
+      expect(
+        apiData<SignatureVerification>(
+          await getSignatureVerification(
+            ctx.server,
+            signed.verificationUrl,
+          ).expect(200),
+        ).document.status,
+      ).toBe('expired');
+      const [external] = await db.query<
+        Array<{ invitation_token_sha256: string | null }>
+      >(
+        "SELECT invitation_token_sha256 FROM esign_signers WHERE document_id=? AND signer_type='email'",
+        [id],
+      );
+      expect(external.invitation_token_sha256).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+    const queue = ctx.app.get<Queue>(
+      getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
+    );
+    await queue.pause();
+    const worker = await NestFactory.createApplicationContext(WorkerModule, {
+      logger: false,
+    });
+    try {
+      const [owner] = await db.query<Array<{ id: number }>>(
+        "SELECT id FROM esign_signers WHERE document_id=? AND status='signed'",
+        [id],
+      );
+      await worker.get(DocumentFinalizationProcessor).process({
+        data: { documentId: Number(id), signerId: Number(owner.id) },
+      } as Job<{ documentId: number; signerId: number }>);
+      await request(ctx.server)
+        .get(
+          `/api/esign/signing-tasks/${active.signers[0].publicId}/completed-file`,
+        )
+        .set('Cookie', signerCookie)
+        .expect(200);
+      expect(
+        apiData<{ status: string }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}`)
+            .set('Cookie', creatorCookie)
+            .expect(200),
+        ).status,
+      ).toBe('expired');
+    } finally {
+      await worker.close();
+      await queue.resume();
+    }
+    expect(
+      apiData<{ status: string }>(
+        await request(ctx.server)
+          .post(`/api/esign/documents/${id}/stoppages`)
+          .set('Cookie', creatorCookie)
+          .set('Origin', 'http://localhost:3000')
+          .send({ reason: '不再需要補簽' })
+          .expect(201),
+      ).status,
+    ).toBe('stopped');
   });
 
   it('文件清單依角色與狀態過濾，內部 signer 歷程只含本人與文件狀態事件', async () => {

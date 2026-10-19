@@ -44,8 +44,15 @@ export class EsignDocumentQueryService {
   async list(
     userId: number,
     role?: 'created' | 'assigned',
-    status?: 'draft' | 'active' | 'finalizing' | 'completed' | 'stopped',
+    status?:
+      | 'draft'
+      | 'active'
+      | 'expired'
+      | 'finalizing'
+      | 'completed'
+      | 'stopped',
   ) {
+    const now = new Date();
     const manager = this.mysql.getManager();
     const [created, assignedSigners] = await Promise.all([
       role === 'assigned'
@@ -67,13 +74,11 @@ export class EsignDocumentQueryService {
     const byId = new Map(
       [...created, ...assigned].map((document) => [document.id, document]),
     );
-    const documents = [...byId.values()]
-      .filter((document) => !status || document.status === status)
-      .sort(
-        (left, right) =>
-          right.updatedAt.getTime() - left.updatedAt.getTime() ||
-          right.id - left.id,
-      );
+    const documents = [...byId.values()].sort(
+      (left, right) =>
+        right.updatedAt.getTime() - left.updatedAt.getTime() ||
+        right.id - left.id,
+    );
     // 建立人：同一人只查一次
     const creatorIds = [...new Set(documents.map((d) => d.createdByUserId))];
     const creators = new Map(
@@ -85,16 +90,18 @@ export class EsignDocumentQueryService {
         .filter((user): user is User => user !== null)
         .map((user) => [user.id, user]),
     );
-    return Promise.all(
+    const items = await Promise.all(
       documents.map(async (document) => {
         const signers = await this.signers.findByDocument(document.id, manager);
         return this.mapper.documentListItem(
           document,
           this.count(signers),
           creators.get(document.createdByUserId),
+          now,
         );
       }),
     );
+    return items.filter((document) => !status || document.status === status);
   }
 
   async creatorDetail(documentId: number, userId: number) {
@@ -188,6 +195,7 @@ export class EsignDocumentQueryService {
       'document.completed',
       'document.stopped_by_creator',
       'document.stopped_by_deadline',
+      'document.expired',
     ]);
     return events
       .filter(

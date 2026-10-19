@@ -70,7 +70,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
     return { service, signer, document, file, record, files, storage, bytes };
   }
 
-  it.each(['active', 'finalizing', 'completed', 'stopped'])(
+  it.each(['active', 'expired', 'finalizing', 'completed', 'stopped'])(
     '%s 的 ready 副本供建立人及本人下載',
     async (status) => {
       const f = await setup(status);

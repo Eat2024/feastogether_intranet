@@ -39,7 +39,7 @@ describe('EsignDocumentValidationService', () => {
     expect(() => service.assertActiveForStop(document())).not.toThrow();
     expect(() =>
       service.assertActiveForStop(document({ status: 'completed' })),
-    ).toThrow('只有簽署中或產製中的文件');
+    ).toThrow('只有簽署中、已到期或產製中的文件');
 
     const signer = Object.assign(new EsignSigner(), {
       id: 2,

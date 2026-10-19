@@ -67,7 +67,9 @@ export class DocumentFinalizationProcessor extends WorkerHost {
       );
       if (
         !document ||
-        !['active', 'finalizing', 'stopped'].includes(document.status)
+        !['active', 'expired', 'finalizing', 'stopped'].includes(
+          document.status,
+        )
       )
         return false;
       const signer = await this.signers.findByIdForUpdate(signerId, manager);
@@ -128,7 +130,9 @@ export class DocumentFinalizationProcessor extends WorkerHost {
     const signer = await this.signers.findByIdForUpdate(signerId, manager);
     if (
       !document ||
-      !['active', 'finalizing', 'stopped'].includes(document.status) ||
+      !['active', 'expired', 'finalizing', 'stopped'].includes(
+        document.status,
+      ) ||
       !holdsLease(signer, token) ||
       signer.documentId !== documentId
     )

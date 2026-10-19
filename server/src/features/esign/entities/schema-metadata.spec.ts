@@ -89,6 +89,16 @@ describe('esign schema metadata', () => {
     },
   );
 
+  it('文件 CHECK 同時保留已到期與永久停止', () => {
+    const check = storage.checks.find(
+      (entry) =>
+        entry.target === EsignDocument &&
+        entry.name === 'chk_esign_documents_status',
+    );
+    expect(check?.expression).toContain("'expired'");
+    expect(check?.expression).toContain("'stopped'");
+  });
+
   it('append-only signature/audit 不含更新與軟刪除欄位', () => {
     for (const target of [EsignSignatureRecord, EsignAuditEvent]) {
       const properties = storage.columns

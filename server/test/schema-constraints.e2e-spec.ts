@@ -55,6 +55,9 @@ describe('e-sign schema database constraints', () => {
         );
         expect(Number(defaults[0]?.watermark_enabled)).toBe(0);
         expect(Number(defaults[0]?.allow_reject)).toBe(0);
+        await ds.query(
+          `UPDATE esign_documents SET status='expired' WHERE id=1`,
+        );
         await expectRejected(
           ds,
           `UPDATE esign_documents SET status='unknown' WHERE id=1`,

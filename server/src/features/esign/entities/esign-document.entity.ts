@@ -13,7 +13,7 @@ import { User } from '#app/features/users/entities/user.entity';
 @Entity({ name: 'esign_documents', comment: '電子簽文件' })
 @Check(
   'chk_esign_documents_status',
-  "`status` IN ('draft','active','finalizing','completed','stopped')",
+  "`status` IN ('draft','active','expired','finalizing','completed','stopped')",
 )
 @Check(
   'chk_esign_documents_sign_period',

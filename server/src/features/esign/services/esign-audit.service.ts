@@ -7,6 +7,9 @@ import { AuditEventRepository } from '../repositories/audit-event.repository';
 
 export interface EsignAuditMetadata {
   status?: string;
+  expiredAt?: string;
+  previousSignEndAt?: string;
+  signEndAt?: string;
   reason?: string;
   consentVersion?: string;
   errorCode?: string;
@@ -134,8 +137,21 @@ export class EsignAuditService {
     ] as const) {
       const value = metadata[key];
       if (typeof value === 'string' && value.trim() !== '') {
-        result[key] = value.slice(0, 500);
+        result[key] = Array.from(value.trim()).slice(0, 500).join('');
       }
+    }
+    for (const key of [
+      'expiredAt',
+      'previousSignEndAt',
+      'signEndAt',
+    ] as const) {
+      const value = metadata[key];
+      if (
+        value &&
+        Number.isFinite(Date.parse(value)) &&
+        new Date(value).toISOString() === value
+      )
+        result[key] = value;
     }
     for (const key of ['signatureRecordId', 'completedFileId'] as const) {
       const value = metadata[key];

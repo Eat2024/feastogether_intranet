@@ -24,7 +24,12 @@ export class EsignSigningTaskDto {
 export class EsignSignatureResultDto {
   signerPublicId!: string;
   signedAt!: string;
-  documentStatus!: 'active' | 'finalizing' | 'completed' | 'stopped';
+  documentStatus!:
+    | 'active'
+    | 'expired'
+    | 'finalizing'
+    | 'completed'
+    | 'stopped';
   completion!: PersonalCompletionDto;
   /** 本次簽章的公開驗證網址；重送相同請求時相同 */
   verificationUrl!: string | null;

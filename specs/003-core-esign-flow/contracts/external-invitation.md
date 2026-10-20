@@ -78,6 +78,8 @@ X-Content-Type-Options: nosniff
 
 ## 7. Email 投遞與重試
 
+> **由 Spec 008 取代（FR-023）**：UAT／production 不再透過 SES adapter 寄送；local、UAT（staging）與 production 都以 SMTP adapter 經公司 Google Workspace（`smtp.gmail.com`）寄出，automated test 維持 in-memory fake，SES adapter 已移除。重試、失敗紀錄與不記錄 provider 細節的規則不變。以下保留原文。
+
 - Worker 使用 notification log 的 `pending/failed -> processing` 條件轉換 claim 作業。
 - local 透過 SMTP adapter 寄到 Mailpit；automated test 注入 in-memory fake；UAT/production 透過 SES adapter 寄送，但共用相同 mail sender contract、內容與 outbox 狀態機。
 - 可重試失敗寫穩定 `error_code`、`attempt_count`、`next_attempt_at`，不寫 SMTP/SES response、body、recipient 或 token。
@@ -85,6 +87,8 @@ X-Content-Type-Options: nosniff
 - 成功 provider accept 後寫 delivered 並清除 ciphertext。若在 provider accept 後、DB update 前 crash，允許 worker 重寄同一連結；不會建立第二個 signer 或擴大權限。
 
 ## 8. 部署設定
+
+> **由 Spec 008 取代（FR-023）**：`ESIGN_MAIL_DRIVER=ses`、`SES_FROM` 與 SES sandbox／寄件身分驗證的記載不再適用。UAT（staging）與 production 改用 `ESIGN_MAIL_DRIVER=smtp`，必須設定 `SMTP_USER`、`SMTP_PASSWORD`，且一律加密連線（`SMTP_SECURE=true` 直接 TLS，或 `SMTP_SECURE=false` 時強制 STARTTLS）；local 仍可使用不驗證、不加密的 Mailpit。`AWS_REGION` 與 runtime IAM role 只供 production S3 檔案儲存使用。現行設定範例以 `server/.env.example` 為準。以下保留原文。
 
 ```dotenv
 EXTERNAL_SIGNING_ORIGIN=https://esign.example.internal

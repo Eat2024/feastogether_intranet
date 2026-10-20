@@ -1,10 +1,15 @@
+import { notificationStatus } from './notification-status';
 import { createHash, randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
-import { NotificationBatchDto } from '../dto/notification-batch.dto';
+import {
+  NotificationBatchDto,
+  NotificationListDto,
+  NotificationPageDto,
+} from '../dto/notification-batch.dto';
 import { EsignNotificationBatch } from '../entities/esign-notification-batch.entity';
 import { DocumentRepository } from '../repositories/document.repository';
 import { NotificationRepository } from '../repositories/notification.repository';
@@ -99,7 +104,7 @@ export class EsignReminderService {
               now,
             ) ??
             (!signer.email || !signer.invitationTokenSha256
-              ? 'NO_VALID_ADDRESS'
+              ? 'RECIPIENT_UNAVAILABLE'
               : null),
         });
       }
@@ -166,7 +171,36 @@ export class EsignReminderService {
     return result.view;
   }
 
-  async detail(documentId: number, userId: number, batchId: string) {
+  async list(documentId: number, userId: number, page: NotificationListDto) {
+    const manager = this.mysql.getManager();
+    this.access.checkEsignCreator(
+      await this.documents.findById(documentId, manager),
+      userId,
+    );
+    const batches = await this.notifications.listBatches(
+      documentId,
+      manager,
+      page.limit,
+      page.cursor,
+      page.kind,
+    );
+    return {
+      items: await Promise.all(
+        batches
+          .slice(0, page.limit)
+          .map((batch) => this.summary(batch, manager)),
+      ),
+      nextCursor:
+        batches.length > page.limit ? String(batches[page.limit - 1].id) : null,
+    };
+  }
+
+  async detail(
+    documentId: number,
+    userId: number,
+    batchId: string,
+    page = new NotificationPageDto(),
+  ) {
     const manager = this.mysql.getManager();
     this.access.checkEsignCreator(
       await this.documents.findById(documentId, manager),
@@ -178,30 +212,65 @@ export class EsignReminderService {
       manager,
     );
     if (!batch) throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
-    return this.view(batch, manager);
+    return this.view(batch, manager, page);
   }
 
-  private async view(batch: EsignNotificationBatch, manager: EntityManager) {
-    const logs = await this.notifications.findBatchLogs(batch.id, manager);
+  private async summary(batch: EsignNotificationBatch, manager: EntityManager) {
+    const counts = await this.notifications.batchCounts(batch.id, manager);
     return {
       batchId: batch.publicId,
       kind: batch.kind,
-      status: logs.some((l) => ['pending', 'processing'].includes(l.result))
-        ? 'pending'
-        : 'completed',
+      requestedBy: batch.notifiedByUserId
+        ? {
+            userId: String(batch.notifiedByUserId),
+            name: batch.notifiedByUser?.name ?? '員工',
+          }
+        : null,
+      status: notificationStatus(counts),
       selectedCount: batch.targetCount,
-      queuedCount: logs.filter((l) => l.result !== 'skipped').length,
-      notSentCount: logs.filter((l) => l.result === 'skipped').length,
+      queuedCount: Object.entries(counts).reduce(
+        (sum, [status, count]) => sum + (status === 'skipped' ? 0 : count),
+        0,
+      ),
+      notSentCount: counts.skipped ?? 0,
       createdAt: batch.createdAt.toISOString(),
-      items: logs.map((l) => ({
+    };
+  }
+
+  private async view(
+    batch: EsignNotificationBatch,
+    manager: EntityManager,
+    page = new NotificationPageDto(),
+  ) {
+    // 重新取得操作者關聯，使 POST／重送／GET 的內容一致。
+    const hydrated = await this.notifications.findBatchPublic(
+      batch.documentId,
+      batch.publicId,
+      manager,
+    );
+    const logs = await this.notifications.pageBatchLogs(
+      batch.id,
+      manager,
+      page.limit,
+      page.cursor,
+    );
+    return {
+      ...(await this.summary(hydrated ?? batch, manager)),
+      items: logs.slice(0, page.limit).map((l) => ({
         signerPublicId: l.signer?.publicId,
         name: l.signer?.nameSnapshot,
         status: l.result,
         reasonCode: l.errorCode ?? null,
         attemptCount: l.attemptCount,
         completedAt: l.completedAt?.toISOString() ?? null,
-        attemptHistory: l.attemptHistoryJson ?? [],
+        attemptHistory: (l.attemptHistoryJson ?? []).map((attempt) => ({
+          status: attempt.status,
+          at: attempt.at,
+          reasonCode: attempt.reasonCode ?? null,
+        })),
       })),
+      nextCursor:
+        logs.length > page.limit ? String(logs[page.limit - 1].id) : null,
     };
   }
 }

@@ -80,7 +80,11 @@ describe('外部催簽 API', () => {
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
   });
-  async function create() {
+  async function create(
+    signers: object[] = [
+      { type: 'email', name: '外部測試', email: 'reminder@example.test' },
+    ],
+  ) {
     const pdf = await PDFDocument.create();
     pdf.addPage();
     const created = apiData<{ id: string }>(
@@ -101,9 +105,7 @@ describe('外部催簽 API', () => {
         .set('Cookie', cookie)
         .set('Origin', origin)
         .send({
-          signers: [
-            { type: 'email', name: '外部測試', email: 'reminder@example.test' },
-          ],
+          signers,
           fields: [
             {
               type: 'signature',
@@ -374,7 +376,7 @@ describe('外部催簽 API', () => {
     await worker().process(queued.job);
     expect((await result(doc, queued.batch)).items[0]).toMatchObject({
       status: 'skipped',
-      reasonCode: 'DOCUMENT_NOT_SIGNABLE',
+      reasonCode: 'SIGNING_WINDOW_CLOSED',
     });
     const active = await create();
     const pending = await queueOne(active);
@@ -417,6 +419,244 @@ describe('外部催簽 API', () => {
       .send(body)
       .expect(403);
   });
+
+  it('all_pending 包含跨頁全部外部名單；批次/明細分頁、類型篩選與敏感資料裁切', async () => {
+    const doc = await create(
+      Array.from({ length: 23 }, (_, i) => ({
+        type: 'email',
+        name: `跨頁 ${i}`,
+        email: `batch${i}@example.test`,
+      })),
+    );
+    const batch = apiData<
+      Batch & { nextCursor: string | null; status: string }
+    >(
+      await post(doc.id, {
+        requestId: randomUUID(),
+        selection: 'all_pending',
+      }).expect(202),
+    );
+    expect(batch.queuedCount).toBe(23);
+    expect(batch.items).toHaveLength(20);
+    expect(batch.status).toBe('queued');
+    const base = `/api/esign/documents/${doc.id}/notification-batches`;
+    const read = async (path: string) =>
+      apiData<{
+        items: Array<{ batchId: string; kind: string; signerPublicId: string }>;
+        nextCursor: string | null;
+      }>(await request(ctx.server).get(path).set('Cookie', cookie).expect(200));
+    const first = await read(`${base}/${batch.batchId}?limit=7`);
+    const ids = first.items.map((item) => item.signerPublicId);
+    let cursor = first.nextCursor;
+    while (cursor) {
+      const next = await read(
+        `${base}/${batch.batchId}?limit=7&cursor=${cursor}`,
+      );
+      ids.push(...next.items.map((item) => item.signerPublicId));
+      cursor = next.nextCursor;
+    }
+    expect(new Set(ids).size).toBe(23);
+    expect(ids.sort()).toEqual(doc.signers.map((item) => item.publicId).sort());
+    const list = await read(`${base}?limit=1`);
+    expect(list.items[0]).toMatchObject({
+      batchId: batch.batchId,
+      kind: 'reminder',
+      requestedBy: { name: '催簽測試' },
+    });
+    expect(list.items[0]).not.toHaveProperty('items');
+    const older = await read(`${base}?limit=1&cursor=${list.nextCursor}`);
+    expect(older.items[0].kind).toBe('invitation');
+    expect(older.nextCursor).toBeNull();
+    const invitations = await read(`${base}?kind=invitation`);
+    expect(invitations.items).toHaveLength(1);
+    const invitationDetail = await read(
+      `${base}/${invitations.items[0].batchId}`,
+    );
+    expect(invitationDetail.items).toHaveLength(20);
+    for (const query of ['limit=101', 'limit=0', 'cursor=bad', 'kind=otp'])
+      await request(ctx.server)
+        .get(`${base}?${query}`)
+        .set('Cookie', cookie)
+        .expect(400);
+    expect(JSON.stringify([first, list, older, invitationDetail])).not.toMatch(
+      /ciphertext|sha256|Token|recipientEmail|example.test/,
+    );
+    await post(doc.id, {
+      requestId: randomUUID(),
+      selection: 'all_pending',
+    }).expect(409);
+    expect((await read(base)).items).toHaveLength(2);
+  });
+  it('selected 去重，混合內部保留未支援原因；跨批併發僅寄一次且可追查初邀/催簽摘要', async () => {
+    const [user] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM users WHERE empid=?',
+      ['E2E00905'],
+    );
+    const doc = await create([
+      { type: 'user', userId: String(user.id) },
+      ...Array.from({ length: 2 }, (_, i) => ({
+        type: 'email',
+        name: `外部 ${i}`,
+        email: `mixed${i}@example.test`,
+      })),
+    ]);
+    const allIds = doc.signers.map((signer) => signer.publicId);
+    const batch = apiData<Batch>(
+      await post(doc.id, {
+        requestId: randomUUID(),
+        selection: 'selected',
+        signerPublicIds: [...allIds, ...allIds],
+      }).expect(202),
+    );
+    expect(batch).toMatchObject({
+      selectedCount: 3,
+      queuedCount: 2,
+      notSentCount: 1,
+    });
+    expect(batch.items.filter((item) => item.status === 'skipped')).toEqual([
+      expect.objectContaining({ reasonCode: 'INTERNAL_REMINDER_UNSUPPORTED' }),
+    ]);
+    const rows = await db.query<Array<{ id: number }>>(
+      'SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? ORDER BY l.id',
+      [doc.id],
+    );
+    const mailer = ctx.app.get<FakeInvitationMailSender>(
+      INVITATION_MAIL_SENDER,
+    );
+    const before = mailer.deliveries.length;
+    for (const row of rows)
+      await worker().process({ data: { notificationLogId: row.id } } as Job<{
+        notificationLogId: number;
+      }>);
+    expect(mailer.deliveries.slice(before)).toHaveLength(4);
+    const detail = apiData<{
+      signers: Array<{
+        type: string;
+        latestInvitation: { status: string };
+        latestReminder: { status: string };
+        deliveredReminderCount: number;
+        reminderEligibility: { reasonCode: string };
+      }>;
+    }>(
+      await request(ctx.server)
+        .get(`/api/esign/documents/${doc.id}`)
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+    for (const signer of detail.signers.filter((s) => s.type === 'email'))
+      expect(signer).toMatchObject({
+        latestInvitation: { status: 'delivered' },
+        latestReminder: { status: 'delivered' },
+        deliveredReminderCount: 1,
+        reminderEligibility: { reasonCode: 'REMINDER_DAILY_LIMIT' },
+      });
+    const responses = await Promise.all([
+      post(doc.id, { requestId: randomUUID(), selection: 'all_pending' }),
+      post(doc.id, {
+        requestId: randomUUID(),
+        selection: 'selected',
+        signerPublicIds: allIds,
+      }),
+    ]);
+    expect(responses.map((r) => r.status)).toEqual([409, 409]);
+    expect(mailer.deliveries.slice(before)).toHaveLength(4);
+  });
+  it('明確失敗仍待重試時不能另建批次，原明細成功後只寄出一次', async () => {
+    const doc = await create();
+    const queued = await queueOne(doc);
+    const mailer = ctx.app.get<FakeInvitationMailSender>(
+      INVITATION_MAIL_SENDER,
+    );
+    const send = jest
+      .spyOn(mailer, 'send')
+      .mockRejectedValueOnce({ responseCode: 450 });
+    await worker().process(queued.job);
+    send.mockRestore();
+    expect(await result(doc, queued.batch)).toMatchObject({ status: 'queued' });
+    const rejected = await post(doc.id, {
+      requestId: randomUUID(),
+      selection: 'all_pending',
+    }).expect(409);
+    expect(JSON.stringify(rejected.body)).toContain('REMINDER_IN_PROGRESS');
+    await db.query(
+      'UPDATE esign_notification_logs SET next_attempt_at=UTC_TIMESTAMP() WHERE id=?',
+      [queued.job.data.notificationLogId],
+    );
+    const before = mailer.deliveries.length;
+    await worker().process(queued.job);
+    await worker().process(queued.job);
+    expect(mailer.deliveries.slice(before)).toHaveLength(1);
+    expect((await result(doc, queued.batch)).items[0]).toMatchObject({
+      status: 'delivered',
+      attemptCount: 2,
+    });
+  });
+
+  it.each(['invitation', 'reminder'])(
+    '%s 等待文件鎖時已停止，worker 使用最新鎖定狀態',
+    async (kind) => {
+      const doc = await create();
+      let queued = await queueOne(doc);
+      if (kind === 'invitation') {
+        const [initial] = await db.query<
+          Array<{ id: number; publicId: string }>
+        >(
+          "SELECT l.id, b.public_id AS publicId FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? AND b.kind='invitation'",
+          [doc.id],
+        );
+        queued = {
+          batch: { ...queued.batch, batchId: initial.publicId },
+          job: { data: { notificationLogId: initial.id } } as Job<{
+            notificationLogId: number;
+          }>,
+        };
+      }
+      const runner = db.createQueryRunner();
+      await runner.connect();
+      await runner.startTransaction();
+      let pending: Promise<unknown> | undefined;
+      const mailer = ctx.app.get<FakeInvitationMailSender>(
+        INVITATION_MAIL_SENDER,
+      );
+      const before = mailer.deliveries.length;
+      try {
+        await runner.query(
+          'SELECT id FROM esign_documents WHERE id=? FOR UPDATE',
+          [doc.id],
+        );
+        pending = worker().process(queued.job);
+        // 真 MySQL 鎖等待作同步點，確保 worker 已建立 REPEATABLE READ snapshot。
+        let waiting = false;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const rows = await runner.query<Array<{ count: string }>>(
+            "SELECT COUNT(*) AS count FROM performance_schema.data_lock_waits w JOIN performance_schema.data_locks l ON w.REQUESTING_ENGINE_LOCK_ID=l.ENGINE_LOCK_ID WHERE l.OBJECT_SCHEMA=DATABASE() AND l.OBJECT_NAME='esign_documents'",
+          );
+          if (Number(rows[0].count) > 0) {
+            waiting = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(waiting).toBe(true);
+        await runner.query(
+          "UPDATE esign_documents SET status='stopped' WHERE id=?",
+          [doc.id],
+        );
+        await runner.commitTransaction();
+        await pending;
+        expect((await result(doc, queued.batch)).items[0]).toMatchObject(
+          kind === 'reminder'
+            ? { status: 'skipped', reasonCode: 'SIGNING_WINDOW_CLOSED' }
+            : { status: 'pending' },
+        );
+        expect(mailer.deliveries.slice(before)).toHaveLength(0);
+      } finally {
+        if (runner.isTransactionActive) await runner.rollbackTransaction();
+        await pending;
+        await runner.release();
+      }
+    },
+  );
 
   it('已有催簽紀錄時拒絕 schema 回滾，原紀錄仍可讀取', async () => {
     const doc = await create();

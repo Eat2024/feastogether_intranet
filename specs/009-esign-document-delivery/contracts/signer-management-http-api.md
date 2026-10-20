@@ -1,6 +1,6 @@
 # Spec 009：簽署人管理契約草案
 
-此文件為 Spec 009 設計契約，尚未實作；沿用既有 `/api`、回應 envelope、員工 session 與寫入來源驗證。本階段催簽僅支援外部 Email 簽署人；內部同事催簽留待後續規格。新增寫入使用 requestId（UUID）識別同次操作；相同 requestId 不同內容回409，錯誤碼由 AppErrors 集中管理。
+此文件為 Spec 009 簽署人管理契約；Ticket 01、03–06 已實作，整體交付驗證依 implementation-notes.md；沿用既有 `/api`、回應 envelope、員工 session 與寫入來源驗證。本階段催簽僅支援外部 Email 簽署人；內部同事催簽留待後續規格。新增寫入使用 requestId（UUID）識別同次操作；相同 requestId 不同內容回409，錯誤碼由 AppErrors 集中管理。
 
 本文件對應 [主規格 US4–US6、FR-022–041](../spec.md)。外部限定只適用催簽；內外部名單、拒簽與備註仍依各自權限支援。
 
@@ -82,10 +82,10 @@
 
 ## 6. 通知狀態與錯誤
 
-batch detail 回 `id,kind,requestedBy,createdAt,status,selectedCount,queuedCount,notSentCount,items,nextCursor`，每個 item 為 signerPublicId/name/status/attemptCount/completedAt/reasonCode。batch 狀態由明細推導 queued/processing/completed/partial_failed/failed/unknown；明細 delivered 只代表 SMTP 已接受。
+batch detail 回 `batchId,kind,requestedBy,createdAt,status,selectedCount,queuedCount,notSentCount,items,nextCursor`，每個 item 為 signerPublicId/name/status/attemptCount/completedAt/reasonCode。batch 狀態由明細推導 queued/processing/completed/partial_failed/failed/unknown；明細 delivered 只代表 SMTP 已接受。
 
 名單不合法400；跨文件或不存在404（整批）；相同 requestId 不同 payload409；無合格對象409；無權限沿現有404。逐人略過原因固定 `INTERNAL_REMINDER_UNSUPPORTED`、`SIGNER_ALREADY_COMPLETED`、`REMINDER_DAILY_LIMIT`、`REMINDER_IN_PROGRESS`、`SIGNING_WINDOW_CLOSED`、`RECIPIENT_UNAVAILABLE`。unknown 使用 `DELIVERY_OUTCOME_UNKNOWN`；不輸出 SMTP 原始錯誤。
 
-`GET /api/esign/documents/{documentId}/notification-batches` 回 cursor/limit 分頁，支援 kind 篩選，以便管理人同時查初次 invitation 與 reminder；明細也分頁。一天一次以實際派送台北曆日為準，pending/processing 跨午夜仍不可新排；初次邀請與 OTP 不計入催簽額度。
+`GET /api/esign/documents/{documentId}/notification-batches` 回 cursor/limit 分頁，支援 kind 篩選，以便管理人同時查初次 invitation 與 reminder；明細也分頁。`cursor` 為上一頁回傳的不透明數字字串，`limit` 預設20、範圍1–100；批次由新到舊、明細依建立順序。列表回 `{items,nextCursor}`，每批列表項目不含逐人明細；detail 回 `{batchId,kind,requestedBy,createdAt,status,selectedCount,queuedCount,notSentCount,items,nextCursor}`。`requestedBy` 為 `{userId,name}`，無操作者為null。明確失敗仍有排程重試時，整批視為queued、逐人仍顯示failed及嘗試紀錄；資格回REMINDER_IN_PROGRESS，必須沿用原明細。一天一次以實際派送台北曆日為準，pending/processing 跨午夜仍不可新排；初次邀請與 OTP 不計入催簽額度。
 
 新增 reminder 憑證仍經 `/api/external-signature-invitations/{token}` → OTP → 外部 session；不改原 invitation digest，不允許用 signerPublicId 直接授權。hash 留存及 generation 校驗詳見 [資料模型](../data-model.md)。

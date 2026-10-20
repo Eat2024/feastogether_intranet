@@ -72,12 +72,9 @@ export interface UpdateDocumentBody {
   fields?: EsignFieldPlacement[];
 }
 
-export type EsignSignerStatus = 'pending' | 'signed' | 'rejected' | 'rejected';
+export type EsignSignerStatus = 'pending' | 'signed' | 'rejected';
 
 export interface EsignSignerView {
-  reminderEligibility?: { eligible: boolean; reasonCode: string | null; nextEligibleAt: string | null };
-  latestReminder?: { status: string; reasonCode: string | null; completedAt: string | null } | null;
-  deliveredReminderCount?: number;
   publicId: string;
   type: 'user' | 'email';
   name: string;
@@ -90,7 +87,10 @@ export interface EsignSignerView {
   rejectedAt: string | null;
   rejectReason: string | null;
   /** 個人簽署副本的產製狀態；尚未簽署時 status 為 null */
-  completion: { status: 'pending' | 'processing' | 'ready' | 'failed' | null; readyAt: string | null };
+  completion: {
+    status: 'pending' | 'processing' | 'ready' | 'failed' | null;
+    readyAt: string | null;
+  };
   /** 外部（Email）簽署人的邀請寄送結果；內部簽署人為 null */
   invitationDelivery: 'pending' | 'delivered' | 'failed' | null;
   /** 簽章公開驗證網址；只有 status 為 signed 時有值 */
@@ -98,10 +98,35 @@ export interface EsignSignerView {
 }
 
 /** 僅建立人管理頁可見，不用於本人簽署任務。 */
-export interface EsignManagedSignerView extends EsignSignerView { note: string; }
+export interface EsignManagedSignerView extends EsignSignerView {
+  note: string;
+  reminderEligibility?: {
+    eligible: boolean;
+    reasonCode: string | null;
+    nextEligibleAt: string | null;
+  };
+  latestInvitation?: {
+    status: string;
+    reasonCode: string | null;
+    completedAt: string | null;
+  } | null;
+  latestReminder?: {
+    status: string;
+    reasonCode: string | null;
+    completedAt: string | null;
+  } | null;
+  deliveredReminderCount?: number;
+}
 
-export interface SaveSignerNoteBody { id: string; signerPublicId: string; note: string; }
-export interface SignerNoteResult { signerPublicId: string; note: string; }
+export interface SaveSignerNoteBody {
+  id: string;
+  signerPublicId: string;
+  note: string;
+}
+export interface SignerNoteResult {
+  signerPublicId: string;
+  note: string;
+}
 
 /** 共用欄位：屬於文件、不屬於特定簽署人 */
 export interface EsignFieldView extends EsignFieldPlacement {
@@ -113,7 +138,12 @@ export interface EsignDocumentDetail extends Omit<EsignDocumentListItem, 'signSt
   watermark: boolean;
   allowReject: boolean;
   createdBy: { name: string; employeeNo: string } | null;
-  sourceFile?: { fileName: string; size: number; pageCount: number; sha256: string };
+  sourceFile?: {
+    fileName: string;
+    size: number;
+    pageCount: number;
+    sha256: string;
+  };
   signStartAt: string | null;
   signEndAt: string | null;
   stopReason: string | null;
@@ -145,7 +175,11 @@ export interface EsignHistoryItem {
   type: string;
   occurredAt: string;
   /** 依事件辨識動作者；系統事件不以工作對象冒充本人。 */
-  actor: { kind: 'signer' | 'employee' | 'system'; name: string; signerPublicId?: string };
+  actor: {
+    kind: 'signer' | 'employee' | 'system';
+    name: string;
+    signerPublicId?: string;
+  };
   /** 停止簽署等事件的原因 */
   reason: string | null;
 }
@@ -173,10 +207,36 @@ export interface DraftSettingsBody {
 export interface EsignNotificationBatch {
   batchId: string;
   kind: 'invitation' | 'reminder';
-  status: 'pending' | 'completed';
+  status: 'queued' | 'processing' | 'completed' | 'partial_failed' | 'failed' | 'unknown';
+  requestedBy: { userId: string; name: string } | null;
+  nextCursor: string | null;
   selectedCount: number;
   queuedCount: number;
   notSentCount: number;
   createdAt: string;
-  items: Array<{ signerPublicId: string; name: string; status: string; reasonCode: string | null; attemptCount: number; completedAt: string | null; attemptHistory: Array<{ status: string; at: string; reasonCode: string | null }> }>;
+  items: Array<{
+    signerPublicId: string;
+    name: string;
+    status: string;
+    reasonCode: string | null;
+    attemptCount: number;
+    completedAt: string | null;
+    attemptHistory: Array<{
+      status: string;
+      at: string;
+      reasonCode: string | null;
+    }>;
+  }>;
+}
+
+export interface NotificationPageParams {
+  cursor?: string;
+  limit?: number;
+}
+export interface NotificationListParams extends NotificationPageParams {
+  kind?: 'invitation' | 'reminder';
+}
+export interface EsignNotificationBatchList {
+  items: Omit<EsignNotificationBatch, 'items' | 'nextCursor'>[];
+  nextCursor: string | null;
 }

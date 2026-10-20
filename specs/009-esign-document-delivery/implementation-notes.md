@@ -44,3 +44,13 @@
 - 已merge `9f22302`，保留ticket04管理備註/拒簽/歷程。合併後root build/lint、98 suites/833 tests及schema6 tests通過。
 - 真Chrome（台北時區）對真Nest/API+MySQL執行單人催簽→202受理→worker fake SMTP投遞→當日限制→reload仍已寄出，全部通過。截圖 `/tmp/esign009-reminder-browser.png`；臨時fixture及server已清除，沒有新增測試框架。
 - 發布順序：先通知migration，再以新worker取代所有舊邀請worker，最後開啟新催簽API；不能讓舊worker消費reminder。若需回退，先停新API受理與worker並保留通知資料，已有reminder時migration拒絕down；原邀請寫入可使用public UUID資料庫預設。
+
+
+## Ticket 06：批次催簽與分頁通知歷史
+
+- 多選去重、通知全部外部待簽者跨完整名單；跨文件整批拒絕，內部及已完成／已受限同文件人員留明確 skip，不建空批次。前端只計算外部合格人數，同次失敗重送保留 requestId。
+- GET 通知批次／逐人明細均 cursor/limit 分頁，含初次邀請、催簽、操作者、全批聚合狀態與安全嘗試歷程。管理名單補 latestInvitation/latestReminder、已寄出次數與 eligibility；不加入本人 DTO。
+- 真 MySQL 發現並預防的競態：已等待文件鎖的 worker 使用鎖定後 document 狀態，不能以 plain read 舊 snapshot 覆蓋。已明確失敗但排程重試者，跨午夜仍佔原明細，不能另排第二批；全批狀態為 queued，逐人保留 failed 與原因。
+- TDD：批次部分失敗／unknown聚合、跨午夜仍待重試兩個案例先失敗後通過。提醒 HTTP/worker suite 13 項通過，包括23人跨頁、初邀／催簽類型、selected混合去重、分頁不漏不重、併發去重、每日限制、重試同明細，以及初邀／催簽兩種真DB鎖等待後停止。
+- 真 Chrome 對 Next→Nest→MySQL/Redis，兩位多選202，接著all_pending再受理21位；worker fake SMTP完成，當日按鈕停用，通知歷史可切初邀、逐人20+3分頁，reload保留結果。瀏覽器時區為America/Los_Angeles，通知時間固定台北顯示。合成截圖 `/tmp/esign009-batch-browser.png`；臨時腳本 `/tmp/esign009-batch-browser.cjs`；fixture及Next已清除，無新增client測試框架。
+- 前端仍不支援內部催簽；沒有新增schema、環境變數、RBAC或自動催簽排程。完整驗證及合併commit記於本機ticket。

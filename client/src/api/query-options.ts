@@ -19,4 +19,9 @@ export const queryOptions: Record<
     staleTime: 0,
     gcTime: minutes(5),
   },
+  // 簽署頁也從列表找出任務，是否仍可簽署須以最新資料為準
+  useGetSigningTasksQuery: {
+    staleTime: 0,
+    gcTime: minutes(5),
+  },
 };

@@ -14,6 +14,12 @@ import SignatureQr from "./SignatureQr";
 
 type DocumentViewerProps = {
   form: Pick<EFormDoc, "id" | "name" | "docNumber" | "upload">;
+  /** 系統簽署確認頁顯示的文件資訊 */
+  docInfo: Pick<EFormDoc, "name" | "docNumber">;
+  /** 原始 PDF 的同源網址；沒有原始檔（舊資料）時為 null，顯示示意版面 */
+  pdfUrl: string | null;
+  /** 已在外層讀好的 PDF；提供時不再讀取 pdfUrl */
+  pdfDoc?: PDFDocumentProxy | null;
   signer: Pick<Signer, "name" | "employeeNo">;
   layout: SignLayout;
   /** 欄位 id → 手寫簽名 PNG */
@@ -160,11 +166,12 @@ function OriginalPageContent({
 
 /** 系統簽署確認頁的內容 */
 function ConfirmPageContent({
-  form,
+  docInfo,
   signer,
   pages,
 }: {
   form: DocumentViewerProps["form"];
+  docInfo: DocumentViewerProps["docInfo"];
   signer: DocumentViewerProps["signer"];
   pages: number;
 }) {
@@ -178,9 +185,9 @@ function ConfirmPageContent({
         電子簽署確認書
       </Typography>
       <Stack>
-        <Typography variant="helper">文件名稱：{form.name}</Typography>
+        <Typography variant="helper">文件名稱：{docInfo.name}</Typography>
         <Typography variant="helper">
-          文件編號：{form.docNumber ?? "—"}
+          文件編號：{docInfo.docNumber ?? "—"}
         </Typography>
         <Typography variant="helper">文件頁數：{pages} 頁</Typography>
       </Stack>
@@ -331,7 +338,9 @@ function FieldBox({
 
 /** 文件逐頁預覽：縮圖標示需簽名的頁面，頁面上顯示簽名／日期欄位 */
 export default function DocumentViewer({
-  form,
+  docInfo,
+  pdfUrl,
+  pdfDoc,
   signer,
   layout,
   signatures,
@@ -356,6 +365,8 @@ export default function DocumentViewer({
     !pdf && form.upload?.fileId ? `/files/forms/${form.id}` : null,
   );
   const doc = pdf ?? storedDoc;
+  const { doc: loaded } = usePdfDocument(pdfDoc === undefined ? pdfUrl : null);
+  const doc = pdfDoc ?? loaded;
   const { thumbs, pageImage, requestPage } = usePdfRenders(doc);
   const isOriginalPage = (p: number) => p !== layout.confirmPage;
   const activeImage = isOriginalPage(activePage)
@@ -368,9 +379,12 @@ export default function DocumentViewer({
   return (
     <Stack spacing={2}>
       <Box>
-        <Typography variant="secondary" component="div" sx={{ mb: 1 }}>
-          需簽名的頁面：{signPages.map(pageLabel).join("、")}
-        </Typography>
+        {/* 只預覽文件（沒有簽名欄位）時不顯示 */}
+        {signPages.length > 0 && (
+          <Typography variant="secondary" component="div" sx={{ mb: 1 }}>
+            需簽名的頁面：{signPages.map(pageLabel).join("、")}
+          </Typography>
+        )}
         <Box sx={{ display: "flex", gap: 1.5, overflowX: "auto", pb: 1 }}>
           {pages.map((p) => {
             const signs = layout.fields.filter(
@@ -417,7 +431,7 @@ export default function DocumentViewer({
       >
         {activePage === layout.confirmPage ? (
           <ConfirmPageContent
-            form={form}
+            docInfo={docInfo}
             signer={signer}
             pages={layout.originalPages}
           />

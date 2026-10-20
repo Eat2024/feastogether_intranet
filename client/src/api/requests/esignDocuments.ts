@@ -1,5 +1,4 @@
 import api from '@/api/config';
-import axios from 'axios';
 import { endpoints } from '@/api/endpoints';
 import type {
   CreateDocumentBody,
@@ -13,6 +12,7 @@ import type {
   InitiateDocumentBody,
   UpdateDocumentBody,
 } from '@/api/types';
+import { getBlob } from './blob';
 
 /**
  * @name 列出電子簽文件
@@ -147,26 +147,7 @@ export const downloadSignerCompletedFile = async ({
 }: {
   id: string;
   signerPublicId: string;
-}): Promise<Blob> => {
-  try {
-    const res = await api<Blob>({
-      method: 'GET',
-      url: endpoints.ESIGN_SIGNER_COMPLETED_FILE(id, signerPublicId),
-      responseType: 'blob',
-    });
-    return res.data;
-  } catch (error) {
-    // 以 blob 接收時錯誤內容也是 Blob，轉回 JSON 讓 getErrorMessage 讀得到後端訊息
-    if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
-      try {
-        error.response.data = JSON.parse(await error.response.data.text());
-      } catch {
-        // 不是 JSON 時維持原樣
-      }
-    }
-    throw error;
-  }
-};
+}): Promise<Blob> => getBlob(endpoints.ESIGN_SIGNER_COMPLETED_FILE(id, signerPublicId));
 
 /**
  * @name 查詢內部簽署人候選

@@ -8,6 +8,7 @@ import { getSignBlock } from '@/features/my-signature/sign/eligibility';
 import ReadOnlyDocument from '@/features/my-signature/sign/ReadOnlyDocument';
 import SheetSignFlow from '@/features/my-signature/sign/SheetSignFlow';
 import SignFlow from '@/features/my-signature/sign/SignFlow';
+import SigningTaskView from '@/features/signing-tasks/SigningTaskView';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -18,10 +19,17 @@ import { notFound } from 'next/navigation';
 export const metadata: Metadata = { title: '簽署文件' };
 export const dynamic = 'force-dynamic';
 
+// 後端簽署任務的 signerPublicId 為 UUID；mock 文件的 id 為 f 開頭的流水號
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function SignDocumentPage({
   params,
 }: PageProps<'/my-signature/[id]'>) {
-  const stored = getForm((await params).id);
+  const { id } = await params;
+  // 後端簽署任務：在瀏覽器端以使用者的 session 讀取任務並簽署
+  if (UUID.test(id)) return <SigningTaskView signerPublicId={id} />;
+
+  const stored = getForm(id);
   const userId = getCurrentUserId();
   if (!stored || stored.status === 'draft') notFound();
   const storedMe = stored.signers.find((s) => s.id === userId);

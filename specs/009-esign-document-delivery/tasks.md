@@ -1,7 +1,7 @@
 # Tasks: 電子簽文件與簽署人管理補強（Spec 009）
 
 **Input**：[spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、[contracts](contracts/)、[quickstart.md](quickstart.md)。
-**Status**：任務已產生，全部未開始；本次僅文件，未安裝套件、改schema或寫功能。
+**Status**：Ticket 01 已進入實作；僅已完成且有驗證證據的項目勾選，整體交付仍進行中。
 **Tests**：依 spec 驗收要求與 constitution 的身分／交易／Hash／migration驗證義務列入風險相稱測試；client 現無test script，不新增框架。測試任務先於對應實作準備，實作後必須跑過，不能只新增檔案即算驗收完成。
 
 格式 `- [ ] Txxx [P?] [US?] 說明＋路徑`。[P] 僅表示同一階段、前置完成後可與不同檔案任務並行，不代表可跳過依賴。新增檔案路徑是預定位置；TypeORM migration 用實作當時合法時間戳產生於指定 migrations 目錄。近距離路徑省略前綴時承接該任務已寫出的 feature 目錄。
@@ -10,7 +10,7 @@
 
 目標：確認工作基線與既有邊界；不重建 workspace、不初始化新框架。
 
-- [ ] T001 核對 `specs/009-esign-document-delivery/spec.md`、`plan.md`、`contracts/` 與 root／client／server `AGENTS.md`；將目前分支、使用者既有修改及六故事驗收對照記在 `specs/009-esign-document-delivery/implementation-notes.md`，不得覆寫既有變更。
+- [x] T001 核對 `specs/009-esign-document-delivery/spec.md`、`plan.md`、`contracts/` 與 root／client／server `AGENTS.md`；將目前分支、使用者既有修改及六故事驗收對照記在 `specs/009-esign-document-delivery/implementation-notes.md`，不得覆寫既有變更。
 
 ## Phase 2：Foundational
 
@@ -26,13 +26,13 @@
 
 - [ ] T004 [P] [US1] 在 `server/src/features/esign/services/esign-signer.service.spec.ts` 補草稿原子保存與回填案例：日期 omitted 保留、null 清空、單端與過去日期可存、兩端時 start<end、非法名單及期間全部回滾、非建立人與發起競態。
 
-- [ ] T005 [US1] 修改 `server/src/features/esign/entities/esign-document.entity.ts` 日期 check：引用「draft 日期允許任一端 null；皆有時 start<end。非草稿必須兩端完整」；新增對應 TypeORM migration 於 `server/src/infrastructure/database/migrations/`，同步 `server/src/infrastructure/database/schema.sql` 及 schema metadata tests，down 對單端草稿不得偷偷清值。
+- [x] T005 [US1] 修改 `server/src/features/esign/entities/esign-document.entity.ts` 日期 check：引用「draft 日期允許任一端 null；皆有時 start<end。非草稿必須兩端完整」；新增對應 TypeORM migration 於 `server/src/infrastructure/database/migrations/`，同步 `server/src/infrastructure/database/schema.sql` 及 schema metadata tests，down 對單端草稿不得偷偷清值。
 
-- [ ] T006 [US1] 新增 `server/src/features/esign/dto/draft-settings.dto.ts` 並擴充 `services/esign-signer.service.ts`：signers 出現時整批取代且至少一人、未出現保留；日期「omitted 保留、null 清空」，watermark／allowReject 僅 boolean；同一 document 鎖與交易保存名單、日期及選項。
+- [x] T006 [US1] 新增 `server/src/features/esign/dto/draft-settings.dto.ts` 並擴充 `services/esign-signer.service.ts`：signers 出現時整批取代且至少一人、未出現保留；日期「omitted 保留、null 清空」，watermark／allowReject 僅 boolean；同一 document 鎖與交易保存名單、日期及選項。
 
-- [ ] T007 [US1] 在 `server/src/features/esign/controllers/documents.controller.ts` 接 `PATCH :documentId/draft-settings`，回完整詳情；舊 `PUT :documentId/draftSave` 委派同 service 且保持 signers 回應相容；更新 `services/esign-view.mapper.ts` 與 `dto/document.dto.ts` 回填期間／選項，正式發起仍驗完整期間。
+- [x] T007 [US1] 在 `server/src/features/esign/controllers/documents.controller.ts` 接 `PATCH :documentId/draft-settings`，回完整詳情；舊 `PUT :documentId/draftSave` 委派同 service 且保持 signers 回應相容；更新 `services/esign-view.mapper.ts` 與 `dto/document.dto.ts` 回填期間／選項，正式發起仍驗完整期間。
 
-- [ ] T008 [US1] 在 `client/src/api/endpoints.ts`、`types/esignDocuments.ts`、`requests/esignDocuments.ts` 新增草稿設定契約及匯出索引；接入 `client/src/features/esign-documents/DocumentSignersEditor.tsx` 的名單／日期／選項暫存、重新載入與台北日期轉換，移除發起固定傳 false 的行為。
+- [x] T008 [US1] 在 `client/src/api/endpoints.ts`、`types/esignDocuments.ts`、`requests/esignDocuments.ts` 新增草稿設定契約及匯出索引；接入 `client/src/features/esign-documents/DocumentSignersEditor.tsx` 的名單／日期／選項暫存、重新載入與台北日期轉換，移除發起固定傳 false 的行為。
 
 - [ ] T009 [US1] 在 `server/test/esign-draft-settings.e2e-spec.ts` 驗證新舊 API、session／Origin、schema 與交易回滾；將 US1 瀏覽器 roundtrip 結果記入 `specs/009-esign-document-delivery/implementation-notes.md`，確認沒有寄信或發起。
 
@@ -191,4 +191,4 @@ Setup T001 → Foundation T002–T003
 | US5 | 027–034、041 | 011–012 | T036–T044 |
 | US6 | 035–040 | 013–014 | T045–T049 |
 
-合計53項：Setup/Foundation 3、US1 6、US2 5、US3 14、US4 7、US5 9、US6 5、整合4。所有checkbox保留未完成；本次生成清單不代表任何實作或測試已通過。
+合計53項：Setup/Foundation 3、US1 6、US2 5、US3 14、US4 7、US5 9、US6 5、整合4。checkbox 依實作驗證更新；未勾項目尚待其完整驗收，不因已有部分程式即算完成。

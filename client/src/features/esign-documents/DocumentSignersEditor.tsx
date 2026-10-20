@@ -4,7 +4,7 @@
 // 第一步放的欄位是所有簽署人共用的位置，後端會替每位簽署人各產生一份個人副本。
 import { useGetDocumentQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
-import { getSignerCandidates, initiateDocument, saveDraftSigners } from '@/api/requests';
+import { getSignerCandidates, initiateDocument, saveDraftSettings } from '@/api/requests';
 import type { EsignDocumentDetail, EsignSignerInput, EsignSignerView, InitiateDocumentBody } from '@/api/types';
 import PageHeader from '@/components/PageHeader';
 import DeadlineRangePicker from '@/features/forms/editor/DeadlineRangePicker';
@@ -27,12 +27,15 @@ import Typography from '@mui/material/Typography';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
+dayjs.extend(utc);
+
 const DEADLINE_REQUIRED = '請選擇簽署期間的開始日與結束日';
 
-// 浮水印與拒絕簽署後端尚未提供，發起時一律送 false；選項先顯示為停用
+// 文件選項會連同草稿保存，發起後固定在簽署證據內。
 const OPTION_ITEMS: { key: 'watermark' | 'allowReject'; label: string; description: string }[] = [
   {
     key: 'watermark',
@@ -102,11 +105,10 @@ function restoreSigners(saved: EsignSignerView[], staff: Map<string, Staff>) {
   return { selected, emailSigners, missing };
 }
 
-/** YYYY/MM/DD → 當天開始（00:00）或結束（23:59:59.999）的 ISO 時間（本地時區） */
-const dayBoundary = (date: string, edge: 'start' | 'end') => {
-  const d = dayjs(date.replaceAll('/', '-'));
-  return (edge === 'start' ? d.startOf('day') : d.endOf('day')).toISOString();
-};
+/** 日期以台北時間換算，避免瀏覽器時區改變簽署期間。 */
+const dayBoundary = (date: string, edge: 'start' | 'end') =>
+  new Date(`${date.replaceAll('/', '-')}T${edge === 'start' ? '00:00:00.000' : '23:59:59.999'}+08:00`).toISOString();
+const taipeiDay = (date: string | null) => date ? dayjs(date).utcOffset(8).format('YYYY/MM/DD') : null;
 
 export default function DocumentSignersEditor({ documentId, org }: { documentId: string; org: OrgDept[] }) {
   const { data: doc, isPending, isError, error, refetch, isFetching } = useGetDocumentQuery(documentId);
@@ -151,7 +153,8 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
   const [restored] = useState(() => restoreSigners(doc.signers, staff));
   const [selected, setSelected] = useState<Set<string>>(restored.selected);
   const [emailSigners, setEmailSigners] = useState<EmailSigner[]>(restored.emailSigners);
-  const [deadline, setDeadline] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
+  const [deadline, setDeadline] = useState<{ start: string | null; end: string | null }>({ start: taipeiDay(doc.signStartAt), end: taipeiDay(doc.signEndAt) });
+  const [options, setOptions] = useState({ watermark: doc.watermark, allowReject: doc.allowReject });
   const [signerError, setSignerError] = useState<string>();
   const [deadlineError, setDeadlineError] = useState<string>();
   const [submitError, setSubmitError] = useState<string>();
@@ -191,8 +194,7 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
         })),
         signStartAt: dayBoundary(deadline.start!, 'start'),
         signEndAt: dayBoundary(deadline.end!, 'end'),
-        watermark: false,
-        allowReject: false,
+        ...options,
       };
       await initiateDocument({ id: doc.id, body });
       return signers.length;
@@ -210,9 +212,14 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
       ),
   });
 
-  // 暫存簽署名單（後端只儲存名單，簽署期間與可選功能於發起時設定）
+  // 同一交易保存名單、期間與選項，不發起或寄送邀請。
   const save = useMutation({
-    mutationFn: async () => saveDraftSigners({ id: doc.id, signers: await toSignerInputs(signers) }),
+    mutationFn: async () => saveDraftSettings({ id: doc.id, body: {
+      signers: await toSignerInputs(signers),
+      signStartAt: deadline.start ? dayBoundary(deadline.start, 'start') : null,
+      signEndAt: deadline.end ? dayBoundary(deadline.end, 'end') : null,
+      ...options,
+    } }),
     meta: { suppressGlobalErrorToast: true },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id] });
@@ -321,6 +328,10 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
                 if (range.start && range.end) setDeadlineError(undefined);
               }}
             />
+            <Stack direction="row" spacing={1}>
+              <Button disabled={busy || !deadline.start} onClick={() => setDeadline((value) => ({ ...value, start: null }))}>清除開始日</Button>
+              <Button disabled={busy || !deadline.end} onClick={() => setDeadline((value) => ({ ...value, end: null }))}>清除結束日</Button>
+            </Stack>
             <Typography
               variant="label"
               component="div"
@@ -343,12 +354,12 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
                   key={item.key}
                   sx={{ alignItems: 'flex-start', mx: 0 }}
                   control={
-                    <Checkbox size="small" checked={false} disabled sx={{ mt: -0.5 }} />
+                    <Checkbox size="small" checked={options[item.key]} disabled={busy} onChange={(_, checked) => setOptions((current) => ({ ...current, [item.key]: checked }))} sx={{ mt: -0.5 }} />
                   }
                   label={
                     <Box>
                       <Typography variant="content" component="div">
-                        {item.label}（尚未支援）
+                        {item.label}
                       </Typography>
                       <Typography variant="helper" component="div">
                         {item.description}

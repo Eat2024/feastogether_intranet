@@ -2,6 +2,7 @@
  * 穩定業務錯誤碼（單一事實來源）。新增 feature 時於此擴充。
  */
 export const AppErrorCode = {
+  ESIGN_DRAFT_OPTIONS_INVALID: 'ESIGN_DRAFT_OPTIONS_INVALID',
   /** 組織架構上游不可用或格式錯誤。 */
   ORG_CHART_UPSTREAM_UNAVAILABLE: 'ORG_CHART_UPSTREAM_UNAVAILABLE',
   /** 組織架構快取或更新協調不可用。 */

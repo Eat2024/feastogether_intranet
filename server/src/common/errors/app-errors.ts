@@ -15,6 +15,11 @@ export function signAfterHint(startAt: Date): string {
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  ESIGN_DRAFT_OPTIONS_INVALID: [
+    AppErrorCode.ESIGN_DRAFT_OPTIONS_INVALID,
+    '草稿選項必須為布林值',
+    HttpStatus.BAD_REQUEST,
+  ],
   ORG_CHART_UPSTREAM_UNAVAILABLE: [
     AppErrorCode.ORG_CHART_UPSTREAM_UNAVAILABLE,
     '組織架構來源暫時無法使用，請稍後再試',

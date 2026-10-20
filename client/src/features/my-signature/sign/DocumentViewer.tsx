@@ -8,11 +8,12 @@ import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import { useEffect } from "react";
 import SignatureQr from "./SignatureQr";
 
 type DocumentViewerProps = {
-  form: EFormDoc;
+  form: Pick<EFormDoc, "id" | "name" | "docNumber" | "upload">;
   signer: Pick<Signer, "name" | "employeeNo">;
   layout: SignLayout;
   /** 欄位 id → 手寫簽名 PNG */
@@ -25,8 +26,8 @@ type DocumentViewerProps = {
   onPageChange: (page: number) => void;
   /** 提供時簽名欄位可點擊（進行簽名）；未提供為唯讀 */
   onSignField?: (field: UploadField) => void;
-  /** 原始 PDF 的同源網址；未提供時讀取 `/files/forms/{id}` */
-  pdfUrl?: string;
+  /** 已讀取的原始 PDF；未提供時讀取 `/files/forms/{id}` */
+  pdf?: PDFDocumentProxy;
 };
 
 /** 頁面縮圖：需簽名的頁面標示「需簽名」，該頁都簽完改為「已簽名」 */
@@ -163,7 +164,7 @@ function ConfirmPageContent({
   signer,
   pages,
 }: {
-  form: EFormDoc;
+  form: DocumentViewerProps["form"];
   signer: DocumentViewerProps["signer"];
   pages: number;
 }) {
@@ -339,7 +340,7 @@ export default function DocumentViewer({
   activePage,
   onPageChange,
   onSignField,
-  pdfUrl,
+  pdf,
 }: DocumentViewerProps) {
   const pages = Array.from({ length: layout.pageCount }, (_, i) => i + 1);
   const pageLabel = (p: number) =>
@@ -351,9 +352,10 @@ export default function DocumentViewer({
   ];
   const pageFields = layout.fields.filter((f) => f.page === activePage);
   // 有原始檔時顯示實際內容（系統簽署確認頁除外）；沒有時（舊資料）顯示示意版面
-  const { doc } = usePdfDocument(
-    pdfUrl ?? (form.upload?.fileId ? `/files/forms/${form.id}` : null),
+  const { doc: storedDoc } = usePdfDocument(
+    !pdf && form.upload?.fileId ? `/files/forms/${form.id}` : null,
   );
+  const doc = pdf ?? storedDoc;
   const { thumbs, pageImage, requestPage } = usePdfRenders(doc);
   const isOriginalPage = (p: number) => p !== layout.confirmPage;
   const activeImage = isOriginalPage(activePage)

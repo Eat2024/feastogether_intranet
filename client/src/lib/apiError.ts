@@ -25,3 +25,6 @@ export const getErrorMessage = (error: unknown, defaultValue: string = DEFAULT_M
 /** 取出後端 error.code；不是 axios 錯誤或沒有 code 時回傳 undefined */
 export const getErrorCode = (error: unknown): string | undefined =>
   axios.isAxiosError<ApiErrorResponse>(error) ? error.response?.data?.error?.code : undefined;
+
+/** 外部簽署存取失效（邀請無效、過期或 cookie 已不存在），一律 401；不是員工登入過期 */
+export const isExternalAccessLost = (error: unknown): boolean => getErrorCode(error) === 'ESIGN_EXTERNAL_UNAUTHORIZED';

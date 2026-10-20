@@ -21,7 +21,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import dayjs from 'dayjs';
+import { formatTaipeiDateTime } from '@/lib/dates';
 import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import DocumentHistory from './DocumentHistory';
@@ -133,14 +133,14 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
 
       {doc.status === 'expired' && (
         <Alert severity="info" variant="outlined">
-          此文件已於 {doc.signEndAt ? dayjs(doc.signEndAt).format('YYYY/MM/DD HH:mm') : '—'} 到期，尚有{' '}
+          此文件已於 {doc.signEndAt ? formatTaipeiDateTime(doc.signEndAt) : '—'} 到期，尚有{' '}
           {counts.pending} 人未簽署，未簽署的人目前無法簽署。可設定補簽重新開放未簽署的人簽署（補簽功能尚未串接後端），或停止簽署。
         </Alert>
       )}
 
       {doc.status === 'stopped' && (
         <Alert severity="error" variant="outlined">
-          此文件已於 {doc.stoppedAt ? dayjs(doc.stoppedAt).format('YYYY/MM/DD HH:mm') : '—'} 停止簽署
+          此文件已於 {doc.stoppedAt ? formatTaipeiDateTime(doc.stoppedAt) : '—'} 停止簽署
           {doc.stopReason && `，原因：${doc.stopReason}`}。尚未簽署的人已無法再簽署。
         </Alert>
       )}

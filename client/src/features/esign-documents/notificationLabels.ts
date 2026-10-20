@@ -1,3 +1,5 @@
+import { formatTaipeiDateTime } from '@/lib/dates';
+
 export const notificationReasons: Record<string, string> = {
   INTERNAL_REMINDER_UNSUPPORTED: '目前只支援外部簽署人催簽',
   SIGNER_ALREADY_COMPLETED: '已簽署或拒簽，不需催簽',
@@ -21,15 +23,4 @@ export const notificationStatuses: Record<string, string> = {
   completed: '處理完成',
   partial_failed: '部分寄送失敗',
 };
-export const notificationTime = (value: string | null) =>
-  value
-    ? new Intl.DateTimeFormat('zh-TW', {
-        timeZone: 'Asia/Taipei',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }).format(new Date(value))
-    : '—';
+export const notificationTime = (value: string | null) => value ? formatTaipeiDateTime(value) : '—';

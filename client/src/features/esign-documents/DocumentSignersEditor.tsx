@@ -26,12 +26,9 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
+import { formatTaipeiDate, taipeiDayBoundary as dayBoundary } from '@/lib/dates';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-
-dayjs.extend(utc);
 
 const DEADLINE_REQUIRED = '請選擇簽署期間的開始日與結束日';
 
@@ -105,10 +102,7 @@ function restoreSigners(saved: EsignSignerView[], staff: Map<string, Staff>) {
   return { selected, emailSigners, missing };
 }
 
-/** 日期以台北時間換算，避免瀏覽器時區改變簽署期間。 */
-const dayBoundary = (date: string, edge: 'start' | 'end') =>
-  new Date(`${date.replaceAll('/', '-')}T${edge === 'start' ? '00:00:00.000' : '23:59:59.999'}+08:00`).toISOString();
-const taipeiDay = (date: string | null) => date ? dayjs(date).utcOffset(8).format('YYYY/MM/DD') : null;
+const taipeiDay = (date: string | null) => date ? formatTaipeiDate(date) : null;
 
 export default function DocumentSignersEditor({ documentId, org }: { documentId: string; org: OrgDept[] }) {
   const { data: doc, isPending, isError, error, refetch, isFetching } = useGetDocumentQuery(documentId);

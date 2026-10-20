@@ -3,7 +3,7 @@
 import type { EsignDocumentListItem, EsignDocumentStatus } from '@/api/types';
 import { parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
 import type { ChipProps } from '@mui/material/Chip';
-import dayjs from 'dayjs';
+import { formatTaipeiDate } from '@/lib/dates';
 
 /** 列表顯示的狀態：直接使用後端狀態（「已到期」由後端判斷） */
 export type DocumentListStatus = EsignDocumentStatus;
@@ -23,8 +23,8 @@ export const DOCUMENT_STATUSES: DocumentListStatus[] = ['draft', 'active', 'expi
 export const DOCUMENT_STATUS_OPTIONS = DOCUMENT_STATUSES.map((s) => ({ value: s, label: DOCUMENT_STATUS_META[s].label }));
 
 
-/** ISO 時間轉成畫面日期 YYYY/MM/DD（本地時區） */
-export const formatDate = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD') : null);
+/** ISO 時間轉成畫面日期 YYYY/MM/DD（台北時區） */
+export const formatDate = (iso: string | null) => (iso ? formatTaipeiDate(iso) : null);
 
 /** 簽署期間文字；補簽過時加註原本的結束日，例如「2026/10/19 ～ 2026/10/31（補簽；原 2026/10/24）」 */
 export function periodText(
@@ -64,7 +64,7 @@ export function parseDocumentFilters(params: URLSearchParams): DocumentFilters {
 
 export const hasDocumentFilters = (f: DocumentFilters) => !!(f.query || f.statuses.length || f.from || f.to);
 
-const localDate = (iso: string) => dayjs(iso).format('YYYY-MM-DD');
+const taipeiDateKey = (iso: string) => formatTaipeiDate(iso).replaceAll('/', '-');
 
 /**
  * 篩選：
@@ -81,8 +81,8 @@ export function filterDocuments(docs: EsignDocumentListItem[], filters: Document
     if (filters.statuses.length && !filters.statuses.includes(d.status)) return false;
     if (filters.from || filters.to) {
       if (!d.signStartAt) return false;
-      if (filters.to && localDate(d.signStartAt) > filters.to) return false;
-      if (filters.from && d.signEndAt && localDate(d.signEndAt) < filters.from) return false;
+      if (filters.to && taipeiDateKey(d.signStartAt) > filters.to) return false;
+      if (filters.from && d.signEndAt && taipeiDateKey(d.signEndAt) < filters.from) return false;
     }
     return true;
   });

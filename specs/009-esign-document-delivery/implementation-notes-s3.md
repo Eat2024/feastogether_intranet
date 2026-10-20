@@ -26,6 +26,8 @@ PATH=/tmp/esign009-moto-venv/bin:$PATH DB_MYSQL_DB=feastogether_intranet_test_00
 
 ## 部署界線
 
+ZIP 使用的既有 bucket 必須啟用 Versioning（`Enabled`），不可暫停；應由部署管理者設定並驗證，應用不自行改 bucket 設定。串流完成回應必須有非空、非 `null` 的 VersionId，否則清除 generation 並回報失敗，不發布下載成果。即使上傳期間切成 Suspended 也不能繞過這個完成時檢查。已有無固定版本的 ZIP 同樣不可下載或宣稱重用成功。此檢查不增加 GetBucketVersioning 呼叫或 IAM 權限，也不改既有 PDF `store(bytes)` 行為。
+
 既有 S3 帳號需對來源／成果具備原有 Get/Put 權限；成果版本讀刪需 `s3:GetObjectVersion`、`s3:DeleteObjectVersion`，multipart清理需 `s3:AbortMultipartUpload`、bucket 的 `s3:ListBucketMultipartUploads` 與 `s3:ListBucketVersions`（prefix 限 exports/）。測試診斷的 ListParts 另需 `s3:ListMultipartUploadParts`。此處列出實作實際使用的操作，未替使用者修改任何雲端權限。
 
 Moto 的 complete 會整包累積記憶體，**不拿它驗證 >4 GiB 效能**。本 ticket 證明本機 S3 協定與應用流程，沒有正式 AWS IAM、部署網路、S3大容量吞吐或記憶體保證；6,000份及>4GiB量測由 ticket09記錄可用環境的實測與未驗證部分。

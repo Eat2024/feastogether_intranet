@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   S3Client,
+  CreateBucketCommand,
+  PutBucketVersioningCommand,
   ListMultipartUploadsCommand,
   ListPartsCommand,
   CreateMultipartUploadCommand,
@@ -27,6 +29,74 @@ describe('S3 adapter 真 HTTP 串流', () => {
   });
   afterAll(async () => {
     await testS3?.close();
+  });
+
+  it('未啟用或暫停版本控制不得發布 ZIP，清除無固定版本的成果', async () => {
+    const unversioned = `${bucket}-unversioned`;
+    await client.send(new CreateBucketCommand({ Bucket: unversioned }));
+    const unsafeStorage = new S3PrivateFileStorage(unversioned, client);
+    for (const suspended of [false, true]) {
+      if (suspended) {
+        await client.send(
+          new PutBucketVersioningCommand({
+            Bucket: unversioned,
+            VersioningConfiguration: { Status: 'Enabled' },
+          }),
+        );
+        await client.send(
+          new PutBucketVersioningCommand({
+            Bucket: unversioned,
+            VersioningConfiguration: { Status: 'Suspended' },
+          }),
+        );
+      }
+      await expect(
+        unsafeStorage.storeStream({
+          directory: 'exports/unversioned/generation',
+          extension: 'zip',
+          mimeType: 'application/zip',
+          stream: Readable.from([Buffer.from('unsafe-zip')]),
+        }),
+      ).rejects.toThrow('S3 ZIP 匯出需要有效的固定 VersionId');
+      const remaining = await client.send(
+        new ListObjectVersionsCommand({
+          Bucket: unversioned,
+          Prefix: 'exports/',
+        }),
+      );
+      expect(remaining.Versions ?? []).toHaveLength(0);
+      expect(remaining.DeleteMarkers ?? []).toHaveLength(0);
+    }
+  });
+
+  it('同 key 同長度覆寫後仍讀取原固定版本，缺少版本的舊成果不可讀', async () => {
+    const result = await storage.storeStream({
+      directory: 'exports/pinned/generation',
+      extension: 'zip',
+      mimeType: 'application/zip',
+      stream: Readable.from([Buffer.from('original')]),
+    });
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: result.objectKey,
+        Body: 'replaced',
+      }),
+    );
+    const stream = await storage.openReadStream(result);
+    let body = '';
+    for await (const chunk of stream) body += String(chunk);
+    expect(body).toBe('original');
+    for (const objectVersion of [undefined, 'null']) {
+      const reference = { objectKey: result.objectKey, objectVersion };
+      await expect(storage.stat(reference)).rejects.toThrow(
+        'S3 ZIP 匯出需要有效的固定 VersionId',
+      );
+      await expect(storage.openReadStream(reference)).rejects.toThrow(
+        'S3 ZIP 匯出需要有效的固定 VersionId',
+      );
+    }
+    await storage.delete({ objectKey: result.objectKey });
   });
 
   it('未知長度串流先記錄 generation/uploadId，再傳 multipart；HEAD、Range、實際 hash 與版本可讀', async () => {
@@ -188,6 +258,43 @@ describe('S3 adapter 真 HTTP 串流', () => {
           }),
         )
       ).Versions ?? [],
+    ).toHaveLength(0);
+  });
+
+  it('complete 已成立但回應遺失時不發布成果，清掉遠端物件與 MPU', async () => {
+    const uncertainClient = Object.create(client) as S3Client;
+    uncertainClient.send = (async (
+      command: Parameters<S3Client['send']>[0],
+    ) => {
+      const result = await client.send(command);
+      if (command instanceof CompleteMultipartUploadCommand)
+        throw new Error('complete-response-lost');
+      return result;
+    }) as S3Client['send'];
+    const uncertainStorage = new S3PrivateFileStorage(bucket, uncertainClient);
+    await expect(
+      uncertainStorage.storeStream({
+        directory: 'exports/unknown-complete/generation',
+        extension: 'zip',
+        mimeType: 'application/zip',
+        stream: Readable.from(
+          (function* () {
+            for (let i = 0; i < 18; i++) yield Buffer.alloc(1024 * 1024);
+          })(),
+        ),
+      }),
+    ).rejects.toThrow('complete-response-lost');
+    const remaining = await client.send(
+      new ListObjectVersionsCommand({
+        Bucket: bucket,
+        Prefix: 'exports/unknown-complete/',
+      }),
+    );
+    expect(remaining.Versions ?? []).toHaveLength(0);
+    expect(remaining.DeleteMarkers ?? []).toHaveLength(0);
+    expect(
+      (await client.send(new ListMultipartUploadsCommand({ Bucket: bucket })))
+        .Uploads ?? [],
     ).toHaveLength(0);
   });
 

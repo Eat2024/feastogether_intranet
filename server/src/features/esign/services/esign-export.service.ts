@@ -18,7 +18,10 @@ import {
   type ExportSnapshotEntry,
 } from '../entities/esign-export-job.entity';
 import { type ExportQueryDto } from '../dto/export.dto';
-import { ESIGN_EXPORT_QUEUE } from '../esign-queue.constants';
+import {
+  ESIGN_EXPORT_QUEUE,
+  exportJobArguments,
+} from '../esign-queue.constants';
 
 @Injectable()
 export class EsignExportService {
@@ -234,16 +237,7 @@ export class EsignExportService {
   }
   async enqueue(id: number) {
     try {
-      await this.queue.add(
-        'export',
-        { exportJobId: id },
-        {
-          attempts: 1,
-          removeOnComplete: 1000,
-          removeOnFail: 1000,
-          deduplication: { id: `export-${id}` },
-        },
-      );
+      await this.queue.add(...exportJobArguments(id));
     } catch {
       /* 持久工作由 maintenance 補列。 */
     }

@@ -4,7 +4,7 @@
 
 ## 前提與執行
 
-在隔離測試環境準備 MySQL／Redis、測試 SMTP 信箱與 local 或測試 S3 bucket。依 server/.env.example 設定，不提交 secret；test DB 名稱必須以 `feastogether_intranet_test` 開頭。使用合成姓名、簽名與PDF，不複製正式個資。
+在隔離測試環境準備 MySQL／Redis、測試 SMTP 信箱與 local 或測試 S3 bucket。依 server/.env.example 設定，不提交 secret；test DB 名稱必須以 `feastogether_intranet_test` 開頭。使用合成姓名、簽名與PDF，不複製正式個資。ZIP 所用 S3 bucket 必須保持 Versioning=Enabled；未啟用或 Suspended 的成果會 fail closed，所需版本讀刪／清理 IAM 見 [S3 紀錄](implementation-notes-s3.md)。
 
 從 repository root：
 

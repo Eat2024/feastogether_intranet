@@ -9,6 +9,7 @@ import {
   ListObjectVersionsCommand,
   ListMultipartUploadsCommand,
   PutObjectCommand,
+  PutBucketVersioningCommand,
   CreateMultipartUploadCommand,
 } from '@aws-sdk/client-s3';
 import { WorkerModule } from '#app/worker.module';
@@ -256,6 +257,22 @@ describe('Spec009 S3 匯出 API/worker', () => {
       );
       expect(versions.Versions).toHaveLength(1);
       expect(versions.Versions![0].Size).toBe(file.size);
+      // 同 key、同長度覆寫仍必須依固定版本續傳原 ZIP，不可以尺寸檢查掩蓋替換。
+      await s3.client.send(
+        new PutObjectCommand({
+          Bucket: s3.bucket,
+          Key: versions.Versions![0].Key,
+          Body: Buffer.alloc(file.size, 0x7a),
+        }),
+      );
+      const pinnedDownload = await request(ctx.server)
+        .get(file.downloadPath)
+        .set('Cookie', other)
+        .set('Range', 'bytes=0-3')
+        .expect(206);
+      expect(pinnedDownload.body).toEqual(download.body);
+      expect(pinnedDownload.headers.etag).toBe(download.headers.etag);
+
       expect(
         (
           await s3.client.send(
@@ -264,6 +281,94 @@ describe('Spec009 S3 匯出 API/worker', () => {
         ).Uploads ?? [],
       ).toHaveLength(0);
     } finally {
+      await worker.close();
+    }
+  });
+
+  it('bucket 暫停版本控制時 worker 不發布 ZIP，恢復後可重試原快照', async () => {
+    await db
+      .getRepository(EsignExportJob)
+      .update(
+        { documentId: Number(id) },
+        { expiresAt: new Date(Date.now() - 1000) },
+      );
+    await s3.client.send(
+      new PutBucketVersioningCommand({
+        Bucket: s3.bucket,
+        VersioningConfiguration: { Status: 'Suspended' },
+      }),
+    );
+    const accepted = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/exports`)
+        .set('Cookie', other)
+        .set('Origin', origin)
+        .send({ type: 'signed_copies_zip' })
+        .expect(202),
+    );
+    const worker = await Test.createTestingModule({ imports: [WorkerModule] })
+      .overrideProvider(PRIVATE_FILE_STORAGE)
+      .useValue(s3.storage)
+      .compile();
+    await worker.init();
+    const read = async () =>
+      apiData<{ status: string; files: unknown[] }>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}/exports/${accepted.id}`)
+          .set('Cookie', other)
+          .expect(200),
+      );
+    try {
+      let result = await read();
+      for (let i = 0; i < 100 && result.status !== 'failed'; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        result = await read();
+      }
+      expect(result.status).toBe('failed');
+      expect(result.files).toHaveLength(0);
+      const versions = await s3.client.send(
+        new ListObjectVersionsCommand({
+          Bucket: s3.bucket,
+          Prefix: 'exports/',
+        }),
+      );
+      expect(
+        (versions.Versions ?? []).every(
+          (v) => v.VersionId && v.VersionId !== 'null',
+        ),
+      ).toBe(true);
+      expect(
+        (
+          await s3.client.send(
+            new ListMultipartUploadsCommand({ Bucket: s3.bucket }),
+          )
+        ).Uploads ?? [],
+      ).toHaveLength(0);
+      await s3.client.send(
+        new PutBucketVersioningCommand({
+          Bucket: s3.bucket,
+          VersioningConfiguration: { Status: 'Enabled' },
+        }),
+      );
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/exports/${accepted.id}/retries`)
+        .set('Cookie', other)
+        .set('Origin', origin)
+        .expect(202);
+      for (let i = 0; i < 100; i++) {
+        result = await read();
+        if (result.status === 'completed') break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      expect(result.status).toBe('completed');
+      expect(result.files).toHaveLength(1);
+    } finally {
+      await s3.client.send(
+        new PutBucketVersioningCommand({
+          Bucket: s3.bucket,
+          VersioningConfiguration: { Status: 'Enabled' },
+        }),
+      );
       await worker.close();
     }
   });

@@ -33,7 +33,7 @@ import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import dayjs from 'dayjs';
+import { formatTaipeiDateTime } from '@/lib/dates';
 import { type ReactNode, useState, useRef, useEffect } from 'react';
 import type { SignerSort, SignerSortKey } from './signerQuery';
 
@@ -74,7 +74,7 @@ const COLUMNS: {
   { label: '操作' },
 ];
 
-const formatTime = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD HH:mm') : '—');
+const formatTime = (iso: string | null) => (iso ? formatTaipeiDateTime(iso) : '—');
 
 /** 表頭文字加上「未支援」等標示 */
 function UnsupportedLabel({ children, chip, hint }: { children: ReactNode; chip: string; hint: string }) {

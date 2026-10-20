@@ -22,3 +22,5 @@
 不能僅以 ToUnicode 斷言中文字可用：第一次 OTF 子集在 MuPDF 實際渲染出現 `unknown file format`，因此改為已固定字重並改名的 TrueType 子集。
 
 修正後用 PyMuPDF 對合成產物四種旋轉的所有頁面以 1.5 倍解析度渲染，八頁均無 MuPDF warning，文字抽取均包含「饗賓集團」。人工檢視 90 度 CropBox 頁可讀淡灰斜向錯列中文與日期，QR 白底不受覆蓋。測試 PDF／PNG 僅置於 `/tmp`，不提交簽名或 PDF 產物。另外以 ZXing 從 3 倍渲染影像解碼四種旋轉頁的 QR，四者均得到預期驗證網址。ZIP 入口 hash 一致性留 Ticket 10 整合。
+
+整合 Ticket 01 後重驗：完成副本與草稿設定相關單測 2 suites／24 tests 通過；root build／lint 通過。最終 TTF 字型版本已再次執行隔離 DB 的完整外部簽署／完成副本 HTTP 測試（1 passed，23 skipped），確定輸出 hash 與下載 bytes 一致。

@@ -16,3 +16,6 @@
 ## 實作驗證
 
 詳見 [浮水印驗證紀錄](../../../specs/009-esign-document-delivery/implementation-notes-watermark.md)。完成程式與驗證，等待合併至整合分支後由整合者標記 resolved。
+
+- 實作 commit：`a209e0c`；已在 ticket 分支合併整合分支 `be7e5c1`（merge `4244a62`）。
+- 對應 T010–T014 已勾選；T014 的 HTTP 測試沿用既有 `core-esign-flow.e2e-spec.ts` 的完整 session/worker harness，避免平行複製整套登入／簽署 fixture。

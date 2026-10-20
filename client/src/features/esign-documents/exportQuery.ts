@@ -1,7 +1,7 @@
 // 匯出簽署紀錄（後端文件）的條件、欄位與資料整理；條件記在網址上（格式與 mock 版相同），預覽與 Excel 共用。
 // 後端沒有匯出 API，資料來自 GET /api/esign/documents/:id 的簽署人，在瀏覽器端產生 Excel。
 import type { EsignSignerStatus, EsignSignerView } from '@/api/types';
-import dayjs from 'dayjs';
+import { formatTaipeiDateTime } from '@/lib/dates';
 
 export const STATUS_OPTIONS = [
   { key: 'pending', label: '待簽署' },
@@ -11,7 +11,7 @@ export const STATUS_OPTIONS = [
 
 const STATUS_LABEL: Record<EsignSignerStatus, string> = { pending: '待簽署', signed: '已簽署', rejected: '已拒絕' };
 
-const formatTime = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD HH:mm') : '');
+const formatTime = (iso: string | null) => (iso ? formatTaipeiDateTime(iso) : '');
 
 type FieldDef = {
   key: string;

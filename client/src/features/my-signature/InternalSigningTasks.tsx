@@ -1,4 +1,5 @@
 'use client';
+import { formatTaipeiDateTime } from '@/lib/dates';
 
 import { useGetInternalSigningTasksQuery } from '@/api/queries';
 import { internalSourceFileUrl, rejectInternalTask } from '@/api/requests';
@@ -31,7 +32,7 @@ export default function InternalSigningTasks() {
       <Stack spacing={1}>
         <Typography variant="sectionTitle">{task.document.title}</Typography>
         <Typography>{task.signer.status === 'rejected' ? '已拒絕' : task.signer.status === 'signed' ? '已簽署' : '待簽署'}</Typography>
-        {task.signer.status === 'rejected' ? <Typography>{task.signer.rejectedAt && new Date(task.signer.rejectedAt).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}<br />{task.signer.rejectReason || '未填寫拒絕原因'}</Typography> : <Button href={internalSourceFileUrl(task.signerPublicId)} target="_blank" rel="noopener">檢視文件</Button>}
+        {task.signer.status === 'rejected' ? <Typography>{task.signer.rejectedAt && formatTaipeiDateTime(task.signer.rejectedAt)}<br />{task.signer.rejectReason || '未填寫拒絕原因'}</Typography> : <Button href={internalSourceFileUrl(task.signerPublicId)} target="_blank" rel="noopener">檢視文件</Button>}
         {task.allowReject && task.signer.status === 'pending' && <Button color="error" onClick={() => setSelected(task)}>拒絕簽署</Button>}
       </Stack>
     </Paper>)}

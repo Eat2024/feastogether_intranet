@@ -7,3 +7,16 @@ export const ESIGN_DOCUMENT_FINALIZATION_JOB = 'finalize-document';
 export const ESIGN_MAINTENANCE_JOB = 'reconcile-esign-work';
 
 export const ESIGN_EXPORT_QUEUE = 'esign-export';
+
+/** API 受理與 maintenance 補列共用同一份去重／保留協定。 */
+export const exportJobArguments = (exportJobId: number) =>
+  [
+    'export',
+    { exportJobId },
+    {
+      attempts: 1,
+      removeOnComplete: 1000,
+      removeOnFail: 1000,
+      deduplication: { id: `export-${exportJobId}` },
+    },
+  ] as const;

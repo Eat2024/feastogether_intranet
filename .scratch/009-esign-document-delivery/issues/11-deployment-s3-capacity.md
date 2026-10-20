@@ -7,6 +7,7 @@
 **Status:** ready-for-human
 
 - [ ] 提供隔離測試環境的機器規格、測試 S3 bucket/region/IAM/網路條件；使用安全的既有設定管道，不在 ticket 或聊天貼憑證。
+- [ ] 確認 ZIP bucket Versioning=Enabled（非 Suspended），實際 IAM 支援固定版本讀取、版本刪除及 multipart／版本列舉清理；無 VersionId／null version 必須失敗，不發布成果。
 - [ ] 用真部署 S3 adapter、真 HTTP/MySQL/Redis/worker 執行 6,000 份代表性 PDF、>4 GiB ZIP64；串流逐 entry bytes/CRC/SHA 驗證，不能改用 Moto 大容量或 local 數據。
 - [ ] 同一固定負載與預熱方式比較 baseline/export 正常簽署，量測首次 6,000-entry snapshot 受理 p95 ≤5 秒、簽署 p95 增幅 ≤20%，無 OOM/簽署失敗；保留所有 status/latency/time，說明樣本數與變異。
 - [ ] 固定同一程式版本比較 STORE/DEFLATE 1/6 的 elapsed/CPU/RSS/size；測試參數僅供實驗，不新增正式 env 開關。

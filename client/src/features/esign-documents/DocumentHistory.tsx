@@ -11,6 +11,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import dayjs from 'dayjs';
+import { formatTaipeiDateTime } from '@/lib/dates';
 
 /** 後端事件類型（server/src/features/esign/services 的 audit eventType）對照的中文說明；未列出的直接顯示類型 */
 const EVENT_LABEL: Record<string, string> = {
@@ -103,7 +104,7 @@ export default function DocumentHistory({ documentId }: { documentId: string }) 
               }}
             >
               <Typography variant="secondary" component="div" sx={{ whiteSpace: 'nowrap' }}>
-                {dayjs(e.occurredAt).format('YYYY/MM/DD HH:mm:ss')}
+                {formatTaipeiDateTime(e.occurredAt)}
               </Typography>
               <Box sx={{ minWidth: 0 }}>
                 <Typography

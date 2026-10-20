@@ -1,4 +1,5 @@
 'use client';
+import { formatTaipeiDateTime } from '@/lib/dates';
 
 import { useGetExportableDocumentsQuery, useGetExportsQuery } from '@/api/queries';
 import { requestExport, retryExport } from '@/api/requests';
@@ -10,7 +11,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 const labels: Record<EsignExport['status'], string> = { pending: '已排隊', waiting: '等待已簽副本產製', processing: '打包中', completed: '可下載', failed: '匯出失敗', expired: '已到期' };
-const date = (value: string | null) => value ? new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value)) : '—';
+const date = (value: string | null) => value ? formatTaipeiDateTime(value) : '—';
 
 export default function ZipExportsView() {
   const [search, setSearch] = useState('');

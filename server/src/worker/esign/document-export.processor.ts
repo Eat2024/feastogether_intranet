@@ -20,7 +20,10 @@ import type {
   EsignExportJob,
   ExportResolvedFile,
 } from '#app/features/esign/entities/esign-export-job.entity';
-import { ESIGN_EXPORT_QUEUE } from '#app/features/esign/esign-queue.constants';
+import {
+  ESIGN_EXPORT_QUEUE,
+  exportJobArguments,
+} from '#app/features/esign/esign-queue.constants';
 
 const LEASE_MS = 5 * 60_000;
 @Processor(ESIGN_EXPORT_QUEUE, { concurrency: 1 })
@@ -346,16 +349,7 @@ export class DocumentExportProcessor
           }
       }
       if (action?.kind === 'enqueue')
-        await this.queue.add(
-          'export',
-          { exportJobId: action.id },
-          {
-            attempts: 1,
-            removeOnComplete: 1000,
-            removeOnFail: 1000,
-            deduplication: { id: `export-${action.id}` },
-          },
-        );
+        await this.queue.add(...exportJobArguments(action.id));
     }
     await this.storage.cleanupExports?.(
       new Date(now.getTime() - 24 * 60 * 60_000),

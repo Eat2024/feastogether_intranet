@@ -138,11 +138,14 @@ export class S3PrivateFileStorage implements PrivateFileStorage {
       const [uploaded, streamed] = await Promise.allSettled([transfer, feed]);
       if (uploaded.status === 'rejected') throw uploaded.reason;
       if (streamed.status === 'rejected') throw streamed.reason;
+      // 未版本化與 suspended bucket 的 null version 可被同 key 覆寫，不得發布為固定成果。
+      assertExportVersion({
+        objectKey,
+        objectVersion: uploaded.value.VersionId,
+      });
       return {
         objectKey,
-        ...(uploaded.value.VersionId
-          ? { objectVersion: uploaded.value.VersionId }
-          : {}),
+        objectVersion: uploaded.value.VersionId,
         mimeType: input.mimeType,
         fileSize,
         sha256: hash.digest('hex'),
@@ -150,7 +153,8 @@ export class S3PrivateFileStorage implements PrivateFileStorage {
     } catch (error) {
       input.stream.destroy();
       meter.destroy();
-      if (uploadId) await this.abortMultipart(objectKey, uploadId);
+      // 包含 complete 已成功但回應遺失的情況；generation key 唯一，可移除其所有版本。
+      await this.delete({ objectKey, uploadId });
       throw error;
     } finally {
       input.signal?.removeEventListener('abort', cancel);
@@ -162,6 +166,7 @@ export class S3PrivateFileStorage implements PrivateFileStorage {
     options: ReadPrivateFileOptions = {},
   ): Promise<Readable> {
     assertPrivateObjectKey(reference.objectKey);
+    assertExportVersion(reference);
     const result = await this.client.send(
       new GetObjectCommand({
         ...(options.start !== undefined || options.end !== undefined
@@ -183,6 +188,7 @@ export class S3PrivateFileStorage implements PrivateFileStorage {
 
   async stat(reference: PrivateFileReference): Promise<{ fileSize: number }> {
     assertPrivateObjectKey(reference.objectKey);
+    assertExportVersion(reference);
     const result = await this.client.send(
       new HeadObjectCommand({
         Bucket: this.bucket,
@@ -333,4 +339,13 @@ export class S3PrivateFileStorage implements PrivateFileStorage {
       }),
     );
   }
+}
+
+/** PDF 舊儲存行為不變；只有 ZIP 成果必須持有不可變的 S3 版本。 */
+function assertExportVersion(reference: PrivateFileReference): void {
+  if (
+    reference.objectKey.startsWith('exports/') &&
+    (!reference.objectVersion?.trim() || reference.objectVersion === 'null')
+  )
+    throw new Error('S3 ZIP 匯出需要有效的固定 VersionId');
 }

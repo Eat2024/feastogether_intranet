@@ -406,6 +406,7 @@ paths:
     get:
       operationId: getExternalInvitationBridge
       summary: 取得將 invitation token POST 到同源 session resource 的唯讀 bridge
+      description: "由 Spec 008 取代：bridge 表單改送 POST /external-signature-otps（寄出驗證碼並回驗證碼輸入頁），不再直接 POST /external-signature-session。詳見 specs/008-external-signing-flow/contracts/http-api.md。"
       security: []
       parameters:
         - name: token
@@ -427,7 +428,7 @@ paths:
     post:
       operationId: createExternalSignatureSession
       summary: 驗證 invitation 後設定單文件受限 HttpOnly cookie
-      description: "由 Spec 008 取代：已簽署者也可建立 session（session cookie，不設 Expires）；憑證有效、待簽但早於 signStartAt 時回 409 尚未開始頁。下方 401 的「已簽署」不再適用。詳見 specs/008-external-signing-flow/contracts/http-api.md。"
+      description: "由 Spec 008 取代：須先由 POST /external-signature-otps 寄出驗證碼，本端點改收 token＋code（6 位數驗證碼），驗證碼正確才設 session cookie（不設 Expires，待簽者與已簽者相同）；驗證碼錯誤或失效回 401 驗證碼錯誤頁，code 格式錯誤回 400；憑證有效、待簽但早於 signStartAt 時回 409 尚未開始頁。下方 401 的「已簽署」不再適用。詳見 specs/008-external-signing-flow/contracts/http-api.md。"
       security: []
       requestBody:
         required: true

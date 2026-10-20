@@ -145,6 +145,22 @@ describe('HttpAccessLogInterceptor', () => {
     expect(getWrittenEntry(second.accessLogger).requestBody).toBeUndefined();
   });
 
+  it.each(['/api/external-signature-otps', '/api/external-signature-session'])(
+    '外部簽署驗證碼表單不記 body（邀請 token、驗證碼）：%s',
+    async (url) => {
+      const { interceptor, accessLogger } = makeInterceptor();
+      await lastValueFrom(
+        interceptor.intercept(
+          makeContext(
+            baseReq({ url, body: { token: 'A'.repeat(43), code: '012345' } }),
+          ),
+          { handle: () => of({}) },
+        ),
+      );
+      expect(getWrittenEntry(accessLogger).requestBody).toBeUndefined();
+    },
+  );
+
   it('launch endpoint 即使收到惡意 JWT query 也只記固定 path', async () => {
     const { interceptor, accessLogger } = makeInterceptor();
     await lastValueFrom(

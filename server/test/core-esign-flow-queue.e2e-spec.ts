@@ -28,6 +28,7 @@ import {
   createSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { openExternalSession } from './external-session.helper';
 
 interface LaunchView {
   launchUrl: string;
@@ -268,14 +269,8 @@ describe('核心電子簽真實 queue e2e', () => {
         ]),
       );
 
-      const session = await request(ctx.server)
-        .post('/api/external-signature-session')
-        .set('Origin', 'http://localhost:3000')
-        .type('form')
-        .send({ token })
-        .expect(303);
       const accessCookie = cookieNamed(
-        session.headers['set-cookie'],
+        await openExternalSession(ctx, token),
         'FT_ESIGN_EXTERNAL_ACCESS',
       );
       const task = apiData<{

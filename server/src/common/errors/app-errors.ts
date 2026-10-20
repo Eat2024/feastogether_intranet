@@ -215,6 +215,12 @@ export const AppErrors = {
     '指定的內部簽署人不存在或已停用',
     HttpStatus.BAD_REQUEST,
   ],
+  /** 外部簽署驗證碼信寄送失敗；邀請頁依 ESIGN_UNAVAILABLE 顯示可重試頁。 */
+  ESIGN_OTP_MAIL_FAILED: [
+    AppErrorCode.ESIGN_UNAVAILABLE,
+    '驗證碼寄送失敗，請稍後再試',
+    HttpStatus.SERVICE_UNAVAILABLE,
+  ],
   ESIGN_OUTSIDE_SIGNING_WINDOW: [
     AppErrorCode.ESIGN_STATE_CONFLICT,
     '文件目前不在可簽署期間',

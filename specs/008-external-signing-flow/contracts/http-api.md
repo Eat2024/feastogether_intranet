@@ -26,7 +26,9 @@
 
 ## POST /api/external-signature-otps（新增）
 
-Request：`application/x-www-form-urlencoded`，`token`（43 字元 base64url）。由邀請確認頁與驗證碼輸入頁的「重新寄送」送出；需 Origin（或 `Origin: null` 搭配 `Sec-Fetch-Site: same-origin`）；套用 `AuthThrottlerGuard`；body 不進 access log。
+Request：`application/x-www-form-urlencoded`，`token`（43 字元 base64url）。由邀請確認頁與驗證碼輸入頁的「重新寄送」送出；需 Origin（或 `Origin: null` 搭配 `Sec-Fetch-Site: same-origin`）；套用 `AuthThrottlerGuard`（依 client IP，超過時由 guard 回 JSON 429 envelope `REFUSE_SERVICE`，與下表的冷卻 429 不同）；body 不進 access log。
+
+> 實作狀態：ticket 10 已實作 200／409／400／401／503；下表 429（60 秒冷卻、每小時 5 封）與輸入頁的「重新寄送」按鈕屬 ticket 11，尚未實作。
 
 | 狀態 | 條件 | 回應 |
 |------|------|------|
@@ -34,21 +36,21 @@ Request：`application/x-www-form-urlencoded`，`token`（43 字元 base64url）
 | 409 | 待簽者早於 `signStartAt` | `text/html` 尚未開始頁（設計稿 `04`），不寄信 |
 | 429 | 距上次寄送未滿 60 秒，或 1 小時內已寄滿 5 封 | `text/html` 驗證碼輸入頁並顯示可再寄送的時間，不寄信、不覆寫現有驗證碼 |
 | 400／401 | token 格式錯誤／其他所有失效情況 | `text/html` 失效頁（設計稿 `03`），不寄信 |
-| 503 | 寄信失敗或服務暫時無法使用 | `text/html` 可重試的說明頁，不保留驗證碼、不計入寄送次數 |
+| 503 | 寄信失敗 | `text/html` 「驗證碼寄送失敗」可重試頁，不保留驗證碼、不計入寄送次數、不記錄 `external_otp.sent` |
 
 驗證碼信：主旨「電子簽署驗證碼」；內容只有 6 位數驗證碼、「10 分鐘內有效」、文件名稱與「若非本人操作請忽略」，不含任何連結。
 
 ## POST /api/external-signature-session
 
-Request：`application/x-www-form-urlencoded`，`token`（43 字元 base64url）＋`code`（6 位數字）。由驗證碼輸入頁送出；需 Origin（同上）；套用 `AuthThrottlerGuard`；body 不進 access log。
+Request：`application/x-www-form-urlencoded`，`token`（43 字元 base64url）＋`code`（6 位半形數字）。由驗證碼輸入頁送出；需 Origin（同上）；套用 `AuthThrottlerGuard`（同上）；body 不進 access log。先做邀請的存取檢查，邀請失效或尚未開始時不比對驗證碼、不消耗輸入次數。
 
 | 狀態 | 條件 | 回應 |
 |------|------|------|
 | 303 | 邀請仍有效且驗證碼正確、未過期、未使用 | `Set-Cookie` session cookie（不設 `Expires`，待簽者與已簽者相同）、`Location: /external-signatures/{signerPublicId}`；刪除驗證碼挑戰；記錄 `external_otp.verified` 與 `external_invitation.opened` |
-| 401 | 驗證碼錯誤（未滿 5 次） | `text/html` 驗證碼錯誤頁（設計稿 `12`），顯示剩餘次數；記錄 `external_otp.failed` |
-| 401 | 驗證碼錯滿 5 次、已過期、已使用或不存在 | `text/html` 驗證碼錯誤頁，顯示「驗證碼已失效，請重新寄送」；錯滿 5 次時記錄 `external_otp.locked` 並刪除挑戰 |
+| 401 | 驗證碼錯誤（未滿 5 次） | `text/html` 驗證碼錯誤頁（設計稿 `12`），顯示剩餘次數，不回填輸入內容；記錄 `external_otp.failed`（metadata 只有 `{ remainingAttempts }`） |
+| 401 | 驗證碼錯滿 5 次、已過期、已使用或不存在 | `text/html` 驗證碼錯誤頁，顯示「驗證碼已失效，請重新寄送」（ticket 11 加入重新寄送前為「驗證碼已失效，請重新開啟邀請信中的連結，取得新的驗證碼。」）；錯滿 5 次時記錄 `external_otp.locked` 並刪除挑戰；過期、已使用或不存在不記錄 |
 | 409 | 待簽者早於 `signStartAt` | `text/html` 尚未開始頁 |
-| 400 | token 或 code 格式錯誤 | `text/html` 失效頁 |
+| 400 | token 或 code 格式錯誤（含缺少 code） | `text/html` 失效頁，不比對驗證碼 |
 | 401 | 邀請本身失效（不存在、不相符；待簽者的過期、停止、到期；簽署人或文件刪除） | `text/html` 失效頁（設計稿 `03`），不區分原因 |
 | 503 | 服務暫時無法使用 | `text/html` 服務暫停頁 |
 
@@ -137,7 +139,7 @@ Request（不變）：
 | `ESIGN_SIGNING_NOT_STARTED(startAt)` | `ESIGN_STATE_CONFLICT` | 409 | 簽署尚未開始，請於 {yyyy/MM/dd HH:mm}（台北時間）後簽署 |
 | `ESIGN_EXTERNAL_SIGNER_MISMATCH` | `ESIGN_STATE_CONFLICT` | 409 | 此頁面的簽署對象已變更，請重新開啟邀請信中的連結 |
 
-驗證碼相關的回應都是 HTML 頁面，訊息直接寫在頁面上：驗證碼錯誤「驗證碼錯誤，還可以再試 N 次」、失效「驗證碼已失效，請重新寄送」、冷卻「請於 N 秒後再重新寄送」、每小時上限「寄送次數已達上限，請於 HH:mm 後再試」、寄信失敗「驗證碼寄送失敗，請稍後再試」。
+驗證碼相關的回應都是 HTML 頁面，訊息直接寫在頁面上（ticket 10 的錯誤頁與失效提示改為「請重新開啟邀請信中的連結」，ticket 11 加入重新寄送後改回下列文案）：驗證碼錯誤「驗證碼錯誤，還可以再試 N 次」、失效「驗證碼已失效，請重新寄送」、冷卻「請於 N 秒後再重新寄送」、每小時上限「寄送次數已達上限，請於 HH:mm 後再試」、寄信失敗「驗證碼寄送失敗，請稍後再試」。
 
 `ESIGN_SIGNING_NOT_STARTED` 的 envelope 另帶 `details: { startAt: "ISO 8601" }`；只有持有效邀請憑證的待簽者會收到。
 

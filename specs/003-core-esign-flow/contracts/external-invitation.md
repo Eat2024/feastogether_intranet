@@ -4,6 +4,8 @@
 
 外部簽署人從指定 Email 信箱開啟專屬 URL，視為能控制該信箱，不再輸入 OTP。此邀請只授予一名 `email` signer 對一份 document 的讀取與簽署能力，不建立 User，不授予內部列表、其他文件或管理功能。
 
+> **由 Spec 008 取代（FR-024～FR-031）**：開啟專屬 URL 不再視為已控制信箱。邀請確認頁按下開啟後寄 6 位數驗證碼到同一邀請信箱，驗證成功才建立存取。以下保留原文。
+
 ## 2. Token 格式與保存
 
 - 每名 external signer 在 document initiation transaction 生成獨立 token。
@@ -25,6 +27,8 @@ Invitation-only mail 包含：
 
 ## 4. 瀏覽器流程
 
+> **由 Spec 008 取代（FR-024～FR-031）**：bridge 表單改送 `POST /api/external-signature-otps { token }`，驗證邀請後寄出驗證碼並回驗證碼輸入頁（失效 401、尚未開始 409，皆不寄信）；輸入頁送 `POST /api/external-signature-session { token, code }`，驗證碼正確才設 session cookie（不設 `Expires`，待簽者與已簽者相同）並 303 導向，同時記錄 `external_otp.verified` 與 `external_invitation.opened`。兩個 POST 皆依 client IP 限流、body 不寫入 access log。詳見 `specs/008-external-signing-flow/contracts/http-api.md`。
+>
 > **由 Spec 008 取代（FR-010、FR-013、FR-014、FR-017）**：簽署成功（含同一 requestId 重送回 200）不再清除 access cookie，改以同一 token 重設為 session cookie（不設 `Expires`）；完成畫面以唯讀 `GET /api/external-signing-task` 查詢本人副本狀態（不記稽核），副本 ready 後以 `GET /api/external-signing-task/completed-file` 下載本人副本。詳見 `specs/008-external-signing-flow/contracts/http-api.md`。以下保留原文。
 
 ```text

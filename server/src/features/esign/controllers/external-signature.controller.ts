@@ -17,8 +17,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
+import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { Public } from '#app/framework/decorators/public.decorator';
+import { AuthThrottlerGuard } from '#app/framework/guards/auth-throttler.guard';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
 import {
@@ -32,10 +34,14 @@ import {
 } from '../services/esign-signing.service';
 import { EsignTokenService } from '../services/esign-token.service';
 import { ExternalAccessService } from '../services/external-access.service';
+import { ExternalOtpService } from '../services/external-otp.service';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
 import {
   invitationConfirmPage,
   invitationInvalidPage,
+  otpInputPage,
+  otpMailFailedPage,
+  otpRejectedPage,
   serviceUnavailablePage,
   signingNotStartedPage,
 } from '../helpers/external-invitation-page';
@@ -45,6 +51,7 @@ import {
 export class ExternalSignatureController {
   constructor(
     private readonly external: ExternalAccessService,
+    private readonly otp: ExternalOtpService,
     private readonly signing: EsignSigningService,
     private readonly tokens: EsignTokenService,
     private readonly config: ConfigService,
@@ -53,7 +60,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '開啟外部簽署邀請確認頁',
     description:
-      '回傳邀請確認頁（含「開啟電子簽署文件」按鈕的 HTML 表單），此 GET 不查詢資料、不記錄、不建立簽署 session；token 格式錯誤時回 400 失效頁。\n\n前端串接參考：外部簽署人點擊 Email 邀請連結進入此後端頁面，再按按鈕送出 POST external-signature-session；不是 Next.js 頁面直接呼叫。',
+      '回傳邀請確認頁（含「開啟電子簽署文件」按鈕的 HTML 表單），此 GET 不查詢資料、不記錄、不寄驗證碼、不建立簽署 session；token 格式錯誤時回 400 失效頁。\n\n前端串接參考：外部簽署人點擊 Email 邀請連結進入此後端頁面，再按按鈕送出 POST external-signature-otps；不是 Next.js 頁面直接呼叫。',
   })
   @Get('external-signature-invitations/:token')
   getBridge(@Param('token') token: string, @Res() reply: FastifyReply): void {
@@ -69,48 +76,61 @@ export class ExternalSignatureController {
     this.sendInvitationPage(reply, HttpStatus.OK, invitationConfirmPage(token));
   }
 
-  @UseGuards(OriginGuard)
+  @UseGuards(OriginGuard, AuthThrottlerGuard)
   @ApiOperation({
-    summary: '建立外部簽署存取 session',
+    summary: '寄出外部簽署驗證碼',
     description:
-      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁；待簽者的 cookie 期限為邀請期限，已簽者任何時間都可重新建立（session cookie，不受簽署期限、文件停止或完成影響）；有效邀請但簽署尚未開始時回 409 尚未開始頁（顯示開始時間，不設 cookie）；token 格式錯誤（400）、邀請無效或過期（401）時回相同的失效頁，服務暫時無法使用時回服務暫停頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
+      '以表單欄位 token 驗證邀請；有效（待簽者在簽署期間，或已簽者）時寄 6 位數驗證碼到邀請信箱（10 分鐘有效，舊驗證碼失效），回驗證碼輸入頁（顯示遮罩後的信箱），並記錄 external_otp.sent。有效邀請但簽署尚未開始回 409 尚未開始頁；token 格式錯誤（400）、邀請無效或過期（401）回相同的失效頁；以上都不寄信。寄信失敗回 503 可重試頁，不保留驗證碼。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，不是 Next.js 頁面直接呼叫。',
+  })
+  @Post('external-signature-otps')
+  async sendOtp(
+    @Body('token') token: string,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    await this.invitationFlow(
+      reply,
+      this.external.isTokenFormat(token),
+      async () => {
+        const { email } = await this.external.sendOtp(token);
+        this.sendInvitationPage(
+          reply,
+          HttpStatus.OK,
+          otpInputPage(token, email),
+        );
+      },
+    );
+  }
+
+  @UseGuards(OriginGuard, AuthThrottlerGuard)
+  @ApiOperation({
+    summary: '以驗證碼建立外部簽署存取 session',
+    description:
+      '以表單欄位 token＋code（6 位數驗證碼）驗證；邀請有效且驗證碼正確時設定 HttpOnly session cookie（不設期限，關閉瀏覽器即失效，待簽者與已簽者相同）並以 303 導向外部簽署頁，記錄 external_otp.verified 與 external_invitation.opened。驗證碼錯誤回 401 錯誤頁並顯示剩餘次數（錯滿 5 次即失效）；驗證碼過期、已使用或已失效回 401 錯誤頁提示重新開啟。邀請無效或過期回 401 失效頁、token 或 code 格式錯誤回 400 失效頁、尚未開始回 409 尚未開始頁，都不比對驗證碼。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由驗證碼輸入頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
   })
   @Post('external-signature-session')
   async createSession(
     @Body('token') token: string,
+    @Body('code') code: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    this.setInvitationPageHeaders(reply);
-    if (!this.external.isTokenFormat(token)) {
-      this.sendInvitationPage(
-        reply,
-        HttpStatus.BAD_REQUEST,
-        invitationInvalidPage(),
-      );
-      return;
-    }
-    try {
-      const session = await this.external.createSession(token);
-      // 已簽者沒有期限：省略 expires 即為 session cookie
-      setExternalAccessCookie(
-        reply,
-        this.config,
-        token,
-        session.invitationExpiresAt ?? undefined,
-      );
+    const validInput =
+      this.external.isTokenFormat(token) && this.otp.isCodeFormat(code);
+    await this.invitationFlow(reply, validInput, async () => {
+      const session = await this.external.createSession(token, code);
+      if (!session.verified) {
+        this.sendInvitationPage(
+          reply,
+          HttpStatus.UNAUTHORIZED,
+          otpRejectedPage(token, session.email, session.remainingAttempts),
+        );
+        return;
+      }
+      setExternalAccessCookie(reply, this.config, token);
       reply.redirect(
         `/external-signatures/${session.signerPublicId}`,
         HttpStatus.SEE_OTHER,
       );
-    } catch (error) {
-      // 非預期錯誤交給全域 handler 記錄
-      if (!(error instanceof AppException)) throw error;
-      this.sendInvitationPage(
-        reply,
-        error.getStatus(),
-        this.sessionErrorPage(error),
-      );
-    }
+    });
   }
 
   @UseGuards(OriginGuard)
@@ -233,8 +253,40 @@ export class ExternalSignatureController {
     return new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
   }
 
-  /** 建立存取失敗的頁面：服務異常請稍後再試；尚未開始（409 帶開始時間）告知開始時間；其餘一律失效頁，不區分原因。 */
-  private sessionErrorPage(error: AppException): string {
+  /**
+   * 邀請流程的表單端點一律回 HTML：輸入格式錯誤回 400 失效頁；預期錯誤依狀態回對應頁面，
+   * 非預期錯誤交給全域 handler 記錄。
+   */
+  private async invitationFlow(
+    reply: FastifyReply,
+    validInput: boolean,
+    run: () => Promise<void>,
+  ): Promise<void> {
+    this.setInvitationPageHeaders(reply);
+    if (!validInput) {
+      this.sendInvitationPage(
+        reply,
+        HttpStatus.BAD_REQUEST,
+        invitationInvalidPage(),
+      );
+      return;
+    }
+    try {
+      await run();
+    } catch (error) {
+      if (!(error instanceof AppException)) throw error;
+      this.sendInvitationPage(
+        reply,
+        error.getStatus(),
+        this.accessErrorPage(error),
+      );
+    }
+  }
+
+  /** 寄信失敗與服務異常請稍後再試；尚未開始（409 帶開始時間）告知開始時間；其餘一律失效頁，不區分原因。 */
+  private accessErrorPage(error: AppException): string {
+    if (error.code === AppErrorCode.ESIGN_UNAVAILABLE)
+      return otpMailFailedPage();
     if (error.getStatus() >= 500) return serviceUnavailablePage();
     const { details } = error.getResponse() as {
       details?: { startAt?: string };

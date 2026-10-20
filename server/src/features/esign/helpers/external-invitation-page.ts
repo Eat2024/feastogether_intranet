@@ -24,6 +24,11 @@ const ICONS = {
     color: '#FF5254',
     path: 'M14 9h2.87c1.46 0 2.8.98 3.08 2.42.31 1.64-.74 3.11-2.22 3.48l1.53 1.53c1.77-.91 2.95-2.82 2.7-5.01C21.68 8.86 19.37 7 16.79 7H14c-.55 0-1 .45-1 1s.45 1 1 1M3.51 3.51a.996.996 0 0 0-1.41 0c-.39.39-.39 1.02 0 1.41l2.64 2.64c-1.77.91-2.95 2.82-2.7 5.01C2.32 15.14 4.63 17 7.21 17H10c.55 0 1-.45 1-1s-.45-1-1-1H7.13c-1.46 0-2.8-.98-3.08-2.42-.31-1.64.75-3.11 2.22-3.48l2.12 2.12c-.23.19-.39.46-.39.78 0 .55.45 1 1 1h1.17l8.9 8.9c.39.39 1.02.39 1.41 0s.39-1.02 0-1.41zM14 11l1.71 1.71c.18-.18.29-.43.29-.71 0-.55-.45-1-1-1z',
   },
+  // MarkEmailReadRounded
+  otp: {
+    color: '#1976D2',
+    path: 'M18.05 21.29c-.39.39-1.02.39-1.41 0l-2.12-2.12a.996.996 0 0 1 0-1.41c.39-.39 1.02-.39 1.41 0l1.41 1.41 3.54-3.54c.39-.39 1.02-.39 1.41 0s.39 1.02 0 1.41zM12.08 20H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h16c1.1 0 2 .9 2 2v6.68c-.91-.43-1.92-.68-3-.68-3.87 0-7 3.13-7 7 0 .34.03.67.08 1m-.61-7.33c.32.2.74.2 1.06 0l7.07-4.42c.25-.16.4-.43.4-.72 0-.67-.73-1.07-1.3-.72L12 11 5.3 6.81c-.57-.35-1.3.05-1.3.72 0 .29.15.56.4.72z',
+  },
   // CloudOffRounded
   unavailable: {
     color: '#FF951C',
@@ -31,12 +36,18 @@ const ICONS = {
   },
 } as const;
 
+/** 卡片內的表單；兩種表單都以 hidden 欄位帶邀請 token，不放進網址。 */
+type PageForm =
+  /** 「開啟電子簽署文件」：寄出驗證碼 */
+  | { kind: 'open'; token: string }
+  /** 輸入驗證碼建立存取；error 有值時標示輸入錯誤 */
+  | { kind: 'otp'; token: string; error?: string };
+
 interface ExternalPage {
   icon: keyof typeof ICONS;
   title: string;
   description: string;
-  /** 有值時顯示「開啟電子簽署文件」表單，送出此邀請 token 建立存取。 */
-  invitationToken?: string;
+  form?: PageForm;
   /** 卡片底部的小字提醒，一則一行。 */
   notes?: readonly string[];
 }
@@ -49,49 +60,127 @@ const STYLE = [
   'h1{margin:0;font-size:20px;font-weight:700;line-height:1.25;color:#424242}',
   'p{margin:0;font-size:16px;line-height:1.7;color:#757575}',
   '.note{margin-top:8px;font-size:12px}',
-  'form{width:100%;margin:16px 0 0}',
+  'form{width:100%;margin:16px 0 0;display:flex;flex-direction:column;gap:8px}',
+  // 驗證碼輸入框：MUI outlined TextField 樣式，聚焦時框線轉藍、錯誤時轉紅
+  '.field{display:flex;flex-direction:column;gap:4px;text-align:left}',
+  '.box{position:relative;height:56px;box-sizing:border-box;border:1px solid rgba(0,0,0,0.23);border-radius:4px;display:flex;align-items:center;padding:0 14px}',
+  'label{position:absolute;top:-10px;left:10px;padding:0 4px;background:#FFFFFF;font-size:12px;line-height:1.7;color:#757575}',
+  '#otp-code{width:100%;border:0;outline:none;background:transparent;font:inherit;font-size:20px;letter-spacing:8px;text-align:center;color:#212121}',
+  '.box:focus-within{border:2px solid #1976D2;padding:0 13px}.box:focus-within label{color:#1976D2}',
+  '.error .box{border:2px solid #FF5254;padding:0 13px}.error label{color:#D94647}',
+  '#otp-error{padding:0 14px;font-size:12px;line-height:1.7;color:#D94647}',
   'button{width:100%;height:42px;padding:0 22px;border:0;border-radius:4px;background:#1976D2;color:#FFFFFF;font:inherit;font-size:14px;font-weight:500;box-shadow:0 3px 1px -2px rgba(0,0,0,0.2),0 2px 2px 0 rgba(0,0,0,0.14),0 1px 5px 0 rgba(0,0,0,0.12);cursor:pointer}',
   'button:hover{background:#1565C0}',
-  // 手機寬度：較矮的頁首，卡片滿版並改靠上
-  '@media (max-width:599.95px){header{height:56px;padding:0 16px}main{align-items:flex-start;padding:160px 16px 16px}section{width:100%}}',
+  // 手機寬度：較矮的頁首，卡片滿版並改靠上；驗證碼卡片較高，上方留白較少
+  '@media (max-width:599.95px){header{height:56px;padding:0 16px}main{align-items:flex-start;padding:160px 16px 16px}main.otp{padding-top:120px}section{width:100%}}',
 ].join('');
 
 /** 所有動態值都在這裡跳脫，呼叫端只傳純文字。 */
 function renderPage(page: ExternalPage): string {
   const icon = ICONS[page.icon];
   const title = escapeHtml(page.title);
-  const form =
-    page.invitationToken === undefined
-      ? ''
-      : '<form method="post" action="/api/external-signature-session">' +
-        `<input type="hidden" name="token" value="${escapeHtml(page.invitationToken)}">` +
-        '<button type="submit">開啟電子簽署文件</button></form>';
+  const form = page.form ? renderForm(page.form) : '';
   const notes = page.notes?.length
     ? `<p class="note">${page.notes.map(escapeHtml).join('<br>')}</p>`
     : '';
+  const main = page.form?.kind === 'otp' ? '<main class="otp">' : '<main>';
   return (
     '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<meta name="referrer" content="no-referrer">' +
     `<title>${title}</title><style>${STYLE}</style></head><body>` +
-    '<header>電子簽署</header><main><section>' +
+    `<header>電子簽署</header>${main}<section>` +
     `<svg width="48" height="48" viewBox="0 0 24 24" aria-hidden="true"><path fill="${icon.color}" d="${icon.path}"></path></svg>` +
     `<h1>${title}</h1><p>${escapeHtml(page.description)}</p>${form}${notes}` +
     '</section></main></body></html>'
   );
 }
 
-/** 邀請確認頁：只呈現開啟按鈕，按下後才驗證邀請並建立存取。 */
+function renderForm(form: PageForm): string {
+  const token = `<input type="hidden" name="token" value="${escapeHtml(form.token)}">`;
+  if (form.kind === 'open') {
+    return (
+      `<form method="post" action="/api/external-signature-otps">${token}` +
+      '<button type="submit">開啟電子簽署文件</button></form>'
+    );
+  }
+  const error =
+    form.error === undefined
+      ? { field: '', input: '', message: '' }
+      : {
+          field: ' error',
+          input: ' aria-invalid="true" aria-describedby="otp-error"',
+          message: `<span id="otp-error" role="alert">${escapeHtml(form.error)}</span>`,
+        };
+  return (
+    `<form method="post" action="/api/external-signature-session">${token}` +
+    `<div class="field${error.field}"><div class="box"><label for="otp-code">6 位數驗證碼</label>` +
+    '<input id="otp-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="000000"' +
+    `${error.input}></div>${error.message}</div>` +
+    '<button type="submit">驗證並開啟文件</button></form>'
+  );
+}
+
+/** 只露出帳號第一個字元與網域：daming.wang@example.com → d***@example.com */
+function maskEmail(email: string): string {
+  return `${email.slice(0, 1)}***${email.slice(email.lastIndexOf('@'))}`;
+}
+
+/** 邀請確認頁：只呈現開啟按鈕，按下後才驗證邀請並寄出驗證碼。 */
 export function invitationConfirmPage(token: string): string {
   return renderPage({
     icon: 'invitation',
     title: '電子簽署邀請',
     description: '您收到一份需要簽署的文件，開啟後即可閱讀內容並完成簽名。',
-    invitationToken: token,
+    form: { kind: 'open', token },
     notes: [
       '此連結僅供受邀的簽署人本人使用，請勿轉寄。',
       '請於邀請信所列的簽署期限前完成，逾期即失效。',
     ],
+  });
+}
+
+/** 驗證碼輸入頁：寄出驗證碼後顯示，輸入正確才建立存取。 */
+export function otpInputPage(token: string, email: string): string {
+  return renderPage({
+    icon: 'otp',
+    title: '輸入驗證碼',
+    description: `驗證碼已寄到 ${maskEmail(email)}，10 分鐘內有效。`,
+    form: { kind: 'otp', token },
+    notes: ['沒收到信？請檢查垃圾郵件。驗證碼只能使用一次，請勿提供給他人。'],
+  });
+}
+
+/** 驗證碼錯誤頁：remainingAttempts 為 0 表示驗證碼已失效（過期、已使用或錯滿）。 */
+export function otpRejectedPage(
+  token: string,
+  email: string,
+  remainingAttempts: number,
+): string {
+  return renderPage({
+    icon: 'otp',
+    title: '輸入驗證碼',
+    description: `驗證碼已寄到 ${maskEmail(email)}，10 分鐘內有效。`,
+    form: {
+      kind: 'otp',
+      token,
+      error:
+        remainingAttempts > 0
+          ? `驗證碼錯誤，還可以再試 ${remainingAttempts} 次。`
+          : '驗證碼已失效，請重新開啟邀請信中的連結，取得新的驗證碼。',
+    },
+    notes: [
+      '錯誤 5 次或超過 10 分鐘，驗證碼即失效，請重新開啟邀請信中的連結。',
+    ],
+  });
+}
+
+/** 驗證碼寄送失敗頁：未保留驗證碼，稍後重新開啟即可再寄送。 */
+export function otpMailFailedPage(): string {
+  return renderPage({
+    icon: 'unavailable',
+    title: '驗證碼寄送失敗',
+    description: '驗證碼寄送失敗，請稍後再開啟邀請信中的連結重試。',
   });
 }
 

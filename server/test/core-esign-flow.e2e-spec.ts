@@ -3,6 +3,12 @@ import { EsignAuditService } from '#app/features/esign/services/esign-audit.serv
 import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import type { Redis } from 'ioredis';
+import { REDIS_MAIN } from '#app/infrastructure/database/redis/redis.provider';
+import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
+import { HttpAccessLoggerService } from '#app/infrastructure/logging/httpEndpointLog/http-access-logger.service';
+import type { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
+import { INVITATION_MAIL_SENDER } from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { esignTestPng } from './esign-test-png';
 import { createPrivateKey, createHash, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
@@ -34,6 +40,12 @@ import {
   type SignatureVerification,
   VERIFICATION_URL,
 } from './signature-verification.helper';
+import {
+  openExternalSession as openExternalSessionWithOtp,
+  otpMails,
+  requestOtp,
+  submitOtp,
+} from './external-session.helper';
 
 const PNG_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=';
@@ -871,8 +883,11 @@ describe('核心電子簽 US1', () => {
       .expect('Referrer-Policy', 'no-referrer');
     expect(bridge.headers['set-cookie']).toBeUndefined();
     expect(bridge.text).toContain('電子簽署邀請</h1>');
+    expect(bridge.text).toContain(
+      '<form method="post" action="/api/external-signature-otps">',
+    );
     expect(bridge.text).toContain('開啟電子簽署文件</button>');
-    // 只開啟邀請連結不記錄開啟
+    // 只開啟邀請連結不記錄開啟、不寄驗證碼
     expect(
       await db.query(
         'SELECT event_type, signer_id, metadata_json FROM esign_audit_events WHERE document_id = ? ORDER BY id',
@@ -880,16 +895,36 @@ describe('核心電子簽 US1', () => {
       ),
     ).toEqual(initiatedAudits);
 
-    const session = await request(ctx.server)
-      .post('/api/external-signature-session')
-      .set('Origin', 'http://localhost:3000')
-      .type('form')
-      .send({ token: invitationToken })
-      .expect(303);
+    // 按下開啟：寄驗證碼到邀請信箱並顯示輸入頁；驗證前不設 cookie
+    const otpMailCount = otpMails(ctx).length;
+    const otpPage = await requestOtp(ctx, invitationToken)
+      .expect(200)
+      .expect('Content-Type', /^text\/html/)
+      .expect('Cache-Control', 'no-store');
+    expect(otpPage.headers['set-cookie']).toBeUndefined();
+    expect(otpPage.text).toContain(
+      '驗證碼已寄到 c***@example.test，10 分鐘內有效。',
+    );
+    expect(otpMails(ctx).slice(otpMailCount)).toEqual([
+      {
+        recipientEmail: 'candidate@example.test',
+        documentTitle: 'Spec 03 測試文件',
+        code: expect.stringMatching(/^\d{6}$/),
+      },
+    ]);
+    const { code: otpCode } = otpMails(ctx).at(-1)!;
+    // 驗證碼不回顯在頁面
+    expect(otpPage.text.includes(otpCode)).toBe(false);
+
+    const session = await submitOtp(ctx, invitationToken, otpCode)
+      .expect(303)
+      .expect('Location', `/external-signatures/${signers[0].publicId}`);
     const externalCookie = firstCookie(session.headers['set-cookie']);
     expect(externalCookie).toContain('FT_ESIGN_EXTERNAL_ACCESS=');
     expect(externalCookie).toContain('HttpOnly');
     expect(externalCookie).toContain('SameSite=Lax');
+    // 驗證成功一律為瀏覽器階段存取：關閉瀏覽器即失效
+    expect(externalCookie).not.toMatch(/Expires=|Max-Age=/i);
 
     const externalPreview = await request(ctx.server)
       .get('/api/external-signing-task/source-file')
@@ -1336,13 +1371,7 @@ describe('核心電子簽 US1', () => {
     const pendingToken = tokenService.decrypt(
       credentials[1].invitation_token_ciphertext,
     );
-    const session = await request(ctx.server)
-      .post('/api/external-signature-session')
-      .set('Origin', 'http://localhost:3000')
-      .type('form')
-      .send({ token: firstToken })
-      .expect(303);
-    const accessCookie = firstCookie(session.headers['set-cookie']);
+    const accessCookie = await openExternalSession(firstToken);
     const taskResponse = await request(ctx.server)
       .post('/api/external-signing-task')
       .set('Cookie', accessCookie)
@@ -1374,13 +1403,7 @@ describe('核心電子簽 US1', () => {
       ).signers.map((signer) => signer.verificationUrl),
     ).toEqual([firstSigned.verificationUrl, null]);
 
-    const pendingSession = await request(ctx.server)
-      .post('/api/external-signature-session')
-      .set('Origin', 'http://localhost:3000')
-      .type('form')
-      .send({ token: pendingToken })
-      .expect(303);
-    const pendingCookie = firstCookie(pendingSession.headers['set-cookie']);
+    const pendingCookie = await openExternalSession(pendingToken);
     const pendingTask = apiData<{
       fields: Array<{ id: string; type: string }>;
       consent: { version: string };
@@ -1419,12 +1442,8 @@ describe('核心電子簽 US1', () => {
       stopReason: '內容需要更正',
     });
     // 競態中簽署成功者已是已簽者，停止後仍可重新開啟；未簽成者邀請失效
-    await request(ctx.server)
-      .post('/api/external-signature-session')
-      .set('Origin', 'http://localhost:3000')
-      .type('form')
-      .send({ token: pendingToken })
-      .expect(racedSignature.status === 201 ? 303 : 401);
+    if (racedSignature.status === 201) await openExternalSession(pendingToken);
+    else await rejectedInvitationPage(pendingToken);
     const evidence = await db.query<Array<{ evidence_count: number }>>(
       'SELECT COUNT(*) evidence_count FROM esign_signature_records WHERE signer_id IN (SELECT id FROM esign_signers WHERE document_id = ?)',
       [stoppedDocumentId],
@@ -1505,8 +1524,10 @@ describe('核心電子簽 US1', () => {
   it('已簽者關閉瀏覽器後重新開啟邀請：以 session cookie 進入完成頁並可下載；文件停止後仍可下載，同文件待簽者被拒', async () => {
     const { documentId, signedToken, pendingToken } =
       await signedAndPendingDocument('簽後重新開啟文件');
-    // 待簽者仍取得帶邀請期限的 cookie
-    expect(await openExternalSession(pendingToken)).toMatch(/Expires=/);
+    // 通過驗證碼後待簽者與已簽者都是瀏覽器階段存取
+    expect(await openExternalSession(pendingToken)).not.toMatch(
+      /Expires=|Max-Age=/i,
+    );
 
     // 沒有 cookie 的新請求（另一個瀏覽器或關閉後）重新開啟：不設期限，任務為已簽署
     const reopened = await openExternalSession(signedToken);
@@ -1553,7 +1574,7 @@ describe('核心電子簽 US1', () => {
     }
   });
 
-  it('簽署尚未開始：建立存取回 409 尚未開始頁、不設 cookie 不記開啟，開始後同一連結可建立存取', async () => {
+  it('簽署尚未開始：按下開啟回 409 尚未開始頁、不寄驗證碼、不設 cookie 不記開啟，開始後同一連結可建立存取', async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage();
     const { id } = apiData<{ id: string }>(
@@ -1618,11 +1639,8 @@ describe('核心電子簽 US1', () => {
       .toISOString()
       .replace(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2}).*$/, '$1/$2/$3 $4');
 
-    const notStarted = await request(ctx.server)
-      .post('/api/external-signature-session')
-      .set('Origin', 'http://localhost:3000')
-      .type('form')
-      .send({ token: invitationToken })
+    const mailCount = otpMails(ctx).length;
+    const notStarted = await requestOtp(ctx, invitationToken)
       .expect(409)
       .expect('Content-Type', /^text\/html/)
       .expect('Cache-Control', 'no-store')
@@ -1635,6 +1653,15 @@ describe('核心電子簽 US1', () => {
     expect(notStarted.text).toContain(`請於 ${taipeiStart}（台北時間）後簽署`);
     expect(notStarted.text).not.toContain(invitationToken);
     expect(notStarted.text).not.toContain('未來開始文件');
+    expect(otpMails(ctx)).toHaveLength(mailCount);
+    // 驗證碼端點同樣先判斷邀請：尚未開始不比對驗證碼、不設 cookie
+    const sessionBeforeStart = await submitOtp(
+      ctx,
+      invitationToken,
+      '000000',
+    ).expect(409);
+    expect(sessionBeforeStart.text).toBe(notStarted.text);
+    expect(sessionBeforeStart.headers['set-cookie']).toBeUndefined();
     // 其他外部 API 遇到相同情況回相同錯誤，不回文件內容
     const taskBeforeStart = await request(ctx.server)
       .post('/api/external-signing-task')
@@ -1664,19 +1691,212 @@ describe('核心電子簽 US1', () => {
       ],
     });
     try {
-      const session = await request(ctx.server)
-        .post('/api/external-signature-session')
-        .set('Origin', 'http://localhost:3000')
-        .type('form')
-        .send({ token: invitationToken })
-        .expect(303);
-      expect(firstCookie(session.headers['set-cookie'])).toContain(
+      expect(await openExternalSession(invitationToken)).toContain(
         'FT_ESIGN_EXTERNAL_ACCESS=',
       );
       expect(await openedEvents()).toEqual(['external_invitation.opened']);
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('驗證碼：只持有邀請連結無法開啟；錯誤顯示剩餘次數，正確才建立瀏覽器階段存取且只能用一次；稽核與 log 不含驗證碼與 token', async () => {
+    const { documentId, token } = await initiateEmailDocument(
+      '驗證碼流程文件',
+      'otp-flow@example.test',
+    );
+    const accessLog = jest.spyOn(ctx.app.get(HttpAccessLoggerService), 'write');
+    const appLogger = ctx.app.get(AppLoggerService);
+    const appLogs = (['info', 'warn', 'error'] as const).map((level) =>
+      jest.spyOn(appLogger, level),
+    );
+    try {
+      await requestOtp(ctx, token).expect(200);
+      const { code } = otpMails(ctx).at(-1)!;
+      const wrong = code === '000000' ? '000001' : '000000';
+
+      // 沒有驗證碼只會看到失效頁，不設 cookie
+      const missingCode = await submitOtp(ctx, token, '').expect(400);
+      expect(missingCode.text).toContain('邀請連結無效或已到期</h1>');
+      expect(missingCode.headers['set-cookie']).toBeUndefined();
+
+      const rejected = await submitOtp(ctx, token, wrong)
+        .expect(401)
+        .expect('Content-Type', /^text\/html/)
+        .expect('Cache-Control', 'no-store');
+      expect(rejected.headers['set-cookie']).toBeUndefined();
+      expect(rejected.text).toContain(
+        '驗證碼已寄到 o***@example.test，10 分鐘內有效。',
+      );
+      expect(rejected.text).toContain('驗證碼錯誤，還可以再試 4 次。');
+      // 不回填輸入內容
+      expect(rejected.text).not.toMatch(/<input id="otp-code"[^>]*value=/);
+
+      const session = await submitOtp(ctx, token, code).expect(303);
+      const accessCookie = firstCookie(session.headers['set-cookie']);
+      expect(accessCookie).not.toMatch(/Expires=|Max-Age=/i);
+      await request(ctx.server)
+        .post('/api/external-signing-task')
+        .set('Cookie', accessCookie)
+        .set('Origin', 'http://localhost:3000')
+        .expect(200);
+
+      // 同一驗證碼不能再用來建立另一個存取
+      const reused = await submitOtp(ctx, token, code).expect(401);
+      expect(reused.headers['set-cookie']).toBeUndefined();
+      expect(reused.text).toContain(
+        '驗證碼已失效，請重新開啟邀請信中的連結，取得新的驗證碼。',
+      );
+
+      const audits = await db.query<
+        Array<{ event_type: string; metadata_json: unknown }>
+      >(
+        `SELECT event_type, metadata_json FROM esign_audit_events
+         WHERE document_id = ? AND event_type LIKE 'external\\_%' ORDER BY id`,
+        [documentId],
+      );
+      expect(audits).toEqual([
+        { event_type: 'external_otp.sent', metadata_json: null },
+        {
+          event_type: 'external_otp.failed',
+          metadata_json: { remainingAttempts: 4 },
+        },
+        { event_type: 'external_otp.verified', metadata_json: null },
+        { event_type: 'external_invitation.opened', metadata_json: null },
+      ]);
+      // 以布林比對，失敗訊息不印出驗證碼或 token
+      const recorded = JSON.stringify([
+        audits,
+        accessLog.mock.calls,
+        ...appLogs.map((spy) => spy.mock.calls),
+      ]);
+      expect(recorded.includes(code)).toBe(false);
+      expect(recorded.includes(token)).toBe(false);
+      expect(
+        accessLog.mock.calls.some(([entry]) =>
+          entry.path.startsWith('/api/external-signature-'),
+        ),
+      ).toBe(true);
+    } finally {
+      accessLog.mockRestore();
+      for (const spy of appLogs) spy.mockRestore();
+    }
+  });
+
+  it('驗證碼錯滿 5 次即失效並記錄；重新開啟寄出的新驗證碼使舊的立即失效', async () => {
+    const { documentId, token } = await initiateEmailDocument(
+      '驗證碼錯誤次數文件',
+      'otp-lock@example.test',
+    );
+    await requestOtp(ctx, token).expect(200);
+    const { code: first } = otpMails(ctx).at(-1)!;
+    const wrong = first === '000000' ? '000001' : '000000';
+    for (const remaining of [4, 3, 2, 1]) {
+      const page = await submitOtp(ctx, token, wrong).expect(401);
+      expect(page.text).toContain(`驗證碼錯誤，還可以再試 ${remaining} 次。`);
+    }
+    const locked = await submitOtp(ctx, token, wrong).expect(401);
+    expect(locked.text).toContain('驗證碼已失效');
+    // 錯滿後正確驗證碼也無法使用
+    const afterLocked = await submitOtp(ctx, token, first).expect(401);
+    expect(afterLocked.text).toContain('驗證碼已失效');
+    expect(afterLocked.headers['set-cookie']).toBeUndefined();
+
+    await requestOtp(ctx, token).expect(200);
+    const { code: second } = otpMails(ctx).at(-1)!;
+    await requestOtp(ctx, token).expect(200);
+    const { code: latest } = otpMails(ctx).at(-1)!;
+    const replaced = await submitOtp(ctx, token, second).expect(401);
+    expect(replaced.text).toContain('驗證碼錯誤，還可以再試 4 次。');
+    await submitOtp(ctx, token, latest).expect(303);
+
+    const events = await db.query<Array<{ event_type: string }>>(
+      `SELECT event_type FROM esign_audit_events
+       WHERE document_id = ? AND event_type LIKE 'external\\_%' ORDER BY id`,
+      [documentId],
+    );
+    expect(events.map((event) => event.event_type)).toEqual([
+      'external_otp.sent',
+      ...Array<string>(4).fill('external_otp.failed'),
+      'external_otp.locked',
+      'external_otp.sent',
+      'external_otp.sent',
+      'external_otp.failed',
+      'external_otp.verified',
+      'external_invitation.opened',
+    ]);
+  });
+
+  it('驗證碼只以雜湊存在 Redis 並在 10 分鐘後過期，過期後無法建立存取', async () => {
+    const { documentId, token } = await initiateEmailDocument(
+      '驗證碼過期文件',
+      'otp-expiry@example.test',
+    );
+    await requestOtp(ctx, token).expect(200);
+    const { code } = otpMails(ctx).at(-1)!;
+    const wrong = code === '000000' ? '000001' : '000000';
+    await submitOtp(ctx, token, wrong).expect(401);
+    const [signer] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM esign_signers WHERE document_id = ?',
+      [documentId],
+    );
+    const redis = ctx.app.get<Redis>(REDIS_MAIN);
+    const codeKey = `esign:external-otp:${signer.id}:code`;
+    const attemptsKey = `esign:external-otp:${signer.id}:attempts`;
+    const stored = await redis.get(codeKey);
+    expect(stored).toMatch(/^[0-9a-f]{64}$/);
+    expect(stored!.includes(code)).toBe(false);
+    for (const key of [codeKey, attemptsKey]) {
+      const ttl = await redis.ttl(key);
+      expect(ttl).toBeGreaterThan(590);
+      expect(ttl).toBeLessThanOrEqual(600);
+    }
+
+    // fake timers 推不動 Redis 的 TTL：直接讓驗證碼到期，模擬 10 分鐘經過
+    await redis.pexpire(codeKey, 1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const expired = await submitOtp(ctx, token, code).expect(401);
+    expect(expired.text).toContain('驗證碼已失效');
+    expect(expired.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('驗證碼信寄送失敗：顯示可重試頁，不保留驗證碼、不記錄寄出，之後可重新開啟', async () => {
+    const { documentId, token } = await initiateEmailDocument(
+      '驗證碼寄送失敗文件',
+      'otp-mail-failed@example.test',
+    );
+    const mailer = ctx.app.get<FakeInvitationMailSender>(
+      INVITATION_MAIL_SENDER,
+    );
+    const failure = jest
+      .spyOn(mailer, 'sendOtp')
+      .mockRejectedValueOnce(new Error('smtp down'));
+    try {
+      const failed = await requestOtp(ctx, token)
+        .expect(503)
+        .expect('Content-Type', /^text\/html/);
+      expect(failed.text).toContain('驗證碼寄送失敗</h1>');
+      expect(failed.headers['set-cookie']).toBeUndefined();
+    } finally {
+      failure.mockRestore();
+    }
+    const [signer] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM esign_signers WHERE document_id = ?',
+      [documentId],
+    );
+    expect(
+      await ctx.app
+        .get<Redis>(REDIS_MAIN)
+        .exists(`esign:external-otp:${signer.id}:code`),
+    ).toBe(0);
+    const [{ count }] = await db.query<Array<{ count: number }>>(
+      `SELECT COUNT(*) count FROM esign_audit_events
+       WHERE document_id = ? AND event_type = 'external_otp.sent'`,
+      [documentId],
+    );
+    expect(Number(count)).toBe(0);
+
+    await openExternalSession(token);
   });
 
   it('到期掃描跨越 100 筆批次且重複執行不新增事件，舊候選不得覆蓋新期限', async () => {
@@ -2592,26 +2812,19 @@ describe('核心電子簽 US1', () => {
     return { documentId, token: tokens[0], tokens };
   }
 
-  async function openExternalSession(token: string): Promise<string> {
-    const session = await request(ctx.server)
-      .post('/api/external-signature-session')
-      .set('Origin', 'http://localhost:3000')
-      .type('form')
-      .send({ token })
-      .expect(303);
-    return firstCookie(session.headers['set-cookie']);
+  /** 經驗證碼建立外部存取（寄出 → fake mailer 取碼 → 驗證），回傳存取 cookie */
+  function openExternalSession(token: string): Promise<string> {
+    return openExternalSessionWithOtp(ctx, token);
   }
 
-  /** 建立存取被拒：401 失效頁、不設 cookie，回傳頁面內容 */
+  /** 按下開啟被拒：401 失效頁、不寄驗證碼、不設 cookie，回傳頁面內容 */
   async function rejectedInvitationPage(token: string): Promise<string> {
-    const page = await request(ctx.server)
-      .post('/api/external-signature-session')
-      .set('Origin', 'http://localhost:3000')
-      .type('form')
-      .send({ token })
+    const mailCount = otpMails(ctx).length;
+    const page = await requestOtp(ctx, token)
       .expect(401)
       .expect('Content-Type', /^text\/html/);
     expect(page.headers['set-cookie']).toBeUndefined();
+    expect(otpMails(ctx)).toHaveLength(mailCount);
     return page.text;
   }
 

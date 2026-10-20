@@ -57,7 +57,7 @@ pnpm start
 
 | 檔案 | 用途 |
 |---|---|
-| `api/config.ts` | axios instance：baseURL 為同源 `/api`（由 `next.config.ts` rewrites 代理到後端）、帶 cookie、攤開 `{ success, data }`；401 不導頁（`UNAUTHORIZED_REDIRECT` 為 null），改顯示錯誤訊息 |
+| `api/config.ts` | axios instance：baseURL 為同源 `/api`（由 `next.config.ts` rewrites 代理到後端）、帶 cookie、攤開 `{ success, data }`；401 不導頁（`UNAUTHORIZED_REDIRECT` 為 null），由 `ReactQueryProvider` 顯示整頁的「登入已過期」提示（`components/providers/SessionExpiredDialog.tsx`），請使用者從入口網重新進入 |
 | `api/endpoints.ts` | 所有 API 路徑，新增 API 時在此登記 |
 | `api/types/*.ts` | 請求與回應型別；共用的分頁、錯誤格式在 `common.ts` |
 | `api/requests/*.ts` | 每支 API 一個 async 函式，回傳攤開後的 data |

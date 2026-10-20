@@ -13,6 +13,8 @@ export const getErrorMessage = (error: unknown, defaultValue: string = DEFAULT_M
   if (axios.isAxiosError<ApiErrorResponse>(error)) {
     if (!error.response) return '無法連線到伺服器，請檢查網路後再試';
     const { code, message } = error.response.data?.error ?? {};
+    // 登入過期：後端訊息（例如「請先登入」）沒有說明要從入口網重新進入，改用前端訊息
+    if (error.response.status === 401 || code === 'UNAUTHORIZED') return ERROR_CODE_MAP.UNAUTHORIZED;
     if (message?.trim()) return message;
     if (code && ERROR_CODE_MAP[code]) return ERROR_CODE_MAP[code];
     return defaultValue;

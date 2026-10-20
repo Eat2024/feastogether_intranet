@@ -1,8 +1,16 @@
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
-import { mkdir, rename, rm, writeFile, stat, opendir } from 'node:fs/promises';
+import { createWriteStream, type ReadStream, type BigIntStats } from 'node:fs';
+import {
+  mkdir,
+  rename,
+  rm,
+  writeFile,
+  stat,
+  opendir,
+  open,
+} from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { Injectable } from '@nestjs/common';
 import {
@@ -80,6 +88,7 @@ export class LocalPrivateFileStorage implements PrivateFileStorage {
       await rename(temporary, target);
       return {
         objectKey,
+        objectVersion: await this.version(target),
         mimeType: input.mimeType,
         fileSize,
         sha256: hash.digest('hex'),
@@ -87,14 +96,35 @@ export class LocalPrivateFileStorage implements PrivateFileStorage {
     } catch (error) {
       input.stream.destroy();
       await rm(temporary, { force: true }).catch(() => undefined);
+      await rm(target, { force: true }).catch(() => undefined);
       throw error;
     }
   }
 
+  // 偵測一般覆寫與替換，並非內容 checksum；讀取不預先掃描整份 ZIP。
+  private fingerprint(info: BigIntStats): string {
+    return createHash('sha256')
+      .update(
+        [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].join(':'),
+      )
+      .digest('hex');
+  }
+
+  private async version(path: string): Promise<string> {
+    return this.fingerprint(await stat(path, { bigint: true }));
+  }
+
   async stat(reference: PrivateFileReference): Promise<{ fileSize: number }> {
-    const info = await stat(this.resolveObjectKey(reference.objectKey));
+    const info = await stat(this.resolveObjectKey(reference.objectKey), {
+      bigint: true,
+    });
     if (!info.isFile()) throw new Error('私有物件不是檔案');
-    return { fileSize: info.size };
+    if (
+      reference.objectVersion &&
+      reference.objectVersion !== this.fingerprint(info)
+    )
+      throw new Error('私有物件版本不符');
+    return { fileSize: Number(info.size) };
   }
 
   async openReadStream(
@@ -102,8 +132,20 @@ export class LocalPrivateFileStorage implements PrivateFileStorage {
     options: ReadPrivateFileOptions = {},
   ): Promise<ReadStream> {
     const path = this.resolveObjectKey(reference.objectKey);
-    await stat(path);
-    return createReadStream(path, options);
+    const handle = await open(path, 'r');
+    try {
+      const info = await handle.stat({ bigint: true });
+      if (!info.isFile()) throw new Error('私有物件不是檔案');
+      if (
+        reference.objectVersion &&
+        reference.objectVersion !== this.fingerprint(info)
+      )
+        throw new Error('私有物件版本不符');
+      return handle.createReadStream(options);
+    } catch (error) {
+      await handle.close();
+      throw error;
+    }
   }
 
   private exportSweep?: AsyncGenerator<string>;

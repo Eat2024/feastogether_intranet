@@ -63,3 +63,7 @@
 - 真 Chrome 瀏覽器使用非建立人員工 session，完成查找、申請、重整、原生ZIP下載並解壓核對內容；206／If-Range200／ETag／Cache-Control／nosniff 經 Next proxy 核對。測試程式與截圖在 `/tmp/esign009-zip-browser.cjs`、`/tmp/esign009-zip-browser.png`；未新增 client 測試框架。
 - 最終整合 01–05 後 root build/lint 通過，server 98 suites／836 tests，schema 6 tests。詳細本機 log：`/tmp/esign009-07-code-green.log`、`/tmp/esign009-07-browser.log`、`/tmp/esign009-07-final-unit.log`、`/tmp/esign009-07-final-schema.log`、`/tmp/esign009-07-final-root-build.log`、`/tmp/esign009-07-final-root-lint.log`。lint 0 error，既有 warnings 保留。
 - 08 交接：S3 ZIP尚未啟用，既有S3 PDF功能保留；需支援 multipart uploadId／abort／版本清理，並收窄 `isReferenced` 為 active generation，避免 failed staging 永久保護殘件。09 才實測6000份、大於4GiB與效能門檻，未把小量驗證視為容量達標。
+
+## Ticket 10：整合驗收
+
+跨故事真 PDF/ZIP、拒簽 maintenance／RR 競態修正、local ZIP 固定版本、完整回歸與41條FR對照見 [整合驗證紀錄](implementation-notes-integration.md)。Standards／Spec review 待整合後另記；部署 S3 容量維持 ticket11 ready-for-human、T028未完成。

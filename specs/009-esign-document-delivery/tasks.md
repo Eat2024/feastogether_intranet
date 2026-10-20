@@ -1,7 +1,7 @@
 # Tasks: 電子簽文件與簽署人管理補強（Spec 009）
 
 **Input**：[spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、[contracts](contracts/)、[quickstart.md](quickstart.md)。
-**Status**：Ticket 01 已進入實作；僅已完成且有驗證證據的項目勾選，整體交付仍進行中。
+**Status**：Tickets 01–09 已整合；Ticket 10 本機整合回歸完成，待最終 Standards／Spec review。T028 的部署 S3 容量門檻移交 ticket11，維持未勾選。
 **Tests**：依 spec 驗收要求與 constitution 的身分／交易／Hash／migration驗證義務列入風險相稱測試；client 現無test script，不新增框架。測試任務先於對應實作準備，實作後必須跑過，不能只新增檔案即算驗收完成。
 
 格式 `- [ ] Txxx [P?] [US?] 說明＋路徑`。[P] 僅表示同一階段、前置完成後可與不同檔案任務並行，不代表可跳過依賴。新增檔案路徑是預定位置；TypeORM migration 用實作當時合法時間戳產生於指定 migrations 目錄。近距離路徑省略前綴時承接該任務已寫出的 feature 目錄。
@@ -16,9 +16,9 @@
 
 目標：建立共同錯誤與安全回歸基線；完成後才開始各故事。schema、依賴與 worker 變更留在所屬故事，避免為 US1 先做完整匯出平台。
 
-- [ ] T002 依兩份 API 契約在 `server/src/common/errors/app-error-code.ts`、`server/src/common/errors/app-errors.ts` 定義草稿、拒簽、催簽、備註、匯出穩定錯誤；同步 `client/src/api/errorCodes.ts`，不輸出 storage key、credential 或原始 SMTP 錯誤。
+- [x] T002 依兩份 API 契約在 `server/src/common/errors/app-error-code.ts`、`server/src/common/errors/app-errors.ts` 定義草稿、拒簽、催簽、備註、匯出穩定錯誤；同步 `client/src/api/errorCodes.ts`，不輸出 storage key、credential 或原始 SMTP 錯誤。
 
-- [ ] T003 在 `server/test/esign-document-delivery-security.e2e-spec.ts` 建立員工A/B、外部本人與未登入情境，保留「匯出有效員工 session 不限建立人；草稿／催簽／備註仍僅建立人」的測試基線；沿用隔離 DB 命名保護及既有 session fixture，不新增 RBAC。
+- [x] T003 在 `server/test/esign-document-delivery-security.e2e-spec.ts` 建立員工A/B、外部本人與未登入情境，保留「匯出有效員工 session 不限建立人；草稿／催簽／備註仍僅建立人」的測試基線；沿用隔離 DB 命名保護及既有 session fixture，不新增 RBAC。
 
 ## Phase 3：US1 完整暫存名單與期間（P1，MVP）
 
@@ -48,7 +48,7 @@
 
 - [x] T013 [US2] 檢查 `client/src/features/my-signature/sign/pdfCanvas.ts` 及正式下載呼叫點，移除正式完成副本的前端水印繪製責任，保留 `DocumentSignersEditor.tsx` 的 watermark 選擇；不將整個 mock 簽署流程宣稱已正式串接。
 
-- [x] T014 [US2] 在 `server/test/esign-watermark.e2e-spec.ts` 驗證 build 後字型可讀、同一副本各下載入口 bytes一致與舊副本未變；將視覺中文／簽名／QR檢查記於 `specs/009-esign-document-delivery/implementation-notes.md`，ZIP一致性留待US3整合。
+- [x] T014 [US2] 沿用 `server/test/core-esign-flow.e2e-spec.ts`（未另建重複 watermark suite）驗證 build 後字型可讀、同一副本各下載入口 bytes一致與舊副本未變；將視覺中文／簽名／QR檢查記於 `specs/009-esign-document-delivery/implementation-notes.md`，ZIP一致性留待US3整合。
 
 ## Phase 5：US3 大量副本 ZIP 與七天重用（P1）
 
@@ -99,7 +99,7 @@
 
 - [x] T034 [US4] 在 `client/src/api/` 的既有簽署型別／request檔新增拒簽；串接 `client/src/features/external-signing/ExternalSigning.tsx`、`client/src/features/my-signature/sign/SignFlow.tsx` 與相鄰正式Server Action，恢復allowReject選項、確認拒簽/200字原因與結果頁，不以mock拒簽算完成。
 
-- [ ] T035 [US4] 新增 `server/test/esign-rejection.e2e-spec.ts` 並擴充finalization／verification相鄰tests，驗混合、全拒、事件hash、同時簽拒與舊manifest；在 `server/test/esign-export.e2e-spec.ts` 加拒簽不計入ZIP且全拒回409案例。
+- [x] T035 [US4] 新增 `server/test/esign-rejection.e2e-spec.ts` 並擴充finalization／verification相鄰tests，驗混合、全拒、事件hash、同時簽拒與舊manifest；在 `server/test/esign-export.e2e-spec.ts` 加拒簽不計入ZIP且全拒回409案例。
 
 ## Phase 7：US5 外部催簽與通知紀錄（P1）
 
@@ -141,13 +141,13 @@
 
 所有故事完成後執行；只在有驗證證據時勾選。不得自動部署或提交正式資料。
 
-- [ ] T050 在 `server/test/esign-document-delivery-security.e2e-spec.ts` 完成所有API的session/Origin/錯歸屬、資料裁切與重放檢查；確保匯出不查role、其他管理不擴權、外部cookie不能跨人下載，token/簽名不入log或DTO。
+- [x] T050 在 `server/test/esign-document-delivery-security.e2e-spec.ts` 完成所有API的session/Origin/錯歸屬、資料裁切與重放檢查；確保匯出不查role、其他管理不擴權、外部cookie不能跨人下載，token/簽名不入log或DTO。
 
-- [ ] T051 執行 `server/test/` 相關schema/e2e/security與service測試，驗舊資料升級、含新狀態down拒絕破壞證據及新舊worker交接；檢查 `server/src/infrastructure/database/schema.sql` 與entity/migration一致，記錄未能執行的環境限制，不將其當通過。
+- [x] T051 執行 `server/test/` 相關schema/e2e/security與service測試，驗舊資料升級、含新狀態down拒絕破壞證據及worker中斷後新程序接手；新舊版本發布交接採先停止舊worker再啟動新版，不宣稱混跑相容；檢查 `server/src/infrastructure/database/schema.sql` 與entity/migration一致，記錄未能執行的環境限制，不將其當通過。
 
-- [ ] T052 依 `specs/009-esign-document-delivery/quickstart.md` 執行server lint:check/test/build、client lint/build及root build/lint；重跑跨故事watermark/ZIP hash、拒簽結案/排除、催簽/備註隱私驗收，最終結果與performance報告連結寫入 `specs/009-esign-document-delivery/implementation-notes.md`。
+- [x] T052 依 `specs/009-esign-document-delivery/quickstart.md` 執行server lint:check/test/build、client lint/build及root build/lint；重跑跨故事watermark/ZIP hash、拒簽結案/排除、催簽/備註隱私驗收，最終結果與performance報告連結寫入 `specs/009-esign-document-delivery/implementation-notes.md`。
 
-- [ ] T053 更新 `specs/009-esign-document-delivery/quickstart.md`、`contracts/` 與 `implementation-notes.md` 的實際路徑/驗收結果/發布及回滾限制，逐項對照41條FR；分開列client/server/migration/config交付，不新增內部催簽、RBAC、補簽功能或自動部署。
+- [x] T053 更新 `specs/009-esign-document-delivery/quickstart.md`、`contracts/` 與 `implementation-notes.md` 的實際路徑/驗收結果/發布及回滾限制，逐項對照41條FR；分開列client/server/migration/config交付，不新增內部催簽、RBAC、補簽功能或自動部署。
 
 ## Dependencies & Execution Order
 
@@ -193,3 +193,5 @@ Setup T001 → Foundation T002–T003
 | US6 | 035–040 | 013–014 | T045–T049 |
 
 合計53項：Setup/Foundation 3、US1 6、US2 5、US3 14、US4 7、US5 9、US6 5、整合4。checkbox 依實作驗證更新；未勾項目尚待其完整驗收，不因已有部分程式即算完成。
+
+Ticket 10 的逐項證據與41條FR對照見 [整合驗證紀錄](implementation-notes-integration.md)。最終 review 與 ticket10結案由整合流程追加；checkbox 不表示部署已完成。

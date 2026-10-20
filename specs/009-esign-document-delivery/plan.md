@@ -1,8 +1,8 @@
 # Implementation Plan: 電子簽文件與簽署人管理補強
 
-**Branch**: `dev`（實際 git 分支；setup-plan 回傳的 `009-esign-document-delivery` 為 feature 識別，未切換分支）
+**Branch**: `feature/009-esign-document-delivery`（設計時基線為 `dev`）
 **Date**: 2026-10-20 | **Spec**: [spec.md](spec.md)
-**Status**: Phase 0／1 設計完成；本地 role／permission 依使用者決定延後。計畫階段已完成；後續依使用者授權產生 [tasks.md](tasks.md)，尚未實作。
+**Status**: 設計已依 [tasks.md](tasks.md) 實作並完成本機回歸，待最終 review；部署 S3 容量門檻仍待 ticket11。本地 role／permission 依使用者決定延後。
 
 ## Summary
 
@@ -18,7 +18,7 @@
 | Testing | server Jest unit／MySQL+Redis e2e／schema／security；client lint+build+手動瀏覽器驗收，現無 test script |
 | Target Platform | 既有 HTTP process 與獨立 worker；同源 Next.js proxy；受權限保護的原生瀏覽器下載 |
 | Project Type | pnpm workspace Web 應用 |
-| Performance Goals | 6,000 份、多於 4 GiB；受理 p95 ≤5 秒；相同簽署負載 p95 增幅 ≤20%；未宣稱已測達成 |
+| Performance Goals | 6,000 份、多於 4 GiB；受理 p95 ≤5 秒；相同簽署負載 p95 增幅 ≤20%；本機實測結果見 performance-results.md，部署 S3 尚未驗證 |
 | Constraints | 不將整包讀入 Buffer、不重繪已有 PDF、沒有內部催簽、沒有新補簽流程、不改已成立證據 |
 | Scale/Scope | 六個故事、FR-001–041；一次一份文件所有已簽副本，非跨文件總 ZIP |
 

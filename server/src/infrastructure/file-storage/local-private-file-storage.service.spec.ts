@@ -95,6 +95,21 @@ describe('LocalPrivateFileStorage', () => {
     );
   });
 
+  it('固定 ZIP 版本可偵測同長度覆寫，拒絕讀取及續傳但保留舊 PDF 行為', async () => {
+    const stored = await storage.storeStream({
+      directory: 'exports/versioned',
+      extension: 'zip',
+      mimeType: 'application/zip',
+      stream: Readable.from(['original']),
+    });
+    expect(await storage.stat(stored)).toEqual({ fileSize: 8 });
+    await writeFile(join(root, stored.objectKey), 'tampered');
+    await expect(storage.stat(stored)).rejects.toThrow('版本');
+    await expect(
+      storage.openReadStream(stored, { start: 0, end: 2 }),
+    ).rejects.toThrow('版本');
+  });
+
   it('來源中斷不發布 ZIP，也不刪除其他來源檔', async () => {
     const original = await storage.store({
       directory: 'documents/source',

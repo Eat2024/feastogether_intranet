@@ -1,6 +1,6 @@
 # Spec 009 實作後驗證指南
 
-這是未來實作的驗證步驟，目前沒有實作本功能，以下命令不是本次已通過的紀錄。本地 role／permission 已決定留待後續，本次驗證員工 session 與外部 session 的邊界。
+本指南提供可重跑步驟；本輪實際結果見 [整合驗證紀錄](implementation-notes-integration.md) 及 [容量報告](performance-results.md)。部署 S3 容量仍待 ticket11，不以本機成績替代。本地 role／permission 已決定留待後續，本次驗證員工 session 與外部 session 的邊界。
 
 ## 前提與執行
 
@@ -52,3 +52,9 @@ pnpm lint
 先建立相同正常簽署流量的基準，再開匯出；記錄受理p95≤5秒、簽署p95增幅≤20%、OOM/正常簽署失敗=0。觀測RSS、external Buffer、CPU、event-loop delay、DB鎖等待、S3/local吞吐及開檔數。確認記憶體不隨總PDF bytes線性增加。
 
 完成全部來源hash比對、ZIP CRC及解壓份數／檔名唯一性；中途kill worker、斷S3、磁碟滿均不能發布半包。跨兩worker程序確認全域匯出仍最多1；下載中斷續傳驗證原hash。產出可重現的報告（環境、資料分布、時間、RSS峰值、失敗及差異），不在這份計畫預填測試成績。
+
+## 實際測試與發布接點
+
+跨故事 suite 為 `server/test/esign-document-delivery-security.e2e-spec.ts`（一般與 security 設定皆納入）；浮水印 HTTP 沿用 `core-esign-flow.e2e-spec.ts`。schema 前綴使用 `DB_MYSQL_DB=feastogether_intranet_test`，helper 會追加 UUID，避免資料庫名稱過長。
+
+發布及回退順序見 [整合驗證紀錄](implementation-notes-integration.md)：先停舊 worker／寫入，再升 schema、新 worker、新 API/client；不混用不理解 reminder/rejected 的舊 worker。已有新證據禁止破壞性 down。local 新 ZIP 使用固定檔案版本偵測一般覆寫；不宣稱防底層 silent bit rot，也不每次下載全檔 hash。

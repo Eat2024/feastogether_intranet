@@ -80,19 +80,30 @@ export class EsignFieldViewDto {
   sortOrder!: number;
 }
 
+/** 管理欄位不加入共用本人 DTO。 */
+export class EsignManagedSignerViewDto extends EsignSignerViewDto {
+  note!: string;
+}
+
 export class EsignDocumentDetailDto extends EsignDocumentSummaryDto {
   /** 建立人帳號不存在時為 null */
   createdBy!: EsignDocumentCreatorDto | null;
   sourceFile?: EsignSourceFileDto;
   signStartAt!: string | null;
   stopReason!: string | null;
-  signers!: EsignSignerViewDto[];
+  signers!: EsignManagedSignerViewDto[];
   fields!: EsignFieldViewDto[];
+}
+
+export class EsignHistoryActorDto {
+  kind!: 'signer' | 'employee' | 'system';
+  name!: string;
+  signerPublicId?: string;
 }
 
 export class EsignHistoryItemDto {
   type!: string;
   occurredAt!: string;
-  actor!: string | null;
+  actor!: EsignHistoryActorDto;
   reason!: string | null;
 }

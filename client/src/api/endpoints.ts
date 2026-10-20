@@ -14,6 +14,11 @@ export const endpoints = {
   ESIGN_DOCUMENT_SOURCE_FILE: (id: string) => `esign/documents/${encodeURIComponent(id)}/source-file`,
   // 內部簽署人候選（server/src/features/esign/controllers/signer-candidates.controller.ts）
   ESIGN_SIGNER_CANDIDATES: 'esign/signer-candidates',
+  // 外部簽署人（server/src/features/esign/controllers/external-signature.controller.ts）：以外部存取 cookie 驗證，
+  // cookie 的 path 為 /api/external-signing-task，只有這組路徑會帶上
+  EXTERNAL_SIGNING_TASK: 'external-signing-task',
+  EXTERNAL_SIGNING_TASK_SOURCE_FILE: 'external-signing-task/source-file',
+  EXTERNAL_SIGNING_TASK_SIGNATURES: 'external-signing-task/signatures',
 
   // Health
   HEALTH: 'health',

@@ -17,10 +17,9 @@ import DocumentViewer from './DocumentViewer';
 import RejectDialog from './RejectDialog';
 import SignaturePadDialog from './SignaturePadDialog';
 import SignProgressPanel from './SignProgressPanel';
+import { SIGN_STEPS } from './steps';
 import TermsStep from './TermsStep';
 import { SIGN_TERMS, SIGN_TERMS_VERSION } from './terms';
-
-export const SIGN_STEPS = ['同意授權條款', '閱讀文件', '完成簽名', '確認送出'];
 
 const nowStr = () => {
   const d = new Date();

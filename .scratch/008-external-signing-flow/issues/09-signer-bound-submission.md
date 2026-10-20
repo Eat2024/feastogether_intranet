@@ -17,7 +17,7 @@
 
 - 分支 `008/09-signer-bound-submission`，commit `4461abc`（實作）、`ecc7c7c`（合併整合分支 f3c6b46）；合併至整合分支 `8f0a988`。
 - 後端：外部簽名端點改用 `ExternalSignatureSubmissionDto`（必填 `signerPublicId`，UUID v4），controller 與 cookie 對應簽署人比對，不符回 409 `ESIGN_EXTERNAL_SIGNER_MISMATCH`（envelope code `ESIGN_STATE_CONFLICT`）；內部端點維持原 DTO。
-- 前端：送出帶 `task.signerPublicId`；不符錯誤以 Snackbar 顯示後端 message、留在原頁（偏離契約原寫的 `03` 失效頁，取捨列入 12）。
+- 前端：送出帶 `task.signerPublicId`；不符錯誤以 Snackbar 顯示後端 message、留在原頁（偏離契約原寫的 `03` 失效頁；情境罕見，使用者 2026-10-20 決定先不處理畫面呈現，維持 Snackbar，亦不另做人工驗證）。
 - e2e：重現同一文件兩位外部簽署人 cookie 覆蓋（修正前 201 簽錯人 → 修正後 409、兩人皆未簽），缺少／格式錯誤 400；05 的跨文件測試改為預期 409。
 - 驗證：server test 766、build、lint 0 error；e2e 11 suites／77 tests、security 6／27；client lint、build；整合後 server／client 驗證通過。
 

@@ -15,6 +15,21 @@ export function signAfterHint(startAt: Date): string {
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  ESIGN_REMINDER_REQUEST_CONFLICT: [
+    AppErrorCode.ESIGN_REMINDER_REQUEST_CONFLICT,
+    '同一催簽請求不得變更內容',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_NO_ELIGIBLE_REMINDER_RECIPIENTS: [
+    AppErrorCode.ESIGN_NO_ELIGIBLE_REMINDER_RECIPIENTS,
+    '目前沒有可通知的外部待簽署人',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_REMINDER_SELECTION_INVALID: [
+    AppErrorCode.ESIGN_REMINDER_SELECTION_INVALID,
+    '請選擇有效的催簽名單',
+    HttpStatus.BAD_REQUEST,
+  ],
   ESIGN_REJECTION_REASON_INVALID: [
     AppErrorCode.ESIGN_REJECTION_REASON_INVALID,
     '拒絕原因須為最多 200 字的文字',

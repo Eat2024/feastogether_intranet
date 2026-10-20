@@ -1,3 +1,6 @@
+import type { EsignSigner } from '../entities/esign-signer.entity';
+import type { EsignNotificationLog } from '../entities/esign-notification-log.entity';
+import { reminderEligibility } from './esign-reminder-policy';
 import { Inject, Injectable } from '@nestjs/common';
 import type { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
@@ -40,6 +43,38 @@ export class EsignDocumentQueryService {
     private readonly users: UserRepository,
     private readonly records: SignatureRecordRepository,
   ) {}
+
+  private reminderSummary(
+    document: EsignDocument,
+    signer: EsignSigner,
+    logs: EsignNotificationLog[],
+  ) {
+    const now = new Date();
+    const reasonCode = reminderEligibility(document, signer, logs, now);
+    const latest = logs.find((l) => l.batch?.kind === 'reminder');
+    const midnight = new Date(now.getTime() + 8 * 60 * 60_000);
+    midnight.setUTCHours(24, 0, 0, 0);
+    return {
+      reminderEligibility: {
+        eligible: reasonCode === null,
+        reasonCode,
+        nextEligibleAt:
+          reasonCode === 'DAILY_LIMIT'
+            ? new Date(midnight.getTime() - 8 * 60 * 60_000).toISOString()
+            : null,
+      },
+      latestReminder: latest
+        ? {
+            status: latest.result,
+            completedAt: latest.completedAt?.toISOString() ?? null,
+            reasonCode: latest.errorCode ?? null,
+          }
+        : null,
+      deliveredReminderCount: logs.filter(
+        (l) => l.batch?.kind === 'reminder' && l.result === 'delivered',
+      ).length,
+    };
+  }
 
   async list(
     userId: number,
@@ -124,6 +159,7 @@ export class EsignDocumentQueryService {
     );
     const deliveryBySigner = new Map<number, EsignInvitationDelivery>();
     for (const log of logs) {
+      if (log.batch?.kind === 'reminder') continue;
       if (!deliveryBySigner.has(log.signerId)) {
         const result =
           log.result === 'delivered'
@@ -157,6 +193,11 @@ export class EsignDocumentQueryService {
             ? (deliveryBySigner.get(signer.id) ?? null)
             : null,
           codeBySigner.get(signer.id),
+        ),
+        ...this.reminderSummary(
+          document,
+          signer,
+          logs.filter((l) => l.signerId === signer.id),
         ),
         note: signer.note ?? '',
       })),

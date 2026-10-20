@@ -1,6 +1,7 @@
 export const INVITATION_MAIL_SENDER = Symbol('INVITATION_MAIL_SENDER');
 
 export interface SendInvitationMailInput {
+  kind?: 'invitation' | 'reminder';
   recipientEmail: string;
   documentTitle: string;
   creatorName: string;

@@ -1,3 +1,5 @@
+import { NotificationBatchesController } from './controllers/notification-batches.controller';
+import { EsignReminderService } from './services/esign-reminder.service';
 import { RedisModule } from '#app/infrastructure/database/redis/redis.module';
 import { Module } from '@nestjs/common';
 import { FileStorageModule } from '#app/infrastructure/file-storage/file-storage.module';
@@ -37,6 +39,7 @@ import { EsignVerificationService } from './services/esign-verification.service'
 import { EsignRejectionService } from './services/esign-rejection.service';
 
 const esignServices = [
+  EsignReminderService,
   EsignRejectionService,
   EsignAccessPolicyService,
   EsignAuditService,
@@ -74,6 +77,7 @@ const esignServices = [
   ],
   providers: esignServices,
   controllers: [
+    NotificationBatchesController,
     DocumentsController,
     SignerCandidatesController,
     SigningTasksController,

@@ -1,3 +1,4 @@
+import type { EsignNotificationBatch } from '../types/esignDocuments';
 import type { DraftSettingsBody } from '../types/esignDocuments';
 import api from '@/api/config';
 import axios from 'axios';
@@ -190,6 +191,12 @@ export const saveDraftSettings = async ({ id, body }: { id: string; body: DraftS
   return res.data;
 };
 
+export async function createNotificationBatch(id: string, body: {requestId: string; selection: 'selected' | 'all_pending'; signerPublicIds?: string[]}): Promise<EsignNotificationBatch> {
+  return (await api<EsignNotificationBatch>({method:'POST',url:endpoints.ESIGN_NOTIFICATION_BATCHES(id),data:body})).data;
+}
+export async function getNotificationBatch(id: string,batchId: string): Promise<EsignNotificationBatch> {
+  return (await api<EsignNotificationBatch>({method:'GET',url:endpoints.ESIGN_NOTIFICATION_BATCH(id,batchId)})).data;
+}
 /** 建立人儲存管理備註；空字串清除。 */
 export const saveSignerNote = async ({ id, signerPublicId, note }: SaveSignerNoteBody): Promise<SignerNoteResult> => {
   const res = await api<SignerNoteResult>({ method: 'PATCH', url: endpoints.ESIGN_SIGNER_NOTE(id, signerPublicId), data: { note } });

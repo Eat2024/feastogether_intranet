@@ -1,3 +1,4 @@
+import { ExternalReminders1792454402000 } from '../migrations/1792454402000-ExternalReminders';
 import { SignerNote1792454404000 } from '#app/infrastructure/database/migrations/1792454404000-SignerNote';
 import { RejectionCompletion1792454401000 } from '#app/infrastructure/database/migrations/1792454401000-RejectionCompletion';
 import { DraftSettings1792454400000 } from '#app/infrastructure/database/migrations/1792454400000-DraftSettings';
@@ -96,6 +97,7 @@ export function buildMysqlOptions(
       ExpiredDocuments1792368000000,
       DraftSettings1792454400000,
       RejectionCompletion1792454401000,
+      ExternalReminders1792454402000,
       SignerNote1792454404000,
     ],
 

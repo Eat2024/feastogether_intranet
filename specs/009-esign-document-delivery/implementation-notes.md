@@ -38,3 +38,9 @@
 - 新增notification欄位migration `1792454402000`，同步entity/schema、時間索引、唯一鍵及舊邀請寫入預設。已有reminder紀錄時拒絕down，避免抹掉憑證與稽核。
 - 單人通知正式元件透過API、同操作requestId與結果輪詢；原邀請狀態不會被催簽結果蓋掉。完整多選/全部及分頁歷史仍由ticket06交付。
 - 驗證：server 830 unit tests、schema 6 tests、reminder API/worker 8 e2e tests；server/client build與lint通過（server既有warning）。純資格測試覆蓋台北23:59:59/00:00及跨日in-flight；e2e覆蓋新舊邀請OTP、世代撤銷、SMTP unknown、有限重試、寄前停止、過期lease、並發受理與migration回退保護。
+
+### Ticket 05 整合與瀏覽器驗證
+
+- 已merge `9f22302`，保留ticket04管理備註/拒簽/歷程。合併後root build/lint、98 suites/833 tests及schema6 tests通過。
+- 真Chrome（台北時區）對真Nest/API+MySQL執行單人催簽→202受理→worker fake SMTP投遞→當日限制→reload仍已寄出，全部通過。截圖 `/tmp/esign009-reminder-browser.png`；臨時fixture及server已清除，沒有新增測試框架。
+- 發布順序：先通知migration，再以新worker取代所有舊邀請worker，最後開啟新催簽API；不能讓舊worker消費reminder。若需回退，先停新API受理與worker並保留通知資料，已有reminder時migration拒絕down；原邀請寫入可使用public UUID資料庫預設。

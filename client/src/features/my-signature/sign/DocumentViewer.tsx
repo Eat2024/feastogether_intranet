@@ -25,6 +25,8 @@ type DocumentViewerProps = {
   onPageChange: (page: number) => void;
   /** 提供時簽名欄位可點擊（進行簽名）；未提供為唯讀 */
   onSignField?: (field: UploadField) => void;
+  /** 原始 PDF 的同源網址；未提供時讀取 `/files/forms/{id}` */
+  pdfUrl?: string;
 };
 
 /** 頁面縮圖：需簽名的頁面標示「需簽名」，該頁都簽完改為「已簽名」 */
@@ -337,6 +339,7 @@ export default function DocumentViewer({
   activePage,
   onPageChange,
   onSignField,
+  pdfUrl,
 }: DocumentViewerProps) {
   const pages = Array.from({ length: layout.pageCount }, (_, i) => i + 1);
   const pageLabel = (p: number) =>
@@ -349,7 +352,7 @@ export default function DocumentViewer({
   const pageFields = layout.fields.filter((f) => f.page === activePage);
   // 有原始檔時顯示實際內容（系統簽署確認頁除外）；沒有時（舊資料）顯示示意版面
   const { doc } = usePdfDocument(
-    form.upload?.fileId ? `/files/forms/${form.id}` : null,
+    pdfUrl ?? (form.upload?.fileId ? `/files/forms/${form.id}` : null),
   );
   const { thumbs, pageImage, requestPage } = usePdfRenders(doc);
   const isOriginalPage = (p: number) => p !== layout.confirmPage;

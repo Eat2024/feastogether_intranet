@@ -40,7 +40,7 @@ export class EsignCompletionAccessService {
     this.access.checkEsignCreator(document, userId);
     const signer = await this.signers.findByPublicId(signerPublicId, manager);
     if (!signer || signer.documentId !== documentId) throw this.notFound();
-    return this.completedFile(document, signer);
+    return this.personalCopy(document, signer);
   }
 
   async signerFile(signerPublicId: string, userId: number) {
@@ -51,10 +51,14 @@ export class EsignCompletionAccessService {
       : null;
     if (!signer || !document) throw this.notFound();
     this.access.assertInternalSigner(document, signer, userId);
-    return this.completedFile(document, signer);
+    return this.personalCopy(document, signer);
   }
 
-  private async completedFile(document: EsignDocument, signer: EsignSigner) {
+  /**
+   * 讀取並驗證簽署人的本人副本；未產生時回傳 null。
+   * 不做授權檢查，呼叫端必須先確認呼叫者可存取此簽署人。
+   */
+  async personalCopy(document: EsignDocument, signer: EsignSigner) {
     if (
       !['active', 'expired', 'finalizing', 'completed', 'stopped'].includes(
         document.status,

@@ -8,7 +8,6 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useState } from 'react';
-import { SIGN_TERMS, SIGN_TERMS_VERSION } from './terms';
 
 // 距離底部多少 px 內視為已讀到底（避免小數像素差）
 const BOTTOM_TOLERANCE = 4;
@@ -16,9 +15,18 @@ const BOTTOM_TOLERANCE = 4;
 /** 流程第一步：閱讀電子簽名使用條款，捲動到底部後才能勾選同意 */
 export default function TermsStep({
   docName,
+  terms,
+  version,
+  backHref,
   onAgree,
 }: {
   docName: string;
+  /** 條款全文；只有一段時不編號 */
+  terms: readonly string[];
+  /** 顯示的條款版本 */
+  version: string;
+  /** 「不同意，返回」的連結；未提供時不顯示此按鈕 */
+  backHref?: string;
   onAgree: () => void;
 }) {
   const [reachedBottom, setReachedBottom] = useState(false);
@@ -60,23 +68,29 @@ export default function TermsStep({
             borderRadius: 1,
           }}
         >
-          <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
-            {SIGN_TERMS.map((term) => (
-              <Typography
-                key={term}
-                component="li"
-                variant="content"
-                sx={{ mb: 1.5, display: 'list-item' }}
-              >
-                {term}
-              </Typography>
-            ))}
-          </Box>
+          {terms.length === 1 ? (
+            <Typography variant="content" component="p" sx={{ m: 0 }}>
+              {terms[0]}
+            </Typography>
+          ) : (
+            <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
+              {terms.map((term) => (
+                <Typography
+                  key={term}
+                  component="li"
+                  variant="content"
+                  sx={{ mb: 1.5, display: 'list-item' }}
+                >
+                  {term}
+                </Typography>
+              ))}
+            </Box>
+          )}
           <Typography variant="helper" component="div" sx={{ mt: 2 }}>
             — 條款結束 —
           </Typography>
         </Box>
-        <Typography variant="helper">條款版本：{SIGN_TERMS_VERSION}</Typography>
+        <Typography variant="helper">條款版本：{version}</Typography>
 
         <Box>
           <FormControlLabel
@@ -96,9 +110,11 @@ export default function TermsStep({
         </Box>
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-          <Button size="large" variant="outlined" href="/my-signature">
-            不同意，返回
-          </Button>
+          {backHref && (
+            <Button size="large" variant="outlined" href={backHref}>
+              不同意，返回
+            </Button>
+          )}
           <Button
             size="large"
             variant="contained"

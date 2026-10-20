@@ -37,6 +37,7 @@ import {
   invitationConfirmPage,
   invitationInvalidPage,
   serviceUnavailablePage,
+  signingNotStartedPage,
 } from '../helpers/external-invitation-page';
 
 @Public()
@@ -72,7 +73,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '建立外部簽署存取 session',
     description:
-      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁；token 格式錯誤（400）、邀請無效或過期（401）時回相同的失效頁，服務暫時無法使用時回服務暫停頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
+      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁；有效邀請但簽署尚未開始時回 409 尚未開始頁（顯示開始時間，不設 cookie）；token 格式錯誤（400）、邀請無效或過期（401）時回相同的失效頁，服務暫時無法使用時回服務暫停頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
   })
   @Post('external-signature-session')
   async createSession(
@@ -103,11 +104,10 @@ export class ExternalSignatureController {
     } catch (error) {
       // 非預期錯誤交給全域 handler 記錄
       if (!(error instanceof AppException)) throw error;
-      const status = error.getStatus();
       this.sendInvitationPage(
         reply,
-        status,
-        status >= 500 ? serviceUnavailablePage() : invitationInvalidPage(),
+        error.getStatus(),
+        this.sessionErrorPage(error),
       );
     }
   }
@@ -197,6 +197,17 @@ export class ExternalSignatureController {
 
   private unauthorized(): AppException {
     return new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
+  }
+
+  /** 建立存取失敗的頁面：服務異常請稍後再試；尚未開始（409 帶開始時間）告知開始時間；其餘一律失效頁，不區分原因。 */
+  private sessionErrorPage(error: AppException): string {
+    if (error.getStatus() >= 500) return serviceUnavailablePage();
+    const { details } = error.getResponse() as {
+      details?: { startAt?: string };
+    };
+    return details?.startAt
+      ? signingNotStartedPage(new Date(details.startAt))
+      : invitationInvalidPage();
   }
 
   /** 邀請頁由瀏覽器直接開啟（Email 連結、表單送出），不快取、不外送 referrer。 */

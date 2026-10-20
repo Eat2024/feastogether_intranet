@@ -43,7 +43,7 @@ Request：`application/x-www-form-urlencoded`，`token`（43 字元 base64url）
 |------|------|
 | 200 | 待簽者在有效期間；或已簽者在期限內 |
 | 401 | 失效（`ESIGN_EXTERNAL_UNAUTHORIZED`） |
-| 409 | 待簽者早於開始時間（`ESIGN_SIGNING_NOT_STARTED`，message 含開始時間） |
+| 409 | 待簽者早於開始時間（`ESIGN_SIGNING_NOT_STARTED`，message 含開始時間，`details.startAt` 為 ISO 8601） |
 
 200 `data`（前端使用的欄位，其餘沿用現有 `SigningTask`）：
 
@@ -116,6 +116,8 @@ Request（不變）：
 | 名稱 | Code | HTTP | 訊息 |
 |------|------|------|------|
 | `ESIGN_SIGNING_NOT_STARTED(startAt)` | `ESIGN_STATE_CONFLICT` | 409 | 簽署尚未開始，請於 {yyyy/MM/dd HH:mm}（台北時間）後簽署 |
+
+`ESIGN_SIGNING_NOT_STARTED` 的 envelope 另帶 `details: { startAt: "ISO 8601" }`；只有持有效邀請憑證的待簽者會收到。
 
 ## 前端畫面與 API 狀態對應
 

@@ -120,4 +120,71 @@ describe('EsignAccessPolicyService', () => {
       policy.assertExternalInvitation(doc, signer, 'a'.repeat(64), now),
     ).toThrow('外部簽署存取已失效');
   });
+
+  describe('簽署期間尚未開始', () => {
+    const startAt = new Date('2026-10-14T16:00:00.000Z');
+    const pendingSigner = () =>
+      Object.assign(new EsignSigner(), {
+        signerType: 'email',
+        documentId: 1,
+        status: 'pending',
+        invitationTokenSha256: 'a'.repeat(64),
+        invitationExpiresAt: new Date('2026-10-20T00:00:00.000Z'),
+      });
+    const futureDocument = () =>
+      Object.assign(document(), {
+        signStartAt: startAt,
+        signEndAt: new Date('2026-10-20T00:00:00.000Z'),
+      });
+
+    it('有效憑證的待簽者在開始前收到尚未開始錯誤，以台北時間告知開始時間', () => {
+      expect(() =>
+        policy.assertExternalInvitation(
+          futureDocument(),
+          pendingSigner(),
+          'a'.repeat(64),
+          new Date(startAt.getTime() - 1),
+        ),
+      ).toThrow('簽署尚未開始，請於 2026/10/15 00:00（台北時間）後簽署');
+    });
+
+    it.each([
+      ['開始當下', startAt],
+      ['期間內', new Date('2026-10-17T00:00:00.000Z')],
+    ])('%s可以存取', (_name, at) => {
+      expect(() =>
+        policy.assertExternalInvitation(
+          futureDocument(),
+          pendingSigner(),
+          'a'.repeat(64),
+          at,
+        ),
+      ).not.toThrow();
+    });
+
+    it.each([
+      {
+        name: '期間結束後',
+        doc: futureDocument,
+        digest: 'a'.repeat(64),
+        at: new Date('2026-10-20T00:00:00.000Z'),
+      },
+      {
+        name: '憑證不符',
+        doc: futureDocument,
+        digest: 'b'.repeat(64),
+        at: new Date('2026-10-14T00:00:00.000Z'),
+      },
+      {
+        name: '文件已停止',
+        doc: () => Object.assign(futureDocument(), { status: 'stopped' }),
+        digest: 'a'.repeat(64),
+        at: new Date('2026-10-14T00:00:00.000Z'),
+      },
+    ])('$name時一律回通用失效，不揭露開始時間', ({ doc, digest, at }) => {
+      expect(() =>
+        policy.assertExternalInvitation(doc(), pendingSigner(), digest, at),
+      ).toThrow('外部簽署存取已失效');
+    });
+  });
 });

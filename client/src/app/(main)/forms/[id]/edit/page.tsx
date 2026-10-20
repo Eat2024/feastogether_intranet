@@ -1,5 +1,6 @@
 import PageHeader from '@/components/PageHeader';
 import StepFlow from '@/components/StepFlow';
+import DocumentEditView from '@/features/esign-documents/DocumentEditView';
 import UploadEditor from '@/features/forms/editor/UploadEditor';
 import { stepsOf } from '@/features/forms/editor/steps';
 import SheetEditor from '@/features/forms/sheet/SheetEditor';
@@ -16,7 +17,22 @@ export const dynamic = 'force-dynamic';
 export default async function EditFormPage({
   params,
 }: PageProps<'/forms/[id]/edit'>) {
-  const form = getForm((await params).id);
+  const { id } = await params;
+  // 後端建立的文件（數字 id）：在瀏覽器端讀取草稿並修改
+  if (/^\d+$/.test(id)) {
+    return (
+      <>
+        <Box>
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/forms">
+            返回電子簽列表
+          </Button>
+        </Box>
+        <DocumentEditView documentId={id} />
+      </>
+    );
+  }
+
+  const form = getForm(id);
   if (!form) notFound();
 
   const locked = signedCount(form) > 0 || form.status === 'stopped';

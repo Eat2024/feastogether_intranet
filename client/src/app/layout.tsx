@@ -4,6 +4,8 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
 import theme from "@/theme/theme";
 import EmbedBridge from "@/features/embed/EmbedBridge";
+import ReactQueryProvider from "@/components/providers/ReactQueryProvider";
+import SnackbarProvider from "@/components/providers/SnackbarProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -32,7 +34,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <CssBaseline />
             {/* 被入口網 iframe 嵌入時，處理入口網以 postMessage 送來的換頁指令 */}
             <EmbedBridge />
-            {children}
+            {/* 呼叫後端 API（src/api）用：TanStack Query 與全站錯誤提示 */}
+            <SnackbarProvider>
+              <ReactQueryProvider>{children}</ReactQueryProvider>
+            </SnackbarProvider>
           </ThemeProvider>
         </AppRouterCacheProvider>
       </body>

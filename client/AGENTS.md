@@ -30,7 +30,8 @@ pnpm start
 - `src/app/`：App Router layouts、pages 與 route handlers。頁面預設保持為 Server Component。
 - `src/features/forms/`：文件建立、簽署人、狀態、排序、匯出、mock store 與 Server Actions。
 - `src/features/my-signature/`：目前使用者的待簽／已簽流程與簽名處理。
-- `src/components/`：跨 feature 共用的 UI 元件。
+- `src/api/`：呼叫 NestJS 後端（`server/`）的 API 層，見下方「呼叫後端 API」。
+- `src/components/`：跨 feature 共用的 UI 元件；`src/components/providers/` 放全站 Provider（TanStack Query、Snackbar）。
 - `src/lib/`：無 feature 歸屬的純工具函式。
 - `src/theme/tokens.ts`：唯一的 design token 來源。
 - `src/theme/theme.ts`：唯一的 MUI theme 與全域 component overrides。
@@ -47,6 +48,28 @@ pnpm start
 - 內部導頁優先使用 MUI 元件的 `href`；theme 已將 `MuiButtonBase.LinkComponent` 接到 `next/link`。
 - import 優先使用 `@/` alias，feature 內緊密相鄰檔案可使用相對路徑。
 - 不要為了順手而大範圍改格式、引號或 import 排序；維持所在檔案的既有風格。
+
+## 呼叫後端 API（src/api）
+
+架構比照 CKS_Acceptance_System：`requests`（純函式）→ `queries`（TanStack Query hooks）→ 元件。目前畫面仍使用 mock store 與 Server Actions；串接後端時改走這一層。
+
+登入與 session 不在本專案處理：由外部流程建立 session（後端以 HttpOnly cookie 下發），這一層只負責帶著 cookie 呼叫其他 API。
+
+| 檔案 | 用途 |
+|---|---|
+| `api/config.ts` | axios instance：baseURL 為同源 `/api`（由 `next.config.ts` rewrites 代理到後端）、帶 cookie、攤開 `{ success, data }`；401 不導頁（`UNAUTHORIZED_REDIRECT` 為 null），由 `ReactQueryProvider` 顯示整頁的「登入已過期」提示（`components/providers/SessionExpiredDialog.tsx`），請使用者從入口網重新進入 |
+| `api/endpoints.ts` | 所有 API 路徑，新增 API 時在此登記 |
+| `api/types/*.ts` | 請求與回應型別；共用的分頁、錯誤格式在 `common.ts` |
+| `api/requests/*.ts` | 每支 API 一個 async 函式，回傳攤開後的 data |
+| `api/queries/*.ts` | 讀取用的 `useGetXxxQuery` hooks |
+| `api/query-keys.ts`、`api/query-options.ts` | query key 與各 hook 的快取時間 |
+| `api/errorCodes.ts` | 後端 `error.code` 對照的繁體中文訊息；`lib/apiError.ts` 的 `getErrorMessage` 優先顯示後端回傳的 message，後端沒給時才用這裡的對照 |
+
+- 新增一支 API 的順序：`endpoints` → `types` → `requests` →（讀取類）`queries` + `query-keys` + `query-options`；各資料夾的 `index.ts` 一併匯出。
+- 讀取用 `useGetXxxQuery`；寫入在元件內直接 `useMutation({ mutationFn: xxx })`，成功後 `queryClient.invalidateQueries({ queryKey: [queryKeys.XXX] })` 更新相關資料。
+- query 與 mutation 失敗會由 `ReactQueryProvider` 統一以 Snackbar 顯示；需要自行處理錯誤的 mutation 設定 `meta: { suppressGlobalErrorToast: true }`。元件要顯示自己的訊息時用 `useSnackbar()`。
+- 這一層只能在 Client Component 使用（相對路徑 `/api` 需要瀏覽器的同源環境）；Server Component 不要直接呼叫。
+- 後端新增錯誤碼（`server/src/common/errors/app-error-code.ts`）時，同步更新 `api/errorCodes.ts`。
 
 ## 資料與業務不變量
 

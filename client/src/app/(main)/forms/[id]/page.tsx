@@ -2,6 +2,7 @@ import LinkPagination from '@/components/LinkPagination';
 import LinkTabs from '@/components/LinkTabs';
 import PageHeader from '@/components/PageHeader';
 import SearchField from '@/components/SearchField';
+import DocumentDetailView from '@/features/esign-documents/DocumentDetailView';
 import SignerTable from '@/features/forms/detail/SignerTable';
 import {
   countByStatus,
@@ -51,6 +52,23 @@ function Kpi({ label, value, color }: { label: string; value: number; color?: st
 
 export default async function FormDetailPage({ params, searchParams }: PageProps<'/forms/[id]'>) {
   const { id } = await params;
+  // 後端建立的文件（數字 id）：在瀏覽器端以使用者的 session 讀取詳情與歷程
+  if (/^\d+$/.test(id)) {
+    return (
+      <>
+        <Box>
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/forms">
+            返回電子簽列表
+          </Button>
+        </Box>
+        {/* useSearchParams 需要 Suspense 邊界 */}
+        <Suspense>
+          <DocumentDetailView documentId={id} />
+        </Suspense>
+      </>
+    );
+  }
+
   const stored = getForm(id);
   if (!stored) notFound();
   // 草稿尚無簽署進度，請改用「編輯」或「發起簽署」

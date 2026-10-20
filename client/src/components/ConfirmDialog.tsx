@@ -19,6 +19,11 @@ type ConfirmDialogProps = {
   cancelLabel?: string;
   /** 確認按鈕顏色；破壞性動作用 error */
   color?: "primary" | "error";
+  /** 說明下方的額外內容（例如輸入原因、錯誤訊息） */
+  children?: ReactNode;
+  /** 處理中：確認按鈕轉圈，按鈕與關閉都停用 */
+  loading?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onClose: () => void;
 };
@@ -31,6 +36,9 @@ export default function ConfirmDialog({
   confirmLabel,
   cancelLabel = "取消",
   color = "primary",
+  children,
+  loading = false,
+  confirmDisabled = false,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
@@ -39,7 +47,7 @@ export default function ConfirmDialog({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={loading ? undefined : onClose}
       maxWidth={false}
       slotProps={{
         paper: {
@@ -70,9 +78,18 @@ export default function ConfirmDialog({
         {title}
       </Typography>
       {description && <Typography variant="description">{description}</Typography>}
+      {children && <Box sx={{ width: "100%", mt: 1, textAlign: "left" }}>{children}</Box>}
       {/* 確認型按鈕垂直堆疊、滿寬、gap 8px */}
       <Box sx={{ width: "100%", display: "flex", flexDirection: "column", gap: 1, mt: 2 }}>
-        <Button fullWidth size="large" variant="contained" color={color} onClick={onConfirm}>
+        <Button
+          fullWidth
+          size="large"
+          variant="contained"
+          color={color}
+          onClick={onConfirm}
+          loading={loading}
+          disabled={confirmDisabled}
+        >
           {confirmLabel}
         </Button>
         <Button
@@ -82,6 +99,7 @@ export default function ConfirmDialog({
           color="inherit"
           sx={{ color: "text.primary", borderColor: "grey.400" }}
           onClick={onClose}
+          disabled={loading}
         >
           {cancelLabel}
         </Button>

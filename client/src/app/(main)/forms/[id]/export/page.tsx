@@ -1,5 +1,6 @@
 import LinkPagination from '@/components/LinkPagination';
 import PageHeader from '@/components/PageHeader';
+import DocumentExportView from '@/features/esign-documents/DocumentExportView';
 import { buildSignerDeptTree, selectedDeptKeys, signerDeptKey } from '@/features/forms/export/deptTree';
 import ExportOptions from '@/features/forms/export/ExportOptions';
 import {
@@ -29,12 +30,30 @@ import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
+import { Suspense } from 'react';
 
 export const metadata: Metadata = { title: '匯出簽署紀錄' };
 export const dynamic = 'force-dynamic';
 
 export default async function FormExportPage({ params, searchParams }: PageProps<'/forms/[id]/export'>) {
   const { id } = await params;
+  // 後端建立的文件（數字 id）：在瀏覽器端讀取簽署人並產生 Excel（後端沒有匯出 API）
+  if (/^\d+$/.test(id)) {
+    return (
+      <>
+        <Box>
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/forms">
+            返回電子簽列表
+          </Button>
+        </Box>
+        {/* useSearchParams 需要 Suspense 邊界 */}
+        <Suspense>
+          <DocumentExportView documentId={id} />
+        </Suspense>
+      </>
+    );
+  }
+
   const form = getForm(id);
   if (!form) notFound();
   // 草稿尚無簽署資料可匯出

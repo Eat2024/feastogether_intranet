@@ -18,3 +18,7 @@
 - `pnpm build` 與 `pnpm lint`：通過；server lint 有既有 warnings。client 無自動測試框架，沒有宣稱已做瀏覽器互動驗收。
 - 瀏覽器 roundtrip 與真實併發發起競態仍留 Ticket 10 整合驗收；以上 HTTP 登入 roundtrip 不等同瀏覽器測試。
 - 工作目錄使用 frozen lockfile 安裝依賴；初始共用 node_modules symlink 被 Turbopack 拒絕後已移除，沒有修改 lockfile。
+
+## Ticket 02 — 後端依固定設定繪製浮水印
+
+程式、字型來源、TDD、實際渲染與下載一致性結果見 [浮水印驗證紀錄](implementation-notes-watermark.md)。保留 watermark 選擇，由後端在副本 hash 前加印；繁體字型為改名 OFL TrueType 子集，正式下載不重畫。已實際渲染八頁並解碼四種旋轉頁的 QR。ZIP 一致性待 Ticket 10 整合。

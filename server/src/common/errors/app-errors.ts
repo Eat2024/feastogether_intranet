@@ -34,16 +34,6 @@ export const AppErrors = {
     '請求內容超過大小限制',
     HttpStatus.PAYLOAD_TOO_LARGE,
   ],
-  ESIGN_INVITATION_SERVICE_UNAVAILABLE: [
-    AppErrorCode.ESIGN_UNAVAILABLE,
-    '電子簽署服務暫時無法使用，請稍後再試',
-    HttpStatus.SERVICE_UNAVAILABLE,
-  ],
-  ESIGN_INVITATION_EXPIRED: [
-    AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
-    '邀請連結無效或已到期',
-    HttpStatus.UNAUTHORIZED,
-  ],
   ACCOUNT_DISABLED: [
     AppErrorCode.ACCOUNT_DISABLED,
     '帳號已停用',
@@ -222,11 +212,6 @@ export const AppErrors = {
   ESIGN_INTERNAL_SIGNER_UNAVAILABLE: [
     AppErrorCode.INVALID_REQUEST,
     '指定的內部簽署人不存在或已停用',
-    HttpStatus.BAD_REQUEST,
-  ],
-  ESIGN_INVITATION_FORMAT_INVALID: [
-    AppErrorCode.INVALID_REQUEST,
-    '邀請連結格式錯誤',
     HttpStatus.BAD_REQUEST,
   ],
   ESIGN_OUTSIDE_SIGNING_WINDOW: [

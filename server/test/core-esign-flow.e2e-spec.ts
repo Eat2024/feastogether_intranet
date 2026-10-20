@@ -866,9 +866,19 @@ describe('核心電子簽 US1', () => {
     const bridge = await request(ctx.server)
       .get(`/api/external-signature-invitations/${invitationToken}`)
       .expect(200)
+      .expect('Content-Type', /^text\/html/)
       .expect('Cache-Control', 'no-store')
       .expect('Referrer-Policy', 'no-referrer');
     expect(bridge.headers['set-cookie']).toBeUndefined();
+    expect(bridge.text).toContain('電子簽署邀請</h1>');
+    expect(bridge.text).toContain('開啟電子簽署文件</button>');
+    // 只開啟邀請連結不記錄開啟
+    expect(
+      await db.query(
+        'SELECT event_type, signer_id, metadata_json FROM esign_audit_events WHERE document_id = ? ORDER BY id',
+        [documentId],
+      ),
+    ).toEqual(initiatedAudits);
 
     const session = await request(ctx.server)
       .post('/api/external-signature-session')
@@ -1408,12 +1418,26 @@ describe('核心電子簽 US1', () => {
       status: 'stopped',
       stopReason: '內容需要更正',
     });
-    await request(ctx.server)
+    const stoppedPage = await request(ctx.server)
       .post('/api/external-signature-session')
       .set('Origin', 'http://localhost:3000')
       .type('form')
       .send({ token: pendingToken })
+      .expect(401)
+      .expect('Content-Type', /^text\/html/);
+    const tamperedToken =
+      pendingToken.slice(0, -1) + (pendingToken.endsWith('A') ? 'B' : 'A');
+    const tamperedPage = await request(ctx.server)
+      .post('/api/external-signature-session')
+      .set('Origin', 'http://localhost:3000')
+      .type('form')
+      .send({ token: tamperedToken })
       .expect(401);
+    // 已停止與竄改顯示相同的失效頁，不揭露原因、不回顯 token
+    expect(stoppedPage.text).toContain('邀請連結無效或已到期</h1>');
+    expect(stoppedPage.text).toBe(tamperedPage.text);
+    expect(stoppedPage.text).not.toContain(pendingToken);
+    expect(stoppedPage.headers['set-cookie']).toBeUndefined();
     const evidence = await db.query<Array<{ evidence_count: number }>>(
       'SELECT COUNT(*) evidence_count FROM esign_signature_records WHERE signer_id IN (SELECT id FROM esign_signers WHERE document_id = ?)',
       [stoppedDocumentId],

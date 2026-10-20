@@ -1,7 +1,5 @@
-import { sendHtmlErrorPage } from '#app/common/http/html-error-page';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { ApiOperation } from '@nestjs/swagger';
-import { randomBytes } from 'node:crypto';
 import {
   Body,
   Controller,
@@ -35,6 +33,11 @@ import {
 import { EsignTokenService } from '../services/esign-token.service';
 import { ExternalAccessService } from '../services/external-access.service';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
+import {
+  invitationConfirmPage,
+  invitationInvalidPage,
+  serviceUnavailablePage,
+} from '../helpers/external-invitation-page';
 
 @Public()
 @Controller()
@@ -49,36 +52,27 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '開啟外部簽署邀請確認頁',
     description:
-      '回傳含開啟按鈕的 HTML 表單，此 GET 不建立簽署 session；token 格式錯誤時回 HTML 錯誤頁。\n\n前端串接參考：外部簽署人點擊 Email 邀請連結進入此後端頁面，再按按鈕送出 POST external-signature-session；不是 Next.js 頁面直接呼叫。',
+      '回傳邀請確認頁（含「開啟電子簽署文件」按鈕的 HTML 表單），此 GET 不查詢資料、不記錄、不建立簽署 session；token 格式錯誤時回 400 失效頁。\n\n前端串接參考：外部簽署人點擊 Email 邀請連結進入此後端頁面，再按按鈕送出 POST external-signature-session；不是 Next.js 頁面直接呼叫。',
   })
   @Get('external-signature-invitations/:token')
   getBridge(@Param('token') token: string, @Res() reply: FastifyReply): void {
     this.setInvitationPageHeaders(reply);
     if (!this.external.isTokenFormat(token)) {
-      this.invitationErrorPage(
+      this.sendInvitationPage(
         reply,
         HttpStatus.BAD_REQUEST,
-        AppErrors.ESIGN_INVITATION_FORMAT_INVALID[1],
+        invitationInvalidPage(),
       );
       return;
     }
-    const nonce = randomBytes(18).toString('base64');
-    reply
-      .type('text/html; charset=utf-8')
-      .send(
-        '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>開啟電子簽署</title></head><body>' +
-          '<form method="post" action="/api/external-signature-session">' +
-          `<input type="hidden" name="token" value="${token}">` +
-          `<button nonce="${nonce}" type="submit">開啟電子簽署文件</button>` +
-          '</form></body></html>',
-      );
+    this.sendInvitationPage(reply, HttpStatus.OK, invitationConfirmPage(token));
   }
 
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '建立外部簽署存取 session',
     description:
-      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁；token 格式錯誤、邀請無效或過期時回 HTML 錯誤頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
+      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁；token 格式錯誤（400）、邀請無效或過期（401）時回相同的失效頁，服務暫時無法使用時回服務暫停頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
   })
   @Post('external-signature-session')
   async createSession(
@@ -87,10 +81,10 @@ export class ExternalSignatureController {
   ): Promise<void> {
     this.setInvitationPageHeaders(reply);
     if (!this.external.isTokenFormat(token)) {
-      this.invitationErrorPage(
+      this.sendInvitationPage(
         reply,
         HttpStatus.BAD_REQUEST,
-        AppErrors.ESIGN_INVITATION_FORMAT_INVALID[1],
+        invitationInvalidPage(),
       );
       return;
     }
@@ -110,12 +104,10 @@ export class ExternalSignatureController {
       // 非預期錯誤交給全域 handler 記錄
       if (!(error instanceof AppException)) throw error;
       const status = error.getStatus();
-      this.invitationErrorPage(
+      this.sendInvitationPage(
         reply,
         status,
-        status >= 500
-          ? AppErrors.ESIGN_INVITATION_SERVICE_UNAVAILABLE[1]
-          : AppErrors.ESIGN_INVITATION_EXPIRED[1],
+        status >= 500 ? serviceUnavailablePage() : invitationInvalidPage(),
       );
     }
   }
@@ -251,12 +243,12 @@ export class ExternalSignatureController {
       );
   }
 
-  /** 邀請頁出錯時回 HTML，不讓外部簽署人看到 JSON。 */
-  private invitationErrorPage(
+  /** 邀請頁一律回 HTML（包含錯誤），不讓外部簽署人看到 JSON。 */
+  private sendInvitationPage(
     reply: FastifyReply,
     status: number,
-    message: string,
+    html: string,
   ): void {
-    sendHtmlErrorPage(reply, status, '無法開啟電子簽署文件', message);
+    reply.status(status).type('text/html; charset=utf-8').send(html);
   }
 }

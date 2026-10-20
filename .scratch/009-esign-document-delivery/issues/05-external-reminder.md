@@ -4,7 +4,7 @@
 
 **Blocked by:** 03: 內外部拒簽與文件結案
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 僅外部且有效待簽，寄送前再驗資格；同文件同人台北曆日一次。
 - [x] 午夜重置，跨午夜pending/processing不重排；同操作requestId冪等。
@@ -23,3 +23,9 @@
 
 - 合併整合 tip `9f22302`（含04備註/拒簽/歷程）後，root build/lint、98 suites/833 tests、schema6 tests全部通過。Chromium真實流程按單人催簽→202→worker投遞→限制按鈕→reload持久化通過，截圖 `/tmp/esign009-reminder-browser.png`；臨時腳本 `/tmp/esign009-reminder-browser.cjs` 只讀合成session環境，不輸出憑證。臨時Jest/browser server均移除/停止。最後整合e2e統跑交ticket10。
 - 實作commit `48baa8c`；已自行merge整合tip為 `e1e8b36`。狀態保留claimed，待merger整合後結案。
+
+## 整合紀錄
+
+- ticket 分支 tip：`c2da2a0`；已以 `--no-ff` 合併，merge commit：`eb7c12709dd272399a9a77ce901b6a1f5524c83c`，無衝突。
+- 整合分支重跑催簽資格、schema、郵件結果與邀請 processor 單測，4 suites／12 tests 通過；`git diff --check` 通過，未占用共用 DB／Redis。
+- 單人催簽範圍已驗收並整合，標記 `resolved`。多人操作、分頁歷史與摘要仍屬 ticket 06，不提前宣稱完成。

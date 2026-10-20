@@ -20,7 +20,6 @@ describe('EsignSigningService', () => {
       signerType: 'email',
       userId: 20,
       status: repeated ? 'signed' : 'pending',
-      invitationTokenSha256: 'a'.repeat(64),
     };
     const document = {
       id: 4,
@@ -84,10 +83,7 @@ describe('EsignSigningService', () => {
     );
   }
 
-  const externalPrincipal = {
-    kind: 'external' as const,
-    invitationDigest: 'a'.repeat(64),
-  };
+  const externalPrincipal = { kind: 'external' as const, signerId: 8 };
 
   const submission = {
     requestId,
@@ -135,21 +131,28 @@ describe('EsignSigningService', () => {
     expect(storage.store).not.toHaveBeenCalled();
   });
 
-  it('外部重送的憑證不符時回 401，不回傳既有結果', async () => {
-    const { service, access } = setup({
-      signerId: 8,
-      signedAtUtc: signedAt,
-    });
-    useRealExternalPolicy(access);
-    await expect(
-      service.sign(
-        signerPublicId,
-        { kind: 'external', invitationDigest: 'b'.repeat(64) },
-        submission,
-        {},
-      ),
-    ).rejects.toMatchObject({ status: 401 });
-  });
+  it.each([
+    ['重送', { signerId: 8, signedAtUtc: signedAt }],
+    ['新簽名', undefined],
+  ])(
+    '外部%s的頁面簽署人與存取憑證不符時回 409，不回傳既有結果、不存簽名檔',
+    async (_name, repeated) => {
+      const { service, access, storage } = setup(repeated);
+      useRealExternalPolicy(access);
+      await expect(
+        service.sign(
+          signerPublicId,
+          { kind: 'external', signerId: 9 },
+          submission,
+          {},
+        ),
+      ).rejects.toMatchObject({
+        status: 409,
+        message: '此頁面的簽署對象已變更，請重新開啟邀請信中的連結',
+      });
+      expect(storage.store).not.toHaveBeenCalled();
+    },
+  );
 
   it('已簽署的外部簽署人以新的請求再次簽署回 401', async () => {
     const { service, signer, access, storage } = setup();

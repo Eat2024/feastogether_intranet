@@ -13,19 +13,17 @@ function secure(config: ConfigService): boolean {
   );
 }
 
-/** expiresAt 省略時為 session cookie（瀏覽器關閉即失效），用於已簽者 */
+/** 值為驗證碼通過後的存取憑證；session cookie（不設期限，瀏覽器關閉即失效），伺服器端另有 8 小時期限 */
 export function setExternalAccessCookie(
   reply: FastifyReply,
   config: ConfigService,
-  token: string,
-  expiresAt?: Date,
+  credential: string,
 ): void {
-  reply.setCookie(EXTERNAL_ACCESS_COOKIE, token, {
+  reply.setCookie(EXTERNAL_ACCESS_COOKIE, credential, {
     httpOnly: true,
     secure: secure(config),
     sameSite: 'lax',
     path: EXTERNAL_ACCESS_PATH,
-    expires: expiresAt,
   });
 }
 

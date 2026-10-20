@@ -52,6 +52,15 @@ import {
 const PNG_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=';
 
+/** 所有需外部存取的端點都回 401 */
+const ALL_UNAUTHORIZED = {
+  openTask: 401,
+  readTask: 401,
+  sourceFile: 401,
+  completedFile: 401,
+  signature: 401,
+};
+
 interface LaunchView {
   launchUrl: string;
 }
@@ -927,6 +936,8 @@ describe('核心電子簽 US1', () => {
     expect(externalCookie).toContain('SameSite=Lax');
     // 驗證成功一律為瀏覽器階段存取：關閉瀏覽器即失效
     expect(externalCookie).not.toMatch(/Expires=|Max-Age=/i);
+    // cookie 值是驗證成功時產生的存取憑證，不是邀請 token（以布林比對，失敗訊息不印出 token）
+    expect(externalCookie.includes(invitationToken)).toBe(false);
 
     const externalPreview = await request(ctx.server)
       .get('/api/external-signing-task/source-file')
@@ -1030,22 +1041,11 @@ describe('核心電子簽 US1', () => {
         completedPdfSha256: null,
       },
     });
-    // 簽署成功（含重送）不清除存取，改以同一 token 設為 session cookie（不設期限）
+    // 簽署成功（含重送）不清除也不重設 cookie：完成頁沿用同一存取憑證
     for (const response of repeatedCalls) {
-      const cookie = firstCookie(response.headers['set-cookie']);
-      // 以布林比對，失敗訊息不印出 token
-      expect(
-        cookie.startsWith(`FT_ESIGN_EXTERNAL_ACCESS=${invitationToken};`),
-      ).toBe(true);
-      expect(cookie).toContain('Path=/api/external-signing-task');
-      expect(cookie).toContain('HttpOnly');
-      expect(cookie).toContain('SameSite=Lax');
-      expect(cookie).not.toMatch(/Expires=|Max-Age=/i);
+      expect(response.headers['set-cookie']).toBeUndefined();
     }
-    expect(String(signed.headers['set-cookie'])).not.toContain(
-      'FT_ESIGN_EXTERNAL_RECEIPT=',
-    );
-    // 簽署寫入不變：保留 digest 作為簽後存取依據，清除密文與期限
+    // 簽署寫入不變：保留 digest 供已簽者重新開啟邀請，清除密文與期限
     const [credential] = await db.query<
       Array<{
         invitation_token_sha256: string | null;
@@ -1664,10 +1664,20 @@ describe('核心電子簽 US1', () => {
     ).expect(409);
     expect(sessionBeforeStart.text).toBe(notStarted.text);
     expect(sessionBeforeStart.headers['set-cookie']).toBeUndefined();
-    // 其他外部 API 遇到相同情況回相同錯誤，不回文件內容
+    expect(await openedEvents()).toEqual([]);
+
+    useFakeDate(start);
+    let accessCookie: string;
+    try {
+      accessCookie = await openExternalSession(invitationToken);
+      expect(await openedEvents()).toEqual(['external_invitation.opened']);
+    } finally {
+      jest.useRealTimers();
+    }
+    // 回到開始前：已建立的存取呼叫其他外部 API 回相同錯誤，不回文件內容、不記錄開啟
     const taskBeforeStart = await request(ctx.server)
       .post('/api/external-signing-task')
-      .set('Cookie', `FT_ESIGN_EXTERNAL_ACCESS=${invitationToken}`)
+      .set('Cookie', accessCookie)
       .set('Origin', 'http://localhost:3000')
       .expect(409);
     expect(apiError(taskBeforeStart)).toEqual({
@@ -1675,17 +1685,7 @@ describe('核心電子簽 US1', () => {
       message: `簽署尚未開始，請於 ${taipeiStart}（台北時間）後簽署`,
       details: { startAt: start.toISOString() },
     });
-    expect(await openedEvents()).toEqual([]);
-
-    useFakeDate(start);
-    try {
-      expect(await openExternalSession(invitationToken)).toContain(
-        'FT_ESIGN_EXTERNAL_ACCESS=',
-      );
-      expect(await openedEvents()).toEqual(['external_invitation.opened']);
-    } finally {
-      jest.useRealTimers();
-    }
+    expect(await openedEvents()).toEqual(['external_invitation.opened']);
   });
 
   it('驗證碼：只持有邀請連結無法開啟；錯誤顯示剩餘次數，正確才建立瀏覽器階段存取且只能用一次；稽核與 log 不含驗證碼與 token', async () => {
@@ -1767,6 +1767,72 @@ describe('核心電子簽 US1', () => {
       accessLog.mockRestore();
       for (const spy of appLogs) spy.mockRestore();
     }
+  });
+
+  it('存取憑證與邀請 token 分離：只持有邀請連結者自行把 token 設為 cookie，任務、PDF、副本與送出簽名一律 401', async () => {
+    const { documentId, signedToken, pendingToken } =
+      await signedAndPendingDocument('存取憑證分離文件');
+    const pendingAccess = await openExternalSession(pendingToken);
+    const submission = signatureSubmission(await openTask(pendingAccess));
+
+    for (const token of [signedToken, pendingToken]) {
+      expect(
+        await externalAccessStatuses(
+          `FT_ESIGN_EXTERNAL_ACCESS=${token}`,
+          submission,
+        ),
+      ).toEqual(ALL_UNAUTHORIZED);
+    }
+    const statuses = await db.query<Array<{ status: string }>>(
+      'SELECT status FROM esign_signers WHERE document_id = ? ORDER BY sort_order',
+      [documentId],
+    );
+    expect(statuses).toEqual([{ status: 'signed' }, { status: 'pending' }]);
+  });
+
+  it('存取憑證只以雜湊存在 Redis 並在 8 小時後失效；憑證失效或結束存取後一律 401', async () => {
+    const { documentId, signedToken, pendingToken } =
+      await signedAndPendingDocument('存取憑證失效文件');
+    const redis = ctx.app.get<Redis>(REDIS_MAIN);
+    const accessKey = (cookie: string) =>
+      `esign:external-access:${createHash('sha256')
+        .update(/^FT_ESIGN_EXTERNAL_ACCESS=([^;]+)/.exec(cookie)![1])
+        .digest('hex')}`;
+    const [pendingSigner] = await db.query<Array<{ id: number }>>(
+      "SELECT id FROM esign_signers WHERE document_id = ? AND status = 'pending'",
+      [documentId],
+    );
+    const pendingAccess = await openExternalSession(pendingToken);
+    const submission = signatureSubmission(await openTask(pendingAccess));
+    expect(await redis.get(accessKey(pendingAccess))).toBe(
+      String(pendingSigner.id),
+    );
+    const ttl = await redis.ttl(accessKey(pendingAccess));
+    expect(ttl).toBeGreaterThan(28_790);
+    expect(ttl).toBeLessThanOrEqual(28_800);
+
+    // fake timers 推不動 Redis 的 TTL：直接讓憑證到期，模擬 8 小時經過
+    await redis.pexpire(accessKey(pendingAccess), 1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await externalAccessStatuses(pendingAccess, submission)).toEqual(
+      ALL_UNAUTHORIZED,
+    );
+
+    // 結束存取：刪除憑證並清除 cookie，之後以同一憑證存取一律 401
+    const signedAccess = await openExternalSession(signedToken);
+    await downloadPersonalCopy(signedAccess);
+    const ended = await request(ctx.server)
+      .delete('/api/external-signature-session')
+      .set('Cookie', signedAccess)
+      .set('Origin', 'http://localhost:3000')
+      .expect(204);
+    expect(firstCookie(ended.headers['set-cookie'])).toMatch(
+      /^FT_ESIGN_EXTERNAL_ACCESS=;/,
+    );
+    expect(await redis.exists(accessKey(signedAccess))).toBe(0);
+    expect(await externalAccessStatuses(signedAccess, submission)).toEqual(
+      ALL_UNAUTHORIZED,
+    );
   });
 
   it('驗證碼錯滿 5 次即失效並記錄；重新寄送的新驗證碼使舊的立即失效', async () => {
@@ -2987,29 +3053,69 @@ describe('核心電子簽 US1', () => {
     return page.text;
   }
 
-  /** 以外部存取 cookie 開啟任務並簽署所有簽名欄位 */
-  async function signAsExternal(accessCookie: string): Promise<void> {
-    const task = apiData<SigningTask>(
+  /** 以外部存取 cookie 開啟任務 */
+  async function openTask(accessCookie: string): Promise<SigningTask> {
+    return apiData<SigningTask>(
       await request(ctx.server)
         .post('/api/external-signing-task')
         .set('Cookie', accessCookie)
         .set('Origin', 'http://localhost:3000')
         .expect(200),
     );
+  }
+
+  /** 簽署任務所有簽名欄位的送出內容（每次新的 requestId） */
+  function signatureSubmission(task: SigningTask) {
+    return {
+      signerPublicId: task.signerPublicId,
+      requestId: randomUUID(),
+      consentVersion: task.consent.version,
+      accepted: true,
+      signatures: task.fields
+        .filter((field) => field.type === 'signature')
+        .map((field) => ({ fieldId: field.id, pngDataUrl: PNG_DATA_URL })),
+    };
+  }
+
+  /** 以外部存取 cookie 開啟任務並簽署所有簽名欄位 */
+  async function signAsExternal(accessCookie: string): Promise<void> {
+    // 先取得任務再建立送出請求：supertest 每個請求結束會關閉共用 server 的監聽
+    const submission = signatureSubmission(await openTask(accessCookie));
     await request(ctx.server)
       .post('/api/external-signing-task/signatures')
       .set('Cookie', accessCookie)
       .set('Origin', 'http://localhost:3000')
-      .send({
-        signerPublicId: task.signerPublicId,
-        requestId: randomUUID(),
-        consentVersion: task.consent.version,
-        accepted: true,
-        signatures: task.fields
-          .filter((field) => field.type === 'signature')
-          .map((field) => ({ fieldId: field.id, pngDataUrl: PNG_DATA_URL })),
-      })
+      .send(submission)
       .expect(201);
+  }
+
+  /** 依序以同一 cookie 呼叫所有需外部存取的端點，回傳各端點狀態碼 */
+  async function externalAccessStatuses(
+    cookie: string,
+    submission: ReturnType<typeof signatureSubmission>,
+  ) {
+    const origin = 'http://localhost:3000';
+    const get = (path: string) =>
+      request(ctx.server).get(path).set('Cookie', cookie);
+    return {
+      openTask: (
+        await request(ctx.server)
+          .post('/api/external-signing-task')
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+      ).status,
+      readTask: (await get('/api/external-signing-task')).status,
+      sourceFile: (await get('/api/external-signing-task/source-file')).status,
+      completedFile: (await get('/api/external-signing-task/completed-file'))
+        .status,
+      signature: (
+        await request(ctx.server)
+          .post('/api/external-signing-task/signatures')
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .send(submission)
+      ).status,
+    };
   }
 
   /** 兩名 email 簽署人的文件：第一位已簽署且本人副本已產生，第二位待簽 */

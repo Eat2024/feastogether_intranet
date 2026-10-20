@@ -98,37 +98,29 @@ describe('EsignAccessPolicyService', () => {
     ).toThrow('找不到電子簽資源');
   });
 
-  it('external invitation 綁定 digest、pending、active 與期限，失敗統一 401', () => {
+  it('外部送出新簽名限邀請期限內的待簽者，已簽者統一 401', () => {
     const doc = document();
     const signer = Object.assign(new EsignSigner(), {
       signerType: 'email',
       documentId: 1,
       status: 'pending',
-      invitationTokenSha256: 'a'.repeat(64),
       invitationExpiresAt: new Date('2026-10-14T00:00:00.000Z'),
     });
     expect(() =>
-      policy.assertExternalInvitation(doc, signer, 'a'.repeat(64), now),
+      policy.assertExternalInvitation({ document: doc, signer }, now),
     ).not.toThrow();
-    for (const digest of ['b'.repeat(64), 'short']) {
-      expect(() =>
-        policy.assertExternalInvitation(doc, signer, digest, now),
-      ).toThrow('外部簽署存取已失效');
-    }
     signer.status = 'signed';
     expect(() =>
-      policy.assertExternalInvitation(doc, signer, 'a'.repeat(64), now),
+      policy.assertExternalInvitation({ document: doc, signer }, now),
     ).toThrow('外部簽署存取已失效');
   });
 
   describe('assertExternalAccess', () => {
-    const digest = 'a'.repeat(64);
     const emailSigner = (status: 'pending' | 'signed') =>
       Object.assign(new EsignSigner(), {
         signerType: 'email',
         documentId: 1,
         status,
-        invitationTokenSha256: digest,
         // 簽署成功時期限清為 null（esign-signing.service 的簽署寫入）
         invitationExpiresAt:
           status === 'pending' ? new Date('2026-10-14T00:00:00.000Z') : null,
@@ -137,9 +129,7 @@ describe('EsignAccessPolicyService', () => {
     it('待簽者在簽署期間內可存取', () => {
       expect(() =>
         policy.assertExternalAccess(
-          document(),
-          emailSigner('pending'),
-          digest,
+          { document: document(), signer: emailSigner('pending') },
           now,
         ),
       ).not.toThrow();
@@ -171,7 +161,10 @@ describe('EsignAccessPolicyService', () => {
       },
     ])('待簽者$name時回 401', ({ at, doc }) => {
       expect(() =>
-        policy.assertExternalAccess(doc(), emailSigner('pending'), digest, at),
+        policy.assertExternalAccess(
+          { document: doc(), signer: emailSigner('pending') },
+          at,
+        ),
       ).toThrow('外部簽署存取已失效');
     });
 
@@ -181,9 +174,10 @@ describe('EsignAccessPolicyService', () => {
         const afterWindow = new Date('2027-01-01T00:00:00.000Z');
         expect(() =>
           policy.assertExternalAccess(
-            Object.assign(document(), { status }),
-            emailSigner('signed'),
-            digest,
+            {
+              document: Object.assign(document(), { status }),
+              signer: emailSigner('signed'),
+            },
             afterWindow,
           ),
         ).not.toThrow();
@@ -191,12 +185,6 @@ describe('EsignAccessPolicyService', () => {
     );
 
     it.each([
-      {
-        name: '憑證不符',
-        tamper: (signer: EsignSigner) => {
-          signer.invitationTokenSha256 = 'b'.repeat(64);
-        },
-      },
       {
         name: '非 email 簽署人',
         tamper: (signer: EsignSigner) => {
@@ -219,16 +207,17 @@ describe('EsignAccessPolicyService', () => {
       const signer = emailSigner('signed');
       tamper(signer);
       expect(() =>
-        policy.assertExternalAccess(document(), signer, digest, now),
+        policy.assertExternalAccess({ document: document(), signer }, now),
       ).toThrow('外部簽署存取已失效');
     });
 
     it('文件已刪除時已簽者回 401', () => {
       expect(() =>
         policy.assertExternalAccess(
-          Object.assign(document(), { deletedAt: now }),
-          emailSigner('signed'),
-          digest,
+          {
+            document: Object.assign(document(), { deletedAt: now }),
+            signer: emailSigner('signed'),
+          },
           now,
         ),
       ).toThrow('外部簽署存取已失效');
@@ -236,10 +225,16 @@ describe('EsignAccessPolicyService', () => {
 
     it('找不到簽署人或文件時回 401', () => {
       expect(() =>
-        policy.assertExternalAccess(null, emailSigner('signed'), digest, now),
+        policy.assertExternalAccess(
+          { document: null, signer: emailSigner('signed') },
+          now,
+        ),
       ).toThrow('外部簽署存取已失效');
       expect(() =>
-        policy.assertExternalAccess(document(), null, digest, now),
+        policy.assertExternalAccess(
+          { document: document(), signer: null },
+          now,
+        ),
       ).toThrow('外部簽署存取已失效');
     });
   });
@@ -251,7 +246,6 @@ describe('EsignAccessPolicyService', () => {
         signerType: 'email',
         documentId: 1,
         status: 'pending',
-        invitationTokenSha256: 'a'.repeat(64),
         invitationExpiresAt: new Date('2026-10-20T00:00:00.000Z'),
       });
     const futureDocument = () =>
@@ -263,9 +257,7 @@ describe('EsignAccessPolicyService', () => {
     it('有效憑證的待簽者在開始前收到尚未開始錯誤，以台北時間告知開始時間', () => {
       expect(() =>
         policy.assertExternalInvitation(
-          futureDocument(),
-          pendingSigner(),
-          'a'.repeat(64),
+          { document: futureDocument(), signer: pendingSigner() },
           new Date(startAt.getTime() - 1),
         ),
       ).toThrow('簽署尚未開始，請於 2026/10/15 00:00（台北時間）後簽署');
@@ -277,9 +269,7 @@ describe('EsignAccessPolicyService', () => {
     ])('%s可以存取', (_name, at) => {
       expect(() =>
         policy.assertExternalInvitation(
-          futureDocument(),
-          pendingSigner(),
-          'a'.repeat(64),
+          { document: futureDocument(), signer: pendingSigner() },
           at,
         ),
       ).not.toThrow();
@@ -289,24 +279,19 @@ describe('EsignAccessPolicyService', () => {
       {
         name: '期間結束後',
         doc: futureDocument,
-        digest: 'a'.repeat(64),
         at: new Date('2026-10-20T00:00:00.000Z'),
-      },
-      {
-        name: '憑證不符',
-        doc: futureDocument,
-        digest: 'b'.repeat(64),
-        at: new Date('2026-10-14T00:00:00.000Z'),
       },
       {
         name: '文件已停止',
         doc: () => Object.assign(futureDocument(), { status: 'stopped' }),
-        digest: 'a'.repeat(64),
         at: new Date('2026-10-14T00:00:00.000Z'),
       },
-    ])('$name時一律回通用失效，不揭露開始時間', ({ doc, digest, at }) => {
+    ])('$name時一律回通用失效，不揭露開始時間', ({ doc, at }) => {
       expect(() =>
-        policy.assertExternalInvitation(doc(), pendingSigner(), digest, at),
+        policy.assertExternalInvitation(
+          { document: doc(), signer: pendingSigner() },
+          at,
+        ),
       ).toThrow('外部簽署存取已失效');
     });
   });

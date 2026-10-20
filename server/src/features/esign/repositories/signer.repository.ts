@@ -85,16 +85,6 @@ export class SignerRepository {
     });
   }
 
-  findByInvitationDigestForUpdate(
-    invitationTokenSha256: string,
-    manager: EntityManager,
-  ) {
-    return manager.findOne(EsignSigner, {
-      where: { invitationTokenSha256, deletedAt: IsNull() },
-      lock: { mode: 'pessimistic_write' },
-    });
-  }
-
   findByDocument(documentId: number, manager: EntityManager) {
     return manager.find(EsignSigner, {
       where: { documentId, deletedAt: IsNull() },

@@ -1,6 +1,7 @@
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { Inject, Injectable } from '@nestjs/common';
+import type { EntityManager } from 'typeorm';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
   PRIVATE_FILE_STORAGE,
@@ -24,14 +25,20 @@ import { EsignCompletionAccessService } from './esign-completion-access.service'
 import { EsignConsentService } from './esign-consent.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
+import type { SigningPrincipal } from './esign-signing.service';
 import { EsignViewMapper } from './esign-view.mapper';
+import { ExternalAccessCredentialService } from './external-access-credential.service';
 import { ExternalOtpService, type OtpIssue } from './external-otp.service';
 import { PdfValidationService } from './pdf-validation.service';
 
 export type ExternalSessionResult =
-  | { verified: true; signerPublicId: string }
+  /** credential 為新建立的存取憑證，只放進 cookie */
+  | { verified: true; signerPublicId: string; credential: string }
   /** remainingAttempts 為 0 表示驗證碼已失效（過期、已使用或錯滿），需重新取得 */
   | { verified: false; email: string; remainingAttempts: number };
+
+/** 邀請確認後的表單以邀請 token 找簽署人；驗證碼通過後的端點以存取憑證找簽署人 */
+type SignerKey = { invitationToken: string } | { credential: string };
 
 @Injectable()
 export class ExternalAccessService {
@@ -54,6 +61,7 @@ export class ExternalAccessService {
     private readonly otp: ExternalOtpService,
     @Inject(INVITATION_MAIL_SENDER)
     private readonly mailer: InvitationMailSender,
+    private readonly credentials: ExternalAccessCredentialService,
   ) {}
 
   isTokenFormat(token: string): boolean {
@@ -66,7 +74,10 @@ export class ExternalAccessService {
    * 回傳收件信箱供輸入頁遮罩顯示，以及寄送結果供顯示可再寄送的時間。
    */
   async sendOtp(token: string): Promise<{ email: string; issue: OtpIssue }> {
-    const { signer, document } = await this.readAccess(token);
+    const { signer, document } = await this.checkedAccess(
+      { invitationToken: token },
+      this.mysql.getManager(),
+    );
     const email = invitationEmail(signer);
     const issue = await this.otp.issue(signer.id, async (code) => {
       try {
@@ -96,27 +107,19 @@ export class ExternalAccessService {
   }
 
   /**
-   * 以邀請憑證＋驗證碼建立外部存取。邀請失效（401）或尚未開始（409）時不比對驗證碼；
-   * 驗證成功記錄 external_otp.verified 與 external_invitation.opened，錯誤記錄 failed／locked。
+   * 以邀請 token＋驗證碼建立外部存取。邀請失效（401）或尚未開始（409）時不比對驗證碼；
+   * 驗證成功記錄 external_otp.verified 與 external_invitation.opened 並建立存取憑證，錯誤記錄 failed／locked。
    */
   async createSession(
     token: string,
     code: string,
   ): Promise<ExternalSessionResult> {
-    const digest = this.tokens.digest(token);
     return this.mysql.transaction(async (manager) => {
-      const candidate = await this.signers.findByInvitationDigest(
-        digest,
+      const { signer, document } = await this.checkedAccess(
+        { invitationToken: token },
         manager,
+        true,
       );
-      const document = candidate
-        ? await this.documents.findByIdForUpdate(candidate.documentId, manager)
-        : null;
-      const signer = document
-        ? await this.signers.findByInvitationDigestForUpdate(digest, manager)
-        : null;
-      this.access.assertExternalAccess(document, signer, digest, new Date());
-      if (!signer || !document) throw new Error('unreachable');
       const append = (eventType: string, metadata?: EsignAuditMetadata) =>
         this.audit.append(
           {
@@ -132,7 +135,11 @@ export class ExternalAccessService {
       if (verification.status === 'verified') {
         await append('external_otp.verified');
         await append('external_invitation.opened');
-        return { verified: true, signerPublicId: signer.publicId };
+        return {
+          verified: true,
+          signerPublicId: signer.publicId,
+          credential: await this.credentials.issue(signer.id),
+        };
       }
       const email = invitationEmail(signer);
       if (verification.status === 'wrong') {
@@ -145,30 +152,14 @@ export class ExternalAccessService {
     });
   }
 
-  async task(token: string, appendOpened: boolean) {
-    const digest = this.tokens.digest(token);
-    const run = async (manager: ReturnType<MysqlService['getManager']>) => {
-      const candidate = await this.signers.findByInvitationDigest(
-        digest,
+  /** appendOpened 時在交易內鎖定並記錄開啟；否則為唯讀查詢 */
+  async task(credential: string, appendOpened: boolean) {
+    const run = async (manager: EntityManager) => {
+      const { signer, document } = await this.checkedAccess(
+        { credential },
         manager,
+        appendOpened,
       );
-      const document = candidate
-        ? appendOpened
-          ? await this.documents.findByIdForUpdate(
-              candidate.documentId,
-              manager,
-            )
-          : await this.documents.findById(candidate.documentId, manager)
-        : null;
-      const signer =
-        document && appendOpened
-          ? await this.signers.findByInvitationDigestForUpdate(digest, manager)
-          : candidate;
-      if (!signer || !document) {
-        this.access.assertExternalAccess(document, signer, digest, new Date());
-        throw new Error('unreachable');
-      }
-      this.access.assertExternalAccess(document, signer, digest, new Date());
       if (appendOpened) {
         await this.audit.append(
           {
@@ -202,8 +193,9 @@ export class ExternalAccessService {
       : run(this.mysql.getManager());
   }
 
-  async source(token: string) {
-    const { document, manager } = await this.readAccess(token);
+  async source(credential: string) {
+    const manager = this.mysql.getManager();
+    const { document } = await this.checkedAccess({ credential }, manager);
     const source = await this.files.findDocumentFile(
       document.id,
       'source_pdf',
@@ -217,29 +209,63 @@ export class ExternalAccessService {
   }
 
   /** 本人副本：只限已簽者；未產生時回傳 null */
-  async completedFile(token: string) {
-    const { signer, document } = await this.readAccess(token);
+  async completedFile(credential: string) {
+    const { signer, document } = await this.checkedAccess(
+      { credential },
+      this.mysql.getManager(),
+    );
     if (signer.status !== 'signed')
       throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
     return this.completions.personalCopy(document, signer);
   }
 
-  async signingSignerPublicId(token: string): Promise<string> {
-    const { signer } = await this.readAccess(token);
-    return signer.publicId;
+  /**
+   * 送出簽名的身分：存取憑證對應的簽署人；憑證不存在或已過期回 401。
+   * 頁面所屬簽署人是否相符與存取檢查由簽署服務進行。
+   */
+  async signingPrincipal(credential: string): Promise<SigningPrincipal> {
+    const signerId = await this.credentials.signerId(credential);
+    if (signerId === null)
+      throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
+    return { kind: 'external', signerId };
   }
 
-  /** 以邀請憑證查詢簽署人與文件並驗證外部存取（不鎖定、不寫入） */
-  private async readAccess(token: string) {
-    const digest = this.tokens.digest(token);
-    const manager = this.mysql.getManager();
-    const signer = await this.signers.findByInvitationDigest(digest, manager);
-    const document = signer
-      ? await this.documents.findById(signer.documentId, manager)
-      : null;
-    this.access.assertExternalAccess(document, signer, digest, new Date());
-    if (!signer || !document) throw new Error('unreachable');
-    return { signer, document, manager };
+  /** 結束外部存取：刪除存取憑證，之後以同一 cookie 存取一律 401 */
+  endSession(credential: string): Promise<void> {
+    return this.credentials.revoke(credential);
+  }
+
+  /**
+   * 找出簽署人與文件並驗證外部存取（失效 401、尚未開始 409）。
+   * lock 時依文件 → 簽署人順序鎖定，與停止、簽署流程一致，避免反向鎖定造成 deadlock。
+   */
+  private async checkedAccess(
+    key: SignerKey,
+    manager: EntityManager,
+    lock = false,
+  ) {
+    let signer = await this.findSigner(key, manager);
+    const document = !signer
+      ? null
+      : lock
+        ? await this.documents.findByIdForUpdate(signer.documentId, manager)
+        : await this.documents.findById(signer.documentId, manager);
+    if (signer && document && lock)
+      signer = await this.signers.findByIdForUpdate(signer.id, manager);
+    const access = { document, signer };
+    this.access.assertExternalAccess(access, new Date());
+    return access;
+  }
+
+  /** 存取憑證不存在或已過期時找不到簽署人，與邀請失效相同處理 */
+  private async findSigner(key: SignerKey, manager: EntityManager) {
+    if ('invitationToken' in key)
+      return this.signers.findByInvitationDigest(
+        this.tokens.digest(key.invitationToken),
+        manager,
+      );
+    const signerId = await this.credentials.signerId(key.credential);
+    return signerId === null ? null : this.signers.findById(signerId, manager);
   }
 }
 

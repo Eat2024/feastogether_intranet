@@ -2,7 +2,7 @@
 
 本文件描述 Spec 008 對外部簽署端點的新增與變更；未列出的行為沿用 Spec 003 `contracts/openapi.yaml` 與 `contracts/external-invitation.md`。所有 JSON 回應沿用統一 envelope：成功 `{ success: true, data }`，失敗 `{ success: false, error: { code, message } }`。
 
-外部存取 cookie：`FT_ESIGN_EXTERNAL_ACCESS`，HttpOnly、SameSite=Lax、path `/api/external-signing-task`，值為邀請 token。
+外部存取 cookie：`FT_ESIGN_EXTERNAL_ACCESS`，HttpOnly、SameSite=Lax、path `/api/external-signing-task`、不設 `Expires`；值為驗證碼驗證成功時隨機產生的存取憑證（不是邀請 token），伺服器以 Redis 保存其雜湊並於 8 小時後失效（research §15）。憑證不存在或已失效時，所有需 cookie 的外部端點回 401，與邀請失效相同。
 
 ## 端點總覽
 
@@ -14,7 +14,7 @@
 | POST | `/api/external-signing-task` | 已簽者可開啟 |
 | GET | `/api/external-signing-task` | **新增**：唯讀查詢，不記稽核 |
 | GET | `/api/external-signing-task/source-file` | 已簽者可讀取 |
-| POST | `/api/external-signing-task/signatures` | 成功不清 cookie，改設為 session cookie；重送回既有結果；body 新增必填 `signerPublicId` |
+| POST | `/api/external-signing-task/signatures` | 成功不清 cookie（存取憑證不變）；重送回既有結果；body 新增必填 `signerPublicId` |
 | GET | `/api/external-signing-task/completed-file` | **新增**：下載本人副本 |
 | DELETE | `/api/external-signature-session` | 不變 |
 
@@ -115,7 +115,7 @@ Request（新增必填 `signerPublicId`，其餘不變）：
 
 | 狀態 | 條件 | 回應 |
 |------|------|------|
-| 201 | 首次成功簽署 | `Set-Cookie` 同 token、session cookie（不設 `Expires`）；`data` 為簽署結果（含 `completion`） |
+| 201 | 首次成功簽署 | 不重設 cookie（存取憑證不變）；`data` 為簽署結果（含 `completion`） |
 | 200 | 同一 `requestId` 已成功（重送） | 同上，回既有結果 |
 | 400 | 輸入錯誤（缺欄位、簽名格式；`signerPublicId` 缺少或不是 UUID v4） | envelope |
 | 401 | 失效；或已簽者以新的 `requestId` 再次簽署 | envelope |

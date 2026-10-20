@@ -158,6 +158,7 @@
 - [ ] T041 開發環境：在 `server/.env.example` 記錄公司 Gmail SMTP 設定（`SMTP_HOST=smtp.gmail.com`、`SMTP_PORT=587`、`SMTP_SECURE=false`、`SMTP_USER`／`SMTP_FROM` 為寄件帳號、`SMTP_PASSWORD` 留空並註明使用 Google 應用程式密碼），不含實際密碼；以本機 Gmail SMTP 實寄外部邀請信並開啟信中連結；以錯誤密碼驗證 notification log 只記 failed 與穩定錯誤碼。（FR-023）
 - [ ] T042 staging／production：在 `server/src/config/app.environment.ts` 與其 `.spec.ts` 把 development／staging／production 的寄信 driver 改為 `smtp`（test 維持 `fake`），staging／production 必須設定 `SMTP_USER`／`SMTP_PASSWORD` 且必須加密（`SMTP_SECURE=true`，或 `false` 時強制 STARTTLS）；在 `server/src/infrastructure/mail/smtp-invitation-mail-sender.service.ts` 依環境設定 `requireTLS`；移除 `server/src/infrastructure/mail/ses-invitation-mail-sender.service.ts`、`mail.module.ts` 的 SES 分支、`SES_FROM` 與 `pnpm --filter` 移除 `@aws-sdk/client-sesv2`（更新 root lockfile）；更新 `server/src/infrastructure/mail/invitation-mail-sender.spec.ts`、`server/test/setup-e2e.ts`、`server/.env.example`、`server/docs/internal-electronic-signature-platform.md` 與 `specs/003-core-esign-flow/contracts/external-invitation.md`（§7～§8 加取代註記）。（FR-023）
 - [ ] T043 提交前檢查：`git status`、`git diff` 只含本規格範圍；專案負責人確認並移除 `.specify/memory/constitution.md` 的 Sync Impact Report；交付摘要分開說明 client、server、config 變更、驗證結果與已知限制（外部下載存取不設期限且無撤銷入口，待法務確認）。
+- [ ] T044 存取憑證與邀請 token 分離（code review 發現，research §15）：驗證碼成功時產生隨機存取憑證作為 cookie 值，Redis `esign:external-access:{sha256}` 存簽署人 id、TTL 8 小時；所有讀 cookie 的外部端點改以憑證查簽署人；簽署成功不重設 cookie；`DELETE` session 刪除 key；e2e 驗證以邀請 token 自行設 cookie 一律 401、Redis 過期後 401。（FR-024、FR-028、SC-007）
 
 ## Dependencies & Execution Order
 

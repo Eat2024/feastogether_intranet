@@ -17,7 +17,7 @@ import { User } from '#app/features/users/entities/user.entity';
 )
 @Check(
   'chk_esign_documents_sign_period',
-  '(`sign_start_at` IS NULL AND `sign_end_at` IS NULL) OR (`sign_start_at` IS NOT NULL AND `sign_end_at` IS NOT NULL AND `sign_start_at` < `sign_end_at`)',
+  "(`status` = 'draft' AND (`sign_start_at` IS NULL OR `sign_end_at` IS NULL OR `sign_start_at` < `sign_end_at`)) OR (`status` <> 'draft' AND `sign_start_at` IS NOT NULL AND `sign_end_at` IS NOT NULL AND `sign_start_at` < `sign_end_at`)",
 )
 @Index('uq_esign_documents_doc_number', ['docNumber'], { unique: true })
 @Index('idx_esign_documents_creator_status_updated_id', [
@@ -80,7 +80,7 @@ export class EsignDocument extends AuditableEntity {
     nullable: true,
     comment: '簽署開始時間',
   })
-  signStartAt?: Date;
+  signStartAt?: Date | null;
 
   @Column({
     name: 'sign_end_at',
@@ -89,7 +89,7 @@ export class EsignDocument extends AuditableEntity {
     nullable: true,
     comment: '簽署截止時間',
   })
-  signEndAt?: Date;
+  signEndAt?: Date | null;
 
   @Column({
     name: 'signing_payload_json',

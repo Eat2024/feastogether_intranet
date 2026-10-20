@@ -1,4 +1,5 @@
 import { RejectionCompletion1792454401000 } from '#app/infrastructure/database/migrations/1792454401000-RejectionCompletion';
+import { DraftSettings1792454400000 } from '#app/infrastructure/database/migrations/1792454400000-DraftSettings';
 import { ExpiredDocuments1792368000000 } from '#app/infrastructure/database/migrations/1792368000000-ExpiredDocuments';
 // mysql.options.ts
 // 連線設定單一事實來源：app provider 與 migration CLI 共用，避免兩邊漂移。
@@ -92,6 +93,7 @@ export function buildMysqlOptions(
       SignatureVerificationCode1792108800000,
       SharedFieldsPersonalCopies1792195200000,
       ExpiredDocuments1792368000000,
+      DraftSettings1792454400000,
       RejectionCompletion1792454401000,
     ],
 

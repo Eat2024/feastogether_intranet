@@ -101,6 +101,8 @@ export interface EsignFieldView extends EsignFieldPlacement {
 
 /** GET esign/documents/:id：建立人的文件詳情 */
 export interface EsignDocumentDetail extends Omit<EsignDocumentListItem, 'signStartAt' | 'signEndAt' | 'createdBy'> {
+  watermark: boolean;
+  allowReject: boolean;
   createdBy: { name: string; employeeNo: string } | null;
   sourceFile?: { fileName: string; size: number; pageCount: number; sha256: string };
   signStartAt: string | null;
@@ -122,9 +124,9 @@ export interface InitiateDocumentBody {
   /** ISO 8601，開始時間必須早於結束時間 */
   signStartAt: string;
   signEndAt: string;
-  /** 浮水印：後端尚未提供，一律傳 false */
+  /** 依文件選項繪製浮水印 */
   watermark: boolean;
-  /** 拒絕簽署：後端尚未提供，一律傳 false */
+  /** 開放拒絕簽署 */
   allowReject: boolean;
 }
 
@@ -147,4 +149,13 @@ export interface EsignSignerCandidate {
   name: string;
   department: string | null;
   title: string | null;
+}
+
+/** 未傳欄位保留；日期 null 清空，允許單端日期。 */
+export interface DraftSettingsBody {
+  signers?: EsignSignerInput[];
+  signStartAt?: string | null;
+  signEndAt?: string | null;
+  watermark?: boolean;
+  allowReject?: boolean;
 }

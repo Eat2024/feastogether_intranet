@@ -30,6 +30,11 @@ export const AppErrors = {
     '此文件未開放拒絕簽署',
     HttpStatus.CONFLICT,
   ],
+  ESIGN_DRAFT_OPTIONS_INVALID: [
+    AppErrorCode.ESIGN_DRAFT_OPTIONS_INVALID,
+    '草稿選項必須為布林值',
+    HttpStatus.BAD_REQUEST,
+  ],
   ORG_CHART_UPSTREAM_UNAVAILABLE: [
     AppErrorCode.ORG_CHART_UPSTREAM_UNAVAILABLE,
     '組織架構來源暫時無法使用，請稍後再試',

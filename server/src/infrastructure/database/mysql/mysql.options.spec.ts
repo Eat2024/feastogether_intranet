@@ -69,6 +69,7 @@ describe('buildMysqlOptions', () => {
       'SignatureVerificationCode1792108800000',
       'SharedFieldsPersonalCopies1792195200000',
       'ExpiredDocuments1792368000000',
+      'DraftSettings1792454400000',
     ]);
   });
 

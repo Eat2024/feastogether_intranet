@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 固定已簽record快照，等待既有副本、不重繪不漏檔。
 - [x] 本機串流ZIP64，安全唯一檔名，全成果落檔並驗證後發布。
@@ -26,3 +26,9 @@
 - 真 Chrome＋Next rewrite 驗收通過：非建立人查找及申請、離頁重整後歷史、原生 ZIP 下載及解壓內容、206/If-Range/ETag/private-no-store/nosniff、七天重用。合成資料；截圖 `/tmp/esign009-zip-browser.png`，執行器 `/tmp/esign009-zip-browser.cjs`。
 - 整合 01–05 後：root build/lint 通過；server 98 suites／836 tests 通過；schema 6 tests 通過。lint 0 error，保留既有 warnings。專用測試 DB `feastogether_intranet_test_009_07`；schema 使用較短測試前綴與隨機 suffix，沒有降低 fail-closed。
 - 明確交接：08 須擴充 S3 `onStaging` uploadId／abort／版本與孤兒清理。現有 `isReferenced` 對 failed job 的 staging 仍視為引用，可能保護已放棄 generation；依 root 指示交 08 改成 active generation 判斷。6000份／>4GiB／效能門檻仍由 09 實測，未在本票宣稱達標。
+
+## 整合紀錄
+
+- ticket 分支 tip：`11f2e2f`；以 `--no-ff` 合併至整合分支，merge commit：`8d69b1a2075be95619f20b79dcb34385addebdec`，無衝突，保留 tickets 01–05。
+- 整合分支重跑本機 storage、maintenance processor 與 migration 註冊單測，3 suites／16 tests 通過；`git diff --check` 通過，未占用共用 DB／Redis。
+- 本機匯出範圍已驗收並整合，標記 `resolved`。上列已放棄 generation 清理修正仍由 ticket 08 追蹤；容量與效能仍由 ticket 09 驗收，不以本票結案宣稱整體匯出已全部完成。

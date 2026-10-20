@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: '電子簽列表' };
 const FLASH_MESSAGES = {
   published: '已發起簽署，通知 {count} 位簽署人',
   saved: '已儲存簽署設定',
-  signersSaved: '已儲存簽署名單',
+  signersSaved: '已儲存草稿名單、期間與選項',
   updated: '文件已更新',
 };
 

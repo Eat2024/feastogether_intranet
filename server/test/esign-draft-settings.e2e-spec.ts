@@ -215,6 +215,76 @@ describe('Spec009 草稿完整設定 API', () => {
       .expect(403);
   });
 
+  it('同時保存與發起只有完整的發起結果，不會混入草稿的名單日期或選項', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const created = await request(ctx.server)
+      .post('/api/esign/documents')
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .field('title', '並發草稿測試')
+      .attach('file', Buffer.from(await pdf.save()), {
+        filename: 'race.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(201);
+    const raceId = apiData<{ id: string }>(created).id;
+    const [saved, initiated] = await Promise.all([
+      request(ctx.server)
+        .patch(`/api/esign/documents/${raceId}/draft-settings`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .send({
+          signers: [
+            { type: 'email', name: '草稿版本', email: 'race@example.test' },
+          ],
+          signStartAt: '2020-01-01T00:00:00Z',
+          signEndAt: null,
+          watermark: true,
+          allowReject: true,
+        }),
+      request(ctx.server)
+        .post(`/api/esign/documents/${raceId}/initiations`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .send({
+          signers: [{ type: 'user', userId: ownerId }],
+          fields: [
+            {
+              type: 'signature',
+              page: 1,
+              xPercent: 10,
+              yPercent: 10,
+              widthPercent: 20,
+              heightPercent: 10,
+              sortOrder: 0,
+            },
+          ],
+          signStartAt: '2026-01-01T00:00:00Z',
+          signEndAt: '2099-01-01T00:00:00Z',
+          watermark: false,
+          allowReject: false,
+        }),
+    ]);
+    expect([200, 409]).toContain(saved.status);
+    expect(initiated.status).toBe(201);
+    const detail = apiData<DraftView>(
+      await request(ctx.server)
+        .get(`/api/esign/documents/${raceId}`)
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+    expect(detail).toMatchObject({
+      status: 'active',
+      signStartAt: '2026-01-01T00:00:00.000Z',
+      signEndAt: '2099-01-01T00:00:00.000Z',
+      watermark: false,
+      allowReject: false,
+      signers: [{ type: 'user' }],
+    });
+    expect(detail.signers).toHaveLength(1);
+  });
+
   it('正式狀態不可修改草稿，單端期間不能直接轉成正式狀態', async () => {
     await expect(
       db.query("UPDATE esign_documents SET status='active' WHERE id=?", [id]),

@@ -4,7 +4,7 @@
 
 **Blocked by:** 07: 開發環境以公司 Gmail SMTP 寄出邀請信
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] development、staging、production 都使用 SMTP 寄信，automated test 維持 fake；環境與寄信方式不符時，server 與 worker 啟動即失敗（沿用既有規則）。
 - [ ] staging／production 必須設定寄信帳號與密碼，且必須加密連線（直接 TLS，或使用 STARTTLS 時強制升級，不允許明文送出帳密）；缺任何一項時啟動失敗並以繁體中文說明缺少的設定。development 仍可不驗證、不加密，以支援本機 Mailpit。

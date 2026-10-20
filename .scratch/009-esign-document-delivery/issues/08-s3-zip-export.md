@@ -19,5 +19,7 @@
 - 工作分支 `009/08-s3-zip-export`，基於整合 `606d95e`；儲存 seam 先 red → green。沿用原 API／worker／正式匯出畫面，無新增 migration、環境變數或 presigned URL。
 - S3 以 lib-storage、16 MiB 起始 part／queueSize=2 串流，依預估調 part 並限制實際 10,000 parts。預估不是 ContentLength；actual size/hash、VersionId 待完成後才回傳發布。先持久化 generation，再於 MPU 建立後先持久化 uploadId，才傳 part。
 - abort 等待在飛 HTTP 與來源停止後清理；硬中斷由既有 maintenance 有界掃描 exports/ 的版本及 MPU，保存分頁游標。僅保護 active 成果或同 generation 有效 lease；修正 failed staging 永久被引用問題。
-- 真 HTTP Moto adapter 5 tests；隔離 MySQL/Redis + 真 S3 HTTP API/worker 3 tests（33 MiB multipart）；真 Chrome 另加1項通過：跨建立人、七天重用、原生下載／解壓、Next Range／If-Range／ETag。未對正式 AWS IAM／網路吞吐或 >4 GiB S3 容量宣稱驗證。
+- 真 HTTP Moto adapter 6 tests；隔離 MySQL/Redis + 真 S3 HTTP API/worker 3 tests（33 MiB multipart）；真 Chrome 另加1項通過：跨建立人、七天重用、原生下載／解壓、Next Range／If-Range／ETag。未對正式 AWS IAM／網路吞吐或 >4 GiB S3 容量宣稱驗證。
 - 詳細測試方式、授權需求及限制：[S3 實作紀錄](../../../specs/009-esign-document-delivery/implementation-notes-s3.md)。
+
+- 已merge整合 `9b88316`；最終root build/lint、99 suites／839 units、6項adapter真HTTP通過。等待merger合併後將狀態改resolved。

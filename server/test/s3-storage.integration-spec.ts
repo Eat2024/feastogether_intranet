@@ -85,6 +85,31 @@ describe('S3 adapter 真 HTTP 串流', () => {
     await storage.delete(result);
     await expect(storage.stat(result)).rejects.toThrow();
   });
+  it('小於一個 part 的成果與空串流可完成，保持實際長度而非預估長度', async () => {
+    for (const bytes of [Buffer.from('abc'), Buffer.alloc(0)]) {
+      const result = await storage.storeStream({
+        directory: 'exports/small/generation',
+        extension: 'zip',
+        mimeType: 'application/zip',
+        stream: Readable.from([bytes]),
+        expectedSize: 99,
+      });
+      await expect(storage.stat(result)).resolves.toEqual({
+        fileSize: bytes.length,
+      });
+      expect(result.sha256).toBe(
+        createHash('sha256').update(bytes).digest('hex'),
+      );
+      if (bytes.length) {
+        const range = await storage.openReadStream(result, { end: 1 });
+        let text = '';
+        for await (const part of range) text += String(part);
+        expect(text).toBe('ab');
+      }
+      await storage.delete(result);
+    }
+  });
+
   it('來源中斷、外部取消、持久化 uploadId 失敗都不留下可下載物件或 MPU', async () => {
     for (const mode of ['source', 'abort', 'staging']) {
       const controller = new AbortController();

@@ -29,3 +29,9 @@ PATH=/tmp/esign009-moto-venv/bin:$PATH DB_MYSQL_DB=feastogether_intranet_test_00
 既有 S3 帳號需對來源／成果具備原有 Get/Put 權限；成果版本讀刪需 `s3:GetObjectVersion`、`s3:DeleteObjectVersion`，multipart清理需 `s3:AbortMultipartUpload`、bucket 的 `s3:ListBucketMultipartUploads` 與 `s3:ListBucketVersions`（prefix 限 exports/）。測試診斷的 ListParts 另需 `s3:ListMultipartUploadParts`。此處列出實作實際使用的操作，未替使用者修改任何雲端權限。
 
 Moto 的 complete 會整包累積記憶體，**不拿它驗證 >4 GiB 效能**。本 ticket 證明本機 S3 協定與應用流程，沒有正式 AWS IAM、部署網路、S3大容量吞吐或記憶體保證；6,000份及>4GiB量測由 ticket09記錄可用環境的實測與未驗證部分。
+
+## 整合後驗證
+
+已合併整合分支 `9b88316`（含ticket06）。root `pnpm build`、`pnpm lint` 通過；server 99 suites／839 unit tests 通過。固定SDK版本後真HTTP adapter 6 tests通過，另包含單part及空串流、只給end的Range。永久API／worker S3 e2e為3 tests，Chrome臨時項目加跑後為4 tests；無schema變更。
+
+最終記錄：`/tmp/esign009-08-final-build.log`、`/tmp/esign009-08-final-lint.log`、`/tmp/esign009-08-final-unit.log`、`/tmp/esign009-08-final-s3.log`、`/tmp/esign009-08-e2e-green.log`、`/tmp/esign009-08-browser.log`。root lint 0 errors；server仍有既有warnings。套件未新增AWS SDK peer不相容。

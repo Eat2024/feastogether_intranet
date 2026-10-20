@@ -23,6 +23,8 @@ pnpm -C client build
 
 預期全部通過；e2e 涵蓋 research.md 第 11 點列出的情境。
 
+`core-esign-flow-scale` 依使用者 2026-10-20 決定由 6,000 人降為 10 人（約 1 秒），已不再自動驗證 Spec 003 FR-037 的大量名單規模；需要時調高該測試的 `SIGNER_COUNT`。
+
 ## 手動驗收（桌面與手機寬度各一次）
 
 手機寬度用 Chrome DevTools 的裝置模式（390×844）。

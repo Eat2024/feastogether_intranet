@@ -99,7 +99,7 @@ Request：`application/x-www-form-urlencoded`，`token`（43 字元 base64url）
 
 ## POST /api/external-signing-task/signatures
 
-Request（不變）：
+Request（新增必填 `signerPublicId`，其餘不變）：
 
 ```json
 {
@@ -115,7 +115,7 @@ Request（不變）：
 |------|------|------|
 | 201 | 首次成功簽署 | `Set-Cookie` 同 token、session cookie（不設 `Expires`）；`data` 為簽署結果（含 `completion`） |
 | 200 | 同一 `requestId` 已成功（重送） | 同上，回既有結果 |
-| 400 | 輸入錯誤（缺欄位、簽名格式） | envelope |
+| 400 | 輸入錯誤（缺欄位、簽名格式；`signerPublicId` 缺少或不是 UUID v4） | envelope |
 | 401 | 失效；或已簽者以新的 `requestId` 再次簽署 | envelope |
 | 409 | 早於開始時間、期間外、狀態衝突 | envelope |
 | 409 | `signerPublicId` 與 cookie 對應的簽署人不符 | envelope `ESIGN_EXTERNAL_SIGNER_MISMATCH`，不建立簽署 |
@@ -148,7 +148,7 @@ Request（不變）：
 | 畫面（設計稿） | 觸發條件 |
 |----------------|----------|
 | `01`／`02` 邀請確認頁 | GET 邀請連結 |
-| `03` 失效頁 | otps／session 的邀請失效 401／400；前端呼叫任何外部 API 收到 401 時顯示同內容；送出簽名收到 `ESIGN_EXTERNAL_SIGNER_MISMATCH` 時顯示其 message |
+| `03` 失效頁 | otps／session 的邀請失效 401／400；前端呼叫任何外部 API 收到 401 時顯示同內容 |
 | `04` 尚未開始 | otps／session 409；前端收到 `ESIGN_SIGNING_NOT_STARTED` 時顯示 message |
 | `11` 輸入驗證碼 | otps 200；429 時同頁顯示可再寄送時間 |
 | `12` 驗證碼錯誤 | session 401（驗證碼錯誤、失效） |
@@ -157,3 +157,5 @@ Request（不變）：
 | `08` 完成・可下載 | `signer.status = signed` 且 `completion.status = ready` |
 | `09` 完成・產生中 | `completion.status` 為 `pending` 或 `processing` |
 | `10` 完成・產製失敗 | `completion.status = failed` |
+
+送出簽名的非 401 錯誤（含 `ESIGN_EXTERNAL_SIGNER_MISMATCH`）不換頁：以錯誤提示（Snackbar）顯示後端 message，不顯示員工登入提示，確認視窗保留。

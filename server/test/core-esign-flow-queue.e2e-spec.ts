@@ -274,6 +274,7 @@ describe('核心電子簽真實 queue e2e', () => {
         'FT_ESIGN_EXTERNAL_ACCESS',
       );
       const task = apiData<{
+        signerPublicId: string;
         fields: Array<{ id: string; type: string }>;
         consent: { version: string };
       }>(
@@ -289,6 +290,7 @@ describe('核心電子簽真實 queue e2e', () => {
         .set('Cookie', accessCookie)
         .set('Origin', 'http://localhost:3000')
         .send({
+          signerPublicId: task.signerPublicId,
           requestId: randomUUID(),
           consentVersion: task.consent.version,
           accepted: true,

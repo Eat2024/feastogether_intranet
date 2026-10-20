@@ -170,6 +170,12 @@ export const AppErrors = {
     '外部簽署人資料格式不正確',
     HttpStatus.BAD_REQUEST,
   ],
+  /** 同一瀏覽器後開啟的邀請覆蓋了存取 cookie，頁面所屬簽署人與 cookie 不符 */
+  ESIGN_EXTERNAL_SIGNER_MISMATCH: [
+    AppErrorCode.ESIGN_STATE_CONFLICT,
+    '此頁面的簽署對象已變更，請重新開啟邀請信中的連結',
+    HttpStatus.CONFLICT,
+  ],
   ESIGN_EXTERNAL_UNAUTHORIZED: [
     AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
     '外部簽署存取已失效',

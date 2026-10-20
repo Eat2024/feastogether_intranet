@@ -49,7 +49,7 @@ export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: 
   const submit = useMutation({
     mutationFn: submitExternalSignatures,
     onSuccess: onSigned,
-    // 其他錯誤由全域 Snackbar 顯示；確認視窗維持開啟，可直接再按一次重試
+    // 其他錯誤（含 cookie 被其他邀請覆蓋時的「簽署對象已變更」）由全域 Snackbar 顯示後端訊息；確認視窗維持開啟，可直接再按一次重試
     onError: (error) => {
       setBusy(false);
       if (isExternalAccessLost(error)) onAccessLost();

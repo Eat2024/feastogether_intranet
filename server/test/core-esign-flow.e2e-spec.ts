@@ -953,6 +953,7 @@ describe('核心電子簽 US1', () => {
 
     const signatureRequestId = randomUUID();
     const signatureSubmission = {
+      signerPublicId: task.signerPublicId,
       requestId: signatureRequestId,
       consentVersion: task.consent.version,
       accepted: true,
@@ -1384,6 +1385,7 @@ describe('核心電子簽 US1', () => {
         .set('Cookie', accessCookie)
         .set('Origin', 'http://localhost:3000')
         .send({
+          signerPublicId: task.signerPublicId,
           requestId: randomUUID(),
           consentVersion: task.consent.version,
           accepted: true,
@@ -1404,10 +1406,7 @@ describe('核心電子簽 US1', () => {
     ).toEqual([firstSigned.verificationUrl, null]);
 
     const pendingCookie = await openExternalSession(pendingToken);
-    const pendingTask = apiData<{
-      fields: Array<{ id: string; type: string }>;
-      consent: { version: string };
-    }>(
+    const pendingTask = apiData<SigningTask>(
       await request(ctx.server)
         .post('/api/external-signing-task')
         .set('Cookie', pendingCookie)
@@ -1426,6 +1425,7 @@ describe('核心電子簽 US1', () => {
         .set('Cookie', pendingCookie)
         .set('Origin', 'http://localhost:3000')
         .send({
+          signerPublicId: pendingTask.signerPublicId,
           requestId: randomUUID(),
           consentVersion: pendingTask.consent.version,
           accepted: true,
@@ -2719,7 +2719,7 @@ describe('核心電子簽 US1', () => {
     }
   }, 30_000);
 
-  it('同一瀏覽器先後開啟兩封邀請：舊分頁送出的欄位不屬於新 cookie 的文件時拒絕，兩份都不簽署', async () => {
+  it('同一瀏覽器先後開啟兩份文件的邀請：舊分頁送出的簽署人與新 cookie 不符時拒絕，兩份都不簽署', async () => {
     const first = await initiateEmailDocument(
       '先開啟的邀請',
       'tab-a@example.test',
@@ -2743,6 +2743,7 @@ describe('核心電子簽 US1', () => {
       .set('Cookie', secondAccess)
       .set('Origin', 'http://localhost:3000')
       .send({
+        signerPublicId: firstTask.signerPublicId,
         requestId: randomUUID(),
         consentVersion: firstTask.consent.version,
         accepted: true,
@@ -2750,11 +2751,59 @@ describe('核心電子簽 US1', () => {
           .filter((field) => field.type === 'signature')
           .map((field) => ({ fieldId: field.id, pngDataUrl: PNG_DATA_URL })),
       })
-      .expect(400);
-    expect(apiError(rejected).message).toBe('簽名欄位不完整或不屬於目前文件');
+      .expect(409);
+    expect(apiError(rejected).message).toBe(
+      '此頁面的簽署對象已變更，請重新開啟邀請信中的連結',
+    );
     const statuses = await db.query<Array<{ status: string }>>(
       'SELECT status FROM esign_signers WHERE document_id IN (?, ?) ORDER BY id',
       [first.documentId, second.documentId],
+    );
+    expect(statuses).toEqual([{ status: 'pending' }, { status: 'pending' }]);
+  });
+
+  it('同一文件兩位外部簽署人：cookie 被覆蓋後舊分頁送出的簽署人不符時拒絕，兩人都維持未簽', async () => {
+    const { documentId, tokens } = await initiateEmailDocument(
+      '兩位外部簽署人',
+      'signer-a@example.test',
+      'signer-b@example.test',
+    );
+    const firstAccess = await openExternalSession(tokens[0]);
+    const firstTask = apiData<SigningTask>(
+      await request(ctx.server)
+        .post('/api/external-signing-task')
+        .set('Cookie', firstAccess)
+        .set('Origin', 'http://localhost:3000')
+        .expect(200),
+    );
+    // 同一瀏覽器再開啟第二位的邀請：cookie 被覆蓋，第一位的舊分頁仍開著
+    const secondAccess = await openExternalSession(tokens[1]);
+    const submitFromFirstTab = (body: { signerPublicId?: string }) =>
+      request(ctx.server)
+        .post('/api/external-signing-task/signatures')
+        .set('Cookie', secondAccess)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          ...body,
+          requestId: randomUUID(),
+          consentVersion: firstTask.consent.version,
+          accepted: true,
+          signatures: firstTask.fields
+            .filter((field) => field.type === 'signature')
+            .map((field) => ({ fieldId: field.id, pngDataUrl: PNG_DATA_URL })),
+        });
+    await submitFromFirstTab({}).expect(400);
+    await submitFromFirstTab({ signerPublicId: 'not-a-uuid' }).expect(400);
+    const rejected = await submitFromFirstTab({
+      signerPublicId: firstTask.signerPublicId,
+    }).expect(409);
+    expect(apiError(rejected)).toMatchObject({
+      code: 'ESIGN_STATE_CONFLICT',
+      message: '此頁面的簽署對象已變更，請重新開啟邀請信中的連結',
+    });
+    const statuses = await db.query<Array<{ status: string }>>(
+      'SELECT status FROM esign_signers WHERE document_id = ? ORDER BY sort_order',
+      [documentId],
     );
     expect(statuses).toEqual([{ status: 'pending' }, { status: 'pending' }]);
   });
@@ -2842,6 +2891,7 @@ describe('核心電子簽 US1', () => {
       .set('Cookie', accessCookie)
       .set('Origin', 'http://localhost:3000')
       .send({
+        signerPublicId: task.signerPublicId,
         requestId: randomUUID(),
         consentVersion: task.consent.version,
         accepted: true,

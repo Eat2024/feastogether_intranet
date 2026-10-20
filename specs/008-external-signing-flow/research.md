@@ -153,3 +153,36 @@
 
 **Risks**: Google Workspace 帳號有每日寄信上限；應用程式密碼輪替時需同步更新部署環境；寄件人依使用者 2026-10-20 決定維持 `einvoice@eatogether.com.tw`。
 
+## 13. 驗證碼（OTP）
+
+**Decision**:
+- **端點**：邀請確認頁的表單改送 `POST /api/external-signature-otps`（建立驗證碼挑戰並寄信，回驗證碼輸入頁）；輸入頁送 `POST /api/external-signature-session`（`token`＋`code`，驗證成功才設 cookie 並 303）。輸入頁的「重新寄送」再送一次 `POST /api/external-signature-otps`。兩個表單都以 hidden 欄位帶 token，沿用既有 bridge 的 `no-store`、`no-referrer`、CSP 與 OriginGuard（`Origin: null`＋`Sec-Fetch-Site: same-origin`）。
+- **順序**：先以既有存取檢查判斷邀請（失效 → 失效頁、尚未開始 → 尚未開始頁，都不寄信），通過後才產生驗證碼。
+- **儲存**：Redis，key 以簽署人 id 區分：
+  - 驗證碼挑戰：`{ codeHash, attempts }`，TTL 10 分鐘；驗證成功或錯滿 5 次即刪除。
+  - 重寄冷卻：TTL 60 秒。
+  - 每小時寄送計數：第一次寄送時設 TTL 1 小時，達 5 次即拒絕。
+  - `codeHash` 為 `sha256(簽署人 id + 驗證碼)`，比對使用 timing-safe compare；不保存明碼。
+- **產生**：`crypto.randomInt(0, 1_000_000)` 補零為 6 位。
+- **寄送**：在 HTTP 請求中同步寄出（HTTP 端的 esign module 已匯入寄信模組），寄送失敗回可重試頁面、不保留挑戰；不走邀請信的 outbox 佇列（驗證碼 10 分鐘即失效，排隊重試沒有意義）。寄信介面新增「寄送驗證碼」方法與信件內容（只含驗證碼、10 分鐘有效、文件名稱，不含連結）。
+- **cookie**：驗證成功一律設 session cookie（待簽者與已簽者相同），取代 §2 中待簽者「Expires＝邀請期限」的做法；邀請期限仍由 server 端授權檢查把關。
+- **稽核**：新增 `external_otp.sent`、`external_otp.verified`、`external_otp.failed`、`external_otp.locked`，metadata 不含驗證碼（`failed` 可記剩餘次數）；原有 `external_invitation.opened` 改在驗證成功時記錄。`esign_audit_events.event_type` 為 varchar(50)，無 CHECK，不需 migration。
+- **log**：`/api/external-signature-otps` 加入 HTTP access log 的不記錄 body 路徑清單；驗證碼與 token 不進 log、錯誤訊息或稽核。
+- **限流**：上述冷卻與上限之外，兩個 POST 端點加上既有 `AuthThrottlerGuard` 依 IP 限流。
+
+**Rationale**: 使用者 2026-10-20 決定以驗證碼確認信箱控制權，降低連結外流後可長期開啟與下載的風險。驗證碼是短期、可自動過期的資料，依憲章 IV 放 Redis 比新增資料表簡單，也不需 migration。同步寄送能在畫面立即回報失敗。
+
+**Alternatives considered**:
+- MySQL 新增驗證碼資料表：需要 migration 與清理排程，對 10 分鐘的短期資料不划算。
+- 走邀請信 outbox 與 worker：多一層延遲與重試狀態，驗證碼過期後的重試無意義。
+- 以 cookie 暫存「已按開啟」狀態再輸入驗證碼：多一顆 pre-auth cookie，hidden token 欄位已足夠且沿用既有 bridge 模式。
+
+**Risks**: 每次開啟多寄一封信，增加 Google Workspace 寄信量；驗證碼信可能被歸到垃圾郵件，輸入頁需提示。
+
+## 14. 送出簽名綁定簽署人
+
+**Decision**: 外部送出簽名的 request body 新增必填 `signerPublicId`（前端取自頁面路由）。後端以 cookie 取得的簽署人與之比對，不符回 409 `ESIGN_EXTERNAL_SIGNER_MISMATCH`（訊息「此頁面的簽署對象已變更，請重新開啟邀請信中的連結」），不建立簽署。內部簽署端點已在路徑帶 `signerPublicId`，不受影響。
+
+**Rationale**: ticket 05 以暫時測試證實：同一瀏覽器先後開啟同一份文件兩位簽署人的邀請時，cookie 被覆蓋，舊分頁送出的簽名會被記為另一位簽署人（共用欄位的 id 相同，欄位檢查擋不下）。綁定頁面所屬簽署人即可阻擋，改動小。
+
+**Alternatives considered**: 依簽署人區分 cookie 名稱或 path：cookie 數量隨邀請增加，且需改所有外部端點路徑；只靠 OTP：同一人通過兩次 OTP 時仍會覆蓋。

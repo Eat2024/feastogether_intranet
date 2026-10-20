@@ -23,5 +23,5 @@
 - 存取政策新增私有 `assertSigningStarted`，只在憑證有效且待簽者時判斷；controller `createSession` 改用 `sessionErrorPage(error)` 分流尚未開始頁（409、不設 cookie）、失效頁與服務暫停頁。
 - 新增 `signingNotStartedPage(startAt)`；contracts/http-api.md 記錄 `details.startAt`。
 - 驗證：server lint:check 0 error、test 90 suites／738 tests、build、e2e 11 suites／73 tests（含 scale）、security 25/25；整合後 lint、test、build 通過。
-- 待確認（列入 09）：尚未開始頁目視檢查；其他外部 API 的 409 也會回傳 `details.startAt`（僅有效邀請持有人可見）。
+- 待確認（列入 12）：尚未開始頁目視檢查；其他外部 API 的 409 也會回傳 `details.startAt`（僅有效邀請持有人可見）。
 

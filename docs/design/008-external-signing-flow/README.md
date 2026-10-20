@@ -20,6 +20,8 @@
 | `08-done-desktop-ready.html` | 簽署完成・可下載 | US2-2、FR-013、FR-014 |
 | `09-done-desktop-generating.html` | 簽署完成・副本產生中 | US2-1、FR-013 |
 | `10-done-desktop-failed.html` | 簽署完成・產製失敗 | US2-3、FR-013 |
+| `11-otp-input-mobile.html` | 輸入驗證碼・手機（桌面同版型） | US4-1、US4-5、FR-024、FR-027 |
+| `12-otp-error-mobile.html` | 驗證碼錯誤・手機（桌面同版型） | US4-3、US4-4、FR-026 |
 
 ## 設計決策
 
@@ -30,6 +32,7 @@
   - 「點此簽名」為橘色虛線欄位；按鈕用 MUI large，圖示用 MUI Rounded。
 - 簽署步驟與內部流程相同：同意授權條款 → 閱讀文件 → 完成簽名 → 確認送出。同意聲明顯示後端目前有效的 `esign-consent-v1` 全文。
 - 外部簽署頁不提供「拒絕簽署」（規格 FR-008）。
+- 驗證碼輸入頁與錯誤頁沿用確認型卡片；輸入框使用 `inputmode="numeric"` 與 `autocomplete="one-time-code"`，手機可自動帶入簡訊／信件中的驗證碼；重新寄送在冷卻期間停用並顯示秒數。
 - 手機版把簽名進度、同意勾選與「確認簽署」固定在畫面底部，其餘依既有版面由上往下排列。
 - 簽署完成頁以「下載已簽署文件」取代驗證網址；下載的 PDF 本身附有簽章驗證 QR Code。
 - 畫面中的姓名、Email、文件名稱與日期皆為範例資料。

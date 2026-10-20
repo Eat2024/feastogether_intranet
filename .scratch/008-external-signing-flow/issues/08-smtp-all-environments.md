@@ -25,7 +25,7 @@
 - SMTP sender 在 staging／production 設定 `requireTLS`，`SMTP_SECURE=false` 時強制 STARTTLS；development 仍允許 Mailpit。
 - 移除 SES sender、mail module 的 SES 分支、`SES_FROM` 驗證與 `@aws-sdk/client-sesv2`（lockfile 僅減少 SES 相關 19 行）。
 - 文件：`server/.env.example`、`server/docs/internal-electronic-signature-platform.md` §8.1、Spec 003 `contracts/external-invitation.md` §7～§8 取代註記。
-- 驗證：server lint:check 0 error、test 89 suites／722 tests、build、security e2e 25/25；整合後 frozen-lockfile、lint、test、build 通過。e2e 在合併前 72/72；合併後 scale 測試因與另一 worktree 同時執行而逾時（71/72），於 09 單獨重跑。
-- 部署前人工事項與實際 Gmail 連線驗證列入 09。
+- 驗證：server lint:check 0 error、test 89 suites／722 tests、build、security e2e 25/25；整合後 frozen-lockfile、lint、test、build 通過。e2e 在合併前 72/72；合併後 scale 測試因與另一 worktree 同時執行而逾時（71/72），於 12 單獨重跑。
+- 部署前人工事項與實際 Gmail 連線驗證列入 12。
 - 後續可整理：`auth-cookie.ts`、`auth-mode.ts`、`external-signature-cookie.ts` 各自判斷 staging／production，可改用 `isDeployedEnvironment()`（本票未改，交由 code review 判斷）。
 

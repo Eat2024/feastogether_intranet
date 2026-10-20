@@ -20,5 +20,5 @@
 - controller：確認頁改版並移除無作用的 `nonce`；400／401 回同一份失效頁、5xx 回服務暫停頁；CSP、`no-store`、`no-referrer` 不變。
 - `escapeHtml` 抽到 `server/src/common/escape-html.ts`，邀請信共用；刪除無人使用的 `ESIGN_INVITATION_FORMAT_INVALID`、`ESIGN_INVITATION_EXPIRED`、`ESIGN_INVITATION_SERVICE_UNAVAILABLE`。
 - 驗證：server lint:check 0 error、test 90 suites／722 tests、build、e2e 72/72（scale 單獨重跑通過）、security 25/25；整合後 lint、test（729）、build 通過。
-- 服務暫停頁無設計稿（文案與圖示為自訂）、手機實機目視與 `html-error-page.ts` 是否刪除，列入 09。
+- 服務暫停頁無設計稿（文案與圖示為自訂）、手機實機目視與 `html-error-page.ts` 是否刪除，列入 12。
 

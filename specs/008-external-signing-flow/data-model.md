@@ -22,22 +22,34 @@
 ```text
 邀請寄出（pending，期限＝簽署期限）
   ├─ 開始前按「開啟」 → 409 尚未開始頁（不設 cookie、不記開啟）
-  ├─ 期間內按「開啟」 → 303 + cookie（Expires＝簽署期限）→ 同意聲明 → 閱讀與簽名
+  ├─ 期間內按「開啟」 → 寄驗證碼 → 輸入驗證碼成功 → 303 + session cookie → 同意聲明 → 閱讀與簽名
   │     └─ 送出簽名成功 → signed，cookie 重設為 session cookie → 完成頁
   ├─ 文件停止／到期／刪除 → 憑證清除或失效 → 401 失效頁
   └─ 期限屆滿 → 401 失效頁
 
 已簽署（signed，不設期限）
-  ├─ 任何時間按「開啟」 → 303 + session cookie → 完成頁（可下載／產生中／產製失敗）
+  ├─ 任何時間按「開啟」 → 寄驗證碼 → 輸入驗證碼成功 → 303 + session cookie → 完成頁（可下載／產生中／產製失敗）
   ├─ 文件停止、到期或完成 → 不影響，仍可下載
   ├─ 嘗試再次簽署 → 拒絕（重送同一 requestId 回既有結果）
   └─ 簽署人或文件被刪除 → 401 失效頁
 ```
 
+## 驗證碼（Redis，不進 MySQL）
+
+| Key（每位簽署人一組） | 內容 | 存活 |
+|------------------------|------|------|
+| 驗證碼挑戰 | `{ codeHash, attempts }`；`codeHash = sha256(簽署人 id + 驗證碼)` | 10 分鐘；驗證成功或錯滿 5 次即刪除；重新寄送時覆寫 |
+| 重寄冷卻 | 存在即表示 60 秒內寄過 | 60 秒 |
+| 每小時寄送計數 | 1 小時內已寄送次數，達 5 即拒絕 | 第一次寄送起 1 小時 |
+
+- 不保存驗證碼明碼；Redis 資料遺失時只需重新寄送，不影響簽署證據。
+- 驗證成功後建立的外部存取一律為 session cookie（不設 `Expires`），邀請期限仍由 server 端授權檢查把關。
+
 ## 稽核事件
 
 沿用既有事件，不新增類型：
 
-- `external_invitation.opened`：建立 session 成功時記錄；尚未開始、失效時不記錄。
+- `external_invitation.opened`：驗證碼驗證成功、建立 session 時記錄；尚未開始、失效、驗證失敗時不記錄。
+- `external_otp.sent`、`external_otp.verified`、`external_otp.failed`（metadata 可含剩餘次數）、`external_otp.locked`：新增，皆不記錄驗證碼；`event_type` 為 varchar(50) 無 CHECK，不需 migration。
 - `document.opened`：`POST /api/external-signing-task` 時記錄；新增的 `GET /api/external-signing-task` 不記錄。
 - 下載本人副本不記錄（與建立人、內部簽署人下載一致）。

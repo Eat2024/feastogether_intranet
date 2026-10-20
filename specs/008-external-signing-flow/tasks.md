@@ -134,14 +134,30 @@
 
 **Checkpoint**：三個故事皆可獨立驗收。
 
-## Phase 6: Polish & Cross-Cutting
+## Phase 6: US4 — 以驗證碼確認信箱後才能開啟文件（P1），與送出簽名綁定簽署人
 
-- [ ] T031 [P] 在 `specs/003-core-esign-flow/spec.md`（US3 驗收 6、FR-016、FR-026）、`specs/003-core-esign-flow/contracts/external-invitation.md`（§4～§6）、`specs/003-core-esign-flow/contracts/openapi.yaml`（外部端點）與 `specs/004-signature-verification-qr/spec.md`（相容更新）加上「由 Spec 008 取代」註記；保留原文，不改寫成已完成。（FR-022）
-- [ ] T032 全量驗證：`pnpm -C server lint:check`、`pnpm -C server test`、`pnpm -C server build`、`pnpm -C server test:e2e`、`pnpm -C server test:e2e:security`、`pnpm -C client lint`、`pnpm -C client build`；結果與未執行項目記錄於 `specs/008-external-signing-flow/quickstart.md`。
-- [ ] T033 深度 code review：檢查 KISS、重複驗證、REST 語意、server-side 授權、token／cookie 不進 log 或錯誤訊息（含 `server/src/framework/interceptors/http-access-log.interceptor.ts` 的路徑清單）、回應不含其他簽署人資料；修正確認的問題並重跑 T032。
-- [ ] T034 開發環境：在 `server/.env.example` 記錄公司 Gmail SMTP 設定（`SMTP_HOST=smtp.gmail.com`、`SMTP_PORT=587`、`SMTP_SECURE=false`、`SMTP_USER`／`SMTP_FROM` 為寄件帳號、`SMTP_PASSWORD` 留空並註明使用 Google 應用程式密碼），不含實際密碼；以本機 Gmail SMTP 實寄外部邀請信並開啟信中連結；以錯誤密碼驗證 notification log 只記 failed 與穩定錯誤碼。（FR-023）
-- [ ] T035 staging／production：在 `server/src/config/app.environment.ts` 與其 `.spec.ts` 把 development／staging／production 的寄信 driver 改為 `smtp`（test 維持 `fake`），staging／production 必須設定 `SMTP_USER`／`SMTP_PASSWORD` 且必須加密（`SMTP_SECURE=true`，或 `false` 時強制 STARTTLS）；在 `server/src/infrastructure/mail/smtp-invitation-mail-sender.service.ts` 依環境設定 `requireTLS`；移除 `server/src/infrastructure/mail/ses-invitation-mail-sender.service.ts`、`mail.module.ts` 的 SES 分支、`SES_FROM` 與 `pnpm --filter` 移除 `@aws-sdk/client-sesv2`（更新 root lockfile）；更新 `server/src/infrastructure/mail/invitation-mail-sender.spec.ts`、`server/test/setup-e2e.ts`、`server/.env.example`、`server/docs/internal-electronic-signature-platform.md` 與 `specs/003-core-esign-flow/contracts/external-invitation.md`（§7～§8 加取代註記）。（FR-023）
-- [ ] T036 提交前檢查：`git status`、`git diff` 只含本規格範圍；專案負責人確認並移除 `.specify/memory/constitution.md` 的 Sync Impact Report；交付摘要分開說明 client、server、config 變更、驗證結果與已知限制（外部下載存取不設期限且無撤銷入口，待法務確認）。
+**Goal**：按下開啟後寄出 6 位數驗證碼，驗證成功才建立存取；送出簽名比對頁面所屬簽署人。
+
+**Independent Test**：有效邀請按下開啟收到驗證碼信，錯誤顯示剩餘次數、過期與冷卻正確，驗證成功才進入文件；同一瀏覽器 cookie 被另一位簽署人覆蓋時，舊分頁送出被拒。
+
+- [ ] T031 [P] [US4] 新增 `server/src/features/esign/services/external-otp.service.ts` 與其 `.spec.ts`（先寫測試）：以 Redis 保存每位簽署人「驗證碼挑戰 `{ codeHash, attempts }`（TTL 10 分鐘）」、「重寄冷卻（TTL 60 秒）」、「每小時寄送計數（第一次寄送起 TTL 1 小時，達 5 即拒絕）」；`codeHash = sha256(簽署人 id + 驗證碼)`、timing-safe 比對、驗證成功或錯滿 5 次即刪除；驗證碼以 `crypto.randomInt(0, 1_000_000)` 補零 6 位。（FR-025～FR-027）
+- [ ] T032 [P] [US4] 在 `server/src/infrastructure/mail/` 新增驗證碼信內容與寄送方法（smtp 與 fake 皆實作），主旨「電子簽署驗證碼」，內容只有驗證碼、「10 分鐘內有效」、文件名稱與「若非本人操作請忽略」，不含連結；單元測試驗證內容與不含連結。（FR-029）
+- [ ] T033 [US4] 在 `server/src/features/esign/services/external-access.service.ts` 與其 `.spec.ts` 拆成「依邀請寄送驗證碼」（先做存取檢查：失效／尚未開始不寄信）與「以 token＋驗證碼建立 session」；寄信失敗不保留挑戰、不計次；記錄 `external_otp.sent`／`verified`／`failed`／`locked`（不含驗證碼），`external_invitation.opened` 改在驗證成功時記錄。（FR-024、FR-030、FR-031）
+- [ ] T034 [US4] 在 `server/src/features/esign/controllers/external-signature.controller.ts`、`server/src/features/esign/helpers/external-invitation-page.ts`：新增 `POST external-signature-otps`（200 輸入頁、409 尚未開始、429 冷卻／上限、400／401 失效、503 寄信失敗）；`POST external-signature-session` 改收 `token`＋`code`（303 session cookie、401 錯誤或失效頁）；邀請確認頁表單改送 otps；依設計稿 `11`、`12` 新增輸入頁與錯誤頁（遮罩信箱、剩餘次數、可再寄送時間、垃圾郵件提示）；兩個 POST 套用 `AuthThrottlerGuard`；`server/src/framework/interceptors/http-access-log.interceptor.ts` 加入 otps 路徑不記 body。（FR-001、FR-024～FR-028、FR-031）
+- [ ] T035 [US4] 在 `server/test/core-esign-flow.e2e-spec.ts`、`server/test/security-core-esign-flow.e2e-spec.ts`、`server/test/api-coverage.e2e-spec.ts`：以 fake mail 攔截驗證碼，驗證完整流程、驗證前無 cookie、錯誤 5 次失效、10 分鐘過期（fake timers）、60 秒冷卻與每小時 5 封、重寄使舊碼失效、失效與尚未開始不寄信、稽核事件、log 不含驗證碼；既有 e2e 的建立 session helper 改為經過驗證碼。（FR-024～FR-031；SC-007）
+- [ ] T036 [US1] 送出簽名綁定簽署人：在 `server/src/features/esign/dto/signature-submission.dto.ts`（或外部專用 DTO）、`server/src/features/esign/controllers/external-signature.controller.ts`、`server/src/common/errors/app-errors.ts` 加入外部簽名必填 `signerPublicId`，與 cookie 對應簽署人不符回 409 `ESIGN_EXTERNAL_SIGNER_MISMATCH`、不建立簽署；`client/src/api` 外部簽名請求與 `client/src/features/external-signing/` 送出時帶頁面路由的 `signerPublicId`，收到此錯誤顯示其訊息；e2e 驗證同一文件兩位簽署人 cookie 覆蓋時舊分頁送出被拒、兩人皆未被誤簽。（FR-032；SC-008）
+- [ ] T037 [US4] 執行 server lint:check、test、build、e2e、security e2e；依 quickstart 第 1-1、6、6-1 步驗收（實際收信需人工）。
+
+**Checkpoint**：外部存取需通過驗證碼；簽名綁定頁面所屬簽署人。
+
+## Phase 7: Polish & Cross-Cutting
+
+- [ ] T038 [P] 在 `specs/003-core-esign-flow/spec.md`（US3 驗收 6、FR-016、FR-026）、`specs/003-core-esign-flow/contracts/external-invitation.md`（§4～§6）、`specs/003-core-esign-flow/contracts/openapi.yaml`（外部端點）與 `specs/004-signature-verification-qr/spec.md`（相容更新）加上「由 Spec 008 取代」註記；保留原文，不改寫成已完成。（FR-022）
+- [ ] T039 全量驗證：`pnpm -C server lint:check`、`pnpm -C server test`、`pnpm -C server build`、`pnpm -C server test:e2e`、`pnpm -C server test:e2e:security`、`pnpm -C client lint`、`pnpm -C client build`；結果與未執行項目記錄於 `specs/008-external-signing-flow/quickstart.md`。
+- [ ] T040 深度 code review：檢查 KISS、重複驗證、REST 語意、server-side 授權、token／cookie 不進 log 或錯誤訊息（含 `server/src/framework/interceptors/http-access-log.interceptor.ts` 的路徑清單）、回應不含其他簽署人資料；修正確認的問題並重跑 T039。
+- [ ] T041 開發環境：在 `server/.env.example` 記錄公司 Gmail SMTP 設定（`SMTP_HOST=smtp.gmail.com`、`SMTP_PORT=587`、`SMTP_SECURE=false`、`SMTP_USER`／`SMTP_FROM` 為寄件帳號、`SMTP_PASSWORD` 留空並註明使用 Google 應用程式密碼），不含實際密碼；以本機 Gmail SMTP 實寄外部邀請信並開啟信中連結；以錯誤密碼驗證 notification log 只記 failed 與穩定錯誤碼。（FR-023）
+- [ ] T042 staging／production：在 `server/src/config/app.environment.ts` 與其 `.spec.ts` 把 development／staging／production 的寄信 driver 改為 `smtp`（test 維持 `fake`），staging／production 必須設定 `SMTP_USER`／`SMTP_PASSWORD` 且必須加密（`SMTP_SECURE=true`，或 `false` 時強制 STARTTLS）；在 `server/src/infrastructure/mail/smtp-invitation-mail-sender.service.ts` 依環境設定 `requireTLS`；移除 `server/src/infrastructure/mail/ses-invitation-mail-sender.service.ts`、`mail.module.ts` 的 SES 分支、`SES_FROM` 與 `pnpm --filter` 移除 `@aws-sdk/client-sesv2`（更新 root lockfile）；更新 `server/src/infrastructure/mail/invitation-mail-sender.spec.ts`、`server/test/setup-e2e.ts`、`server/.env.example`、`server/docs/internal-electronic-signature-platform.md` 與 `specs/003-core-esign-flow/contracts/external-invitation.md`（§7～§8 加取代註記）。（FR-023）
+- [ ] T043 提交前檢查：`git status`、`git diff` 只含本規格範圍；專案負責人確認並移除 `.specify/memory/constitution.md` 的 Sync Impact Report；交付摘要分開說明 client、server、config 變更、驗證結果與已知限制（外部下載存取不設期限且無撤銷入口，待法務確認）。
 
 ## Dependencies & Execution Order
 
@@ -152,7 +168,8 @@
 - **US1（Phase 3）**：依賴 Foundational。
 - **US2（Phase 4）**：依賴 Foundational；前端 T026 依賴 US1 的 `ExternalSigning.tsx`（T016）。
 - **US3（Phase 5）**：依賴 Foundational；T030 依賴 T025（`ExternalDone`）。
-- **Polish（Phase 6）**：依賴所有故事完成。
+- **US4（Phase 6）**：驗證碼部分依賴 US3（建立 session 的已簽者路徑）；T036 簽署人綁定只依賴 US2。
+- **Polish（Phase 7）**：依賴所有故事完成。
 
 ### Within Each User Story
 
@@ -165,7 +182,7 @@
 - US1 的後端 T007 與前端 T011～T013 可並行。
 - US2 的 T019 與 T024 可並行。
 - 後端與前端可由兩人分頭進行，以 `contracts/http-api.md` 為介面。
-- T031 可在任何時間點並行。
+- T038 可在任何時間點並行。
 
 ## Parallel Example: User Story 1
 

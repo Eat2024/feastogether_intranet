@@ -15,6 +15,8 @@
 
 另外，開發、staging 與 production 都改用公司 Gmail SMTP 寄邀請信，移除不再使用的 SES 寄信實作與依賴。
 
+2026-10-20 CR：外部簽署人按下開啟後須先通過 6 位數驗證碼（OTP，存 Redis、同步寄信）才建立存取；外部送出簽名綁定頁面所屬簽署人，阻擋 cookie 被覆蓋時簽錯人（research.md §13、§14）。
+
 不新增資料表、欄位、migration、dependency、環境變數或排程。
 
 ## Technical Context
@@ -85,7 +87,10 @@ server/src/features/esign/
     ├── esign-signing.service.ts                  # 重送分支改用存取檢查（簽署寫入不變）
     ├── external-access.service.ts                # 改用存取檢查；completedFile；共用 readAccess
     └── esign-completion-access.service.ts        # completedFile 公開為 personalCopy
-server/src/common/errors/app-errors.ts            # ESIGN_SIGNING_NOT_STARTED(startAt)
+server/src/common/errors/app-errors.ts            # ESIGN_SIGNING_NOT_STARTED(startAt)、ESIGN_EXTERNAL_SIGNER_MISMATCH
+server/src/features/esign/services/external-otp.service.ts   # 新增：Redis 驗證碼挑戰、冷卻、每小時計數
+server/src/infrastructure/mail/                   # 驗證碼信內容與寄送方法
+server/src/framework/interceptors/http-access-log.interceptor.ts   # 新增 OTP 路徑不記 body
 server/src/config/app.environment.ts              # 各環境寄信 driver 改為 smtp；staging／production 必須驗證與加密
 server/src/infrastructure/mail/                   # SMTP sender 依環境強制 TLS；移除 SES sender
 server/package.json、pnpm-lock.yaml               # 移除 @aws-sdk/client-sesv2
@@ -128,7 +133,9 @@ specs/004-signature-verification-qr/spec.md   # 相容更新註記
    - staging／production：寄信 driver 改為 `smtp`，必須設定帳密並強制加密；移除 SES 寄信實作、`SES_FROM` 與 `@aws-sdk/client-sesv2`；更新平台文件與 Spec 003 邀請契約的寄信說明。
    - 寄送失敗只留穩定錯誤碼，不記 SMTP 回應內容或密碼。
 9. **文件同步**：Spec 003、004 加取代註記，更新 Spec 003 contracts。
-10. **提交前檢查**：`git status`、`git diff` 確認只有本規格範圍內的變更；commit 前由專案負責人確認並移除憲章的 Sync Impact Report。
+10. **驗證碼（OTP）**：Redis 驗證碼服務與單元測試 → 驗證碼信 → `POST /api/external-signature-otps`、`POST /api/external-signature-session`（token＋code）、輸入頁與錯誤頁 → 重新寄送冷卻與每小時上限 → e2e（以 fake mail 攔截驗證碼）。
+11. **送出簽名綁定簽署人**：外部簽名 body 帶 `signerPublicId`，不符回 409；前端送出時帶上；e2e 驗證同一文件兩位簽署人 cookie 覆蓋時被拒。
+12. **提交前檢查**：`git status`、`git diff` 確認只有本規格範圍內的變更；commit 前由專案負責人確認並移除憲章的 Sync Impact Report。
 
 部署：外部存取的變更只在 HTTP server，worker 的授權邏輯不需調整（寄信與副本產製只處理 `pending` 或依 `completion_status` 運作）。寄信改用 SMTP 後，staging／production 部署前必須先在部署環境設定 `ESIGN_MAIL_DRIVER=smtp` 與 `SMTP_*`（含應用程式密碼）並移除 `SES_FROM`，否則 worker 會因設定檢查失敗而無法啟動。無 migration。回滾到舊版時，舊版授權只放行 `pending`，已簽者的存取自動失效，不會擴大權限。
 
@@ -141,3 +148,5 @@ specs/004-signature-verification-qr/spec.md   # 相容更新註記
 | `ESIGN_SIGNING_NOT_STARTED` 錯誤定義 | 尚未開始時顯示開始時間（FR-003） | 沿用通用 401 會讓有效邀請看到「失效」，誤導簽署人 |
 | `external-invitation-page.ts` | 三個後端 HTML 頁共用設計稿版型 | 現有 `html-error-page.ts` 只有純文字段落，且其他功能也在使用 |
 | `SignProgressPanel` 抽出 | 內部與外部簽署都需要同一個進度、同意與送出面板 | 複製一份會造成兩份邏輯分歧 |
+| `POST /api/external-signature-otps` 與 Redis 驗證碼挑戰 | 使用者 CR：開啟文件前驗證信箱控制權（FR-024～FR-031） | 只靠連結無法防止外流；MySQL 新表需 migration 與清理排程，對 10 分鐘的短期資料不划算 |
+| `ESIGN_EXTERNAL_SIGNER_MISMATCH` 與簽名 body 的 `signerPublicId` | 防止 cookie 被覆蓋時以錯誤身分簽署（FR-032） | 欄位為文件共用，既有欄位檢查擋不下同一文件的不同簽署人 |

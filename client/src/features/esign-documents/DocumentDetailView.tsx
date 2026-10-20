@@ -186,7 +186,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
           documentId={doc.id}
           fileNamePrefix={`${doc.docNumber}_${doc.title}`}
           canNotify={doc.status === 'active'}
-          pendingTotal={counts.pending}
+          eligibleExternalIds={doc.signers.filter(s => s.type === 'email' && s.reminderEligibility?.eligible).map(s => s.publicId)}
           rows={items}
           sort={query.sort}
           sortHrefs={sortHrefs}

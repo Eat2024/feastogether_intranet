@@ -83,6 +83,22 @@ export class EsignFieldViewDto {
 /** 管理欄位不加入共用本人 DTO。 */
 export class EsignManagedSignerViewDto extends EsignSignerViewDto {
   note!: string;
+  latestInvitation!: {
+    status: string;
+    completedAt: string | null;
+    reasonCode: string | null;
+  } | null;
+  latestReminder!: {
+    status: string;
+    completedAt: string | null;
+    reasonCode: string | null;
+  } | null;
+  deliveredReminderCount!: number;
+  reminderEligibility!: {
+    eligible: boolean;
+    reasonCode: string | null;
+    nextEligibleAt: string | null;
+  };
 }
 
 export class EsignDocumentDetailDto extends EsignDocumentSummaryDto {

@@ -50,8 +50,13 @@ export class EsignDocumentQueryService {
     logs: EsignNotificationLog[],
   ) {
     const now = new Date();
-    const reasonCode = reminderEligibility(document, signer, logs, now);
+    const reasonCode =
+      reminderEligibility(document, signer, logs, now) ??
+      (!signer.email || !signer.invitationTokenSha256
+        ? 'RECIPIENT_UNAVAILABLE'
+        : null);
     const latest = logs.find((l) => l.batch?.kind === 'reminder');
+    const invitation = logs.find((l) => l.batch?.kind === 'invitation');
     const midnight = new Date(now.getTime() + 8 * 60 * 60_000);
     midnight.setUTCHours(24, 0, 0, 0);
     return {
@@ -59,10 +64,17 @@ export class EsignDocumentQueryService {
         eligible: reasonCode === null,
         reasonCode,
         nextEligibleAt:
-          reasonCode === 'DAILY_LIMIT'
+          reasonCode === 'REMINDER_DAILY_LIMIT'
             ? new Date(midnight.getTime() - 8 * 60 * 60_000).toISOString()
             : null,
       },
+      latestInvitation: invitation
+        ? {
+            status: invitation.result,
+            completedAt: invitation.completedAt?.toISOString() ?? null,
+            reasonCode: invitation.errorCode ?? null,
+          }
+        : null,
       latestReminder: latest
         ? {
             status: latest.result,

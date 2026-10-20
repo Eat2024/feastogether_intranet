@@ -152,22 +152,7 @@ export class ExternalAccessService {
   }
 
   async source(token: string) {
-    const digest = this.tokens.digest(token);
-    const manager = this.mysql.getManager();
-    const signer = await this.signers.findByInvitationDigest(digest, manager);
-    const document = signer
-      ? await this.documents.findById(signer.documentId, manager)
-      : null;
-    if (!signer || !document) {
-      this.access.assertExternalInvitation(
-        document,
-        signer,
-        digest,
-        new Date(),
-      );
-      throw new Error('unreachable');
-    }
-    this.access.assertExternalInvitation(document, signer, digest, new Date());
+    const { document, manager } = await this.readAccess(token);
     const source = await this.files.findDocumentFile(
       document.id,
       'source_pdf',
@@ -181,6 +166,12 @@ export class ExternalAccessService {
   }
 
   async signingSignerPublicId(token: string): Promise<string> {
+    const { signer } = await this.readAccess(token);
+    return signer.publicId;
+  }
+
+  /** 以邀請憑證查詢簽署人與文件並驗證外部存取（不鎖定、不寫入） */
+  private async readAccess(token: string) {
     const digest = this.tokens.digest(token);
     const manager = this.mysql.getManager();
     const signer = await this.signers.findByInvitationDigest(digest, manager);
@@ -188,7 +179,7 @@ export class ExternalAccessService {
       ? await this.documents.findById(signer.documentId, manager)
       : null;
     this.access.assertExternalInvitation(document, signer, digest, new Date());
-    if (!signer) throw new Error('unreachable');
-    return signer.publicId;
+    if (!signer || !document) throw new Error('unreachable');
+    return { signer, document, manager };
   }
 }

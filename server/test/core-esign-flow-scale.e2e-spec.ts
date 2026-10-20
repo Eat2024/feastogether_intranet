@@ -28,8 +28,15 @@ import {
 } from './security-e2e.helper';
 import { esignTestPng } from './esign-test-png';
 
-/** 全流程規模驗收：固定樣本數不是產品上限，僅在 fail-closed 測試 DB 執行。 */
-describe('全公司 6,000 人個人副本', () => {
+/**
+ * 多人全流程驗收：固定樣本數不是產品上限，僅在 fail-closed 測試 DB 執行。
+ * 2026-10-20 依使用者決定由 6,000 人降為 10 人以縮短 e2e 時間；需要大量驗證時調高 SIGNER_COUNT。
+ */
+const SIGNER_COUNT = 10;
+/** 草稿與發起多存一位，驗證比簽署人數多一筆的名單也能保存 */
+const SAVED_COUNT = SIGNER_COUNT + 1;
+
+describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
   let ctx: SecurityE2eContext;
   let db: DataSource;
   let storage: PrivateFileStorage;
@@ -59,18 +66,21 @@ describe('全公司 6,000 人個人副本', () => {
     queue = ctx.app.get<Queue>(
       getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
     );
-    for (let offset = 0; offset < 6001; offset += 500) {
+    for (let offset = 0; offset < SAVED_COUNT; offset += 500) {
       await db
         .createQueryBuilder()
         .insert()
         .into(User)
         .values(
-          Array.from({ length: Math.min(500, 6001 - offset) }, (_, i) => ({
-            empid: prefix + String(offset + i).padStart(5, '0'),
-            name: '合成員工' + (offset + i),
-            isActive: true,
-            departmentName: '合成測試部',
-          })),
+          Array.from(
+            { length: Math.min(500, SAVED_COUNT - offset) },
+            (_, i) => ({
+              empid: prefix + String(offset + i).padStart(5, '0'),
+              name: '合成員工' + (offset + i),
+              isActive: true,
+              departmentName: '合成測試部',
+            }),
+          ),
         )
         .execute();
     }
@@ -78,7 +88,7 @@ describe('全公司 6,000 人個人副本', () => {
       'SELECT id, empid FROM users WHERE empid LIKE ? ORDER BY empid',
       [prefix + '%'],
     );
-    expect(users).toHaveLength(6001);
+    expect(users).toHaveLength(SAVED_COUNT);
     const launch = apiData<{ launchUrl: string }>(
       await request(ctx.server)
         .post('/api/auth/webview-launches')
@@ -156,7 +166,7 @@ describe('全公司 6,000 人個人副本', () => {
     if (ctx) await closeSecurityE2eApp(ctx);
   }, 120_000);
 
-  it('6,001 人可保存與發起；6,000 人全部成功簽署、各產一份 PDF 並結案', async () => {
+  it(`${SAVED_COUNT} 人可保存與發起；${SIGNER_COUNT} 人全部成功簽署、各產一份 PDF 並結案`, async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage([595, 842]);
     const source = Buffer.from(await pdf.save());
@@ -196,28 +206,28 @@ describe('全公司 6,000 人個人副本', () => {
       allowReject: false,
     });
     const metrics: Record<string, number> = {
-      requestBytes6001: Buffer.byteLength(JSON.stringify(input(6001))),
+      requestBytesSaved: Buffer.byteLength(JSON.stringify(input(SAVED_COUNT))),
     };
-    const id6001 = await create();
+    const idSaved = await create();
     await request(ctx.server)
-      .put('/api/esign/documents/' + id6001 + '/draftSave')
+      .put('/api/esign/documents/' + idSaved + '/draftSave')
       .set('Cookie', cookie)
       .set('Origin', 'http://localhost:3000')
-      .send({ signers: input(6001).signers })
+      .send({ signers: input(SAVED_COUNT).signers })
       .expect(200);
-    const start6001 = performance.now();
+    const startSaved = performance.now();
     await request(ctx.server)
-      .post('/api/esign/documents/' + id6001 + '/initiations')
+      .post('/api/esign/documents/' + idSaved + '/initiations')
       .set('Cookie', cookie)
       .set('Origin', 'http://localhost:3000')
-      .send(input(6001))
+      .send(input(SAVED_COUNT))
       .expect(201);
-    metrics.initiation6001Ms = performance.now() - start6001;
-    const [count6001] = await db.query<Array<{ total: number }>>(
+    metrics.initiationSavedMs = performance.now() - startSaved;
+    const [countSaved] = await db.query<Array<{ total: number }>>(
       'SELECT COUNT(*) total FROM esign_signers WHERE document_id=?',
-      [id6001],
+      [idSaved],
     );
-    expect(Number(count6001.total)).toBe(6001);
+    expect(Number(countSaved.total)).toBe(SAVED_COUNT);
     const candidates = apiData<Array<{ employeeNo: string }>>(
       await request(ctx.server)
         .get('/api/esign/signer-candidates')
@@ -225,16 +235,16 @@ describe('全公司 6,000 人個人副本', () => {
         .set('Cookie', cookie)
         .expect(200),
     );
-    expect(candidates).toHaveLength(6001);
+    expect(candidates).toHaveLength(SAVED_COUNT);
     const documentId = await create();
     const initiationStart = performance.now();
     await request(ctx.server)
       .post('/api/esign/documents/' + documentId + '/initiations')
       .set('Cookie', cookie)
       .set('Origin', 'http://localhost:3000')
-      .send(input(6000))
+      .send(input(SIGNER_COUNT))
       .expect(201);
-    metrics.initiation6000Ms = performance.now() - initiationStart;
+    metrics.initiationMs = performance.now() - initiationStart;
     const signers = await db.query<
       Array<{ id: number; public_id: string; user_id: number }>
     >(
@@ -247,7 +257,7 @@ describe('全公司 6,000 人個人副本', () => {
       'SELECT id, field_type FROM esign_document_fields WHERE document_id=? ORDER BY sort_order',
       [documentId],
     );
-    expect(signers).toHaveLength(6000);
+    expect(signers).toHaveLength(SIGNER_COUNT);
     expect(savedFields).toHaveLength(3);
     const signing = ctx.app.get(EsignSigningService);
     const consent = ctx.app.get(EsignConsentService).getActive();
@@ -283,11 +293,11 @@ describe('全公司 6,000 人個人副本', () => {
       );
       if ((i + 1) % 1000 === 0) console.info('CR_SCALE_SIGNED', i + 1);
     }
-    metrics.signing6000Ms = performance.now() - signingStart;
+    metrics.signingMs = performance.now() - signingStart;
     metrics.queueBacklog = (await queue.getJobs(['waiting', 'delayed'])).filter(
       (job) => Number(job.data.documentId) === documentId,
     ).length;
-    expect(metrics.queueBacklog).toBe(6000);
+    expect(metrics.queueBacklog).toBe(SIGNER_COUNT);
     const renderingStart = performance.now();
     for (let i = 0; i < signers.length; i += 1) {
       await processor.process({
@@ -299,7 +309,7 @@ describe('全公司 6,000 人個人副本', () => {
       );
       if ((i + 1) % 1000 === 0) console.info('CR_SCALE_READY', i + 1);
     }
-    metrics.rendering6000Ms = performance.now() - renderingStart;
+    metrics.renderingMs = performance.now() - renderingStart;
     const [lockAfter] = await db.query<Array<{ Value: string }>>(
       "SHOW GLOBAL STATUS LIKE 'Innodb_row_lock_time'",
     );
@@ -321,9 +331,9 @@ describe('全公司 6,000 人個人副本', () => {
     );
     expect(summary).toMatchObject({
       status: 'completed',
-      ready: 6000,
-      records: 6000,
-      files: 6000,
+      ready: SIGNER_COUNT,
+      records: SIGNER_COUNT,
+      files: SIGNER_COUNT,
       events: 1,
     });
     const completed = await db.query<
@@ -339,7 +349,9 @@ describe('全公司 6,000 人個人副本', () => {
       "SELECT f.object_key, f.object_version, f.sha256, f.document_id, r.signer_id, s.id owner FROM esign_file_objects f JOIN esign_signature_records r ON r.id=f.signature_record_id JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=? AND f.file_purpose='completed_pdf'",
       [documentId],
     );
-    expect(new Set(completed.map((file) => file.sha256)).size).toBe(6000);
+    expect(new Set(completed.map((file) => file.sha256)).size).toBe(
+      SIGNER_COUNT,
+    );
     for (const file of completed) {
       expect(file.document_id).toBeNull();
       expect(Number(file.signer_id)).toBe(Number(file.owner));

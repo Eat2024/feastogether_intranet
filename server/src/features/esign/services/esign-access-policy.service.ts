@@ -86,7 +86,7 @@ export class EsignAccessPolicyService {
    * 外部存取（開啟任務、讀原始 PDF、下載本人副本、重送同一次簽名）。
    * 共同條件：憑證相符、email 簽署人、簽署人與文件未刪除。
    * 已簽者不比對期限、文件狀態與簽署期間；待簽者須在邀請期限與有效簽署期間內。
-   * 失敗一律回通用 401，不區分原因。
+   * 待簽者在簽署開始前回 409 告知開始時間；其餘失敗一律回通用 401，不區分原因。
    */
   assertExternalAccess(
     document: EsignDocument | null,
@@ -131,10 +131,24 @@ export class EsignAccessPolicyService {
     ) {
       throw this.externalUnauthorized();
     }
+    this.assertSigningStarted(document, now);
     try {
       this.documents.assertActiveSigningWindow(document, now);
     } catch {
       throw this.externalUnauthorized();
+    }
+  }
+
+  /**
+   * 呼叫端須先確認憑證有效且簽署人待簽：簽署中但尚未到開始時間時告知開始時間；
+   * 其他期間外情況交由簽署期間檢查，維持通用失效。
+   */
+  private assertSigningStarted(document: EsignDocument, now: Date): void {
+    const startAt = document.signStartAt;
+    if (document.status === 'active' && startAt && now < startAt) {
+      throw new AppException(...AppErrors.ESIGN_SIGNING_NOT_STARTED(startAt), {
+        startAt: startAt.toISOString(),
+      });
     }
   }
 

@@ -1515,6 +1515,132 @@ describe('核心電子簽 US1', () => {
     expect(replacement.status).toBe('draft');
   });
 
+  it('簽署尚未開始：建立存取回 409 尚未開始頁、不設 cookie 不記開啟，開始後同一連結可建立存取', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const { id } = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .field('title', '未來開始文件')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'not-started.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    );
+    documentIds.push(Number(id));
+    const start = new Date(Date.now() + 3_600_000);
+    await request(ctx.server)
+      .post(`/api/esign/documents/${id}/initiations`)
+      .set('Cookie', creatorCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send({
+        signers: [
+          { type: 'email', name: '未來簽署人', email: 'future@example.test' },
+        ],
+        fields: [
+          {
+            type: 'signature',
+            page: 1,
+            xPercent: 10,
+            yPercent: 10,
+            widthPercent: 25,
+            heightPercent: 10,
+            sortOrder: 0,
+          },
+        ],
+        signStartAt: start.toISOString(),
+        signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+        watermark: false,
+        allowReject: false,
+      })
+      .expect(201);
+    const [credential] = await db.query<
+      Array<{ invitation_token_ciphertext: string }>
+    >(
+      'SELECT invitation_token_ciphertext FROM esign_signers WHERE document_id = ?',
+      [id],
+    );
+    const invitationToken = tokenService.decrypt(
+      credential.invitation_token_ciphertext,
+    );
+    const openedEvents = async () =>
+      (
+        await db.query<Array<{ event_type: string }>>(
+          `SELECT event_type FROM esign_audit_events
+           WHERE document_id = ? AND event_type IN ('external_invitation.opened', 'document.opened')
+           ORDER BY id`,
+          [id],
+        )
+      ).map((event) => event.event_type);
+    // 台北固定 UTC+8、無日光節約時間
+    const taipeiStart = new Date(start.getTime() + 8 * 3_600_000)
+      .toISOString()
+      .replace(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2}).*$/, '$1/$2/$3 $4');
+
+    const notStarted = await request(ctx.server)
+      .post('/api/external-signature-session')
+      .set('Origin', 'http://localhost:3000')
+      .type('form')
+      .send({ token: invitationToken })
+      .expect(409)
+      .expect('Content-Type', /^text\/html/)
+      .expect('Cache-Control', 'no-store')
+      .expect('Referrer-Policy', 'no-referrer');
+    expect(notStarted.headers['content-security-policy']).toContain(
+      "default-src 'none'",
+    );
+    expect(notStarted.headers['set-cookie']).toBeUndefined();
+    expect(notStarted.text).toContain('簽署尚未開始</h1>');
+    expect(notStarted.text).toContain(`請於 ${taipeiStart}（台北時間）後簽署`);
+    expect(notStarted.text).not.toContain(invitationToken);
+    expect(notStarted.text).not.toContain('未來開始文件');
+    // 其他外部 API 遇到相同情況回相同錯誤，不回文件內容
+    const taskBeforeStart = await request(ctx.server)
+      .post('/api/external-signing-task')
+      .set('Cookie', `FT_ESIGN_EXTERNAL_ACCESS=${invitationToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .expect(409);
+    expect(apiError(taskBeforeStart)).toEqual({
+      code: 'ESIGN_STATE_CONFLICT',
+      message: `簽署尚未開始，請於 ${taipeiStart}（台北時間）後簽署`,
+      details: { startAt: start.toISOString() },
+    });
+    expect(await openedEvents()).toEqual([]);
+
+    jest.useFakeTimers({
+      now: start,
+      doNotFake: [
+        'hrtime',
+        'nextTick',
+        'performance',
+        'queueMicrotask',
+        'setImmediate',
+        'clearImmediate',
+        'setInterval',
+        'clearInterval',
+        'setTimeout',
+        'clearTimeout',
+      ],
+    });
+    try {
+      const session = await request(ctx.server)
+        .post('/api/external-signature-session')
+        .set('Origin', 'http://localhost:3000')
+        .type('form')
+        .send({ token: invitationToken })
+        .expect(303);
+      expect(firstCookie(session.headers['set-cookie'])).toContain(
+        'FT_ESIGN_EXTERNAL_ACCESS=',
+      );
+      expect(await openedEvents()).toEqual(['external_invitation.opened']);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('到期掃描跨越 100 筆批次且重複執行不新增事件，舊候選不得覆蓋新期限', async () => {
     const [creator] = await db.query<Array<{ id: number }>>(
       'SELECT id FROM users WHERE empid=?',

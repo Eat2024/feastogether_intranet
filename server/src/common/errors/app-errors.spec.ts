@@ -85,6 +85,19 @@ describe('業務錯誤集中管理', () => {
       message: '請求參數驗證失敗',
     });
   });
+  it('簽署尚未開始以 409 與台北時間告知開始時間', () => {
+    const error = new AppException(
+      ...AppErrors.ESIGN_SIGNING_NOT_STARTED(
+        new Date('2026-10-24T16:00:00.000Z'),
+      ),
+    );
+    expect(error.getStatus()).toBe(409);
+    expect(error.getResponse()).toEqual({
+      error: 'ESIGN_STATE_CONFLICT',
+      message: '簽署尚未開始，請於 2026/10/25 00:00（台北時間）後簽署',
+    });
+  });
+
   it('組織樹錯誤與使用者登入錯誤分開', () => {
     expect(AppErrors.ORG_CHART_UPSTREAM_UNAVAILABLE).toEqual([
       'ORG_CHART_UPSTREAM_UNAVAILABLE',

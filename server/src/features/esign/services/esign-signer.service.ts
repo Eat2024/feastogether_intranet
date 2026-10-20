@@ -1,8 +1,10 @@
+import { DraftSettingsDto } from '../dto/draft-settings.dto';
+import { DocumentRepository } from '../repositories/document.repository';
 import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { isEmail } from 'class-validator';
+import { isEmail, isISO8601 } from 'class-validator';
 import { AppException } from '#app/common/errors/app.exception';
 import type { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
@@ -31,6 +33,7 @@ export class EsignSignerService {
     private readonly signers: SignerRepository,
     private readonly users: UserRepository,
     private readonly access: EsignAccessPolicyService,
+    private readonly documents: DocumentRepository,
   ) {}
 
   normalizeEmail(email: string): string {
@@ -42,13 +45,65 @@ export class EsignSignerService {
     creatorUserId: number,
     inputs: SignerInputDto[],
   ) {
+    return this.saveDraftSettings(documentId, creatorUserId, {
+      signers: inputs,
+    });
+  }
+
+  async saveDraftSettings(
+    documentId: number,
+    creatorUserId: number,
+    input: DraftSettingsDto,
+  ) {
     return this.mysql.transaction(async (manager) => {
       const document = await this.access.checkAndLockDraftDoc(
         documentId,
         creatorUserId,
         manager,
       );
-      return this.updateSigners(document, creatorUserId, inputs, manager);
+      const parseDate = (
+        value: string | null | undefined,
+        previous: Date | null,
+      ) => {
+        if (value === undefined) return previous;
+        if (value === null) return null;
+        if (
+          typeof value !== 'string' ||
+          !isISO8601(value, { strict: true }) ||
+          !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+          !Number.isFinite(new Date(value).getTime())
+        ) {
+          throw new AppException(...AppErrors.ESIGN_SIGNING_PERIOD_INVALID);
+        }
+        return new Date(value);
+      };
+      const start = parseDate(input.signStartAt, document.signStartAt ?? null);
+      const end = parseDate(input.signEndAt, document.signEndAt ?? null);
+      if (start && end && start >= end)
+        throw new AppException(...AppErrors.ESIGN_SIGNING_PERIOD_INVALID);
+      if (
+        (input.watermark !== undefined &&
+          typeof input.watermark !== 'boolean') ||
+        (input.allowReject !== undefined &&
+          typeof input.allowReject !== 'boolean')
+      ) {
+        throw new AppException(...AppErrors.ESIGN_DRAFT_OPTIONS_INVALID);
+      }
+      if (input.signers !== undefined) {
+        await this.updateSigners(
+          document,
+          creatorUserId,
+          input.signers,
+          manager,
+        );
+      }
+      document.signStartAt = start;
+      document.signEndAt = end;
+      if (input.watermark !== undefined)
+        document.watermarkEnabled = input.watermark;
+      if (input.allowReject !== undefined)
+        document.allowReject = input.allowReject;
+      return this.documents.save(document, manager);
     });
   }
 
@@ -80,7 +135,7 @@ export class EsignSignerService {
   private validateAndNormalizeSignerInputs(
     inputs: SignerInputDto[],
   ): ValidatedSignerInput[] {
-    if (inputs.length < 1)
+    if (!Array.isArray(inputs) || inputs.length < 1)
       throw new AppException(...AppErrors.ESIGN_SIGNER_REQUIRED);
 
     const seenUsers = new Set<number>();

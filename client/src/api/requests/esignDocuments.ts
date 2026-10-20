@@ -1,3 +1,4 @@
+import type { DraftSettingsBody } from '../types/esignDocuments';
 import api from '@/api/config';
 import axios from 'axios';
 import { endpoints } from '@/api/endpoints';
@@ -180,3 +181,9 @@ export const getSignerCandidates = async (q: string): Promise<EsignSignerCandida
 /** 建立人讀取原始 PDF 的網址（pdf.js 直接讀取，同源請求會帶上 session cookie） */
 export const documentSourceFileUrl = (id: string) =>
   `${api.defaults.baseURL}/${endpoints.ESIGN_DOCUMENT_SOURCE_FILE(id)}`;
+
+/** 同一交易保存草稿完整設定。 */
+export const saveDraftSettings = async ({ id, body }: { id: string; body: DraftSettingsBody }): Promise<EsignDocumentDetail> => {
+  const res = await api<EsignDocumentDetail>({ method: 'PATCH', url: endpoints.ESIGN_DOCUMENT_DRAFT_SETTINGS(id), data: body });
+  return res.data;
+};

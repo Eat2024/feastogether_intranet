@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import { formatInTaipei } from '#app/common/date-time.helper';
+import { signAfterHint } from '#app/common/errors/app-errors';
 import { escapeHtml } from '#app/common/escape-html';
-import type { OtpIssue } from '../services/external-otp.service';
+import {
+  OTP_MAX_ATTEMPTS,
+  OTP_TTL_SECONDS,
+  type OtpIssue,
+} from '../services/external-otp.service';
 
 /*
  * 外部簽署人取得存取前由後端直接回應的頁面，版型依設計稿 docs/design/008-external-signing-flow。
@@ -179,6 +184,18 @@ function maskEmail(email: string): string {
   return `${email.slice(0, 1)}***${email.slice(email.lastIndexOf('@'))}`;
 }
 
+/** 驗證碼有效時間，例如「10 分鐘」 */
+const OTP_VALIDITY = `${OTP_TTL_SECONDS / 60} 分鐘`;
+
+/** 驗證碼輸入頁與錯誤頁共用的圖示、標題與寄送說明 */
+function otpHeading(email: string) {
+  return {
+    icon: 'otp',
+    title: '輸入驗證碼',
+    description: `驗證碼已寄到 ${maskEmail(email)}，${OTP_VALIDITY}內有效。`,
+  } as const;
+}
+
 /** 邀請確認頁：只呈現開啟按鈕，按下後才驗證邀請並寄出驗證碼。 */
 export function invitationConfirmPage(token: string): string {
   return renderPage({
@@ -193,6 +210,9 @@ export function invitationConfirmPage(token: string): string {
   });
 }
 
+/** 已寄出或因冷卻、每小時上限未寄送；寄送失敗另回寄送失敗頁 */
+type SentOrLimited = Exclude<OtpIssue, { status: 'delivery-failed' }>;
+
 /**
  * 驗證碼輸入頁：寄出驗證碼後顯示，重新寄送按鈕倒數冷卻秒數。冷卻中或已達每小時上限（429）時未寄新驗證碼，
  * 同頁說明可再寄送的時間，先前寄出的驗證碼仍可輸入。
@@ -200,12 +220,10 @@ export function invitationConfirmPage(token: string): string {
 export function otpInputPage(
   token: string,
   email: string,
-  issue: OtpIssue,
+  issue: SentOrLimited,
 ): string {
   return renderPage({
-    icon: 'otp',
-    title: '輸入驗證碼',
-    description: `驗證碼已寄到 ${maskEmail(email)}，10 分鐘內有效。`,
+    ...otpHeading(email),
     form: {
       kind: 'otp',
       token,
@@ -219,7 +237,7 @@ export function otpInputPage(
 }
 
 /** 寄送受限的說明；每小時上限的時刻（台北時間）無條件進位到分鐘，照著時刻重試不會太早。 */
-function resendLimitNotice(issue: OtpIssue): string | undefined {
+function resendLimitNotice(issue: SentOrLimited): string | undefined {
   if (issue.status === 'cooldown')
     return `請於 ${issue.retryAfterSeconds} 秒後再重新寄送。`;
   if (issue.status === 'hourly-limit') {
@@ -239,9 +257,7 @@ export function otpRejectedPage(
   remainingAttempts: number,
 ): string {
   return renderPage({
-    icon: 'otp',
-    title: '輸入驗證碼',
-    description: `驗證碼已寄到 ${maskEmail(email)}，10 分鐘內有效。`,
+    ...otpHeading(email),
     form: {
       kind: 'otp',
       token,
@@ -252,7 +268,9 @@ export function otpRejectedPage(
           ? `驗證碼錯誤，還可以再試 ${remainingAttempts} 次。`
           : '驗證碼已失效，請重新寄送。',
     },
-    notes: ['錯誤 5 次或超過 10 分鐘，驗證碼即失效，請重新寄送。'],
+    notes: [
+      `錯誤 ${OTP_MAX_ATTEMPTS} 次或超過 ${OTP_VALIDITY}，驗證碼即失效，請重新寄送。`,
+    ],
   });
 }
 
@@ -270,7 +288,7 @@ export function signingNotStartedPage(startAt: Date): string {
   return renderPage({
     icon: 'notStarted',
     title: '簽署尚未開始',
-    description: `請於 ${formatInTaipei(startAt, 'yyyy/MM/dd HH:mm')}（台北時間）後簽署，屆時再開啟邀請信中的連結即可。`,
+    description: `${signAfterHint(startAt)}，屆時再開啟邀請信中的連結即可。`,
     notes: ['此連結僅供受邀的簽署人本人使用，請勿轉寄。'],
   });
 }

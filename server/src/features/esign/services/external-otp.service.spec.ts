@@ -146,7 +146,7 @@ describe('ExternalOtpService', () => {
 
     await expect(
       service.issue(7, () => Promise.reject(new Error('smtp down'))),
-    ).rejects.toThrow('smtp down');
+    ).resolves.toEqual({ status: 'delivery-failed' });
 
     // 失敗後可立即重寄，且仍算第 5 封
     await issue();
@@ -177,7 +177,7 @@ describe('ExternalOtpService', () => {
 
     await expect(
       service.issue(7, () => Promise.reject(new Error('smtp down'))),
-    ).rejects.toThrow('smtp down');
+    ).resolves.toEqual({ status: 'delivery-failed' });
 
     expect(store.size).toBe(0);
   });

@@ -17,7 +17,6 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { Public } from '#app/framework/decorators/public.decorator';
 import { AuthThrottlerGuard } from '#app/framework/guards/auth-throttler.guard';
@@ -32,6 +31,7 @@ import {
   EsignSigningService,
   toSignatureResultView,
 } from '../services/esign-signing.service';
+import { SigningNotStartedException } from '../services/esign-access-policy.service';
 import { ExternalAccessService } from '../services/external-access.service';
 import { ExternalOtpService } from '../services/external-otp.service';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
@@ -91,6 +91,14 @@ export class ExternalSignatureController {
       this.external.isTokenFormat(token),
       async () => {
         const { email, issue } = await this.external.sendOtp(token);
+        if (issue.status === 'delivery-failed') {
+          this.sendInvitationPage(
+            reply,
+            HttpStatus.SERVICE_UNAVAILABLE,
+            otpMailFailedPage(),
+          );
+          return;
+        }
         this.sendInvitationPage(
           reply,
           issue.status === 'sent'
@@ -294,16 +302,12 @@ export class ExternalSignatureController {
     }
   }
 
-  /** 寄信失敗與服務異常請稍後再試；尚未開始（409 帶開始時間）告知開始時間；其餘一律失效頁，不區分原因。 */
+  /** 尚未開始告知開始時間；服務異常請稍後再試；其餘一律失效頁，不區分原因。 */
   private accessErrorPage(error: AppException): string {
-    if (error.code === AppErrorCode.ESIGN_UNAVAILABLE)
-      return otpMailFailedPage();
-    if (error.getStatus() >= 500) return serviceUnavailablePage();
-    const { details } = error.getResponse() as {
-      details?: { startAt?: string };
-    };
-    return details?.startAt
-      ? signingNotStartedPage(new Date(details.startAt))
+    if (error instanceof SigningNotStartedException)
+      return signingNotStartedPage(error.startAt);
+    return error.getStatus() >= 500
+      ? serviceUnavailablePage()
       : invitationInvalidPage();
   }
 

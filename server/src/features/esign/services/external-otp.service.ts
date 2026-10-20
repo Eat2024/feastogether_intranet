@@ -14,12 +14,15 @@ const OTP_HOURLY_WINDOW_SECONDS = 60 * 60;
 
 /**
  * 寄送結果。sent 的 retryAfterSeconds 為下次可重新寄送前的冷卻秒數；
- * 其餘狀態未寄送、現有驗證碼不變，retryAfterSeconds 為可再寄送前需等待的秒數。
+ * cooldown、hourly-limit 未寄送、現有驗證碼不變，retryAfterSeconds 為可再寄送前需等待的秒數。
  */
-export type OtpIssue = {
-  status: 'sent' | 'cooldown' | 'hourly-limit';
-  retryAfterSeconds: number;
-};
+export type OtpIssue =
+  | {
+      status: 'sent' | 'cooldown' | 'hourly-limit';
+      retryAfterSeconds: number;
+    }
+  /** deliver 失敗：未保存驗證碼、不計入冷卻與寄送次數，可立即重試 */
+  | { status: 'delivery-failed' };
 
 export type OtpVerification =
   | { status: 'verified' }
@@ -48,6 +51,7 @@ export class ExternalOtpService {
   /**
    * 已達每小時上限或冷卻中不寄送；否則產生新驗證碼交給 deliver 寄出，寄出成功才保存（舊驗證碼隨即失效）並計次。
    * 先佔用冷卻再寄送，同一簽署人同時只會寄出一封；寄送失敗釋放冷卻、不計次、不保留驗證碼。
+   * 寄送錯誤可能帶回收件內容，不記錄也不往外拋，只回報 delivery-failed。
    */
   async issue(
     signerId: number,
@@ -75,9 +79,9 @@ export class ExternalOtpService {
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     try {
       await deliver(code);
-    } catch (error) {
+    } catch {
       await this.redis.del(cooldown);
-      throw error;
+      return { status: 'delivery-failed' };
     }
     await this.redis.set(
       codeKey(signerId),

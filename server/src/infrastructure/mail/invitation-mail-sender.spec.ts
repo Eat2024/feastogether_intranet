@@ -23,7 +23,7 @@ describe('Invitation mail sender', () => {
     const mail = buildInvitationMail(base, 'https://sign.example.test');
     expect(mail.text).toContain('聘僱合約');
     expect(mail.text).toContain('人資同仁');
-    expect(mail.text).toMatch(/2026\/10\/20.*16:00/u);
+    expect(mail.text).toContain('簽署期限（台北時間）：2026/10/20 16:00');
     expect(mail.text).toContain(
       'https://sign.example.test/api/external-signature-invitations/secret-token',
     );
@@ -36,6 +36,7 @@ describe('Invitation mail sender', () => {
       recipientEmail: 'candidate@example.test',
       documentTitle: '聘僱合約 <附件&B>',
       code: '012345',
+      validMinutes: 10,
     });
     expect(mail.subject).toBe('電子簽署驗證碼');
     for (const body of [mail.text, mail.html]) {
@@ -55,6 +56,7 @@ describe('Invitation mail sender', () => {
       recipientEmail: 'candidate@example.test',
       documentTitle: '聘僱合約',
       code: '012345',
+      validMinutes: 10,
     };
     await sender.sendOtp(otp);
     expect(sender.otpDeliveries).toEqual([otp]);
@@ -76,6 +78,7 @@ describe('Invitation mail sender', () => {
       recipientEmail: 'candidate@example.test',
       documentTitle: '聘僱合約',
       code: '012345',
+      validMinutes: 10,
     });
     const transport = jest
       .mocked(nodemailer.createTransport)

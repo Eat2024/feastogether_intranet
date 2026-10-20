@@ -7,6 +7,15 @@ import { EsignSigner } from '../entities/esign-signer.entity';
 import { DocumentRepository } from '../repositories/document.repository';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 
+/** 待簽者在簽署開始前存取（409）：JSON 回應帶 details.startAt，邀請頁以 startAt 顯示開始時間。 */
+export class SigningNotStartedException extends AppException {
+  constructor(readonly startAt: Date) {
+    super(...AppErrors.ESIGN_SIGNING_NOT_STARTED(startAt), {
+      startAt: startAt.toISOString(),
+    });
+  }
+}
+
 export interface ExternalAccess {
   document: EsignDocument | null;
   signer: EsignSigner | null;
@@ -147,9 +156,7 @@ export class EsignAccessPolicyService {
   private assertSigningStarted(document: EsignDocument, now: Date): void {
     const startAt = document.signStartAt;
     if (document.status === 'active' && startAt && now < startAt) {
-      throw new AppException(...AppErrors.ESIGN_SIGNING_NOT_STARTED(startAt), {
-        startAt: startAt.toISOString(),
-      });
+      throw new SigningNotStartedException(startAt);
     }
   }
 

@@ -921,6 +921,7 @@ describe('核心電子簽 US1', () => {
         recipientEmail: 'candidate@example.test',
         documentTitle: 'Spec 03 測試文件',
         code: expect.stringMatching(/^\d{6}$/),
+        validMinutes: 10,
       },
     ]);
     const { code: otpCode } = otpMails(ctx).at(-1)!;

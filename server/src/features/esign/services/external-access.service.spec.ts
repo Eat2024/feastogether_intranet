@@ -168,6 +168,7 @@ describe('ExternalAccessService', () => {
           recipientEmail: 'daming.wang@example.com',
           documentTitle: '供應商保密協議',
           code: expect.stringMatching(/^\d{6}$/),
+          validMinutes: 10,
         },
       ]);
       expect(auditedEvents(context.audit)).toEqual(['external_otp.sent']);
@@ -213,15 +214,15 @@ describe('ExternalAccessService', () => {
     expect(context.mailer.otpDeliveries).toEqual([]);
   });
 
-  it('寄信失敗回 503，不保存驗證碼、不記錄寄出', async () => {
+  it('寄信失敗時回報寄送失敗，不保存驗證碼、不記錄寄出', async () => {
     const context = setup();
     jest
       .spyOn(context.mailer, 'sendOtp')
       .mockRejectedValueOnce(new Error('smtp down'));
 
-    await expect(context.service.sendOtp(token)).rejects.toMatchObject({
-      status: 503,
-      message: '驗證碼寄送失敗，請稍後再試',
+    await expect(context.service.sendOtp(token)).resolves.toEqual({
+      email: 'daming.wang@example.com',
+      issue: { status: 'delivery-failed' },
     });
     expect(context.store.size).toBe(0);
     expect(context.audit.append).not.toHaveBeenCalled();

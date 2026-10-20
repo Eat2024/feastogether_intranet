@@ -91,3 +91,10 @@ export function signFields(layout: SignLayout) {
     .filter((f) => f.type === 'sign')
     .sort((a, b) => a.page - b.page || a.y - b.y || a.x - b.x);
 }
+
+/** 簽名欄位的名稱，例如「第 2 頁・簽名欄位 1」；同頁只有一個欄位時不編號 */
+export function signFieldLabel(layout: SignLayout, field: UploadField) {
+  const onPage = signFields(layout).filter((f) => f.page === field.page);
+  const page = field.page === layout.confirmPage ? '簽署確認頁' : `第 ${field.page} 頁`;
+  return onPage.length > 1 ? `${page}・簽名欄位 ${onPage.findIndex((f) => f.id === field.id) + 1}` : `${page}・簽名欄位`;
+}

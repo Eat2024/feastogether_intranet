@@ -133,7 +133,7 @@ export class ExportJobRepository {
       relations: { signer: true },
     });
   }
-  async isReferenced(objectKey: string, m: EntityManager) {
+  async isReferenced(objectKey: string, m: EntityManager, now = new Date()) {
     if (
       await m.exists(EsignFileObject, {
         where: { objectKey, archiveStatus: 'active' },
@@ -145,6 +145,12 @@ export class ExportJobRepository {
       .where(
         "JSON_UNQUOTE(JSON_EXTRACT(job.stagingJson, '$.objectKey')) = :objectKey",
         { objectKey },
+      )
+      .andWhere("job.status = 'processing' AND job.leaseExpiresAt > :now", {
+        now,
+      })
+      .andWhere(
+        "JSON_UNQUOTE(JSON_EXTRACT(job.stagingJson, '$.generation')) = job.leaseToken",
       )
       .getExists();
   }

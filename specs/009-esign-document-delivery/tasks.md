@@ -60,11 +60,11 @@
 
 - [x] T017 [US3] 擴充 `server/src/features/esign/entities/esign-file-object.entity.ts`：ZIP owner 使用 exportJobId、documentId=null，purpose=signed_copies_zip、mime=application/zip、unique(exportJobId,filePurpose)；在 `repositories/export-job.repository.ts` 實作短交易查重、lease fencing與批次快照讀取，透過 `server/src/infrastructure/database/mysql/mysql.module.ts` 註冊，migration/schema tests同步。
 
-- [ ] T018 [US3] 在 `server/package.json` 與 `pnpm-lock.yaml` 以 pnpm filter 加 archiver、必要型別與 @aws-sdk/lib-storage；擴充 `server/src/infrastructure/file-storage/private-file-storage.port.ts` 的 ZIP storeStream、AbortSignal、Range、暫存清理契約，保留既有 store(bytes) 與PDF/PNG功能。
+- [x] T018 [US3] 在 `server/package.json` 與 `pnpm-lock.yaml` 以 pnpm filter 加 archiver、必要型別與 @aws-sdk/lib-storage；擴充 `server/src/infrastructure/file-storage/private-file-storage.port.ts` 的 ZIP storeStream、AbortSignal、Range、暫存清理契約，保留既有 store(bytes) 與PDF/PNG功能。
 
 - [x] T019 [P] [US3] 依新 port 在 `server/src/infrastructure/file-storage/local-private-file-storage.service.ts` 實作背壓串流、size/hash、generation暫存檔、完成後原子發布及range讀；增加相鄰 `.spec.ts` 覆蓋失敗中止／磁碟錯誤／不刪來源。
 
-- [ ] T020 [P] [US3] 依新 port 在 `server/src/infrastructure/file-storage/s3-private-file-storage.service.ts` 實作multipart串流、Range與Abort；partSize至少16MiB、queueSize=2並依預估量保持≤10,000 parts，持久追蹤uploadId/generation及清理孤兒；相鄰 `.spec.ts` 驗證未知長度、完成失敗、abort及版本引用。
+- [x] T020 [P] [US3] 依新 port 在 `server/src/infrastructure/file-storage/s3-private-file-storage.service.ts` 實作multipart串流、Range與Abort；partSize至少16MiB、queueSize=2並依預估量保持≤10,000 parts，持久追蹤uploadId/generation及清理孤兒；相鄰 `.spec.ts` 驗證未知長度、完成失敗、abort及版本引用。
 
 - [x] T021 [US3] 新增 `server/src/features/esign/services/esign-export.service.ts`，實作有效員工session跨建立人申請、固定已簽快照與安全唯一檔名、有效成果/進行中工作優先重用、failed retry保留快照與completed七天內毀損503；不得以建立人或新增簽署變更cache key，GET不啟動工作。
 

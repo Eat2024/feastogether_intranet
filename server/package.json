@@ -43,10 +43,13 @@
     "migration:run": "pnpm typeorm migration:run",
     "migration:revert": "pnpm typeorm migration:revert",
     "migration:generate": "node --env-file=.env --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js migration:generate -d src/infrastructure/database/mysql/data-source.ts src/infrastructure/database/migrations/Migration",
-    "migration:create": "node --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js migration:create src/infrastructure/database/migrations/Migration"
+    "migration:create": "node --conditions=development -r ts-node/register ./node_modules/typeorm/cli.js migration:create src/infrastructure/database/migrations/Migration",
+    "test:s3": "jest --config test/jest-s3.json --runInBand",
+    "test:s3:e2e": "node --conditions=development --env-file-if-exists=.env.test ./node_modules/jest/bin/jest.js --config ./test/jest-s3-e2e.json --runInBand --forceExit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1149.0",
+    "@aws-sdk/lib-storage": "^3.1149.0",
     "@date-fns/tz": "^1.5.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/formbody": "^8.0.2",
@@ -62,8 +65,8 @@
     "@nestjs/platform-fastify": "^11.1.27",
     "@nestjs/swagger": "^11.2.4",
     "@nestjs/throttler": "^6.5.0",
-    "archiver": "^7.0.1",
     "@pdf-lib/fontkit": "^1.1.1",
+    "archiver": "^7.0.1",
     "axios": "^1.18.0",
     "bullmq": "^5.81.5",
     "class-transformer": "^0.5.1",

@@ -7,6 +7,8 @@ import type {
   EsignDocumentListItem,
   EsignHistoryItem,
   EsignSignerCandidate,
+  EsignSignerInput,
+  EsignSignerView,
   GetDocumentsParams,
   InitiateDocumentBody,
   UpdateDocumentBody,
@@ -73,6 +75,25 @@ export const getDocument = async (id: string): Promise<EsignDocumentDetail> => {
  */
 export const getDocumentHistory = async (id: string): Promise<EsignHistoryItem[]> => {
   const res = await api<EsignHistoryItem[]>({ method: 'GET', url: endpoints.ESIGN_DOCUMENT_HISTORY(id) });
+  return res.data;
+};
+
+/**
+ * @name 暫存草稿簽署名單
+ * @description 整批取代草稿的簽署人（至少 1 位），不儲存簽署期間與可選功能；回傳儲存後的簽署人
+ */
+export const saveDraftSigners = async ({
+  id,
+  signers,
+}: {
+  id: string;
+  signers: EsignSignerInput[];
+}): Promise<EsignSignerView[]> => {
+  const res = await api<EsignSignerView[]>({
+    method: 'PUT',
+    url: endpoints.ESIGN_DOCUMENT_DRAFT_SAVE(id),
+    data: { signers },
+  });
   return res.data;
 };
 

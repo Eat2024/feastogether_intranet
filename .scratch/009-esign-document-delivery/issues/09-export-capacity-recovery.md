@@ -4,7 +4,7 @@
 
 **Blocked by:** 07: 背景 ZIP 匯出與七天重用：本機儲存；08: S3 儲存的大量 ZIP 匯出
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 6,000代表性PDF、>4GiB ZIP64解壓與hash完整無漏件。
 - [x] 受理p95≤5秒、正常簽署p95增幅≤20%、無OOM或簽署失敗；記錄實際環境。
@@ -24,3 +24,9 @@
 - 第 575/6,000 份後真 SIGKILL，兩個 OS worker 接手且另排一個 6,000-entry 工作：兩工作完成、processing peak=1、固定快照不變、舊 staging 清除、復原 ZIP 全 entry 驗證通過。業務租約時間提前，BullMQ 實際鎖/停滯等待未 mock。
 - 真 HTTP 缺檔復原、竄改拒絕、舊 generation fencing、queue enqueue failure recovery、Range 邊界均通過；新增 ENOSPC I/O 注入證明半包刪除與可重試（不填滿真磁碟）；S3 multipart 中斷沿用 ticket08 小量真 HTTP 驗證。
 - 驗證：server 99 suites / 840 unit；export e2e 4 tests；build；lint 0 errors；benchmark 獨立 TypeScript typecheck；工具整理後 24 份 HTTP/worker/ZIP/Range smoke。client 無修改。
+
+## 整合紀錄與結案範圍
+
+- ticket 分支 tip：`6c0943c`；以 `--no-ff` 合併，merge commit：`624e2f54f1eabf70f8df13c3e6c9d9adf338e509`，無衝突。
+- 整合分支重跑本機 storage／maintenance，2 suites／10 tests 通過；`git diff --check` 通過。30 份 JSON／JSONL 證據可解析且未含憑證欄位，變更清單無 env、簽名或產出 PDF。
+- `resolved` 僅代表本票本機容量與故障驗收已整合；原部署 S3 門檻已明確移交 ticket 11（`ready-for-human`），原未驗 AC 與 T028 保持未勾選，不宣稱正式 AWS 或整體部署驗收完成。

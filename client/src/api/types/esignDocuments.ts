@@ -72,7 +72,7 @@ export interface UpdateDocumentBody {
   fields?: EsignFieldPlacement[];
 }
 
-export type EsignSignerStatus = 'pending' | 'signed' | 'rejected';
+export type EsignSignerStatus = 'pending' | 'signed' | 'rejected' | 'rejected';
 
 export interface EsignSignerView {
   publicId: string;
@@ -84,6 +84,8 @@ export interface EsignSignerView {
   email: string | null;
   status: EsignSignerStatus;
   signedAt: string | null;
+  rejectedAt: string | null;
+  rejectReason: string | null;
   /** 個人簽署副本的產製狀態；尚未簽署時 status 為 null */
   completion: { status: 'pending' | 'processing' | 'ready' | 'failed' | null; readyAt: string | null };
   /** 外部（Email）簽署人的邀請寄送結果；內部簽署人為 null */

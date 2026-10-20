@@ -313,6 +313,7 @@ CREATE TABLE `esign_signers` (
   `invitation_expires_at` datetime(6) DEFAULT NULL COMMENT '外部邀請到期時間',
   `invitation_delivered_at` datetime(6) DEFAULT NULL COMMENT '外部邀請寄送接受時間',
   `rejected_at` datetime(6) DEFAULT NULL COMMENT '拒絕時間',
+  `reject_request_id` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '拒簽冪等請求 UUID',
   `reject_reason` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '拒絕原因',
   `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序',
   `created_by_user_id` bigint DEFAULT NULL COMMENT '建立者員工 ID',
@@ -347,9 +348,10 @@ CREATE TABLE `esign_signers` (
   CONSTRAINT `fk_esign_signers_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `chk_esign_signers_completion` CHECK ((((`status` = _utf8mb4'pending') and (`completion_status` is null) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`status` = _utf8mb4'signed') and (`completion_status` is not null) and (((`completion_status` in (_utf8mb4'pending',_utf8mb4'failed')) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'processing') and (`completion_lease_token` is not null) and (`completion_lease_expires_at` is not null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'ready') and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is not null)))))),
+  CONSTRAINT `chk_esign_signers_completion` CHECK ((`status` IN ('pending','rejected') AND `completion_status` IS NULL AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`status` = 'signed' AND `completion_status` IS NOT NULL AND ((`completion_status` IN ('pending','failed') AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'processing' AND `completion_lease_token` IS NOT NULL AND `completion_lease_expires_at` IS NOT NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'ready' AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NOT NULL)))),
   CONSTRAINT `chk_esign_signers_identity` CHECK ((((`signer_type` = _utf8mb4'user') and (`user_id` is not null) and (`email` is null) and (`empid_snapshot` is not null) and (`invitation_token_sha256` is null) and (`invitation_token_ciphertext` is null) and (`invitation_expires_at` is null)) or ((`signer_type` = _utf8mb4'email') and (`user_id` is null) and (`email` is not null) and (`empid_snapshot` is null)))),
-  CONSTRAINT `chk_esign_signers_status` CHECK ((`status` in (_utf8mb4'pending',_utf8mb4'signed')))
+  CONSTRAINT `chk_esign_signers_terminal_times` CHECK ((`signed_at` IS NULL OR `rejected_at` IS NULL) AND (`status` <> 'rejected' OR (`rejected_at` IS NOT NULL AND `reject_request_id` IS NOT NULL AND `reject_reason` IS NOT NULL))),
+  CONSTRAINT `chk_esign_signers_status` CHECK (`status` IN ('pending','signed','rejected'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件簽署人';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_verification_records`;

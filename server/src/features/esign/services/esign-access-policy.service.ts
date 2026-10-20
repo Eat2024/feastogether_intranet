@@ -116,7 +116,7 @@ export class EsignAccessPolicyService {
       !signer.deletedAt &&
       !document.deletedAt;
     if (!valid) throw this.externalUnauthorized();
-    if (signer.status === 'signed') return;
+    if (signer.status === 'signed' || signer.status === 'rejected') return;
     this.assertPendingInvitation(document, signer, now);
   }
 

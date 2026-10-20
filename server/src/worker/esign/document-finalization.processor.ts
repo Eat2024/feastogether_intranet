@@ -208,7 +208,7 @@ export class DocumentFinalizationProcessor extends WorkerHost {
       if (
         counts.total === 0 ||
         counts.pending !== 0 ||
-        counts.ready !== counts.total
+        counts.ready !== counts.signed
       )
         return;
       const signers = await this.signers.findByDocument(documentId, manager);

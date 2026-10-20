@@ -15,6 +15,21 @@ export function signAfterHint(startAt: Date): string {
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  ESIGN_REJECTION_REASON_INVALID: [
+    AppErrorCode.ESIGN_REJECTION_REASON_INVALID,
+    '拒絕原因須為最多 200 字的文字',
+    HttpStatus.BAD_REQUEST,
+  ],
+  ESIGN_REJECTION_CONFLICT: [
+    AppErrorCode.ESIGN_REJECTION_CONFLICT,
+    '簽署人已完成簽署或拒簽，無法變更結果',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_REJECTION_NOT_ALLOWED: [
+    AppErrorCode.ESIGN_REJECTION_NOT_ALLOWED,
+    '此文件未開放拒絕簽署',
+    HttpStatus.CONFLICT,
+  ],
   ORG_CHART_UPSTREAM_UNAVAILABLE: [
     AppErrorCode.ORG_CHART_UPSTREAM_UNAVAILABLE,
     '組織架構來源暫時無法使用，請稍後再試',

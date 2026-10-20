@@ -86,17 +86,17 @@
 
 對應 FR-022–026、SC-009–010。獨立驗收：一簽一拒、全員拒、簽拒競態與重送，已拒不補簽、不產PDF且他人仍能簽。
 
-- [ ] T029 [P] [US4] 新增 `server/src/features/esign/services/esign-rejection.service.spec.ts`，覆蓋內外部本人、allowReject=false、期間外、簽拒競態、相同requestId回原結果與不同內容409；原因「trim 後最多200 code points」、留白、null非法。
+- [x] T029 [P] [US4] 新增 `server/src/features/esign/services/esign-rejection.service.spec.ts`，覆蓋內外部本人、allowReject=false、期間外、簽拒競態、相同requestId回原結果與不同內容409；原因「trim 後最多200 code points」、留白、null非法。
 
-- [ ] T030 [US4] 修改 `server/src/features/esign/entities/esign-signer.entity.ts` 狀態與completion check，新增「rejectRequestId（nullable UUID）」；沿用rejectedAt/rejectReason，pending/rejected completion欄位全null、signedAt與rejectedAt互斥，建立migration並同步 `server/src/infrastructure/database/schema.sql` 和schema tests；down有rejected時拒絕破壞資料。
+- [x] T030 [US4] 修改 `server/src/features/esign/entities/esign-signer.entity.ts` 狀態與completion check，新增「rejectRequestId（nullable UUID）」；沿用rejectedAt/rejectReason，pending/rejected completion欄位全null、signedAt與rejectedAt互斥，建立migration並同步 `server/src/infrastructure/database/schema.sql` 和schema tests；down有rejected時拒絕破壞資料。
 
-- [ ] T031 [US4] 實作 `server/src/features/esign/services/esign-rejection.service.ts`，document→signer鎖定、本人/allowReject/有效窗口檢查、單一終態、原requestId與正規化內容重送驗證；追加signer.rejected audit且不建signature record，沿用 `esign-signing.service.ts` 鎖序並注入 `esign.module.ts`。
+- [x] T031 [US4] 實作 `server/src/features/esign/services/esign-rejection.service.ts`，document→signer鎖定、本人/allowReject/有效窗口檢查、單一終態、原requestId與正規化內容重送驗證；追加signer.rejected audit且不建signature record，沿用 `esign-signing.service.ts` 鎖序並注入 `esign.module.ts`。
 
-- [ ] T032 [US4] 在 `server/src/features/esign/controllers/signing-tasks.controller.ts`、`external-signature.controller.ts` 接rejection子資源與 `dto/rejection.dto.ts`；擴充 `services/esign-access-policy.service.ts`／`external-access.service.ts` 讓已拒本人僅可讀結果及同次重送，不可讀來源或完成PDF；201首次/200重送。
+- [x] T032 [US4] 在 `server/src/features/esign/controllers/signing-tasks.controller.ts`、`external-signature.controller.ts` 接rejection子資源與 `dto/rejection.dto.ts`；擴充 `services/esign-access-policy.service.ts`／`external-access.service.ts` 讓已拒本人僅可讀結果及同次重送，不可讀來源或完成PDF；201首次/200重送。
 
-- [ ] T033 [US4] 修正 `server/src/worker/esign/document-finalization.processor.ts` 與 `server/src/features/esign/services/esign-verification.service.ts`：pending=0且readySigned=signed才結案，全拒不等PDF；新manifest含拒簽摘要及audit對應、只signed有PDF，保留舊版本驗證與stopped/expired狀態語意。
+- [x] T033 [US4] 修正 `server/src/worker/esign/document-finalization.processor.ts` 與 `server/src/features/esign/services/esign-verification.service.ts`：pending=0且readySigned=signed才結案，全拒不等PDF；新manifest含拒簽摘要及audit對應、只signed有PDF，保留舊版本驗證與stopped/expired狀態語意。
 
-- [ ] T034 [US4] 在 `client/src/api/` 的既有簽署型別／request檔新增拒簽；串接 `client/src/features/external-signing/ExternalSigning.tsx`、`client/src/features/my-signature/sign/SignFlow.tsx` 與相鄰正式Server Action，恢復allowReject選項、確認拒簽/200字原因與結果頁，不以mock拒簽算完成。
+- [x] T034 [US4] 在 `client/src/api/` 的既有簽署型別／request檔新增拒簽；串接 `client/src/features/external-signing/ExternalSigning.tsx`、`client/src/features/my-signature/sign/SignFlow.tsx` 與相鄰正式Server Action，恢復allowReject選項、確認拒簽/200字原因與結果頁，不以mock拒簽算完成。
 
 - [ ] T035 [US4] 新增 `server/test/esign-rejection.e2e-spec.ts` 並擴充finalization／verification相鄰tests，驗混合、全拒、事件hash、同時簽拒與舊manifest；在 `server/test/esign-export.e2e-spec.ts` 加拒簽不計入ZIP且全拒回409案例。
 

@@ -7,7 +7,7 @@ export type EsignDocumentStatus =
   | 'stopped';
 
 export type EsignSignerType = 'user' | 'email';
-export type EsignSignerStatus = 'pending' | 'signed';
+export type EsignSignerStatus = 'pending' | 'signed' | 'rejected';
 export type EsignFieldType = 'signature' | 'date';
 export type EsignInvitationDelivery = 'pending' | 'delivered' | 'failed';
 
@@ -61,6 +61,8 @@ export class EsignSignerViewDto {
   email!: string | null;
   status!: EsignSignerStatus;
   signedAt!: string | null;
+  rejectedAt!: string | null;
+  rejectReason!: string | null;
   completion!: PersonalCompletionDto;
   invitationDelivery!: EsignInvitationDelivery | null;
   /** 簽章公開驗證網址；只有 status = signed 時有值 */

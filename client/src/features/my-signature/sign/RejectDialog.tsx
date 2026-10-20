@@ -45,8 +45,8 @@ export default function RejectDialog({
             multiline
             minRows={3}
             value={reason}
-            onChange={(e) => setReason(e.target.value.slice(0, MAX_REASON))}
-            helperText={`${reason.length}/${MAX_REASON}`}
+            onChange={(e) => setReason(Array.from(e.target.value).slice(0, MAX_REASON).join(''))}
+            helperText={`${Array.from(reason).length}/${MAX_REASON}`}
             disabled={pending}
           />
         </Stack>

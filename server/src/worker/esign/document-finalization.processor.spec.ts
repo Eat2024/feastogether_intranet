@@ -59,6 +59,7 @@ describe('DocumentFinalizationProcessor 個人副本', () => {
       findByDocument: jest.fn(async () => [signer]),
       completionCounts: jest.fn(async () => ({
         total: 1,
+        signed: signer.status === 'signed' ? 1 : 0,
         pending: 0,
         ready: signer.completionStatus === 'ready' ? 1 : 0,
       })),
@@ -114,6 +115,14 @@ describe('DocumentFinalizationProcessor 個人副本', () => {
       stored,
     };
   }
+
+  it('全員拒簽可結案且無個人副本', async () => {
+    const f = setup();
+    f.signer.status = 'rejected';
+    await f.processor.process(job);
+    expect(f.document.status).toBe('completed');
+    expect(f.completedPdf.create).not.toHaveBeenCalled();
+  });
 
   it('以 UUID 與五分鐘 lease 產製本人副本，全員 ready 後另行結案，重複工作不重製', async () => {
     const f = setup();

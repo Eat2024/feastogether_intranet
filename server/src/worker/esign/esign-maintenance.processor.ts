@@ -1,3 +1,4 @@
+import { DocumentExportProcessor } from './document-export.processor';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job, Queue } from 'bullmq';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
@@ -27,12 +28,14 @@ export class EsignMaintenanceProcessor extends WorkerHost {
     private readonly finalizationQueue: Queue,
     private readonly signers: SignerRepository,
     private readonly finalization: DocumentFinalizationProcessor,
+    private readonly exports: DocumentExportProcessor,
   ) {
     super();
   }
 
   async process(_job: Job): Promise<void> {
     const now = new Date();
+    await this.exports.maintain(now);
     await this.expiry.reconcile(now);
     const staleBefore = new Date(now.getTime() - 5 * 60_000);
     const manager = this.mysql.getManager();

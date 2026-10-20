@@ -4,7 +4,7 @@ const DIRECTORY_PATTERN = /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/;
 
 export function createPrivateObjectKey(
   directory: string,
-  extension: 'pdf' | 'png',
+  extension: 'pdf' | 'png' | 'zip',
 ): string {
   if (!DIRECTORY_PATTERN.test(directory)) {
     throw new Error('私有檔案目錄格式無效');

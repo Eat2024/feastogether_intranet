@@ -2,6 +2,11 @@
 // 與後端 server/src/config/config.path.ts 及各 controller 的路徑對應。
 // 登入與 session 由外部流程建立（以 HttpOnly cookie 帶入），這裡不處理登入 API。
 export const endpoints = {
+  ESIGN_EXPORTABLE_DOCUMENTS: 'esign/exportable-documents',
+  ESIGN_EXPORTS: 'esign/exports',
+  ESIGN_DOCUMENT_EXPORTS: (id: string) => `esign/documents/${encodeURIComponent(id)}/exports`,
+  ESIGN_EXPORT: (id: string, job: string) => `esign/documents/${encodeURIComponent(id)}/exports/${encodeURIComponent(job)}`,
+  ESIGN_EXPORT_RETRY: (id: string, job: string) => `esign/documents/${encodeURIComponent(id)}/exports/${encodeURIComponent(job)}/retries`,
   // 電子簽文件（server/src/features/esign/controllers/documents.controller.ts）
   ESIGN_DOCUMENTS: 'esign/documents',
   ESIGN_DOCUMENT: (id: string) => `esign/documents/${encodeURIComponent(id)}`,

@@ -5,6 +5,7 @@ export const queryOptions: Record<
   string,
   Partial<{ staleTime: number; gcTime: number; refetchOnWindowFocus: boolean; retry: number; retryDelay: number }>
 > = {
+  useGetExportsQuery: { staleTime: 0, gcTime: minutes(5) },
   useGetNotificationBatchQuery: { staleTime: 0, gcTime: minutes(5), retry: 1 },
   // 文件狀態會隨簽署進度變動，快取放短一點
   useGetDocumentsQuery: {

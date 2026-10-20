@@ -53,6 +53,7 @@ describe('Esign maintenance', () => {
       finalizationQueue as never,
       signers as never,
       finalization as never,
+      { maintain: jest.fn() } as never,
     );
 
     await processor.process({ data: {} } as Job);
@@ -91,6 +92,7 @@ describe('Esign maintenance', () => {
       { add: jest.fn() } as never,
       {} as never,
       {} as never,
+      { maintain: jest.fn() } as never,
     );
     await expect(processor.process({ data: {} } as Job)).rejects.toThrow(
       'redis down',

@@ -54,31 +54,31 @@
 
 對應 FR-010–021、SC-004–008。獨立驗收：合成已簽資料可測受理、離頁、快照、七天重用與續傳；拒簽排除的最終整合於 US4 完成後重跑。
 
-- [ ] T015 [P] [US3] 新增 `server/src/features/esign/services/esign-export.service.spec.ts` 測文件鎖防重、固定 signature IDs、等待副本、不同員工重用同工作、完成+168小時到期、新簽不混入、全拒／無已簽409與 failed重試原快照；受理不讀PDF。
+- [x] T015 [P] [US3] 新增 `server/src/features/esign/services/esign-export.service.spec.ts` 測文件鎖防重、固定 signature IDs、等待副本、不同員工重用同工作、完成+168小時到期、新簽不混入、全拒／無已簽409與 failed重試原快照；受理不讀PDF。
 
-- [ ] T016 [US3] 擴充 `server/src/features/esign/entities/esign-export-job.entity.ts` 的 publicId「UUID unique」、snapshotAt/Json/Sha256、resolvedFilesJson、processedCount/waitingCount、expiresAt、leaseToken/ExpiresAt、attemptCount/nextAttemptAt、stagingJson；status 固定「pending / waiting / processing / completed / failed / expired」，舊資料新增欄位nullable且空快照不可重用；新增migration與 `server/src/infrastructure/database/schema.sql` 同步索引(documentId,exportType,status,expiresAt,id)、(status,nextAttemptAt,id)、leaseExpiresAt。
+- [x] T016 [US3] 擴充 `server/src/features/esign/entities/esign-export-job.entity.ts` 的 publicId「UUID unique」、snapshotAt/Json/Sha256、resolvedFilesJson、processedCount/waitingCount、expiresAt、leaseToken/ExpiresAt、attemptCount/nextAttemptAt、stagingJson；status 固定「pending / waiting / processing / completed / failed / expired」，舊資料新增欄位nullable且空快照不可重用；新增migration與 `server/src/infrastructure/database/schema.sql` 同步索引(documentId,exportType,status,expiresAt,id)、(status,nextAttemptAt,id)、leaseExpiresAt。
 
-- [ ] T017 [US3] 擴充 `server/src/features/esign/entities/esign-file-object.entity.ts`：ZIP owner 使用 exportJobId、documentId=null，purpose=signed_copies_zip、mime=application/zip、unique(exportJobId,filePurpose)；在 `repositories/export-job.repository.ts` 實作短交易查重、lease fencing與批次快照讀取，透過 `server/src/infrastructure/database/mysql/mysql.module.ts` 註冊，migration/schema tests同步。
+- [x] T017 [US3] 擴充 `server/src/features/esign/entities/esign-file-object.entity.ts`：ZIP owner 使用 exportJobId、documentId=null，purpose=signed_copies_zip、mime=application/zip、unique(exportJobId,filePurpose)；在 `repositories/export-job.repository.ts` 實作短交易查重、lease fencing與批次快照讀取，透過 `server/src/infrastructure/database/mysql/mysql.module.ts` 註冊，migration/schema tests同步。
 
 - [ ] T018 [US3] 在 `server/package.json` 與 `pnpm-lock.yaml` 以 pnpm filter 加 archiver、必要型別與 @aws-sdk/lib-storage；擴充 `server/src/infrastructure/file-storage/private-file-storage.port.ts` 的 ZIP storeStream、AbortSignal、Range、暫存清理契約，保留既有 store(bytes) 與PDF/PNG功能。
 
-- [ ] T019 [P] [US3] 依新 port 在 `server/src/infrastructure/file-storage/local-private-file-storage.service.ts` 實作背壓串流、size/hash、generation暫存檔、完成後原子發布及range讀；增加相鄰 `.spec.ts` 覆蓋失敗中止／磁碟錯誤／不刪來源。
+- [x] T019 [P] [US3] 依新 port 在 `server/src/infrastructure/file-storage/local-private-file-storage.service.ts` 實作背壓串流、size/hash、generation暫存檔、完成後原子發布及range讀；增加相鄰 `.spec.ts` 覆蓋失敗中止／磁碟錯誤／不刪來源。
 
 - [ ] T020 [P] [US3] 依新 port 在 `server/src/infrastructure/file-storage/s3-private-file-storage.service.ts` 實作multipart串流、Range與Abort；partSize至少16MiB、queueSize=2並依預估量保持≤10,000 parts，持久追蹤uploadId/generation及清理孤兒；相鄰 `.spec.ts` 驗證未知長度、完成失敗、abort及版本引用。
 
-- [ ] T021 [US3] 新增 `server/src/features/esign/services/esign-export.service.ts`，實作有效員工session跨建立人申請、固定已簽快照與安全唯一檔名、有效成果/進行中工作優先重用、failed retry保留快照與completed七天內毀損503；不得以建立人或新增簽署變更cache key，GET不啟動工作。
+- [x] T021 [US3] 新增 `server/src/features/esign/services/esign-export.service.ts`，實作有效員工session跨建立人申請、固定已簽快照與安全唯一檔名、有效成果/進行中工作優先重用、failed retry保留快照與completed七天內毀損503；不得以建立人或新增簽署變更cache key，GET不啟動工作。
 
-- [ ] T022 [US3] 新增 `server/src/worker/esign/document-export.processor.ts`，按快照逐份懶讀既有PDF、串流校驗hash並輸出單一STORE ZIP64；等待原finalization而不重繪、缺檔/竄改整體失敗、lease續租及generation fencing、等storage成功才交易發布，重試同快照且不對外提供半包。
+- [x] T022 [US3] 新增 `server/src/worker/esign/document-export.processor.ts`，按快照逐份懶讀既有PDF、串流校驗hash並輸出單一STORE ZIP64；等待原finalization而不重繪、缺檔/竄改整體失敗、lease續租及generation fencing、等storage成功才交易發布，重試同快照且不對外提供半包。
 
-- [ ] T023 [US3] 在 `server/src/features/esign/esign-queue.constants.ts`、`esign-queue.module.ts`、`services/esign-job-producer.service.ts` 與 `server/src/worker/esign/esign-worker.module.ts` 註冊專用export queue、全域concurrency=1；擴充 `esign-maintenance.processor.ts` 的有界補列／lease恢復／七天成果與殘件清理，不新增scheduler或在HTTP註冊processor。
+- [x] T023 [US3] 在 `server/src/features/esign/esign-queue.constants.ts`、`esign-queue.module.ts`、`services/esign-job-producer.service.ts` 與 `server/src/worker/esign/esign-worker.module.ts` 註冊專用export queue、全域concurrency=1；擴充 `esign-maintenance.processor.ts` 的有界補列／lease恢復／七天成果與殘件清理，不新增scheduler或在HTTP註冊processor。
 
-- [ ] T024 [US3] 新增 `server/src/features/esign/controllers/exports.controller.ts` 與 `dto/export.dto.ts`，接文件查找、申請、歷史、詳情、retry路由，游標limit「1–100」；回200重用/202工作/409空名單，明示snapshotAt/count/expiresAt，不回storage key；於 `esign.module.ts` 註冊，保留其他管理端點creator規則。
+- [x] T024 [US3] 新增 `server/src/features/esign/controllers/exports.controller.ts` 與 `dto/export.dto.ts`，接文件查找、申請、歷史、詳情、retry路由，游標limit「1–100」；回200重用/202工作/409空名單，明示snapshotAt/count/expiresAt，不回storage key；於 `esign.module.ts` 註冊，保留其他管理端點creator規則。
 
-- [ ] T025 [US3] 在 `server/src/features/esign/controllers/exports.controller.ts` 實作原生ZIP串流下載，逐次驗員工session、document/job/file歸屬及now<expiresAt；200/206/416與If-Range規則、到期410、未完成409、遺失503，attachment/private-no-store/nosniff，不發presigned URL。
+- [x] T025 [US3] 在 `server/src/features/esign/controllers/exports.controller.ts` 實作原生ZIP串流下載，逐次驗員工session、document/job/file歸屬及now<expiresAt；200/206/416與If-Range規則、到期410、未完成409、遺失503，attachment/private-no-store/nosniff，不發presigned URL。
 
-- [ ] T026 [US3] 擴充 `client/src/api/endpoints.ts`、`types/esignDocuments.ts`、`requests/esignDocuments.ts`、`queries/esignDocuments.ts`、query-keys/options及各index，串接 `client/src/features/esign-documents/DocumentExportView.tsx` 與 `DocumentsListView.tsx` 的跨建立人文件查找、申請、歷史、進度、retry、快照/期限與原生下載；不取整包Blob，不經creator-only詳情取得別人的匯出資料。
+- [x] T026 [US3] 擴充 `client/src/api/endpoints.ts`、`types/esignDocuments.ts`、`requests/esignDocuments.ts`、`queries/esignDocuments.ts`、query-keys/options及各index，串接 `client/src/features/esign-documents/DocumentExportView.tsx` 與 `DocumentsListView.tsx` 的跨建立人文件查找、申請、歷史、進度、retry、快照/期限與原生下載；不取整包Blob，不經creator-only詳情取得別人的匯出資料。
 
-- [ ] T027 [US3] 新增 `server/test/esign-export.e2e-spec.ts` 及 `server/src/worker/esign/document-export.processor.spec.ts`，驗兩員工重用、無/外部session拒絕、錯歸屬、七天邊界、GET唯讀、來源hash、兩worker全域上限、DB提交後enqueue失敗與stale worker不可發布；驗 `client/next.config.ts` 代理保留Range/stream標頭。
+- [x] T027 [US3] 新增 `server/test/esign-export.e2e-spec.ts` 及 `server/src/worker/esign/document-export.processor.spec.ts`，驗兩員工重用、無/外部session拒絕、錯歸屬、七天邊界、GET唯讀、來源hash、兩worker全域上限、DB提交後enqueue失敗與stale worker不可發布；驗 `client/next.config.ts` 代理保留Range/stream標頭。
 
 - [ ] T028 [US3] 建立 `server/test/performance/esign-export-benchmark.ts` 的隔離合成資料與測量入口（不得連正式DB），實測6,000份及>4GiB、STORE/DEFLATE1/6、local與部署使用的S3、正常簽署基準／匯出中p95、RSS/CPU/續傳/kill-worker；結果存 `specs/009-esign-document-delivery/performance-results.md`，受理p95≤5秒、簽署增幅≤20%、無OOM/漏件，未達標不得勾完成。
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** 03: 內外部拒簽與文件結案
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 備註trim0–30 code points，空字清除，失敗保留原值，僅建立人可改。
 - [x] 列表、已拒分頁及簽署紀錄匯出的時間與原因一致。
@@ -17,3 +17,9 @@
 測試接縫：既定 US6 管理 API（保存／讀取／授權／本人裁切）與正式管理頁面。使用 TDD 逐段驗證。
 
 實作與驗收：[Ticket04紀錄](../../../specs/009-esign-document-delivery/implementation-notes-signer-management.md)。待整合分支合併後改 resolved；通知摘要依原範圍交由 Ticket06。
+
+## 整合紀錄
+
+- ticket commit：`1d301d2`；已以 `--no-ff` 合併，merge commit：`670d6beda9a11ad760e61a5fb96eb684b32dc0a6`，無衝突。
+- 整合分支重跑 view mapper、備註 DTO、signer service，3 suites／29 tests 通過；`git diff --check` 通過。本輪未占用共用 DB／Redis。
+- 本 ticket 適用驗收已完成並整合，標記 `resolved`；T047 的通知摘要仍由 ticket 06 交付。

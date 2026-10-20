@@ -1259,6 +1259,44 @@ describe('核心電子簽 US1', () => {
       .join('');
     expect(unicodeMaps.toUpperCase()).toContain('<9957>');
     expect(unicodeMaps.toUpperCase()).toContain('<8CD3>');
+    // 管理備註不改已簽署 PDF、文件快照、簽署證據與稽核鏈。
+    const evidenceBeforeNote = await db.query<Record<string, unknown>[]>(
+      `SELECT r.* FROM esign_signature_records r JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=?`,
+      [documentId],
+    );
+    const payloadBeforeNote = await db.query<Record<string, unknown>[]>(
+      'SELECT signing_payload_json,signing_payload_sha256 FROM esign_documents WHERE id=?',
+      [documentId],
+    );
+    const auditBeforeNote = await auditCount();
+    await request(ctx.server)
+      .patch(
+        `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/note`,
+      )
+      .set('Cookie', creatorCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send({ note: '管理備註不進證據' })
+      .expect(200);
+    expect(
+      await db.query(
+        `SELECT r.* FROM esign_signature_records r JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=?`,
+        [documentId],
+      ),
+    ).toEqual(evidenceBeforeNote);
+    expect(
+      await db.query(
+        'SELECT signing_payload_json,signing_payload_sha256 FROM esign_documents WHERE id=?',
+        [documentId],
+      ),
+    ).toEqual(payloadBeforeNote);
+    expect(await auditCount()).toBe(auditBeforeNote);
+    const externalAfterNote = apiData<SigningTask>(
+      await request(ctx.server)
+        .get('/api/external-signing-task')
+        .set('Cookie', externalCookie)
+        .expect(200),
+    );
+    expect(externalAfterNote.signer).not.toHaveProperty('note');
     const repeatedCopy = await request(ctx.server)
       .get(
         `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/completed-file`,
@@ -2567,7 +2605,11 @@ describe('核心電子簽 US1', () => {
       .expect(400);
 
     const signerHistory = apiData<
-      Array<{ type: string; actor: string; reason: string | null }>
+      Array<{
+        type: string;
+        actor: { kind: string; name: string };
+        reason: string | null;
+      }>
     >(
       await request(ctx.server)
         .get(`/api/esign/documents/${documentId}/history`)
@@ -2581,7 +2623,7 @@ describe('核心電子簽 US1', () => {
     ]);
     expect(
       signerHistory.find((event) => event.type === 'signer.assigned'),
-    ).toMatchObject({ actor: '本人', reason: null });
+    ).toMatchObject({ actor: { kind: 'employee' }, reason: null });
     await request(ctx.server)
       .get(`/api/esign/documents/${documentId}/history`)
       .set('Cookie', outsiderCookie)

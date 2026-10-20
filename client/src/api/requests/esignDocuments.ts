@@ -3,6 +3,8 @@ import api from '@/api/config';
 import axios from 'axios';
 import { endpoints } from '@/api/endpoints';
 import type {
+  SaveSignerNoteBody,
+  SignerNoteResult,
   CreateDocumentBody,
   EsignDocumentDetail,
   EsignDocumentListItem,
@@ -185,5 +187,11 @@ export const documentSourceFileUrl = (id: string) =>
 /** 同一交易保存草稿完整設定。 */
 export const saveDraftSettings = async ({ id, body }: { id: string; body: DraftSettingsBody }): Promise<EsignDocumentDetail> => {
   const res = await api<EsignDocumentDetail>({ method: 'PATCH', url: endpoints.ESIGN_DOCUMENT_DRAFT_SETTINGS(id), data: body });
+  return res.data;
+};
+
+/** 建立人儲存管理備註；空字串清除。 */
+export const saveSignerNote = async ({ id, signerPublicId, note }: SaveSignerNoteBody): Promise<SignerNoteResult> => {
+  const res = await api<SignerNoteResult>({ method: 'PATCH', url: endpoints.ESIGN_SIGNER_NOTE(id, signerPublicId), data: { note } });
   return res.data;
 };

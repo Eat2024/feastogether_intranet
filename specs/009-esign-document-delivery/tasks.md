@@ -126,15 +126,15 @@
 
 對應 FR-035–040、SC-013–014。依賴 US4/US5 的正式結果；備註及actor mapping可先獨立進行。驗收：儲存後重整一致，簽/拒時間與匯出一致，真正系統動作仍顯示系統。
 
-- [ ] T045 [P] [US6] 在 `server/src/features/esign/services/esign-view.mapper.spec.ts` 補actor事件類型、姓名快照與本人裁切測試；新增 `services/esign-signer-note.service.spec.ts` 測note 0/30/31 code points、trim、null非法、清空、取消與非建立人，完成/停止後可存但不改證據。
+- [x] T045 [P] [US6] 在 `server/src/features/esign/services/esign-view.mapper.spec.ts` 補actor事件類型、姓名快照與本人裁切測試；透過 `server/test/esign-signer-management.e2e-spec.ts` 公開 HTTP 接縫測note 0/30/31 code points、trim、null非法、清空、取消與非建立人，完成/停止後可存但不改證據。
 
-- [ ] T046 [US6] 在 `server/src/features/esign/entities/esign-signer.entity.ts` 加note「varchar(30)，utf8mb4；service 限30 code points、預設空字串」並同步migration/schema tests；新增 `services/esign-signer-note.service.ts` 及 `dto/signer-note.dto.ts`，在 `controllers/documents.controller.ts` 接PATCH note，最後成功寫入值為準，非建立人/錯歸屬拒絕。
+- [x] T046 [US6] 在 `server/src/features/esign/entities/esign-signer.entity.ts` 加note「varchar(30)，utf8mb4；service 限30 code points、預設空字串」並同步migration/schema tests；沿用 `services/esign-signer.service.ts` 並新增 `dto/signer-note.dto.ts`，在 `controllers/documents.controller.ts` 接PATCH note，最後成功寫入值為準，非建立人/錯歸屬拒絕。
 
-- [ ] T047 [US6] 修改 `server/src/features/esign/services/esign-document-query.service.ts`、`esign-view.mapper.ts` 與 `dto/document.dto.ts` 回signedAt/rejectedAt/rejectReason/note/通知摘要及actor kind/name/publicId；依事件類型辨別系統與本人，不只看signerId、不回寫audit；本人mapper排除note及他人通知資料。
+- [ ] T047 [US6]（Ticket04已完成日期、原因、note與actor；通知摘要留待Ticket06整合） 修改 `server/src/features/esign/services/esign-document-query.service.ts`、`esign-view.mapper.ts` 與 `dto/document.dto.ts` 回signedAt/rejectedAt/rejectReason/note/通知摘要及actor kind/name/publicId；依事件類型辨別系統與本人，不只看signerId、不回寫audit；本人mapper排除note及他人通知資料。
 
-- [ ] T048 [US6] 在 `client/src/api/types/esignDocuments.ts` 與requests/queries同步欄位及note mutation，接 `client/src/features/esign-documents/DocumentDetailView.tsx` 的備註保存/清空/取消/失敗恢復、已拒頁籤與歷程；更新 `DocumentExportView.tsx` 簽署紀錄匯出的拒簽時間/原因，已拒不算已簽。
+- [x] T048 [US6] 在 `client/src/api/types/esignDocuments.ts` 與requests/queries同步欄位及note mutation，接 `client/src/features/esign-documents/DocumentDetailView.tsx` 的備註保存/清空/取消/失敗恢復、已拒頁籤與歷程；更新 `DocumentExportView.tsx` 簽署紀錄匯出的拒簽時間/原因，已拒不算已簽。
 
-- [ ] T049 [US6] 新增 `server/test/esign-signer-management.e2e-spec.ts` 驗證列表、歷程、本人資料裁切與note更新不改payload/PDF/hash；依 `specs/009-esign-document-delivery/quickstart.md` 核對畫面/匯出一致，記錄瀏覽器驗收而不宣稱client自動測試。
+- [x] T049 [US6] 新增 `server/test/esign-signer-management.e2e-spec.ts` 驗證列表、歷程、本人資料裁切與note更新不改payload/PDF/hash；依 `specs/009-esign-document-delivery/quickstart.md` 核對畫面/匯出一致，記錄瀏覽器驗收而不宣稱client自動測試。
 
 ## Phase 9：整合與交付
 

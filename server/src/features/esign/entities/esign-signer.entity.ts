@@ -272,6 +272,15 @@ export class EsignSigner extends UserAuditableEntity {
   })
   rejectRequestId?: string;
 
+  @Column({
+    name: 'note',
+    type: 'varchar',
+    length: 30,
+    default: '',
+    comment: '建立人管理備註，不屬簽署證據',
+  })
+  note!: string;
+
   @Column({ name: 'sort_order', type: 'int', default: 0, comment: '排序' })
   sortOrder!: number;
 

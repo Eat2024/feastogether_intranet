@@ -150,15 +150,16 @@ export class EsignDocumentQueryService {
       allowReject: document.allowReject,
       stopReason: document.stopReason ?? null,
       createdBy: this.mapper.creator(creator),
-      signers: signers.map((signer) =>
-        this.mapper.signer(
+      signers: signers.map((signer) => ({
+        ...this.mapper.signer(
           signer,
           signer.signerType === 'email'
             ? (deliveryBySigner.get(signer.id) ?? null)
             : null,
           codeBySigner.get(signer.id),
         ),
-      ),
+        note: signer.note ?? '',
+      })),
       fields: fields.map((field) => this.mapper.field(field)),
     };
   }
@@ -191,6 +192,23 @@ export class EsignDocumentQueryService {
     }
     const events = await this.audits.findDocumentEvents(documentId, manager);
     const isCreator = document?.createdByUserId === userId;
+    const bySignerId = new Map(signers.map((item) => [item.id, item]));
+    const actorIds = [
+      ...new Set(
+        events.flatMap((event) =>
+          event.actorUserId ? [event.actorUserId] : [],
+        ),
+      ),
+    ];
+    const actors = new Map(
+      (
+        await Promise.all(
+          actorIds.map((id) => this.users.findById(id, manager)),
+        )
+      )
+        .filter((user): user is User => user !== null)
+        .map((user) => [user.id, user]),
+    );
     const documentEvents = new Set([
       'document.created',
       'document.initiated',
@@ -209,13 +227,11 @@ export class EsignDocumentQueryService {
       .map((event) => ({
         type: event.eventType,
         occurredAt: event.occurredAt.toISOString(),
-        actor: isCreator
-          ? event.actorUserId === userId
-            ? '建立人'
-            : '系統'
-          : event.signerId === signer?.id
-            ? '本人'
-            : '系統',
+        actor: this.mapper.historyActor(
+          event,
+          event.signerId ? bySignerId.get(event.signerId) : undefined,
+          event.actorUserId ? actors.get(event.actorUserId) : undefined,
+        ),
         reason:
           typeof event.metadataJson?.reason === 'string'
             ? event.metadataJson.reason

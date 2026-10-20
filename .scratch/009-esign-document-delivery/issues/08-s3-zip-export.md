@@ -4,7 +4,7 @@
 
 **Blocked by:** 07: 背景 ZIP 匯出與七天重用：本機儲存
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] multipart有界緩衝與part數限制，完成上傳後才發布。
 - [x] 同一正式畫面可查進度、七天重用、原生下載與Range續傳。
@@ -23,3 +23,9 @@
 - 詳細測試方式、授權需求及限制：[S3 實作紀錄](../../../specs/009-esign-document-delivery/implementation-notes-s3.md)。
 
 - 已merge整合 `9b88316`；最終root build/lint、99 suites／839 units、6項adapter真HTTP通過。等待merger合併後將狀態改resolved。
+
+## 整合紀錄
+
+- ticket 分支 tip：`f7d0655`；以 `--no-ff` 合併，merge commit：`31bf0d53e542211a19a8acd250e114f6e10a9d29`，無衝突。
+- 整合分支重跑 S3／本機 storage 及 maintenance 單測，3 suites／13 tests 通過；`git diff --check` 通過。已確認 client-s3 與 lib-storage 均為 `3.1149.0`。
+- S3 功能與 active generation 清理修正已整合，標記 `resolved`；無新增 schema 或環境變數。正式 AWS IAM、部署網路及容量效能未在本票驗證，容量門檻留 ticket 09；未重跑共用 DB／Redis。

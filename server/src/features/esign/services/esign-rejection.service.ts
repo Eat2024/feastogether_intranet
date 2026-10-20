@@ -1,0 +1,112 @@
+import { Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
+import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import { RejectionDto } from '../dto/rejection.dto';
+import { DocumentRepository } from '../repositories/document.repository';
+import { SignerRepository } from '../repositories/signer.repository';
+import { EsignAccessPolicyService } from './esign-access-policy.service';
+import { EsignDocumentValidationService } from './esign-document-validation.service';
+import { EsignAuditService } from './esign-audit.service';
+import { EsignJobProducerService } from './esign-job-producer.service';
+import type { SigningPrincipal } from './esign-signing.service';
+
+@Injectable()
+export class EsignRejectionService {
+  constructor(
+    private readonly mysql: MysqlService,
+    private readonly documents: DocumentRepository,
+    private readonly signers: SignerRepository,
+    private readonly access: EsignAccessPolicyService,
+    private readonly validation: EsignDocumentValidationService,
+    private readonly audit: EsignAuditService,
+    private readonly jobs: EsignJobProducerService,
+  ) {}
+
+  async reject(
+    publicId: string,
+    principal: SigningPrincipal,
+    input: RejectionDto,
+  ) {
+    if (input.reason !== undefined && typeof input.reason !== 'string')
+      throw new AppException(...AppErrors.ESIGN_REJECTION_REASON_INVALID);
+    const reason = input.reason?.trim() ?? '';
+    if (Array.from(reason).length > 200)
+      throw new AppException(...AppErrors.ESIGN_REJECTION_REASON_INVALID);
+    const result = await this.mysql.transaction(async (manager) => {
+      const candidate = await this.signers.findByPublicId(publicId, manager);
+      const document = candidate
+        ? await this.documents.findByIdForUpdate(candidate.documentId, manager)
+        : null;
+      const signer = document
+        ? await this.signers.findByPublicIdForUpdate(publicId, manager)
+        : null;
+      if (!document || !signer)
+        throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+      if (principal.kind === 'internal')
+        this.access.assertInternalSigner(document, signer, principal.userId);
+      else {
+        if (signer.id !== principal.signerId)
+          throw new AppException(...AppErrors.ESIGN_EXTERNAL_SIGNER_MISMATCH);
+        this.access.assertExternalAccess({ document, signer }, new Date());
+      }
+      let repeated = false;
+      if (
+        signer.status === 'rejected' &&
+        signer.rejectRequestId === input.requestId &&
+        signer.rejectReason === reason
+      )
+        repeated = true;
+      else {
+        if (signer.status !== 'pending')
+          throw new AppException(...AppErrors.ESIGN_REJECTION_CONFLICT);
+        this.validation.assertActiveSigningWindow(document, new Date());
+        if (!document.allowReject)
+          throw new AppException(...AppErrors.ESIGN_REJECTION_NOT_ALLOWED);
+        const now = new Date();
+        signer.status = 'rejected';
+        signer.rejectedAt = now;
+        signer.rejectReason = reason;
+        signer.rejectRequestId = input.requestId;
+        signer.invitationTokenCiphertext = null;
+        signer.invitationExpiresAt = null;
+        await this.signers.save(signer, manager);
+        await this.audit.append(
+          {
+            documentId: document.id,
+            signerId: signer.id,
+            actorUserId:
+              principal.kind === 'internal' ? principal.userId : undefined,
+            eventType: 'signer.rejected',
+            occurredAt: now,
+            requestId: input.requestId,
+            metadata: { reason },
+          },
+          manager,
+        );
+        const counts = await this.signers.completionCounts(
+          document.id,
+          manager,
+        );
+        if (counts.total > 0 && counts.pending === 0) {
+          document.status = 'finalizing';
+          await this.documents.save(document, manager);
+        }
+      }
+      return {
+        signerPublicId: publicId,
+        status: 'rejected' as const,
+        rejectedAt: signer.rejectedAt!.toISOString(),
+        reason: signer.rejectReason!,
+        repeated,
+        documentId: document.id,
+        signerId: signer.id,
+      };
+    });
+    // 拒簽不產製 PDF；worker 僅檢查文件是否可結案，maintenance 可補救入列失敗。
+    if (!result.repeated)
+      await this.jobs.enqueueFinalization(result.documentId, result.signerId);
+    const { documentId: _documentId, signerId: _signerId, ...view } = result;
+    return view;
+  }
+}

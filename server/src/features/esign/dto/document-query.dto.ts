@@ -18,6 +18,6 @@ export class ListDocumentsQueryDto {
 
 export class ListSigningTasksQueryDto {
   @IsOptional()
-  @IsIn(['pending', 'signed'])
-  status?: 'pending' | 'signed';
+  @IsIn(['pending', 'signed', 'rejected'])
+  status?: 'pending' | 'signed' | 'rejected';
 }

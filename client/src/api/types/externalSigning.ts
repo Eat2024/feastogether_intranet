@@ -4,8 +4,9 @@ import type { EsignDocumentStatus, EsignFieldView, EsignSignerView } from './esi
 /** POST／GET external-signing-task：外部存取 cookie 所屬簽署人的簽署任務（不含其他簽署人與建立人資料） */
 export interface ExternalSigningTask {
   signerPublicId: string;
+  allowReject: boolean;
   document: { id: string; title: string; status: EsignDocumentStatus; signEndAt: string | null };
-  signer: Pick<EsignSignerView, 'publicId' | 'type' | 'name' | 'email' | 'status' | 'signedAt' | 'completion'>;
+  signer: Pick<EsignSignerView, 'publicId' | 'type' | 'name' | 'email' | 'status' | 'signedAt' | 'rejectedAt' | 'rejectReason' | 'completion'>;
   /** 文件的共用欄位，每位簽署人都要簽 */
   fields: EsignFieldView[];
   /** 目前有效的電子簽署同意聲明；送出時帶回 version */
@@ -31,3 +32,7 @@ export interface ExternalSignatureResult {
   documentStatus: EsignDocumentStatus;
   completion: EsignSignerView['completion'];
 }
+
+/** 本人拒簽：重試沿用 requestId，不得改寫已成立原因。 */
+export interface RejectionBody { requestId: string; reason?: string }
+export interface RejectionResult { signerPublicId: string; status: 'rejected'; rejectedAt: string; reason: string }

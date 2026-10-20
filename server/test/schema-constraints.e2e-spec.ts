@@ -222,6 +222,7 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_signers_completion',
           'chk_esign_signers_identity',
           'chk_esign_signers_status',
+          'chk_esign_signers_terminal_times',
         ]);
       } finally {
         await ds.destroy();

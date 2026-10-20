@@ -114,6 +114,8 @@ export class EsignViewMapper {
       email: signer.email ?? null,
       status: signer.status as EsignSignerStatus,
       signedAt: signer.signedAt?.toISOString() ?? null,
+      rejectedAt: signer.rejectedAt?.toISOString() ?? null,
+      rejectReason: signer.rejectReason ?? null,
       completion: {
         status: signer.completionStatus ?? null,
         readyAt: signer.completionReadyAt?.toISOString() ?? null,

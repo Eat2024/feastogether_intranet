@@ -1,3 +1,4 @@
+import Button from '@mui/material/Button';
 import FlashSnackbar from '@/components/FlashSnackbar';
 import LinkPagination from '@/components/LinkPagination';
 import PageHeader from '@/components/PageHeader';
@@ -52,6 +53,7 @@ export default async function MySignaturePage({ searchParams }: PageProps<'/my-s
         hideTitleWhenEmbedded
         description="查看需要你簽署的文件，並追蹤已簽署與已拒絕的紀錄。"
       />
+      <Button href="/my-signature/tasks">查看指派給我的文件</Button>
       <Stack spacing={2}>
         <MySignTabs value={tab} counts={counts} />
         <MySignTable tab={tab} tasks={items} today={new Date()} sort={sort} />

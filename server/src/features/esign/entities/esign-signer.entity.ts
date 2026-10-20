@@ -12,7 +12,14 @@ import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from './esign-document.entity';
 
 @Entity({ name: 'esign_signers', comment: '文件簽署人' })
-@Check('chk_esign_signers_status', "`status` IN ('pending','signed')")
+@Check(
+  'chk_esign_signers_terminal_times',
+  "(`signed_at` IS NULL OR `rejected_at` IS NULL) AND (`status` <> 'rejected' OR (`rejected_at` IS NOT NULL AND `reject_request_id` IS NOT NULL AND `reject_reason` IS NOT NULL))",
+)
+@Check(
+  'chk_esign_signers_status',
+  "`status` IN ('pending','signed','rejected')",
+)
 @Check(
   'chk_esign_signers_identity',
   "(`signer_type` = 'user' AND `user_id` IS NOT NULL AND `email` IS NULL AND `empid_snapshot` IS NOT NULL AND `invitation_token_sha256` IS NULL AND `invitation_token_ciphertext` IS NULL AND `invitation_expires_at` IS NULL) OR (`signer_type` = 'email' AND `user_id` IS NULL AND `email` IS NOT NULL AND `empid_snapshot` IS NULL)",
@@ -49,7 +56,7 @@ import { EsignDocument } from './esign-document.entity';
 @Index('idx_esign_signers_completion_status_id', ['completionStatus', 'id'])
 @Check(
   'chk_esign_signers_completion',
-  "(`status` = 'pending' AND `completion_status` IS NULL AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`status` = 'signed' AND `completion_status` IS NOT NULL AND ((`completion_status` IN ('pending','failed') AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'processing' AND `completion_lease_token` IS NOT NULL AND `completion_lease_expires_at` IS NOT NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'ready' AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NOT NULL)))",
+  "(`status` IN ('pending','rejected') AND `completion_status` IS NULL AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`status` = 'signed' AND `completion_status` IS NOT NULL AND ((`completion_status` IN ('pending','failed') AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'processing' AND `completion_lease_token` IS NOT NULL AND `completion_lease_expires_at` IS NOT NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'ready' AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NOT NULL)))",
 )
 @Index('idx_esign_signers_created_at', ['createdAt'])
 @Index('idx_esign_signers_updated_at', ['updatedAt'])
@@ -253,6 +260,17 @@ export class EsignSigner extends UserAuditableEntity {
     comment: '拒絕原因',
   })
   rejectReason?: string;
+
+  @Column({
+    name: 'reject_request_id',
+    type: 'char',
+    length: 36,
+    charset: 'ascii',
+    collation: 'ascii_bin',
+    nullable: true,
+    comment: '拒簽冪等請求 UUID',
+  })
+  rejectRequestId?: string;
 
   @Column({ name: 'sort_order', type: 'int', default: 0, comment: '排序' })
   sortOrder!: number;

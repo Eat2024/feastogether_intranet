@@ -7,7 +7,7 @@
 - 這是饗賓內部電子簽署系統的前端原型，主要功能包含文件建立、簽署人設定、簽署／拒絕、進度追蹤與 Excel 匯出。
 - 技術棧：Next.js 16 App Router、React 19、TypeScript strict、MUI 9、pnpm。
 - 頁面文案、錯誤訊息與程式註解以繁體中文為主。
-- repository 已有 NestJS 後端骨架，但電子簽業務尚未串接 API；表單資料仍以 `src/features/forms/store.ts` 的 Next.js server-memory mock store 保存，重啟 client server 會重置。
+- 建立人文件管理（`src/features/esign-documents`）與外部簽署頁（`src/features/external-signing`，Spec 008）透過 `src/api`（endpoints → types → requests → queries）呼叫 NestJS 後端；內部「我的簽署」（`/my-signature`）與部分 `forms` 路由尚未串接，資料仍以 `src/features/forms/store.ts` 的 Next.js server-memory mock store 保存，重啟 client server 會重置。
 
 ## 常用指令
 

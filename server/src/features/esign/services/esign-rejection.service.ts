@@ -33,8 +33,12 @@ export class EsignRejectionService {
     const reason = input.reason?.trim() ?? '';
     if (Array.from(reason).length > 200)
       throw new AppException(...AppErrors.ESIGN_REJECTION_REASON_INVALID);
+    // 先取得不變的歸屬；交易內第一個讀取必須是文件鎖，避免 RR 舊快照漏看其他人的終態。
+    const candidate = await this.signers.findByPublicId(
+      publicId,
+      this.mysql.getManager(),
+    );
     const result = await this.mysql.transaction(async (manager) => {
-      const candidate = await this.signers.findByPublicId(publicId, manager);
       const document = candidate
         ? await this.documents.findByIdForUpdate(candidate.documentId, manager)
         : null;

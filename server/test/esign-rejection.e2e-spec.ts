@@ -1,3 +1,8 @@
+import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
+import { getQueueToken } from '@nestjs/bullmq';
+import { ESIGN_DOCUMENT_FINALIZATION_QUEUE } from '#app/features/esign/esign-queue.constants';
+import { EsignMaintenanceProcessor } from '#app/worker/esign/esign-maintenance.processor';
+import type { Queue } from 'bullmq';
 import { RejectionCompletion1792454401000 } from '#app/infrastructure/database/migrations/1792454401000-RejectionCompletion';
 import { esignTestPng } from './esign-test-png';
 import type { Job } from 'bullmq';
@@ -8,7 +13,7 @@ import {
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import { NestFactory } from '@nestjs/core';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
@@ -118,12 +123,10 @@ describe('拒簽 HTTP 與結案', () => {
         await db.query('DELETE FROM esign_signers WHERE document_id=?', [id]);
         await db.query('DELETE FROM esign_documents WHERE id=?', [id]);
         for (const file of files)
-          await ctx.app
-            .get<PrivateFileStorage>(PRIVATE_FILE_STORAGE)
-            .delete({
-              objectKey: file.object_key,
-              objectVersion: file.object_version,
-            });
+          await ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE).delete({
+            objectKey: file.object_key,
+            objectVersion: file.object_version,
+          });
       }
     if (ctx) await closeSecurityE2eApp(ctx);
   });
@@ -179,7 +182,14 @@ describe('拒簽 HTTP 與結案', () => {
     const doc = await create([{ type: 'user', userId }]);
     const id = doc.signers[0].publicId;
     const body = { requestId: randomUUID(), reason: ' 不同意 ' };
+    const queue = ctx.app.get<Queue>(
+      getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
+    );
+    const failure = jest
+      .spyOn(queue, 'add')
+      .mockRejectedValueOnce(new Error('synthetic queue outage'));
     const result = apiData(await reject(id, body).expect(201));
+    failure.mockRestore();
     expect(apiData(await reject(id, body).expect(200))).toEqual(result);
     await reject(id, { ...body, reason: '改寫' }).expect(409);
     const tasks = apiData<
@@ -204,9 +214,7 @@ describe('拒簽 HTTP 與結案', () => {
       logger: false,
     });
     try {
-      await worker
-        .get(DocumentFinalizationProcessor)
-        .finalizeDocument(Number(doc.id));
+      await worker.get(EsignMaintenanceProcessor).process({} as Job);
     } finally {
       await worker.close();
     }
@@ -217,6 +225,12 @@ describe('拒簽 HTTP 與結案', () => {
         .expect(200),
     );
     expect(final.status).toBe('completed');
+    await request(ctx.server)
+      .post(`/api/esign/documents/${doc.id}/exports`)
+      .set('Cookie', cookie)
+      .set('Origin', 'http://localhost:3000')
+      .send({ type: 'signed_copies_zip' })
+      .expect(409);
     const runner = db.createQueryRunner();
     try {
       await expect(
@@ -225,6 +239,112 @@ describe('拒簽 HTTP 與結案', () => {
     } finally {
       await runner.release();
     }
+  });
+  it('兩位不同簽署人依序取得文件鎖，最後拒簽看得到前一位已提交的終態', async () => {
+    const doc = await create([
+      { type: 'email', name: '競態 A', email: 'race-a@example.test' },
+      { type: 'email', name: '競態 B', email: 'race-b@example.test' },
+    ]);
+    const sessions: string[] = [];
+    for (const signer of doc.signers) {
+      const rows = await db.query<
+        Array<{ invitation_token_ciphertext: string }>
+      >(
+        'SELECT invitation_token_ciphertext FROM esign_signers WHERE public_id=?',
+        [signer.publicId],
+      );
+      sessions.push(
+        await openExternalSession(
+          ctx,
+          ctx.app
+            .get(EsignTokenService)
+            .decrypt(rows[0].invitation_token_ciphertext),
+        ),
+      );
+    }
+    const isolation = await db.query<Array<{ isolation: string }>>(
+      'SELECT @@transaction_isolation AS isolation',
+    );
+    expect(isolation[0].isolation).toBe('REPEATABLE-READ');
+    const deferred = () => {
+      let resolve!: () => void;
+      const promise = new Promise<void>((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    };
+    const firstLocked = deferred();
+    const secondWaiting = deferred();
+    const releaseFirst = deferred();
+    const repository = ctx.app.get<DocumentRepository>(DocumentRepository);
+    const realRepository = new DocumentRepository();
+    const original = (id: number, manager: EntityManager) =>
+      realRepository.findByIdForUpdate(id, manager);
+    let arrivals = 0;
+    // 只控制真 MySQL 鎖的到達順序；所有 SQL、交易及 HTTP 結果都使用正式實作。
+    const barrier = jest
+      .spyOn(repository, 'findByIdForUpdate')
+      .mockImplementation(async (id, manager) => {
+        if (id !== Number(doc.id)) return original(id, manager);
+        const arrival = ++arrivals;
+        if (arrival === 2) secondWaiting.resolve();
+        const result = await original(id, manager);
+        if (arrival === 1) {
+          firstLocked.resolve();
+          await releaseFirst.promise;
+        }
+        return result;
+      });
+    const submit = (index: number) =>
+      request(ctx.server)
+        .post('/api/external-signing-task/rejection')
+        .set('Cookie', sessions[index])
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signerPublicId: doc.signers[index].publicId,
+          requestId: randomUUID(),
+        })
+        .then((response) => response);
+    try {
+      const first = submit(0);
+      await firstLocked.promise;
+      const second = submit(1);
+      await secondWaiting.promise;
+      releaseFirst.resolve();
+      expect(
+        (await Promise.all([first, second])).map((result) => result.status),
+      ).toEqual([201, 201]);
+    } finally {
+      releaseFirst.resolve();
+      barrier.mockRestore();
+    }
+    const final = apiData<Detail>(
+      await request(ctx.server)
+        .get(`/api/esign/documents/${doc.id}`)
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+    expect(final.signers.map((signer) => signer.status)).toEqual([
+      'rejected',
+      'rejected',
+    ]);
+    expect(final.status).toBe('finalizing');
+    const worker = await NestFactory.createApplicationContext(WorkerModule, {
+      logger: false,
+    });
+    try {
+      await worker.get(EsignMaintenanceProcessor).process({} as Job);
+    } finally {
+      await worker.close();
+    }
+    expect(
+      apiData<Detail>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${doc.id}`)
+          .set('Cookie', cookie)
+          .expect(200),
+      ).status,
+    ).toBe('completed');
   });
   it('外部 OTP 本人可拒簽、重送與讀結果，不可讀來源或副本', async () => {
     const doc = await create([
@@ -355,11 +475,9 @@ describe('拒簽 HTTP 與結案', () => {
       logger: false,
     });
     try {
-      await worker
-        .get(DocumentFinalizationProcessor)
-        .process({
-          data: { documentId: Number(doc.id), signerId: internal[0].id },
-        } as Job);
+      await worker.get(DocumentFinalizationProcessor).process({
+        data: { documentId: Number(doc.id), signerId: internal[0].id },
+      } as Job);
     } finally {
       await worker.close();
     }

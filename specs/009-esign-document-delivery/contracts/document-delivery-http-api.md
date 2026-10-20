@@ -1,6 +1,6 @@
 # Spec 009 文件交付 API 契約
 
-狀態：設計契約，尚未實作。JSON 沿用 `{success,data}` envelope；所有 session 寫入沿用 OriginGuard。ID 在 API 為 string，後端檢查合法與安全範圍。401 未登入、403 權限類型不足、404 隱藏資源／跨文件、409 狀態衝突、400 輸入非法；錯誤集中 AppErrors。
+狀態：已實作並完成本機 HTTP/worker 回歸，整合結果見 [驗證紀錄](../implementation-notes-integration.md)。JSON 沿用 `{success,data}` envelope；所有 session 寫入沿用 OriginGuard。ID 在 API 為 string，後端檢查合法與安全範圍。401 未登入、403 寫入來源不合法、404 隱藏資源／跨文件、409 狀態衝突、400 輸入非法；錯誤集中 AppErrors。
 
 ## 草稿完整設定
 
@@ -51,7 +51,7 @@ completed 時 files 為 `{id,fileName,size,sha256,downloadPath}`；不回 object
 
 `GET /api/esign/documents/{documentId}/exports/{exportId}/files/{fileId}`。
 
-每次確認有效員工 session、資源歸屬、completed、now<expiresAt。到期410 `ESIGN_EXPORT_EXPIRED`；不存在404；尚未完成409；已完成但物件遺失503 `ESIGN_EXPORT_UNAVAILABLE`。不因 GET 偷偷重新生成。
+每次確認有效員工 session、資源歸屬、completed、now<expiresAt。到期410 `ESIGN_EXPORT_EXPIRED`；不存在404；尚未完成409；已完成但物件遺失、尺寸或固定版本不符503 `ESIGN_EXPORT_UNAVAILABLE`。不因 GET 偷偷重新生成。
 
 完整檔200；合法單一 Range 206並回 Content-Range／Content-Length／Accept-Ranges: bytes／ETag(sha256)。If-Range 與目前 ETag 不符回完整200；無法滿足的 range回416及 `Content-Range: bytes */size`；多段Range本版不實作，忽略後回完整200。回 application/zip、attachment UTF-8 filename、private/no-store、nosniff。代理與 Next rewrite 必須保留這些標頭、Range 與串流，避免反向代理緩衝整包。
 
@@ -60,3 +60,5 @@ completed 時 files 為 `{id,fileName,size,sha256,downloadPath}`；不回 object
 ## Storage 內部契約
 
 擴充既有 PrivateFileStorage，不替換其 store(bytes) 呼叫：`storeStream({directory,extension:'zip',mimeType:'application/zip',stream,signal,...})` 回 StoredPrivateFile；`openReadStream(reference,{start,end,signal})` 支援 Range；刪除仍接受固定版本 reference。新增 zip MIME／extension 白名單。實際 byte count 與 SHA-256 邊寫邊算，失敗銷毀所有來源與目的流。暫存物與 multipart 清理限定匯出目錄，禁止掃除來源 PDF。
+
+local 新 ZIP 的 objectVersion 為不公開的檔案 metadata fingerprint，stat／開啟檔案時驗證，偵測一般同長度覆寫；S3 使用固定 VersionId。舊 local 物件沒有版本時維持尺寸檢查。此策略不宣稱偵測 metadata 不變的底層 silent bit rot，不以每次下載全檔預讀 hash 阻塞 Range。GET detail/history 回持久工作狀態及成果 reference，實際可用性在 POST 重用及 GET 下載檢查；不可用回503且不重新打包。

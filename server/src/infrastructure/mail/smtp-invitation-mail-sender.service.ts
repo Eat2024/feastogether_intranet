@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import nodemailer, { type Transporter } from 'nodemailer';
+import { isDeployedEnvironment } from '#app/config/app.environment';
 import { buildInvitationMail } from './invitation-mail-content';
 import type {
   InvitationMailSender,
@@ -20,6 +21,8 @@ export class SmtpInvitationMailSender implements InvitationMailSender {
       host: config.getOrThrow<string>('SMTP_HOST'),
       port: config.getOrThrow<number>('SMTP_PORT'),
       secure: config.getOrThrow<string>('SMTP_SECURE') === 'true',
+      // 部署環境未用直接 TLS 時必須升級 STARTTLS，無法加密就不寄出（不送明文帳密）
+      requireTLS: isDeployedEnvironment(config.get<string>('NODE_ENV')),
       auth: user && password ? { user, pass: password } : undefined,
     });
     this.from = config.getOrThrow<string>('SMTP_FROM');

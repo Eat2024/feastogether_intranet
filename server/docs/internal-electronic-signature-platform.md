@@ -376,7 +376,7 @@ documents/{document_uuid}/
 
 Spec 03 以 `PrivateFileStorage` 作為唯一檔案邊界。local 與 automated test 使用不對外公開的本機目錄；UAT 使用 HTTP server 與 worker 共用、跨重啟保留的 private persistent volume；production 固定使用啟用 Block Public Access 的 private S3。S3 認證只使用 runtime IAM role／AWS SDK default credential chain，不新增 access key 環境變數。任何必要 driver、bucket、region、volume 或權限缺失均在啟動或操作時 fail closed，production 不得 fallback 至 local。API 不回傳 bucket URL 或 presigned URL，所有 PDF 仍須經 resource-level authorization 後由 server 串流。
 
-外部邀請郵件使用 `InvitationMailSender`：local 經 SMTP 投遞 Mailpit、automated test 使用 in-memory fake、UAT 使用 SES sandbox、production 使用已移出 sandbox 的 SES。UAT 的 sender 與測試收件人須在相同 region 完成驗證；production 使用已驗證 sender/domain。郵件只包含文件名稱、建立人、台北截止時間及 opaque invitation URL，不附 PDF、不列出其他簽署人，也不提供催簽或完成通知。
+外部邀請郵件使用 `InvitationMailSender`：local、UAT 與 production 都經 SMTP 以公司 Google Workspace 帳號（`smtp.gmail.com`）寄出，automated test 使用 in-memory fake（Spec 008 起不再使用 SES）。local 可改寄本機 Mailpit，不驗證、不加密；UAT 與 production 必須設定 `SMTP_USER`、`SMTP_PASSWORD` 以帳號驗證，且一律加密連線（`SMTP_SECURE=true` 直接 TLS，或 `SMTP_SECURE=false` 時強制 STARTTLS，無法加密就不寄出），帳密由部署環境提供、不進版本控制。寄送失敗只記錄穩定錯誤碼，不記錄 SMTP 回應、收件內容、token 或密碼。郵件只包含文件名稱、建立人、台北截止時間及 opaque invitation URL，不附 PDF、不列出其他簽署人，也不提供催簽或完成通知。
 
 HTTP process 只註冊 BullMQ producer；獨立 worker 才載入 invitation、finalization 與 maintenance processors。MySQL transaction 與 constraint 是業務權威，Redis/BullMQ 只負責喚醒、重試與每 30 秒 reconciliation。Queue payload 只放 `notificationLogId` 或 `documentId`，不得包含 Email、token、PDF、PNG 或 cookie；Redis 暫時不可用不回滾已成立的 MySQL 簽署結果，恢復後由 maintenance 依 DB 現況收斂。
 
@@ -384,7 +384,7 @@ HTTP process 只註冊 BullMQ producer；獨立 worker 才載入 invitation、fi
 
 - migration：`1791936000000-CoreEsignFlow.ts`，可 run/revert/run；entity、migration 與 `schema.sql` 同步維護。
 - storage：`ESIGN_STORAGE_DRIVER`、`ESIGN_STORAGE_ROOT`、`ESIGN_S3_BUCKET`、`AWS_REGION`。
-- mail：`ESIGN_MAIL_DRIVER`、`SMTP_*`、`SES_FROM`。
+- mail：`ESIGN_MAIL_DRIVER`、`SMTP_*`（UAT／production 必填 `SMTP_USER`、`SMTP_PASSWORD`）。
 - external access：`EXTERNAL_SIGNING_ORIGIN`、`ESIGN_INVITATION_ENCRYPTION_KEY_B64`。
 - 簽章驗證（Spec 04）：不新增環境變數，驗證網址使用 `EXTERNAL_SIGNING_ORIGIN`；migration `1792108800000-SignatureVerificationCode.ts` 新增 `esign_signature_records.verification_code`。
 - queue：沿用 `REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_DB`，不新增第二套 Redis 設定。

@@ -1,19 +1,10 @@
+import { escapeHtml } from '#app/common/escape-html';
 import type { SendInvitationMailInput } from './invitation-mail-sender.port';
 
 export interface InvitationMailContent {
   subject: string;
   text: string;
   html: string;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(
-    /[&<>'"]/g,
-    (character) =>
-      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[
-        character
-      ] ?? character,
-  );
 }
 
 export function buildInvitationMail(

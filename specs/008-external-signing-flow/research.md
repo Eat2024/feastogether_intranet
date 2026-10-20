@@ -169,6 +169,7 @@
 - **稽核**：新增 `external_otp.sent`、`external_otp.verified`、`external_otp.failed`、`external_otp.locked`，metadata 不含驗證碼（`failed` 可記剩餘次數）；原有 `external_invitation.opened` 改在驗證成功時記錄。`esign_audit_events.event_type` 為 varchar(50)，無 CHECK，不需 migration。
 - **log**：`/api/external-signature-otps` 加入 HTTP access log 的不記錄 body 路徑清單；驗證碼與 token 不進 log、錯誤訊息或稽核。
 - **限流**：上述冷卻與上限之外，兩個 POST 端點加上既有 `AuthThrottlerGuard` 依 IP 限流。
+- **重新寄送倒數**（ticket 11）：輸入頁的重新寄送按鈕在冷卻期間停用並倒數，以頁面內一段固定的 inline script 實作（依截止時刻計算，手機切到信箱 App 再回來也不失準）；CSP 加上 `script-src 'sha256-…'` 只放行該段內容，不開放 `'unsafe-inline'`。每小時上限可能要等數十分鐘，不倒數，改顯示可再寄送的時刻。錯誤頁的重新寄送一律可按，冷卻與上限由 otps 端點判斷。
 
 **Rationale**: 使用者 2026-10-20 決定以驗證碼確認信箱控制權，降低連結外流後可長期開啟與下載的風險。驗證碼是短期、可自動過期的資料，依憲章 IV 放 Redis 比新增資料表簡單，也不需 migration。同步寄送能在畫面立即回報失敗。
 

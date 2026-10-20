@@ -37,14 +37,22 @@ describe('ExternalAccessService', () => {
       new EsignDocumentValidationService(),
       {} as never,
     );
-    // Redis 以 Map 模擬（TTL 由真 Redis 負責，e2e 另驗）
+    // Redis 以 Map 模擬，TTL 只記錄設定值、不會到期（到期由真 Redis 負責，e2e 另驗）
     const store = new Map<string, string>();
+    const ttls = new Map<string, number>();
     const redis = {
       get: (key: string) => Promise.resolve(store.get(key) ?? null),
       set: (key: string, value: string) => {
         store.set(key, value);
         return Promise.resolve();
       },
+      setIfAbsent: (key: string, value: string, ttl: number) => {
+        if (store.has(key)) return Promise.resolve(false);
+        store.set(key, value);
+        ttls.set(key, ttl);
+        return Promise.resolve(true);
+      },
+      ttl: (key: string) => Promise.resolve(ttls.get(key) ?? -2),
       del: (...keys: string[]) =>
         Promise.resolve(keys.filter((key) => store.delete(key)).length),
       increment: (key: string) => {
@@ -136,6 +144,7 @@ describe('ExternalAccessService', () => {
 
       await expect(context.service.sendOtp(token)).resolves.toEqual({
         email: 'daming.wang@example.com',
+        issue: { status: 'sent', retryAfterSeconds: 60 },
       });
 
       expect(context.mailer.otpDeliveries).toEqual([
@@ -152,6 +161,18 @@ describe('ExternalAccessService', () => {
       );
     },
   );
+
+  it('冷卻中再要求寄送：不寄信、不記錄寄出，回報可再寄送的秒數', async () => {
+    const context = setup();
+    await context.service.sendOtp(token);
+
+    await expect(context.service.sendOtp(token)).resolves.toEqual({
+      email: 'daming.wang@example.com',
+      issue: { status: 'cooldown', retryAfterSeconds: 60 },
+    });
+    expect(context.mailer.otpDeliveries).toHaveLength(1);
+    expect(auditedEvents(context.audit)).toEqual(['external_otp.sent']);
+  });
 
   it('待簽者在文件停止後不寄驗證碼，回 401', async () => {
     const context = setup();

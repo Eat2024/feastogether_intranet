@@ -54,6 +54,29 @@ export class RedisService implements OnModuleDestroy {
   }
 
   /**
+   * 只在 key 不存在時寫入並設定 TTL（SET NX EX，一道命令完成）；寫入成功回 true。
+   * 用於同時只允許一方取得的佔位，例如驗證碼重新寄送的冷卻。
+   */
+  async setIfAbsent(key: string, value: string, ttl: number): Promise<boolean> {
+    try {
+      return (await this.client.set(key, value, 'EX', ttl, 'NX')) === 'OK';
+    } catch (error) {
+      this.logError('setIfAbsent', error);
+      throw error;
+    }
+  }
+
+  /** key 剩餘的存活秒數；依 Redis TTL 語意，key 不存在回 -2、未設 TTL 回 -1。 */
+  async ttl(key: string): Promise<number> {
+    try {
+      return await this.client.ttl(key);
+    } catch (error) {
+      this.logError('ttl', error);
+      throw error;
+    }
+  }
+
+  /**
    * 原子地把 counter 校正到 DB 已知下限後取下一號。
    * key 已存在且較新時保留原值與 TTL；遺失／落後時才以 minimum 重建。
    */

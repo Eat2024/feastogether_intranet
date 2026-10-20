@@ -56,7 +56,14 @@ describe('e-sign schema database constraints', () => {
         expect(Number(defaults[0]?.watermark_enabled)).toBe(0);
         expect(Number(defaults[0]?.allow_reject)).toBe(0);
         await ds.query(
-          `UPDATE esign_documents SET status='expired' WHERE id=1`,
+          `UPDATE esign_documents SET sign_start_at='2026-01-01' WHERE id=1`,
+        );
+        await expectRejected(
+          ds,
+          `UPDATE esign_documents SET status='active' WHERE id=1`,
+        );
+        await ds.query(
+          `UPDATE esign_documents SET status='expired',sign_end_at='2026-12-31' WHERE id=1`,
         );
         await expectRejected(
           ds,

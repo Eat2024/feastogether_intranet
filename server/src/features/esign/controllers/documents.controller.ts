@@ -1,3 +1,4 @@
+import { DraftSettingsDto } from '../dto/draft-settings.dto';
 import { ApiOperation } from '@nestjs/swagger';
 import {
   Body,
@@ -152,6 +153,19 @@ export class DocumentsController {
     const documentId = this.id(id);
     await this.signerService.draftSave(documentId, userId, body.signers);
     return (await this.queries.creatorDetail(documentId, userId)).signers;
+  }
+
+  @UseGuards(OriginGuard)
+  @ApiOperation({ summary: '完整暫存草稿名單、期間與選項' })
+  @Patch(':documentId/draft-settings')
+  async saveDraftSettings(
+    @Param('documentId') id: string,
+    @Body() body: DraftSettingsDto,
+    @CurrentUserId() userId: number,
+  ) {
+    const documentId = this.id(id);
+    await this.signerService.saveDraftSettings(documentId, userId, body);
+    return this.queries.creatorDetail(documentId, userId);
   }
 
   @UseGuards(OriginGuard)

@@ -146,6 +146,8 @@ export class EsignDocumentQueryService {
       sourceFile,
       signStartAt: document.signStartAt?.toISOString() ?? null,
       signEndAt: document.signEndAt?.toISOString() ?? null,
+      watermark: document.watermarkEnabled,
+      allowReject: document.allowReject,
       stopReason: document.stopReason ?? null,
       createdBy: this.mapper.creator(creator),
       signers: signers.map((signer) =>

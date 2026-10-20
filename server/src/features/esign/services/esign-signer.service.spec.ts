@@ -1,3 +1,4 @@
+import { DocumentRepository } from '../repositories/document.repository';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
@@ -12,6 +13,7 @@ describe('EsignSignerService', () => {
     {} as never,
     {} as never,
     {} as never,
+    new DocumentRepository(),
   );
 
   it('外部簽署 Email 只做 trim + lowercase', () => {
@@ -41,6 +43,7 @@ describe('EsignSignerService', () => {
       signers as never,
       {} as never,
       access as never,
+      { save: (value: EsignDocument) => Promise.resolve(value) } as never,
     );
 
     await replacing.updateSigners(
@@ -78,6 +81,7 @@ describe('EsignSignerService', () => {
         new EsignDocumentValidationService(),
         documents as never,
       ),
+      new DocumentRepository(),
     );
     const update = jest.spyOn(service, 'updateSigners');
     await expect(
@@ -110,6 +114,7 @@ describe('EsignSignerService', () => {
       {} as never,
       {} as never,
       access as never,
+      { save: (value: EsignDocument) => Promise.resolve(value) } as never,
     );
     const update = jest
       .spyOn(service, 'updateSigners')
@@ -149,6 +154,7 @@ describe('簽署人批次查詢', () => {
       signers as never,
       users as never,
       {} as never,
+      new DocumentRepository(),
     );
     const run = (inputs: SignerInputDto[]) =>
       service.updateSigners(document, 7, inputs, manager);
@@ -253,5 +259,56 @@ describe('簽署人批次查詢', () => {
     });
     expect(signers.deleteDraftSigners).not.toHaveBeenCalled();
     expect(signers.saveMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('草稿完整設定', () => {
+  it('可保存單端與過去日期，未傳保留、null 清空', async () => {
+    const document = Object.assign(new EsignDocument(), {
+      id: 3,
+      status: 'draft',
+      createdByUserId: 7,
+      signStartAt: null,
+      signEndAt: null,
+      watermarkEnabled: false,
+      allowReject: false,
+    });
+    const manager = {
+      findOne: () => Promise.resolve(document),
+      save: (value: EsignDocument) => Promise.resolve(value),
+    };
+    const service = new EsignSignerService(
+      {
+        transaction: (run: (manager: object) => Promise<unknown>) =>
+          run(manager),
+      } as never,
+      {} as never,
+      {} as never,
+      new EsignAccessPolicyService(
+        new EsignDocumentValidationService(),
+        new DocumentRepository(),
+      ),
+      new DocumentRepository(),
+    );
+    expect(
+      await service.saveDraftSettings(3, 7, {
+        signStartAt: '2020-01-01T00:00:00+08:00',
+        watermark: true,
+      }),
+    ).toMatchObject({
+      signStartAt: new Date('2019-12-31T16:00:00Z'),
+      signEndAt: null,
+      watermarkEnabled: true,
+    });
+    expect(
+      await service.saveDraftSettings(3, 7, { allowReject: true }),
+    ).toMatchObject({
+      signStartAt: new Date('2019-12-31T16:00:00Z'),
+      watermarkEnabled: true,
+      allowReject: true,
+    });
+    expect(
+      await service.saveDraftSettings(3, 7, { signStartAt: null }),
+    ).toMatchObject({ signStartAt: null, watermarkEnabled: true });
   });
 });

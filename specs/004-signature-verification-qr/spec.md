@@ -10,6 +10,8 @@
 
 > **2026-10-18 相容更新**：以 Spec 03 共用欄位／個人副本 CR 為準；每人一份 PDF、signer lease、manifest v2。公開驗證完成檔摘要為本人副本摘要，非單一合併 PDF；外部簽完邀請失效，不恢復 receipt API。
 
+> **由 Spec 008 取代（FR-022）**：上述「外部簽完邀請失效」不再適用；外部簽署人簽署後可以原邀請存取下載本人副本（附簽章驗證 QR Code，與建立人取得的同一人副本相同），不設期限；仍不恢復 receipt API。詳見 `specs/008-external-signing-flow/spec.md`。
+
 ## Clarifications
 
 ### Session 2026-10-16

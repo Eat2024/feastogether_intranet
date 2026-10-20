@@ -25,6 +25,8 @@ Invitation-only mail 包含：
 
 ## 4. 瀏覽器流程
 
+> **由 Spec 008 取代（FR-010、FR-013、FR-014、FR-017）**：簽署成功（含同一 requestId 重送回 200）不再清除 access cookie，改以同一 token 重設為 session cookie（不設 `Expires`）；完成畫面以唯讀 `GET /api/external-signing-task` 查詢本人副本狀態（不記稽核），副本 ready 後以 `GET /api/external-signing-task/completed-file` 下載本人副本。詳見 `specs/008-external-signing-flow/contracts/http-api.md`。以下保留原文。
+
 ```text
 Email client
   GET /api/external-signature-invitations/<token>
@@ -57,6 +59,8 @@ X-Content-Type-Options: nosniff
 
 ## 5. 每次授權的條件
 
+> **由 Spec 008 取代（FR-012、FR-016、FR-018）**：授權拆成「存取」與「簽署」。共同條件為憑證相符、`email` signer、signer 與 document 未刪除且屬同一 document；待簽署者另須符合下列第 2～4 點。已簽署者讀取本人任務、原始 PDF、副本狀態與下載本人副本時，不比對 invitation／簽署期限與 document 狀態。送出新簽名仍須為 `pending` 且在有效期間內。以下保留原文。
+
 `FT_ESIGN_EXTERNAL_ACCESS` 不是內部 session，也不建立另一張 session table。每個 external API request 都必須全數通過：
 
 1. Cookie 格式正確且 digest 精確命中一名 `email` signer。
@@ -68,6 +72,8 @@ X-Content-Type-Options: nosniff
 任一條件失敗，回通用 401，並清除 external cookie。不回傳過期、已簽、已停止或 token 不存在的可區分細節。
 
 ## 6. 可重開與失效
+
+> **由 Spec 008 取代（FR-010、FR-011、FR-015～FR-017）**：簽署成功不再使 invitation 失效，也不清除 access cookie；已簽者重新開啟原邀請可再取得存取（session cookie），文件停止、到期或完成不影響已簽者下載本人副本，只有 signer 或 document 被刪除時失效。重送同一次已被接受的 requestId 回既有結果；已簽者以新的 requestId 簽署仍拒絕。待簽者的期限、停止與到期規則不變；仍不核發 receipt、不提供 external-completions。詳見 `specs/008-external-signing-flow/contracts/http-api.md`。以下保留原文。
 
 - 開啟 invitation URL 不消耗 token，關閉後可再次開啟。
 - 外部 cookie 最長存活到 invitation expiry，但 DB 條件才是最終權威。

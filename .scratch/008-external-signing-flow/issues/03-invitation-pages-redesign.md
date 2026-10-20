@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 邀請確認頁依設計稿的確認型卡片版型呈現：深色「電子簽署」頁首、圖示、標題、說明、主要按鈕與兩行提醒；手機寬度可正常閱讀與點擊。
 - [ ] 單純開啟邀請連結仍不查詢資料、不記錄開啟、不設 cookie；按下按鈕才建立存取。

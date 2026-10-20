@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 後端環境變數範例檔記錄公司 Gmail SMTP 設定：主機 smtp.gmail.com、連接埠 587、以 STARTTLS 連線（不使用直接 TLS）、寄件帳號與寄件人、密碼留空並註明使用 Google 應用程式密碼；不得包含實際密碼。
 - [ ] 本機以公司 Gmail SMTP 實際寄出外部邀請信，收件匣收到，信中連結可開啟邀請確認頁。

@@ -1,0 +1,10 @@
+{
+  "zip": "/tmp/esign009-capacity-full4/exports/job-1/7411769b-804d-4062-b11e-c2ed86734626/8965b0c4-9028-423c-aa23-de3416b7bb04.zip",
+  "zipBytes": 6245350572,
+  "entryCount": 6000,
+  "uncompressedBytes": 6244040250,
+  "zip64": true,
+  "allEntryHashesMatch": true,
+  "seconds": 2.516497792,
+  "verifier": "Python stdlib zipfile; CRC and SHA-256; no extraction"
+}

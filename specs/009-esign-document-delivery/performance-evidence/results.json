@@ -1,0 +1,162 @@
+[
+  {
+    "label": "store-0",
+    "compression": "store",
+    "count": 6000,
+    "acceptedMs": 224.8323330000003,
+    "acceptedStatus": 202,
+    "processingObserved": 1792515023352,
+    "ended": 1792515034205,
+    "elapsedMs": 10966,
+    "bytes": 6245350572,
+    "ratio": 1.0002098516261166,
+    "baseline": {
+      "label": "baseline-store-0",
+      "count": 60,
+      "p95": 17.79925000000003,
+      "start": 1792515022288,
+      "end": 1792515022709,
+      "failures": 0
+    },
+    "during": {
+      "label": "export-store-0",
+      "count": 60,
+      "p95": 23.83050000000003,
+      "start": 1792515023352,
+      "end": 1792515023857,
+      "failures": 0
+    },
+    "allSigningDuringProcessing": true,
+    "signingP95Growth": 33.8848546989339,
+    "resumed": true,
+    "zip64Verified": true
+  },
+  {
+    "label": "store-1",
+    "compression": "store",
+    "count": 6000,
+    "acceptedMs": 241.69870799999626,
+    "acceptedStatus": 202,
+    "processingObserved": 1792515048228,
+    "ended": 1792515059020,
+    "elapsedMs": 10905,
+    "bytes": 6245350572,
+    "ratio": 1.0002098516261166,
+    "baseline": {
+      "label": "baseline-store-1",
+      "count": 60,
+      "p95": 19.953708000000915,
+      "start": 1792515047126,
+      "end": 1792515047571,
+      "failures": 0
+    },
+    "during": {
+      "label": "export-store-1",
+      "count": 60,
+      "p95": 21.377875000005588,
+      "start": 1792515048228,
+      "end": 1792515048664,
+      "failures": 0
+    },
+    "allSigningDuringProcessing": true,
+    "signingP95Growth": 7.137355122188849,
+    "resumed": false,
+    "zip64Verified": true
+  },
+  {
+    "label": "store-2",
+    "compression": "store",
+    "count": 6000,
+    "acceptedMs": 248.16762500000186,
+    "acceptedStatus": 202,
+    "processingObserved": 1792515066357,
+    "ended": 1792515077154,
+    "elapsedMs": 10909,
+    "bytes": 6245350572,
+    "ratio": 1.0002098516261166,
+    "baseline": {
+      "label": "baseline-store-2",
+      "count": 60,
+      "p95": 19.00654100000247,
+      "start": 1792515065266,
+      "end": 1792515065692,
+      "failures": 0
+    },
+    "during": {
+      "label": "export-store-2",
+      "count": 60,
+      "p95": 18.662499999998545,
+      "start": 1792515066357,
+      "end": 1792515066802,
+      "failures": 0
+    },
+    "allSigningDuringProcessing": true,
+    "signingP95Growth": -1.81011894801838,
+    "resumed": false,
+    "zip64Verified": true
+  },
+  {
+    "label": "1-0",
+    "compression": "1",
+    "count": 6000,
+    "acceptedMs": 241.54112500000338,
+    "acceptedStatus": 202,
+    "processingObserved": 1792515085699,
+    "ended": 1792515180461,
+    "elapsedMs": 94876,
+    "bytes": 6230593236,
+    "ratio": 0.9978464241962566,
+    "baseline": {
+      "label": "baseline-1-0",
+      "count": 60,
+      "p95": 19.719874999995227,
+      "start": 1792515084604,
+      "end": 1792515085040,
+      "failures": 0
+    },
+    "during": {
+      "label": "export-1-0",
+      "count": 60,
+      "p95": 15.471957999994629,
+      "start": 1792515085699,
+      "end": 1792515086091,
+      "failures": 0
+    },
+    "allSigningDuringProcessing": true,
+    "signingP95Growth": -21.541297802352332,
+    "resumed": false,
+    "zip64Verified": true
+  },
+  {
+    "label": "6-0",
+    "compression": "6",
+    "count": 6000,
+    "acceptedMs": 250.791916999995,
+    "acceptedStatus": 202,
+    "processingObserved": 1792515196210,
+    "ended": 1792515288394,
+    "elapsedMs": 92297,
+    "bytes": 6229996236,
+    "ratio": 0.9977508130252684,
+    "baseline": {
+      "label": "baseline-6-0",
+      "count": 60,
+      "p95": 22.85195899999235,
+      "start": 1792515195084,
+      "end": 1792515195540,
+      "failures": 0
+    },
+    "during": {
+      "label": "export-6-0",
+      "count": 60,
+      "p95": 16.036707999999635,
+      "start": 1792515196210,
+      "end": 1792515196613,
+      "failures": 0
+    },
+    "allSigningDuringProcessing": true,
+    "signingP95Growth": -29.823486905411457,
+    "resumed": false,
+    "zip64Verified": true
+  }
+]

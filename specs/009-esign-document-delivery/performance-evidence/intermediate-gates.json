@@ -1,0 +1,12 @@
+{
+  "firstSnapshotSamples": 5,
+  "firstSnapshotP95Ms": 255.33145800000057,
+  "signingSamplesPerGroup": 180,
+  "baselineP95Ms": 21.85683400000198,
+  "exportP95Ms": 31.143707999995968,
+  "signingGrowthPercent": 42.48956642116211,
+  "allDuringProcessing": true,
+  "acceptedWithin5s": true,
+  "signingWithin20Percent": false,
+  "deploymentS3": "未驗證"
+}

@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DocumentExportProcessor } from '#app/worker/esign/document-export.processor';
 import { EsignExportJob } from '#app/features/esign/entities/esign-export-job.entity';
@@ -653,6 +653,128 @@ describe('Spec009 匯出 API', () => {
       }
       await queue.resume();
       await Promise.all(workers.map((worker) => worker.close()));
+    }
+  });
+
+  it('來源實體檔遺失不能發布半包，恢復同 bytes 後同快照重試成功', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const documentId = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .field('title', '遺失來源復原')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'missing.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    ).id;
+    const signer = await db.manager.save(
+      EsignSigner,
+      db.manager.create(EsignSigner, {
+        publicId: randomUUID(),
+        documentId: Number(documentId),
+        signerType: 'email',
+        email: 'missing@example.test',
+        nameSnapshot: '合成來源',
+        status: 'signed',
+        signedAt: new Date(),
+        completionStatus: 'ready',
+        completionReadyAt: new Date(),
+        sortOrder: 0,
+      }),
+    );
+    const record = await db.manager.save(
+      EsignSignatureRecord,
+      db.manager.create(EsignSignatureRecord, {
+        signerId: signer.id,
+        documentSha256: 'a'.repeat(64),
+        signingPayloadSha256: 'b'.repeat(64),
+        consentVersion: 'test',
+        authenticationMethod: 'test',
+        authenticationEventId: randomUUID(),
+        signedAtUtc: new Date(),
+      }),
+    );
+    const storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE),
+      bytes = Buffer.from('%PDF missing source recovery');
+    const stored = await storage.store({
+      directory: `documents/missing-${documentId}`,
+      extension: 'pdf',
+      mimeType: 'application/pdf',
+      bytes,
+    });
+    await db.manager.save(
+      EsignFileObject,
+      db.manager.create(EsignFileObject, {
+        ...stored,
+        signatureRecordId: record.id,
+        filePurpose: 'completed_pdf',
+        archiveStatus: 'active',
+      }),
+    );
+    await rm(join(process.env.ESIGN_STORAGE_ROOT!, stored.objectKey));
+    const job = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post(`/api/esign/documents/${documentId}/exports`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .send({ type: 'signed_copies_zip' })
+        .expect(202),
+    );
+    const worker = await NestFactory.createApplicationContext(WorkerModule, {
+      logger: false,
+    });
+    const waitFor = async (status: string) => {
+      for (let i = 0; i < 100; i++) {
+        const value = apiData<{
+          status: string;
+          failureCode: string;
+          expectedCount: number;
+          files: Array<{ downloadPath: string }>;
+        }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${documentId}/exports/${job.id}`)
+            .set('Cookie', other)
+            .expect(200),
+        );
+        if (value.status === status) return value;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`未進入 ${status}`);
+    };
+    try {
+      expect(await waitFor('failed')).toMatchObject({
+        failureCode: 'ESIGN_EXPORT_UNAVAILABLE',
+        expectedCount: 1,
+        files: [],
+      });
+      await writeFile(
+        join(process.env.ESIGN_STORAGE_ROOT!, stored.objectKey),
+        bytes,
+      );
+      expect(
+        apiData(
+          await request(ctx.server)
+            .post(
+              `/api/esign/documents/${documentId}/exports/${job.id}/retries`,
+            )
+            .set('Cookie', other)
+            .set('Origin', origin)
+            .expect(202),
+        ),
+      ).toMatchObject({ id: job.id, expectedCount: 1 });
+      const completed = await waitFor('completed');
+      expect(completed.files).toHaveLength(1);
+      await request(ctx.server)
+        .get(completed.files[0].downloadPath)
+        .set('Cookie', other)
+        .set('Range', 'bytes=0-3')
+        .expect(206);
+    } finally {
+      await worker.close();
     }
   });
 

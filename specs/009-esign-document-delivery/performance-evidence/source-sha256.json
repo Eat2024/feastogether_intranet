@@ -1,0 +1,7 @@
+{
+  "server/src/worker/esign/document-export.processor.ts": "d8bbd415c6c1a49b146d5b8dec634d7307525aab3bae833c809669eb8dbf5eac",
+  "server/src/features/esign/services/esign-export.service.ts": "cd0ea4391bc9e965a6015de79f3364fafd3e4eb3d78191981266535f19bd482a",
+  "server/src/features/esign/repositories/export-job.repository.ts": "7dcf033bcdffeb290933240c5e51923cab24a155bf4e0e35cc1dbfff8709d96c",
+  "server/test/performance/esign-export-benchmark.ts": "a0e6aca4744d2161bc02ceb9a6020a6174bdb9591c85b6d535ab377305b39a8f",
+  "server/test/performance/verify-export-zip.py": "adbca53a296d499fc1db8d1842cc0cbe04f3b18620ffe99303ceaad640f70a96"
+}

@@ -38,13 +38,23 @@ export class ExportJobRepository {
       .getOne();
   }
   records(documentId: number, m: EntityManager) {
-    return m
-      .createQueryBuilder(EsignSignatureRecord, 'record')
-      .innerJoinAndSelect('record.signer', 'signer')
-      .where('signer.documentId = :documentId', { documentId })
-      .andWhere("signer.status = 'signed' AND signer.deletedAt IS NULL")
-      .orderBy('record.id', 'ASC')
-      .getMany();
+    return (
+      m
+        .createQueryBuilder(EsignSignatureRecord, 'record')
+        .innerJoinAndSelect('record.signer', 'signer')
+        // 匯出快照僅需識別與檔名；避免 6,000 份完整簽署證據/個資 entity 佔用 API 記憶體。
+        .select([
+          'record.id',
+          'record.signerId',
+          'signer.id',
+          'signer.publicId',
+          'signer.nameSnapshot',
+        ])
+        .where('signer.documentId = :documentId', { documentId })
+        .andWhere("signer.status = 'signed' AND signer.deletedAt IS NULL")
+        .orderBy('record.id', 'ASC')
+        .getMany()
+    );
   }
   files(jobId: number, m: EntityManager) {
     return m.find(EsignFileObject, {

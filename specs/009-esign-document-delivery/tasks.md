@@ -81,6 +81,7 @@
 - [x] T027 [US3] 新增 `server/test/esign-export.e2e-spec.ts` 及 `server/src/worker/esign/document-export.processor.spec.ts`，驗兩員工重用、無/外部session拒絕、錯歸屬、七天邊界、GET唯讀、來源hash、兩worker全域上限、DB提交後enqueue失敗與stale worker不可發布；驗 `client/next.config.ts` 代理保留Range/stream標頭。
 
 - [ ] T028 [US3] 建立 `server/test/performance/esign-export-benchmark.ts` 的隔離合成資料與測量入口（不得連正式DB），實測6,000份及>4GiB、STORE/DEFLATE1/6、local與部署使用的S3、正常簽署基準／匯出中p95、RSS/CPU/續傳/kill-worker；結果存 `specs/009-esign-document-delivery/performance-results.md`，受理p95≤5秒、簽署增幅≤20%、無OOM/漏件，未達標不得勾完成。
+  - 本機容量/故障與相同負載 p95 已於 ticket09 通過，見 `performance-results.md`；部署 S3 的原有門檻移交 `.scratch/009-esign-document-delivery/issues/11-deployment-s3-capacity.md`（ready-for-human），T028 維持未完成。
 
 ## Phase 6：US4 拒簽與正確結案（P1）
 

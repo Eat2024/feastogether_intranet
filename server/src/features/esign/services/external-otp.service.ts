@@ -83,6 +83,7 @@ export class ExternalOtpService {
       await this.redis.del(cooldown);
       return { status: 'delivery-failed' };
     }
+    // 寄送成功才存redis
     await this.redis.set(
       codeKey(signerId),
       codeHash(signerId, code),

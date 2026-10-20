@@ -112,6 +112,22 @@ describe('核心電子簽安全邊界', () => {
     expect(JSON.stringify(invalid.body)).not.toContain(token);
   });
 
+  it.each([
+    '/api/external-signing-task',
+    '/api/external-signing-task/completed-file',
+  ])(
+    'GET %s 為唯讀、不需 Origin，失效 cookie 只回通用 401 且不反射 cookie',
+    async (path) => {
+      const response = await request(ctx.server)
+        .get(path)
+        .set('Cookie', `FT_ESIGN_EXTERNAL_ACCESS=${token}`)
+        .expect(401);
+      expect(apiError(response).code).toBe('ESIGN_EXTERNAL_UNAUTHORIZED');
+      expect(JSON.stringify(response.body)).not.toContain(token);
+      expect(String(response.headers['set-cookie'] ?? '')).not.toContain(token);
+    },
+  );
+
   it('舊 receipt 無法存取個人副本，退役路徑不再提供下載', async () => {
     const signerId = '00000000-0000-4000-8000-000000000001';
     for (const path of [

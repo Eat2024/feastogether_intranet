@@ -1,3 +1,5 @@
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
 import { Inject, Injectable } from '@nestjs/common';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
@@ -11,6 +13,7 @@ import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignAuditService } from './esign-audit.service';
+import { EsignCompletionAccessService } from './esign-completion-access.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
@@ -34,6 +37,7 @@ export class ExternalAccessService {
     private readonly audit: EsignAuditService,
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
+    private readonly completions: EsignCompletionAccessService,
   ) {}
 
   isTokenFormat(token: string): boolean {
@@ -104,20 +108,10 @@ export class ExternalAccessService {
           ? await this.signers.findByInvitationDigestForUpdate(digest, manager)
           : candidate;
       if (!signer || !document) {
-        this.access.assertExternalInvitation(
-          document,
-          signer,
-          digest,
-          new Date(),
-        );
+        this.access.assertExternalAccess(document, signer, digest, new Date());
         throw new Error('unreachable');
       }
-      this.access.assertExternalInvitation(
-        document,
-        signer,
-        digest,
-        new Date(),
-      );
+      this.access.assertExternalAccess(document, signer, digest, new Date());
       if (appendOpened) {
         await this.audit.append(
           {
@@ -165,6 +159,14 @@ export class ExternalAccessService {
     return { bytes, fileName: source.originalFileName ?? 'document.pdf' };
   }
 
+  /** 本人副本：只限已簽者；未產生時回傳 null */
+  async completedFile(token: string) {
+    const { signer, document } = await this.readAccess(token);
+    if (signer.status !== 'signed')
+      throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
+    return this.completions.personalCopy(document, signer);
+  }
+
   async signingSignerPublicId(token: string): Promise<string> {
     const { signer } = await this.readAccess(token);
     return signer.publicId;
@@ -178,7 +180,7 @@ export class ExternalAccessService {
     const document = signer
       ? await this.documents.findById(signer.documentId, manager)
       : null;
-    this.access.assertExternalInvitation(document, signer, digest, new Date());
+    this.access.assertExternalAccess(document, signer, digest, new Date());
     if (!signer || !document) throw new Error('unreachable');
     return { signer, document, manager };
   }

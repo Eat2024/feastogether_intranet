@@ -633,6 +633,6 @@ Spec 3 只涵蓋成功簽署主路徑及 Email 邀請所需的最小通知，不
 
 簽署後即排工作，5 分鐘 lease 位於 signer。只有等待中的 queue 工作做技術性合併，worker 開始時釋放該合併鍵；DB claim、fencing token、唯一約束與 ready 狀態仍是唯一業務權威。既有 30 秒 maintenance 掃描完整候選，失效 queue 可由 DB 狀態補回。
 
-建立人可下載任一 ready 副本，內部員工只能下載本人副本。停止不刪已簽證據，既有 signed 副本繼續產製，stopped 不再結案。外部邀請簽完即失效，移除 receipt，完成 PDF 由建立人提供。
+建立人可下載任一 ready 副本，內部員工只能下載本人副本。停止不刪已簽證據，既有 signed 副本繼續產製，stopped 不再結案。外部簽署人簽署成功後，同一瀏覽器的存取改為 session cookie，完成頁以唯讀查詢更新副本狀態，ready 後可下載與建立人取得相同的本人副本（Spec 008）；仍不核發 receipt。
 
 新 snapshot 使用 manifest v2，保存各 record/file/hash/copy event；final_pdf_sha256 為 NULL。公開驗證僅 completed 回本人的檔案摘要，其餘狀態為 NULL。migration 僅轉換舊單人完成檔 owner metadata，不更動 bytes/hash/payload；部署及回滾依 specs/003-core-esign-flow/quickstart.md。

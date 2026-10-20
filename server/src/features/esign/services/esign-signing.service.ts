@@ -108,7 +108,8 @@ export class EsignSigningService {
       if (principal.kind === 'internal') {
         this.access.assertInternalSigner(document, signer, principal.userId);
       } else {
-        this.access.assertExternalInvitation(
+        // 已簽者重送同一次簽名：只需外部存取，拿回既有結果（新簽名仍經 assertPrincipal 限待簽者）
+        this.access.assertExternalAccess(
           document,
           signer,
           principal.invitationDigest,
@@ -190,7 +191,7 @@ export class EsignSigningService {
               principal.userId,
             );
           } else {
-            this.access.assertExternalInvitation(
+            this.access.assertExternalAccess(
               lockedDocument,
               lockedSigner,
               principal.invitationDigest,

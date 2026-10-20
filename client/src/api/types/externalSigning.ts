@@ -1,7 +1,7 @@
 // 外部簽署人（server/src/features/esign/services/external-access.service.ts、dto/signature-submission.dto.ts）
 import type { EsignDocumentStatus, EsignFieldView, EsignSignerView } from './esignDocuments';
 
-/** POST external-signing-task：外部存取 cookie 所屬簽署人的簽署任務（不含其他簽署人與建立人資料） */
+/** POST／GET external-signing-task：外部存取 cookie 所屬簽署人的簽署任務（不含其他簽署人與建立人資料） */
 export interface ExternalSigningTask {
   signerPublicId: string;
   document: { id: string; title: string; status: EsignDocumentStatus; signEndAt: string | null };
@@ -22,7 +22,7 @@ export interface SubmitExternalSignaturesBody {
   signatures: { fieldId: string; pngDataUrl: string }[];
 }
 
-/** POST external-signing-task/signatures 的簽署結果 */
+/** POST external-signing-task/signatures 的簽署結果（重送同一 requestId 回相同結果） */
 export interface ExternalSignatureResult {
   signerPublicId: string;
   signedAt: string;

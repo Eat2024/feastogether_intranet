@@ -72,7 +72,7 @@ describe('runtime API coverage', () => {
       .expect(401);
   });
 
-  it('6 個 external invitation/task operations 已註冊且維持公開憑證邊界', async () => {
+  it('8 個 external invitation/task operations 已註冊且維持公開憑證邊界', async () => {
     const token = 'A'.repeat(43);
     await request(ctx.server)
       .get(`/api/external-signature-invitations/${token}`)
@@ -92,8 +92,12 @@ describe('runtime API coverage', () => {
       .post('/api/external-signing-task')
       .set('Origin', 'http://localhost:3000')
       .expect(401);
+    await request(ctx.server).get('/api/external-signing-task').expect(401);
     await request(ctx.server)
       .get('/api/external-signing-task/source-file')
+      .expect(401);
+    await request(ctx.server)
+      .get('/api/external-signing-task/completed-file')
       .expect(401);
     await request(ctx.server)
       .post('/api/external-signing-task/signatures')

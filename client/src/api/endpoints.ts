@@ -19,6 +19,7 @@ export const endpoints = {
   EXTERNAL_SIGNING_TASK: 'external-signing-task',
   EXTERNAL_SIGNING_TASK_SOURCE_FILE: 'external-signing-task/source-file',
   EXTERNAL_SIGNING_TASK_SIGNATURES: 'external-signing-task/signatures',
+  EXTERNAL_SIGNING_TASK_COMPLETED_FILE: 'external-signing-task/completed-file',
 
   // Health
   HEALTH: 'health',

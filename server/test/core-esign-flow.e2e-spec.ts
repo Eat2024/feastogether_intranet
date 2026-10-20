@@ -51,7 +51,11 @@ interface DocumentDetail {
 
 interface SigningTask {
   signerPublicId: string;
-  signer: { verificationUrl: string | null };
+  signer: {
+    status: string;
+    verificationUrl: string | null;
+    completion: { status: string | null };
+  };
   fields: Array<{ id: string; type: string }>;
   consent: { version: string };
 }
@@ -934,11 +938,15 @@ describe('核心電子簽 US1', () => {
           .send(signatureSubmission),
       ),
     );
+    // 同一 requestId 併發：一筆成功簽署，另一筆拿回既有結果
     expect(repeatedCalls.map((response) => response.status).sort()).toEqual([
-      201, 401,
+      200, 201,
     ]);
     const signed = repeatedCalls.find((response) => response.status === 201)!;
     const signedBody = apiData<Record<string, unknown>>(signed);
+    expect(
+      apiData(repeatedCalls.find((response) => response.status === 200)!),
+    ).toEqual(signedBody);
     expect(signedBody).toMatchObject({
       documentStatus: 'finalizing',
       completion: { status: 'pending', readyAt: null },
@@ -984,12 +992,38 @@ describe('核心電子簽 US1', () => {
         completedPdfSha256: null,
       },
     });
-    expect(firstCookie(signed.headers['set-cookie'])).toContain(
-      'FT_ESIGN_EXTERNAL_ACCESS=;',
-    );
+    // 簽署成功（含重送）不清除存取，改以同一 token 設為 session cookie（不設期限）
+    for (const response of repeatedCalls) {
+      const cookie = firstCookie(response.headers['set-cookie']);
+      // 以布林比對，失敗訊息不印出 token
+      expect(
+        cookie.startsWith(`FT_ESIGN_EXTERNAL_ACCESS=${invitationToken};`),
+      ).toBe(true);
+      expect(cookie).toContain('Path=/api/external-signing-task');
+      expect(cookie).toContain('HttpOnly');
+      expect(cookie).toContain('SameSite=Lax');
+      expect(cookie).not.toMatch(/Expires=|Max-Age=/i);
+    }
     expect(String(signed.headers['set-cookie'])).not.toContain(
       'FT_ESIGN_EXTERNAL_RECEIPT=',
     );
+    // 簽署寫入不變：保留 digest 作為簽後存取依據，清除密文與期限
+    const [credential] = await db.query<
+      Array<{
+        invitation_token_sha256: string | null;
+        invitation_token_ciphertext: string | null;
+        invitation_expires_at: Date | null;
+      }>
+    >(
+      `SELECT invitation_token_sha256, invitation_token_ciphertext, invitation_expires_at
+       FROM esign_signers WHERE public_id = ?`,
+      [signers[0].publicId],
+    );
+    expect(credential).toEqual({
+      invitation_token_sha256: tokenService.digest(invitationToken),
+      invitation_token_ciphertext: null,
+      invitation_expires_at: null,
+    });
 
     const signingAudits = await db.query<
       Array<{ event_type: string; request_id: string | null }>
@@ -1014,18 +1048,66 @@ describe('核心電子簽 US1', () => {
     expect(Number(signingRows[0].record_count)).toBe(1);
     expect(Number(signingRows[0].file_count)).toBe(1);
 
+    // 網路重試送出同一次簽名：回既有結果，不重複建立簽署
+    expect(
+      apiData(
+        await request(ctx.server)
+          .post('/api/external-signing-task/signatures')
+          .set('Cookie', externalCookie)
+          .set('Origin', 'http://localhost:3000')
+          .send(signatureSubmission)
+          .expect(200),
+      ),
+    ).toEqual(signedBody);
+    // 已簽者以新的請求再次簽署：拒絕
     await request(ctx.server)
       .post('/api/external-signing-task/signatures')
       .set('Cookie', externalCookie)
       .set('Origin', 'http://localhost:3000')
-      .send(signatureSubmission)
+      .send({ ...signatureSubmission, requestId: randomUUID() })
       .expect(401);
 
-    await request(ctx.server)
-      .post('/api/external-signing-task')
+    // 已簽者仍可開啟任務；完成頁以唯讀 GET 輪詢副本狀態，不寫入稽核
+    const reopened = apiData<SigningTask>(
+      await request(ctx.server)
+        .post('/api/external-signing-task')
+        .set('Cookie', externalCookie)
+        .set('Origin', 'http://localhost:3000')
+        .expect(200),
+    );
+    expect(reopened.signer).toMatchObject({
+      status: 'signed',
+      completion: { status: 'pending' },
+    });
+    const auditCount = async () =>
+      Number(
+        (
+          await db.query<Array<{ count: number }>>(
+            'SELECT COUNT(*) count FROM esign_audit_events WHERE document_id = ?',
+            [documentId],
+          )
+        )[0].count,
+      );
+    const auditsBeforePolling = await auditCount();
+    const polled = await request(ctx.server)
+      .get('/api/external-signing-task')
       .set('Cookie', externalCookie)
-      .set('Origin', 'http://localhost:3000')
-      .expect(401);
+      .expect(200)
+      .expect('Cache-Control', 'private, no-store');
+    expect(apiData<SigningTask>(polled)).toMatchObject({
+      signerPublicId: signers[0].publicId,
+      signer: { status: 'signed', completion: { status: 'pending' } },
+    });
+    expect(await auditCount()).toBe(auditsBeforePolling);
+    // 副本尚未產生：下載回 409，不回傳檔案
+    const notReady = await request(ctx.server)
+      .get('/api/external-signing-task/completed-file')
+      .set('Cookie', externalCookie)
+      .expect(409);
+    expect(apiError(notReady)).toMatchObject({
+      code: 'ESIGN_STATE_CONFLICT',
+      message: '個人副本尚未產生',
+    });
 
     // 暫停 queue，避免 worker 的 BullMQ consumer 與下方直接呼叫競爭 lease
     const finalizationQueue = ctx.app.get<Queue>(
@@ -1087,13 +1169,35 @@ describe('核心電子簽 US1', () => {
       [documentId],
     );
     expect(completed[0]?.status).toBe('completed');
-    await request(ctx.server)
+    const creatorCopy = await request(ctx.server)
       .get(
         `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/completed-file`,
       )
       .set('Cookie', creatorCookie)
       .expect(200)
       .expect('Content-Type', /application\/pdf/);
+    // 副本產生後外部簽署人下載本人副本，內容與建立人下載的同一人副本相同
+    expect(
+      apiData<SigningTask>(
+        await request(ctx.server)
+          .get('/api/external-signing-task')
+          .set('Cookie', externalCookie)
+          .expect(200),
+      ).signer.completion.status,
+    ).toBe('ready');
+    const auditsBeforeDownload = await auditCount();
+    const externalCopy = await request(ctx.server)
+      .get('/api/external-signing-task/completed-file')
+      .set('Cookie', externalCookie)
+      .expect(200)
+      .expect('Content-Type', /application\/pdf/)
+      .expect('Content-Disposition', 'attachment; filename="completed.pdf"')
+      .expect('Cache-Control', 'private, no-store')
+      .expect('X-Content-Type-Options', 'nosniff');
+    expect(
+      Buffer.compare(externalCopy.body as Buffer, creatorCopy.body as Buffer),
+    ).toBe(0);
+    expect(await auditCount()).toBe(auditsBeforeDownload);
     await request(ctx.server)
       .get(
         `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/completed-file`,
@@ -2356,6 +2460,109 @@ describe('核心電子簽 US1', () => {
       await queue.resume();
     }
   }, 30_000);
+
+  it('同一瀏覽器先後開啟兩封邀請：舊分頁送出的欄位不屬於新 cookie 的文件時拒絕，兩份都不簽署', async () => {
+    const first = await initiateEmailDocument(
+      '先開啟的邀請',
+      'tab-a@example.test',
+    );
+    const second = await initiateEmailDocument(
+      '後開啟的邀請',
+      'tab-b@example.test',
+    );
+    const firstAccess = await openExternalSession(first.token);
+    const firstTask = apiData<SigningTask>(
+      await request(ctx.server)
+        .post('/api/external-signing-task')
+        .set('Cookie', firstAccess)
+        .set('Origin', 'http://localhost:3000')
+        .expect(200),
+    );
+    // 同名同 path 的 cookie：後開啟的邀請覆蓋先前的存取
+    const secondAccess = await openExternalSession(second.token);
+    const rejected = await request(ctx.server)
+      .post('/api/external-signing-task/signatures')
+      .set('Cookie', secondAccess)
+      .set('Origin', 'http://localhost:3000')
+      .send({
+        requestId: randomUUID(),
+        consentVersion: firstTask.consent.version,
+        accepted: true,
+        signatures: firstTask.fields
+          .filter((field) => field.type === 'signature')
+          .map((field) => ({ fieldId: field.id, pngDataUrl: PNG_DATA_URL })),
+      })
+      .expect(400);
+    expect(apiError(rejected).message).toBe('簽名欄位不完整或不屬於目前文件');
+    const statuses = await db.query<Array<{ status: string }>>(
+      'SELECT status FROM esign_signers WHERE document_id IN (?, ?) ORDER BY id',
+      [first.documentId, second.documentId],
+    );
+    expect(statuses).toEqual([{ status: 'pending' }, { status: 'pending' }]);
+  });
+
+  /** 發起只有一名 email 簽署人、一個簽名欄位的文件，回傳邀請 token */
+  async function initiateEmailDocument(title: string, email: string) {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const created = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .field('title', title)
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'invitation.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    );
+    const documentId = Number(created.id);
+    documentIds.push(documentId);
+    await request(ctx.server)
+      .post(`/api/esign/documents/${documentId}/initiations`)
+      .set('Cookie', creatorCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send({
+        signers: [{ type: 'email', name: title, email }],
+        fields: [
+          {
+            type: 'signature',
+            page: 1,
+            xPercent: 10,
+            yPercent: 10,
+            widthPercent: 25,
+            heightPercent: 10,
+            sortOrder: 0,
+          },
+        ],
+        signStartAt: new Date(Date.now() - 60_000).toISOString(),
+        signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+        watermark: false,
+        allowReject: false,
+      })
+      .expect(201);
+    const [credential] = await db.query<
+      Array<{ invitation_token_ciphertext: string }>
+    >(
+      'SELECT invitation_token_ciphertext FROM esign_signers WHERE document_id = ?',
+      [documentId],
+    );
+    return {
+      documentId,
+      token: tokenService.decrypt(credential.invitation_token_ciphertext),
+    };
+  }
+
+  async function openExternalSession(token: string): Promise<string> {
+    const session = await request(ctx.server)
+      .post('/api/external-signature-session')
+      .set('Origin', 'http://localhost:3000')
+      .type('form')
+      .send({ token })
+      .expect(303);
+    return firstCookie(session.headers['set-cookie']);
+  }
 
   async function login(empid: string): Promise<string> {
     const launched = await request(ctx.server)

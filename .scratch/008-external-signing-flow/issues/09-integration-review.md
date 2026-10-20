@@ -7,6 +7,8 @@
 **Status:** ready-for-agent
 
 - [ ] server lint、單元測試、build、e2e、security e2e 與 client lint、build 全數通過；結果與未能執行的項目記錄在 Spec 008 的 quickstart。
+- [ ] 單獨（不與其他 e2e 同時）重跑 `core-esign-flow-scale` e2e 並通過（08 合併後因並行負載逾時）。
+- [ ] （人工，來自 08）staging／production 部署前：設定 `ESIGN_MAIL_DRIVER=smtp` 與 Gmail `SMTP_*`（含應用程式密碼）、移除 `ESIGN_MAIL_DRIVER=ses` 與 `SES_FROM`、放行對外 `smtp.gmail.com:587`（或 465）、確認 Google Workspace 每日寄信上限與 SPF／DKIM，可移除 IAM 的 SES 權限；實際 STARTTLS 連線與登入需人工驗證。
 - [ ] 依 quickstart 在桌面與手機寬度各完整走一次手動驗收（含尚未開始、失效、停止後下載）。
 - [ ] （人工，來自 01）內部 `/my-signature/[id]` 在桌面與手機寬度與重構前比對：簽名進度面板、拒絕簽署依 `allowReject` 顯示、條款步驟（含簽到表流程）。
 - [ ] （人工，來自 07）以 `einvoice@eatogether.com.tw` 的應用程式密碼在本機實寄外部邀請信，收件匣收到且連結可開啟；填入錯誤密碼時 notification log 只有 `failed`、`MAIL_DELIVERY_FAILED` 與下次重試時間，worker 輸出不含 SMTP 回應。

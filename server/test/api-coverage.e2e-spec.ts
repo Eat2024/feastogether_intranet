@@ -7,6 +7,7 @@ import {
   type SecurityE2eContext,
 } from './security-e2e.helper';
 import { getSignatureVerification } from './signature-verification.helper';
+import { requestOtp, submitOtp } from './external-session.helper';
 
 describe('runtime API coverage', () => {
   let ctx: SecurityE2eContext;
@@ -72,18 +73,14 @@ describe('runtime API coverage', () => {
       .expect(401);
   });
 
-  it('8 個 external invitation/task operations 已註冊且維持公開憑證邊界', async () => {
+  it('9 個 external invitation/task operations 已註冊且維持公開憑證邊界', async () => {
     const token = 'A'.repeat(43);
     await request(ctx.server)
       .get(`/api/external-signature-invitations/${token}`)
       .expect(200)
       .expect('Cache-Control', 'no-store');
-    await request(ctx.server)
-      .post('/api/external-signature-session')
-      .set('Origin', 'http://localhost:3000')
-      .type('form')
-      .send({ token })
-      .expect(401);
+    await requestOtp(ctx, token).expect(401);
+    await submitOtp(ctx, token, '000000').expect(401);
     await request(ctx.server)
       .delete('/api/external-signature-session')
       .set('Origin', 'http://localhost:3000')

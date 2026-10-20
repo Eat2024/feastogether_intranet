@@ -28,6 +28,7 @@ import { EsignDocumentQueryService } from './services/esign-document-query.servi
 import { EsignSigningTaskService } from './services/esign-signing-task.service';
 import { EsignSigningService } from './services/esign-signing.service';
 import { ExternalAccessService } from './services/external-access.service';
+import { ExternalOtpService } from './services/external-otp.service';
 import { EsignStoppageService } from './services/esign-stoppage.service';
 import { EsignCompletionAccessService } from './services/esign-completion-access.service';
 import { EsignVerificationService } from './services/esign-verification.service';
@@ -45,6 +46,7 @@ const esignServices = [
   EsignSigningTaskService,
   EsignSigningService,
   ExternalAccessService,
+  ExternalOtpService,
   EsignStoppageService,
   EsignCompletionAccessService,
   EsignSignerService,

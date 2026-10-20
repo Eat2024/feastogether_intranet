@@ -16,6 +16,8 @@ export interface EsignAuditMetadata {
   signatureRecordId?: number;
   completedFileId?: number;
   completedPdfSha256?: string;
+  /** 外部驗證碼輸入錯誤後的剩餘次數 */
+  remainingAttempts?: number;
 }
 
 export interface AppendEsignAuditEvent {
@@ -157,6 +159,14 @@ export class EsignAuditService {
       const value = metadata[key];
       if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0)
         result[key] = value;
+    }
+    const { remainingAttempts } = metadata;
+    if (
+      typeof remainingAttempts === 'number' &&
+      Number.isSafeInteger(remainingAttempts) &&
+      remainingAttempts >= 0
+    ) {
+      result.remainingAttempts = remainingAttempts;
     }
     if (
       metadata.completedPdfSha256 &&

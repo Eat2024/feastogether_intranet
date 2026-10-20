@@ -378,6 +378,14 @@ Spec 03 以 `PrivateFileStorage` 作為唯一檔案邊界。local 與 automated 
 
 外部邀請郵件使用 `InvitationMailSender`：local、UAT 與 production 都經 SMTP 以公司 Google Workspace 帳號（`smtp.gmail.com`）寄出，automated test 使用 in-memory fake（Spec 008 起不再使用 SES）。local 可改寄本機 Mailpit，不驗證、不加密；UAT 與 production 必須設定 `SMTP_USER`、`SMTP_PASSWORD` 以帳號驗證，且一律加密連線（`SMTP_SECURE=true` 直接 TLS，或 `SMTP_SECURE=false` 時強制 STARTTLS，無法加密就不寄出），帳密由部署環境提供、不進版本控制。寄送失敗只記錄穩定錯誤碼，不記錄 SMTP 回應、收件內容、token 或密碼。郵件只包含文件名稱、建立人、台北截止時間及 opaque invitation URL，不附 PDF、不列出其他簽署人，也不提供催簽或完成通知。
 
+外部簽署人開啟文件前須通過 Email 驗證碼（Spec 008）：
+- 邀請確認頁表單送 `POST /api/external-signature-otps`（`token`）。先做外部存取檢查，失效回 401 失效頁、尚未開始回 409 尚未開始頁，都不寄信；通過後產生 6 位數驗證碼，在 HTTP 請求中以 `InvitationMailSender.sendOtp` 同步寄到邀請信箱（不走 outbox），回驗證碼輸入頁（遮罩信箱）。驗證碼信只含驗證碼、10 分鐘有效、文件名稱與非本人操作提醒，不含連結。寄送失敗回 503 可重試頁，不保留驗證碼、不記錄寄出。
+- 驗證碼只以 `sha256({signerId}:{code})` 存 Redis：`esign:external-otp:{signerId}:code`（TTL 10 分鐘）與 `:attempts`（輸入次數，同 TTL）。先計次再比對，錯滿 5 次或驗證成功即刪除；重新寄出覆寫舊驗證碼並重設次數。Redis 資料遺失只需重新開啟，不影響簽署證據。
+- 輸入頁送 `POST /api/external-signature-session`（`token`＋`code`）。邀請失效或尚未開始時不比對驗證碼；驗證碼正確才設 session cookie（不設 `Expires`，待簽者與已簽者相同）並 303 導向；錯誤回 401 錯誤頁顯示剩餘次數，過期、已使用或錯滿回 401 提示重新開啟邀請連結；token 或 code 格式錯誤回 400 失效頁。
+- 稽核：寄出 `external_otp.sent`、驗證成功 `external_otp.verified`（並記錄 `external_invitation.opened`）、錯誤 `external_otp.failed`（metadata 只含 `remainingAttempts`）、錯滿 `external_otp.locked`；不記錄驗證碼。
+- 兩個 POST 都經 OriginGuard，並套用 `AuthThrottlerGuard` 依 client IP 限流（超過時回 JSON 429 envelope）；body 不寫入 access log。驗證碼與 token 不進 URL、log、錯誤訊息或稽核。不新增資料表、migration 或環境變數。
+- 限制：重新寄送按鈕、60 秒冷卻與每小時 5 封上限尚未實作（Spec 008 ticket 11）；目前驗證碼失效時請簽署人重新開啟邀請信中的連結取得新驗證碼。
+
 HTTP process 只註冊 BullMQ producer；獨立 worker 才載入 invitation、finalization 與 maintenance processors。MySQL transaction 與 constraint 是業務權威，Redis/BullMQ 只負責喚醒、重試與每 30 秒 reconciliation。Queue payload 只放 `notificationLogId` 或 `documentId`，不得包含 Email、token、PDF、PNG 或 cookie；Redis 暫時不可用不回滾已成立的 MySQL 簽署結果，恢復後由 maintenance 依 DB 現況收斂。
 
 相關設定與 migration：

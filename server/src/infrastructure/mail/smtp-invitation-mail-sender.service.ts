@@ -2,10 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { isDeployedEnvironment } from '#app/config/app.environment';
-import { buildInvitationMail } from './invitation-mail-content';
+import {
+  buildInvitationMail,
+  buildOtpMail,
+  type InvitationMailContent,
+} from './invitation-mail-content';
 import type {
   InvitationMailSender,
   SendInvitationMailInput,
+  SendOtpMailInput,
 } from './invitation-mail-sender.port';
 
 @Injectable()
@@ -30,10 +35,23 @@ export class SmtpInvitationMailSender implements InvitationMailSender {
   }
 
   async send(input: SendInvitationMailInput): Promise<void> {
-    const content = buildInvitationMail(input, this.origin);
+    await this.deliver(
+      input.recipientEmail,
+      buildInvitationMail(input, this.origin),
+    );
+  }
+
+  async sendOtp(input: SendOtpMailInput): Promise<void> {
+    await this.deliver(input.recipientEmail, buildOtpMail(input));
+  }
+
+  private async deliver(
+    to: string,
+    content: InvitationMailContent,
+  ): Promise<void> {
     await this.transporter.sendMail({
       from: this.from,
-      to: input.recipientEmail,
+      to,
       subject: content.subject,
       text: content.text,
       html: content.html,

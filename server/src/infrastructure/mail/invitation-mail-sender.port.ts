@@ -8,6 +8,14 @@ export interface SendInvitationMailInput {
   invitationToken: string;
 }
 
+/** 外部簽署人開啟文件前的驗證碼信（Spec 008 FR-029）：不含邀請連結。 */
+export interface SendOtpMailInput {
+  recipientEmail: string;
+  documentTitle: string;
+  code: string;
+}
+
 export interface InvitationMailSender {
   send(input: SendInvitationMailInput): Promise<void>;
+  sendOtp(input: SendOtpMailInput): Promise<void>;
 }

@@ -99,9 +99,29 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
-  async del(key: string): Promise<number> {
+  /**
+   * 計數 +1 並回傳新值；第一次建立時設定 TTL，之後遞增不延長存活時間。
+   * INCR 與 EXPIRE 以 Lua 一次執行，不會留下永不過期的計數。
+   */
+  async increment(key: string, ttl: number): Promise<number> {
+    const script = `
+      local count = redis.call('INCR', KEYS[1])
+      if count == 1 then
+        redis.call('EXPIRE', KEYS[1], ARGV[1])
+      end
+      return count
+    `;
     try {
-      return await this.client.del(key);
+      return Number(await this.client.eval(script, 1, key, String(ttl)));
+    } catch (error) {
+      this.logError('increment', error);
+      throw error;
+    }
+  }
+
+  async del(...keys: [string, ...string[]]): Promise<number> {
+    try {
+      return await this.client.del(...keys);
     } catch (error) {
       this.logError('del', error);
       throw error;

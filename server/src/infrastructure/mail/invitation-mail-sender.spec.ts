@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import nodemailer from 'nodemailer';
-import { buildInvitationMail } from './invitation-mail-content';
+import { buildInvitationMail, buildOtpMail } from './invitation-mail-content';
 import { FakeInvitationMailSender } from './fake-invitation-mail-sender.service';
 import { createInvitationMailSender } from './mail.module';
 import { SmtpInvitationMailSender } from './smtp-invitation-mail-sender.service';
@@ -29,6 +29,67 @@ describe('Invitation mail sender', () => {
     );
     expect(mail.text).toContain('請勿轉寄');
     expect(mail.text).not.toContain('其他簽署人');
+  });
+
+  it('驗證碼信只含驗證碼、10 分鐘有效、文件名稱與非本人操作提醒，不含任何連結', () => {
+    const mail = buildOtpMail({
+      recipientEmail: 'candidate@example.test',
+      documentTitle: '聘僱合約 <附件&B>',
+      code: '012345',
+    });
+    expect(mail.subject).toBe('電子簽署驗證碼');
+    for (const body of [mail.text, mail.html]) {
+      expect(body).toContain('012345');
+      expect(body).toContain('10 分鐘內有效');
+      expect(body).toContain('若非本人操作請忽略');
+      expect(body).not.toMatch(/https?:|<a\b|href|www\./i);
+      expect(body).not.toContain('candidate@example.test');
+    }
+    expect(mail.text).toContain('聘僱合約 <附件&B>');
+    expect(mail.html).toContain('聘僱合約 &lt;附件&amp;B&gt;');
+  });
+
+  it('fake adapter 保留驗證碼信供 e2e 取得，與邀請信分開記錄', async () => {
+    const sender = new FakeInvitationMailSender();
+    const otp = {
+      recipientEmail: 'candidate@example.test',
+      documentTitle: '聘僱合約',
+      code: '012345',
+    };
+    await sender.sendOtp(otp);
+    expect(sender.otpDeliveries).toEqual([otp]);
+    expect(sender.deliveries).toEqual([]);
+  });
+
+  it('SMTP 寄出驗證碼信給指定收件人，不加入附件', async () => {
+    const sender = new SmtpInvitationMailSender(
+      new ConfigService({
+        ESIGN_MAIL_DRIVER: 'smtp',
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: '1025',
+        SMTP_SECURE: 'false',
+        SMTP_FROM: 'no-reply@example.test',
+        EXTERNAL_SIGNING_ORIGIN: 'https://sign.example.test',
+      }),
+    );
+    await sender.sendOtp({
+      recipientEmail: 'candidate@example.test',
+      documentTitle: '聘僱合約',
+      code: '012345',
+    });
+    const transport = jest
+      .mocked(nodemailer.createTransport)
+      .mock.results.at(-1)?.value as { sendMail: jest.Mock };
+    const [message] = transport.sendMail.mock.calls[0] as [
+      Record<string, unknown>,
+    ];
+    expect(message).toMatchObject({
+      from: 'no-reply@example.test',
+      to: 'candidate@example.test',
+      subject: '電子簽署驗證碼',
+    });
+    expect(String(message.text)).toContain('012345');
+    expect(message).not.toHaveProperty('attachments');
   });
 
   it.each([

@@ -7,18 +7,31 @@ import {
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
+import {
+  INVITATION_MAIL_SENDER,
+  type InvitationMailSender,
+} from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { EsignAuditService } from './esign-audit.service';
+import {
+  EsignAuditService,
+  type EsignAuditMetadata,
+} from './esign-audit.service';
 import { EsignCompletionAccessService } from './esign-completion-access.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
 import { EsignViewMapper } from './esign-view.mapper';
+import { ExternalOtpService } from './external-otp.service';
 import { PdfValidationService } from './pdf-validation.service';
+
+export type ExternalSessionResult =
+  | { verified: true; signerPublicId: string }
+  /** remainingAttempts 為 0 表示驗證碼已失效（過期、已使用或錯滿），需重新取得 */
+  | { verified: false; email: string; remainingAttempts: number };
 
 @Injectable()
 export class ExternalAccessService {
@@ -38,6 +51,9 @@ export class ExternalAccessService {
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly completions: EsignCompletionAccessService,
+    private readonly otp: ExternalOtpService,
+    @Inject(INVITATION_MAIL_SENDER)
+    private readonly mailer: InvitationMailSender,
   ) {}
 
   isTokenFormat(token: string): boolean {
@@ -45,10 +61,46 @@ export class ExternalAccessService {
   }
 
   /**
-   * 以邀請憑證建立外部存取並記錄開啟。
-   * 待簽者回傳邀請期限（帶期限的 cookie）；已簽者不設期限，回傳 null（session cookie）。
+   * 按下「開啟電子簽署文件」：先做存取檢查（失效 401、尚未開始 409，都不寄信），
+   * 通過後寄驗證碼到邀請信箱並記錄寄出；回傳收件信箱供輸入頁遮罩顯示。
    */
-  async createSession(token: string) {
+  async sendOtp(token: string): Promise<{ email: string }> {
+    const { signer, document } = await this.readAccess(token);
+    const email = invitationEmail(signer);
+    await this.otp.issue(signer.id, async (code) => {
+      try {
+        await this.mailer.sendOtp({
+          recipientEmail: email,
+          documentTitle: document.title,
+          code,
+        });
+      } catch {
+        // SMTP 錯誤可能帶回收件內容，不記錄原始錯誤
+        throw new AppException(...AppErrors.ESIGN_OTP_MAIL_FAILED);
+      }
+    });
+    await this.mysql.transaction((manager) =>
+      this.audit.append(
+        {
+          documentId: document.id,
+          signerId: signer.id,
+          eventType: 'external_otp.sent',
+          occurredAt: new Date(),
+        },
+        manager,
+      ),
+    );
+    return { email };
+  }
+
+  /**
+   * 以邀請憑證＋驗證碼建立外部存取。邀請失效（401）或尚未開始（409）時不比對驗證碼；
+   * 驗證成功記錄 external_otp.verified 與 external_invitation.opened，錯誤記錄 failed／locked。
+   */
+  async createSession(
+    token: string,
+    code: string,
+  ): Promise<ExternalSessionResult> {
     const digest = this.tokens.digest(token);
     return this.mysql.transaction(async (manager) => {
       const candidate = await this.signers.findByInvitationDigest(
@@ -63,19 +115,31 @@ export class ExternalAccessService {
         : null;
       this.access.assertExternalAccess(document, signer, digest, new Date());
       if (!signer || !document) throw new Error('unreachable');
-      await this.audit.append(
-        {
-          documentId: document.id,
-          signerId: signer.id,
-          eventType: 'external_invitation.opened',
-          occurredAt: new Date(),
-        },
-        manager,
-      );
-      return {
-        signerPublicId: signer.publicId,
-        invitationExpiresAt: signer.invitationExpiresAt,
-      };
+      const append = (eventType: string, metadata?: EsignAuditMetadata) =>
+        this.audit.append(
+          {
+            documentId: document.id,
+            signerId: signer.id,
+            eventType,
+            occurredAt: new Date(),
+            metadata,
+          },
+          manager,
+        );
+      const verification = await this.otp.verify(signer.id, code);
+      if (verification.status === 'verified') {
+        await append('external_otp.verified');
+        await append('external_invitation.opened');
+        return { verified: true, signerPublicId: signer.publicId };
+      }
+      const email = invitationEmail(signer);
+      if (verification.status === 'wrong') {
+        const { remainingAttempts } = verification;
+        await append('external_otp.failed', { remainingAttempts });
+        return { verified: false, email, remainingAttempts };
+      }
+      if (verification.status === 'locked') await append('external_otp.locked');
+      return { verified: false, email, remainingAttempts: 0 };
     });
   }
 
@@ -175,4 +239,10 @@ export class ExternalAccessService {
     if (!signer || !document) throw new Error('unreachable');
     return { signer, document, manager };
   }
+}
+
+/** 外部存取檢查已確認為 email 簽署人，DB CHECK 保證有 email */
+function invitationEmail(signer: { email?: string }): string {
+  if (!signer.email) throw new Error('unreachable');
+  return signer.email;
 }

@@ -1,6 +1,9 @@
 import {
   invitationConfirmPage,
   invitationInvalidPage,
+  otpInputPage,
+  otpMailFailedPage,
+  otpRejectedPage,
   serviceUnavailablePage,
   signingNotStartedPage,
 } from './external-invitation-page';
@@ -8,7 +11,7 @@ import {
 describe('外部簽署邀請頁', () => {
   const token = 'A'.repeat(43);
 
-  it('邀請確認頁以表單送出 token 建立存取，並提醒勿轉寄與期限', () => {
+  it('邀請確認頁以表單送出 token 寄出驗證碼，並提醒勿轉寄與期限', () => {
     const html = invitationConfirmPage(token);
 
     expect(html).toContain('<h1');
@@ -17,7 +20,7 @@ describe('外部簽署邀請頁', () => {
       '您收到一份需要簽署的文件，開啟後即可閱讀內容並完成簽名。',
     );
     expect(html).toContain(
-      '<form method="post" action="/api/external-signature-session"',
+      '<form method="post" action="/api/external-signature-otps"',
     );
     expect(html).toContain(
       `<input type="hidden" name="token" value="${token}">`,
@@ -73,8 +76,82 @@ describe('外部簽署邀請頁', () => {
     expect(html).not.toContain('<form');
   });
 
+  it('驗證碼輸入頁顯示遮罩後的信箱與有效時間，以表單送出 token 與 6 位數驗證碼', () => {
+    const html = otpInputPage(token, 'daming.wang@example.com');
+
+    expect(html).toContain('輸入驗證碼</h1>');
+    expect(html).toContain('驗證碼已寄到 d***@example.com，10 分鐘內有效。');
+    expect(html).not.toContain('daming.wang');
+    expect(html).toContain(
+      '<form method="post" action="/api/external-signature-session"',
+    );
+    expect(html).toContain(
+      `<input type="hidden" name="token" value="${token}">`,
+    );
+    expect(html).toMatch(/<label for="otp-code">6 位數驗證碼<\/label>/);
+    const input = /<input id="otp-code"[^>]*>/.exec(html)?.[0] ?? '';
+    for (const attribute of [
+      'name="code"',
+      'inputmode="numeric"',
+      'autocomplete="one-time-code"',
+      'pattern="[0-9]{6}"',
+      'maxlength="6"',
+      'required',
+    ]) {
+      expect(input).toContain(attribute);
+    }
+    expect(input).not.toContain('aria-invalid');
+    expect(html).not.toContain('role="alert"');
+    expect(html).toMatch(/<button type="submit"[^>]*>驗證並開啟文件<\/button>/);
+    expect(html).toContain(
+      '沒收到信？請檢查垃圾郵件。驗證碼只能使用一次，請勿提供給他人。',
+    );
+  });
+
+  it('驗證碼錯誤頁標示輸入框錯誤並顯示剩餘次數，不回填輸入內容', () => {
+    const html = otpRejectedPage(token, 'daming.wang@example.com', 3);
+
+    expect(html).toContain('驗證碼已寄到 d***@example.com，10 分鐘內有效。');
+    expect(html).toMatch(
+      /<input id="otp-code"[^>]*aria-invalid="true" aria-describedby="otp-error"/,
+    );
+    expect(html).toContain(
+      '<span id="otp-error" role="alert">驗證碼錯誤，還可以再試 3 次。</span>',
+    );
+    expect(html).not.toMatch(/<input id="otp-code"[^>]*value=/);
+    expect(html).toContain(
+      '錯誤 5 次或超過 10 分鐘，驗證碼即失效，請重新開啟邀請信中的連結。',
+    );
+  });
+
+  it('驗證碼已失效時提示重新開啟邀請信中的連結', () => {
+    const html = otpRejectedPage(token, 'daming.wang@example.com', 0);
+
+    expect(html).toContain(
+      '<span id="otp-error" role="alert">驗證碼已失效，請重新開啟邀請信中的連結，取得新的驗證碼。</span>',
+    );
+  });
+
+  it('信箱經 HTML 跳脫後才顯示', () => {
+    const html = otpInputPage(token, '<b>@example.com');
+
+    expect(html).toContain('驗證碼已寄到 &lt;***@example.com');
+    expect(html).not.toContain('<b>');
+  });
+
+  it('驗證碼寄送失敗頁請簽署人稍後重試，不提供表單', () => {
+    const html = otpMailFailedPage();
+
+    expect(html).toContain('驗證碼寄送失敗</h1>');
+    expect(html).toContain('驗證碼寄送失敗，請稍後再開啟邀請信中的連結重試。');
+    expect(html).not.toContain('<form');
+  });
+
   it.each([
     ['邀請確認頁', invitationConfirmPage(token)],
+    ['驗證碼輸入頁', otpInputPage(token, 'daming.wang@example.com')],
+    ['驗證碼錯誤頁', otpRejectedPage(token, 'daming.wang@example.com', 1)],
+    ['驗證碼寄送失敗頁', otpMailFailedPage()],
     ['失效頁', invitationInvalidPage()],
     ['服務暫停頁', serviceUnavailablePage()],
     ['尚未開始頁', signingNotStartedPage(new Date())],

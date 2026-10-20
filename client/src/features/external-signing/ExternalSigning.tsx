@@ -1,7 +1,8 @@
 'use client';
 
-// 外部簽署頁：開啟任務 → 同意聲明 → 閱讀與簽名 → 送出 → 簽署完成。
+// 外部簽署頁：開啟任務 → 同意聲明 → 閱讀與簽名 → 送出 → 簽署完成（本人副本產生後可下載）。
 // 外部存取 cookie 的 path 只限 /api/external-signing-task，頁面請求不會帶上，資料一律由瀏覽器呼叫取得。
+import { useGetExternalSigningTaskQuery } from '@/api/queries';
 import { externalSourceFileUrl, openExternalSigningTask } from '@/api/requests';
 import type { ExternalSignatureResult, ExternalSigningTask } from '@/api/types';
 import PageHeader from '@/components/PageHeader';
@@ -49,19 +50,30 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
   const [consented, setConsented] = useState(false);
   const [result, setResult] = useState<ExternalSignatureResult | null>(null);
   const [accessLost, setAccessLost] = useState(false);
+  // 剛送出成功，或任務本身已是已簽署（依 signer.status 決定流程，見 contracts/http-api.md）
+  const signedAt = result?.signedAt ?? task?.signer.signedAt ?? null;
+  // 簽署完成後以唯讀查詢取得本人副本的最新狀態（產生中時自動輪詢，不記錄開啟）
+  const latest = useGetExternalSigningTaskQuery({ enabled: signedAt !== null });
 
-  if (accessLost || isExternalAccessLost(open.error) || (task && task.signerPublicId !== signerPublicId)) {
+  if (
+    accessLost ||
+    isExternalAccessLost(open.error) ||
+    isExternalAccessLost(latest.error) ||
+    [task, latest.data].some((current) => current && current.signerPublicId !== signerPublicId)
+  ) {
     return <InvalidNotice />;
   }
   if (open.error) return <OpenErrorNotice message={getErrorMessage(open.error, '無法開啟文件，請稍後再試')} />;
   if (!task) return <Loading label="開啟文件中…" />;
 
-  // 剛送出成功，或任務本身已是已簽署（依 signer.status 決定流程，見 contracts/http-api.md）
-  const signedAt = result?.signedAt ?? task.signer.signedAt;
   const content = signedAt ? (
     <>
       <SignSteps activeIndex={SIGN_STEPS.length} />
-      <ExternalDone task={task} signedAt={signedAt} />
+      <ExternalDone
+        task={task}
+        signedAt={signedAt}
+        copyStatus={(latest.data?.signer ?? result ?? task.signer).completion.status}
+      />
     </>
   ) : !consented ? (
     <>

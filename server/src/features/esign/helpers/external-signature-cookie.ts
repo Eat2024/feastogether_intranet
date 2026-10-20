@@ -13,11 +13,12 @@ function secure(config: ConfigService): boolean {
   );
 }
 
+/** expiresAt 省略時為 session cookie（瀏覽器關閉即失效），用於已簽者 */
 export function setExternalAccessCookie(
   reply: FastifyReply,
   config: ConfigService,
   token: string,
-  expiresAt: Date,
+  expiresAt?: Date,
 ): void {
   reply.setCookie(EXTERNAL_ACCESS_COOKIE, token, {
     httpOnly: true,

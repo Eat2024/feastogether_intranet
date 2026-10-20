@@ -82,7 +82,13 @@ export class EsignAccessPolicyService {
     throw this.notFound();
   }
 
-  assertExternalInvitation(
+  /**
+   * 外部存取（開啟任務、讀原始 PDF、下載本人副本、重送同一次簽名）。
+   * 共同條件：憑證相符、email 簽署人、簽署人與文件未刪除。
+   * 已簽者不比對期限、文件狀態與簽署期間；待簽者須在邀請期限與有效簽署期間內。
+   * 失敗一律回通用 401，不區分原因。
+   */
+  assertExternalAccess(
     document: EsignDocument | null,
     signer: EsignSigner | null,
     digest: string,
@@ -93,15 +99,38 @@ export class EsignAccessPolicyService {
       document !== null &&
       signer.signerType === 'email' &&
       signer.documentId === document.id &&
-      signer.status === 'pending' &&
       !signer.deletedAt &&
       !document.deletedAt &&
       signer.invitationTokenSha256 != null &&
-      this.equalDigest(signer.invitationTokenSha256, digest) &&
-      signer.invitationExpiresAt != null &&
-      now < signer.invitationExpiresAt;
+      this.equalDigest(signer.invitationTokenSha256, digest);
     if (!valid) throw this.externalUnauthorized();
+    if (signer.status === 'signed') return;
+    this.assertPendingInvitation(document, signer, now);
+  }
 
+  /** 送出新簽名：先通過外部存取，且必須是待簽者 */
+  assertExternalInvitation(
+    document: EsignDocument | null,
+    signer: EsignSigner | null,
+    digest: string,
+    now: Date,
+  ): void {
+    this.assertExternalAccess(document, signer, digest, now);
+    if (signer?.status !== 'pending') throw this.externalUnauthorized();
+  }
+
+  private assertPendingInvitation(
+    document: EsignDocument,
+    signer: EsignSigner,
+    now: Date,
+  ): void {
+    if (
+      signer.status !== 'pending' ||
+      signer.invitationExpiresAt == null ||
+      now >= signer.invitationExpiresAt
+    ) {
+      throw this.externalUnauthorized();
+    }
     try {
       this.documents.assertActiveSigningWindow(document, now);
     } catch {

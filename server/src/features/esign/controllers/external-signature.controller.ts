@@ -136,7 +136,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '開啟外部簽署任務',
     description:
-      '以外部存取 cookie 驗證邀請，回傳任務並記錄開啟事件，不依賴員工登入。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSignFlow 載入時以瀏覽器 fetch 呼叫。',
+      '以外部存取 cookie 驗證邀請，回傳任務並記錄開啟事件，不依賴員工登入；已簽者也可開啟，不比對簽署期限與文件狀態，依 signer.status 顯示完成頁。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSigning 每次進入頁面呼叫一次。',
   })
   @Post('external-signing-task')
   @HttpCode(HttpStatus.OK)
@@ -145,9 +145,20 @@ export class ExternalSignatureController {
   }
 
   @ApiOperation({
+    summary: '查詢外部簽署任務（唯讀）',
+    description:
+      '回傳與開啟任務相同的內容，但不記錄開啟事件、不寫入任何資料。\n\n前端串接參考：ExternalSigning 完成頁在本人副本產生中（completion.status 為 pending／processing）時每 3 秒輪詢，ready 或 failed 即停止。',
+  })
+  @Get('external-signing-task')
+  @Header('Cache-Control', 'private, no-store')
+  read(@Req() request: FastifyRequest) {
+    return this.external.task(this.accessToken(request), false);
+  }
+
+  @ApiOperation({
     summary: '讀取外部簽署任務的原始 PDF',
     description:
-      '以外部存取 cookie 驗證後回傳原始 PDF。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSignFlow 用來計算頁數，並交由 SignFlow 預覽文件。',
+      '以外部存取 cookie 驗證後回傳原始 PDF；已簽者也可讀取。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSigning 用來計算頁數並預覽文件。',
   })
   @Get('external-signing-task/source-file')
   @Header('Cache-Control', 'private, no-store')
@@ -172,7 +183,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '送出外部簽署人簽名',
     description:
-      '以外部存取 cookie 驗證並提交同意紀錄與簽名；成功後清除存取 cookie，並回傳該簽章的公開驗證網址 verificationUrl。\n\n前端串接參考：ExternalSignFlow 送出簽名時直接 fetch，成功後直接顯示簽署成功與驗證網址，完成 PDF 請向建立人取得。',
+      '以外部存取 cookie 驗證並提交同意紀錄與簽名，回傳簽署結果（含本人副本狀態 completion 與公開驗證網址 verificationUrl）。首次成功回 201；同一 requestId 重送回 200 與既有結果；已簽者以新的 requestId 再簽回 401。成功（含重送）時以同一 token 重設為 session cookie（不設期限），完成頁可繼續查詢與下載。\n\n前端串接參考：ExternalSignForm 送出簽名，網路重試沿用同一個 requestId；成功後切換到完成頁。',
   })
   @Post('external-signing-task/signatures')
   async sign(
@@ -191,9 +202,31 @@ export class ExternalSignatureController {
         userAgent: request.headers['user-agent'],
       },
     );
-    clearExternalAccessCookie(reply);
+    // 簽署後原期限已清除：改為 session cookie，避免完成頁輪詢與下載因原簽署期限截止而中斷
+    setExternalAccessCookie(reply, this.config, token);
     reply.status(result.repeated ? HttpStatus.OK : HttpStatus.CREATED);
     return toSignatureResultView(result);
+  }
+
+  @ApiOperation({
+    summary: '下載外部簽署人的本人副本',
+    description:
+      '以外部存取 cookie 驗證後回傳本人的已簽署 PDF（附件），經與建立人下載相同的完整性檢查；不記錄稽核。尚未簽署或存取失效回 401；副本產生中或產製失敗回 409。\n\n前端串接參考：ExternalDone 的「下載已簽署文件」以一般連結直接下載。',
+  })
+  @Get('external-signing-task/completed-file')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async completedFile(
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const file = await this.external.completedFile(this.accessToken(request));
+    if (!file)
+      throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
+    reply
+      .type('application/pdf')
+      .header('Content-Disposition', 'attachment; filename="completed.pdf"')
+      .send(file.bytes);
   }
 
   private accessToken(request: FastifyRequest): string {

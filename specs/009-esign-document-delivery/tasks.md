@@ -24,7 +24,7 @@
 
 對應 FR-001–005、SC-001。獨立驗收：混合／純外部名單與完整、單端、清空日期，登出登入後一致；非法輸入整筆不變且不發信。
 
-- [ ] T004 [P] [US1] 在 `server/src/features/esign/services/esign-signer.service.spec.ts` 補草稿原子保存與回填案例：日期 omitted 保留、null 清空、單端與過去日期可存、兩端時 start<end、非法名單及期間全部回滾、非建立人與發起競態。
+- [x] T004 [P] [US1] 在 `server/src/features/esign/services/esign-signer.service.spec.ts` 補草稿原子保存與回填案例：日期 omitted 保留、null 清空、單端與過去日期可存、兩端時 start<end、非法名單及期間全部回滾、非建立人與發起競態。
 
 - [x] T005 [US1] 修改 `server/src/features/esign/entities/esign-document.entity.ts` 日期 check：引用「draft 日期允許任一端 null；皆有時 start<end。非草稿必須兩端完整」；新增對應 TypeORM migration 於 `server/src/infrastructure/database/migrations/`，同步 `server/src/infrastructure/database/schema.sql` 及 schema metadata tests，down 對單端草稿不得偷偷清值。
 
@@ -34,7 +34,7 @@
 
 - [x] T008 [US1] 在 `client/src/api/endpoints.ts`、`types/esignDocuments.ts`、`requests/esignDocuments.ts` 新增草稿設定契約及匯出索引；接入 `client/src/features/esign-documents/DocumentSignersEditor.tsx` 的名單／日期／選項暫存、重新載入與台北日期轉換，移除發起固定傳 false 的行為。
 
-- [ ] T009 [US1] 在 `server/test/esign-draft-settings.e2e-spec.ts` 驗證新舊 API、session／Origin、schema 與交易回滾；將 US1 瀏覽器 roundtrip 結果記入 `specs/009-esign-document-delivery/implementation-notes.md`，確認沒有寄信或發起。
+- [x] T009 [US1] 在 `server/test/esign-draft-settings.e2e-spec.ts` 驗證新舊 API、session／Origin、schema 與交易回滾；將 US1 瀏覽器 roundtrip 結果記入 `specs/009-esign-document-delivery/implementation-notes.md`，確認沒有寄信或發起。
 
 ## Phase 4：US2 後端依設定繪製浮水印（P1）
 

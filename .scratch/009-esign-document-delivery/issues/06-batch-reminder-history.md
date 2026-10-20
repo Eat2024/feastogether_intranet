@@ -22,3 +22,11 @@
 - 修正待重試另建批次風險及MySQL鎖等待舊snapshot覆蓋document，真DB/worker驗證。
 - 13項 reminder e2e 通過；真Chrome選2人→全部其餘21人→worker投遞→每日限制→初邀與20+3明細分頁→reload通過。細節見 implementation-notes.md。
 - 整合前完整unit/build/lint結果及commit於下一筆補錄。
+
+### 整合基線後驗證
+
+- 實作 commit `6931143`，已將 integration `606d95e` 合併至本分支（merge `f75ff82`）；保留 ZIP 相關 query keys、UI、tasks 與驗證紀錄。
+- 整合後 `pnpm -C server test --runInBand`：99 suites／838 tests 全通過。
+- 整合後 `pnpm build`（server＋client正常Turbopack）與 `pnpm lint` 通過；server 194 warnings／0 errors，client 0 warnings／0 errors。
+- HTTP/worker 13項及真Chrome證據在 `/tmp/esign009-06-e2e.log`、`/tmp/esign009-06-browser.log`；整合後unit/build/lint在 `/tmp/esign009-06-final-{unit,build,lint}.log`。本票不修改migration，既有schema驗證沿用05／07，最終全量驗證由10整合。
+- 工作目錄乾淨；臨時瀏覽器fixture與Next生成的AGENTS區塊已移除。狀態保留 claimed，待 merger 合併整合分支後結案。

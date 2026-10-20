@@ -41,3 +41,9 @@ export class SignatureSubmissionDto {
   @Type(() => SignatureInputDto)
   signatures!: SignatureInputDto[];
 }
+
+/** 外部簽名另帶頁面所屬的簽署人，與存取 cookie 對應的簽署人比對（內部端點已在路徑帶簽署人） */
+export class ExternalSignatureSubmissionDto extends SignatureSubmissionDto {
+  @IsUUID('4')
+  signerPublicId!: string;
+}

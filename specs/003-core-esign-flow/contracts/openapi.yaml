@@ -406,6 +406,7 @@ paths:
     get:
       operationId: getExternalInvitationBridge
       summary: 取得將 invitation token POST 到同源 session resource 的唯讀 bridge
+      description: "由 Spec 008 取代：bridge 表單改送 POST /external-signature-otps（寄出驗證碼並回驗證碼輸入頁），不再直接 POST /external-signature-session。詳見 specs/008-external-signing-flow/contracts/http-api.md。"
       security: []
       parameters:
         - name: token
@@ -427,6 +428,7 @@ paths:
     post:
       operationId: createExternalSignatureSession
       summary: 驗證 invitation 後設定單文件受限 HttpOnly cookie
+      description: "由 Spec 008 取代：須先由 POST /external-signature-otps 寄出驗證碼，本端點改收 token＋code（6 位數驗證碼），驗證碼正確才設 session cookie（不設 Expires，待簽者與已簽者相同）；驗證碼錯誤或失效回 401 驗證碼錯誤頁，code 格式錯誤回 400；憑證有效、待簽但早於 signStartAt 時回 409 尚未開始頁。下方 401 的「已簽署」不再適用。詳見 specs/008-external-signing-flow/contracts/http-api.md。"
       security: []
       requestBody:
         required: true
@@ -463,6 +465,7 @@ paths:
     post:
       operationId: openExternalSigningTask
       summary: 開啟 external cookie 綁定的唯一簽署任務，同 transaction 追加 document.opened audit
+      description: "由 Spec 008 取代：已簽署者也可開啟（不比對期限與文件狀態），依 signer.status 顯示完成畫面。Spec 008 另新增唯讀 GET /external-signing-task（不記稽核）與 GET /external-signing-task/completed-file（下載本人副本）。詳見 specs/008-external-signing-flow/contracts/http-api.md。"
       security:
         - externalAccess: []
       responses:
@@ -477,6 +480,7 @@ paths:
     get:
       operationId: downloadExternalSigningTaskSourceFile
       summary: 下載 external cookie 綁定的固定 PDF
+      description: "由 Spec 008 取代：授權改為外部存取檢查，已簽署者也可讀取。詳見 specs/008-external-signing-flow/contracts/http-api.md。"
       security:
         - externalAccess: []
       responses:
@@ -487,6 +491,7 @@ paths:
     post:
       operationId: signExternalSigningTask
       summary: 外部簽署人提交所有必要手寫簽名
+      description: "由 Spec 008 取代：成功（201）與同一 requestId 重送（200，回既有結果）都不清除 access cookie，改以同一 token 設為 session cookie；已簽者以新的 requestId 簽署為 401。下方 200／201 的說明不再適用。詳見 specs/008-external-signing-flow/contracts/http-api.md。"
       security:
         - externalAccess: []
       requestBody:

@@ -4,6 +4,8 @@
 
 外部簽署人從指定 Email 信箱開啟專屬 URL，視為能控制該信箱，不再輸入 OTP。此邀請只授予一名 `email` signer 對一份 document 的讀取與簽署能力，不建立 User，不授予內部列表、其他文件或管理功能。
 
+> **由 Spec 008 取代（FR-024～FR-031）**：開啟專屬 URL 不再視為已控制信箱。邀請確認頁按下開啟後寄 6 位數驗證碼到同一邀請信箱，驗證成功才建立存取。以下保留原文。
+
 ## 2. Token 格式與保存
 
 - 每名 external signer 在 document initiation transaction 生成獨立 token。
@@ -24,6 +26,10 @@ Invitation-only mail 包含：
 不附上 PDF，不列出其他簽署人，不包含簽名、session 或內部系統網址。Spec 03 不寄催簽、完成通知或其他通知。
 
 ## 4. 瀏覽器流程
+
+> **由 Spec 008 取代（FR-024～FR-031）**：bridge 表單改送 `POST /api/external-signature-otps { token }`，驗證邀請後寄出驗證碼並回驗證碼輸入頁（失效 401、尚未開始 409，皆不寄信）；輸入頁送 `POST /api/external-signature-session { token, code }`，驗證碼正確才設 session cookie（不設 `Expires`，待簽者與已簽者相同）並 303 導向，同時記錄 `external_otp.verified` 與 `external_invitation.opened`。兩個 POST 皆依 client IP 限流、body 不寫入 access log。詳見 `specs/008-external-signing-flow/contracts/http-api.md`。
+>
+> **由 Spec 008 取代（FR-010、FR-013、FR-014、FR-017）**：簽署成功（含同一 requestId 重送回 200）不再清除 access cookie，改以同一 token 重設為 session cookie（不設 `Expires`）；完成畫面以唯讀 `GET /api/external-signing-task` 查詢本人副本狀態（不記稽核），副本 ready 後以 `GET /api/external-signing-task/completed-file` 下載本人副本。詳見 `specs/008-external-signing-flow/contracts/http-api.md`。以下保留原文。
 
 ```text
 Email client
@@ -57,6 +63,8 @@ X-Content-Type-Options: nosniff
 
 ## 5. 每次授權的條件
 
+> **由 Spec 008 取代（FR-012、FR-016、FR-018）**：授權拆成「存取」與「簽署」。共同條件為憑證相符、`email` signer、signer 與 document 未刪除且屬同一 document；待簽署者另須符合下列第 2～4 點。已簽署者讀取本人任務、原始 PDF、副本狀態與下載本人副本時，不比對 invitation／簽署期限與 document 狀態。送出新簽名仍須為 `pending` 且在有效期間內。以下保留原文。
+
 `FT_ESIGN_EXTERNAL_ACCESS` 不是內部 session，也不建立另一張 session table。每個 external API request 都必須全數通過：
 
 1. Cookie 格式正確且 digest 精確命中一名 `email` signer。
@@ -69,6 +77,8 @@ X-Content-Type-Options: nosniff
 
 ## 6. 可重開與失效
 
+> **由 Spec 008 取代（FR-010、FR-011、FR-015～FR-017）**：簽署成功不再使 invitation 失效，也不清除 access cookie；已簽者重新開啟原邀請可再取得存取（session cookie），文件停止、到期或完成不影響已簽者下載本人副本，只有 signer 或 document 被刪除時失效。重送同一次已被接受的 requestId 回既有結果；已簽者以新的 requestId 簽署仍拒絕。待簽者的期限、停止與到期規則不變；仍不核發 receipt、不提供 external-completions。詳見 `specs/008-external-signing-flow/contracts/http-api.md`。以下保留原文。
+
 - 開啟 invitation URL 不消耗 token，關閉後可再次開啟。
 - 外部 cookie 最長存活到 invitation expiry，但 DB 條件才是最終權威。
 - 簽署成功的 response 同時清除 access cookie；即使 cookie 沒有清除，signer status 也會使 invitation token 失效。
@@ -78,6 +88,8 @@ X-Content-Type-Options: nosniff
 
 ## 7. Email 投遞與重試
 
+> **由 Spec 008 取代（FR-023）**：UAT／production 不再透過 SES adapter 寄送；local、UAT（staging）與 production 都以 SMTP adapter 經公司 Google Workspace（`smtp.gmail.com`）寄出，automated test 維持 in-memory fake，SES adapter 已移除。重試、失敗紀錄與不記錄 provider 細節的規則不變。以下保留原文。
+
 - Worker 使用 notification log 的 `pending/failed -> processing` 條件轉換 claim 作業。
 - local 透過 SMTP adapter 寄到 Mailpit；automated test 注入 in-memory fake；UAT/production 透過 SES adapter 寄送，但共用相同 mail sender contract、內容與 outbox 狀態機。
 - 可重試失敗寫穩定 `error_code`、`attempt_count`、`next_attempt_at`，不寫 SMTP/SES response、body、recipient 或 token。
@@ -85,6 +97,8 @@ X-Content-Type-Options: nosniff
 - 成功 provider accept 後寫 delivered 並清除 ciphertext。若在 provider accept 後、DB update 前 crash，允許 worker 重寄同一連結；不會建立第二個 signer 或擴大權限。
 
 ## 8. 部署設定
+
+> **由 Spec 008 取代（FR-023）**：`ESIGN_MAIL_DRIVER=ses`、`SES_FROM` 與 SES sandbox／寄件身分驗證的記載不再適用。UAT（staging）與 production 改用 `ESIGN_MAIL_DRIVER=smtp`，必須設定 `SMTP_USER`、`SMTP_PASSWORD`，且一律加密連線（`SMTP_SECURE=true` 直接 TLS，或 `SMTP_SECURE=false` 時強制 STARTTLS）；local 仍可使用不驗證、不加密的 Mailpit。`AWS_REGION` 與 runtime IAM role 只供 production S3 檔案儲存使用。現行設定範例以 `server/.env.example` 為準。以下保留原文。
 
 ```dotenv
 EXTERNAL_SIGNING_ORIGIN=https://esign.example.internal

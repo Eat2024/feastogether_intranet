@@ -1,10 +1,22 @@
+import { ConfigService } from '@nestjs/config';
 import type { Job } from 'bullmq';
+import nodemailer from 'nodemailer';
+import { SmtpInvitationMailSender } from '#app/infrastructure/mail/smtp-invitation-mail-sender.service';
 import { ExternalInvitationProcessor } from './external-invitation.processor';
+
+jest.mock('nodemailer', () => ({
+  __esModule: true,
+  default: { createTransport: jest.fn() },
+}));
 
 describe('ExternalInvitationProcessor', () => {
   const manager = {} as never;
 
-  function setup(options?: { mailFailure?: boolean; result?: string }) {
+  function setup(options?: {
+    mailFailure?: boolean;
+    result?: string;
+    mailer?: SmtpInvitationMailSender;
+  }) {
     const document = {
       id: 7,
       status: 'active',
@@ -60,7 +72,7 @@ describe('ExternalInvitationProcessor', () => {
       signers as never,
       { decrypt: jest.fn(() => 'opaque-invitation-token') } as never,
       audit as never,
-      mailer as never,
+      options?.mailer ?? mailer,
     );
     return { processor, document, log, signer, notifications, mailer, audit };
   }
@@ -155,5 +167,82 @@ describe('ExternalInvitationProcessor', () => {
     expect(log.processingStartedAt).toBeNull();
     expect(log.nextAttemptAt).toBeNull();
     expect(audit.append).not.toHaveBeenCalled();
+  });
+
+  describe('Gmail SMTP 帳密錯誤', () => {
+    const now = new Date('2026-10-20T08:00:00.000Z');
+    const smtpResponse = '535-5.7.8 Username and Password not accepted';
+    const sensitive =
+      /535|Username and Password|wrong-app-password|candidate@example|opaque-invitation-token|聘僱文件|建立人/u;
+
+    function gmailSender() {
+      const authError = Object.assign(
+        new Error(`Invalid login: ${smtpResponse}`),
+        {
+          code: 'EAUTH',
+          command: 'AUTH PLAIN',
+          responseCode: 535,
+          response: smtpResponse,
+        },
+      );
+      const sendMail = jest.fn(() => Promise.reject(authError));
+      jest
+        .mocked(nodemailer.createTransport)
+        .mockReturnValue({ sendMail } as never);
+      const sender = new SmtpInvitationMailSender(
+        new ConfigService({
+          SMTP_HOST: 'smtp.gmail.com',
+          SMTP_PORT: '587',
+          SMTP_SECURE: 'false',
+          SMTP_USER: 'einvoice@eatogether.com.tw',
+          SMTP_PASSWORD: 'wrong-app-password',
+          SMTP_FROM: 'einvoice@eatogether.com.tw',
+          EXTERNAL_SIGNING_ORIGIN: 'https://sign.example.test',
+        }),
+      );
+      return { sender, sendMail };
+    }
+
+    beforeEach(() => jest.useFakeTimers({ now }));
+    afterEach(() => {
+      jest.useRealTimers();
+      jest.restoreAllMocks();
+    });
+
+    it('寄送紀錄只留 failed 與穩定錯誤碼並依退避排定重試，不保留 SMTP 回應、收件內容、token 或密碼', async () => {
+      const { sender, sendMail } = gmailSender();
+      const { processor, log } = setup({ mailer: sender });
+
+      await expect(processor.process(job)).resolves.toBeUndefined();
+
+      expect(sendMail).toHaveBeenCalledTimes(1);
+      const { signer: _signer, ...columns } = log;
+      expect(columns).toEqual({
+        id: 19,
+        result: 'failed',
+        attemptCount: 1,
+        errorCode: 'MAIL_DELIVERY_FAILED',
+        processingStartedAt: null,
+        nextAttemptAt: new Date('2026-10-20T08:00:30.000Z'),
+        completedAt: undefined,
+      });
+    });
+
+    it('寄送失敗不輸出 SMTP 回應、收件內容、token 或密碼', async () => {
+      const outputs = [
+        jest.spyOn(console, 'log'),
+        jest.spyOn(console, 'warn'),
+        jest.spyOn(console, 'error'),
+        jest.spyOn(process.stdout, 'write'),
+        jest.spyOn(process.stderr, 'write'),
+      ];
+      const { sender } = gmailSender();
+      const { processor } = setup({ mailer: sender });
+
+      await processor.process(job);
+
+      const emitted = outputs.flatMap((spy) => spy.mock.calls);
+      expect(JSON.stringify(emitted)).not.toMatch(sensitive);
+    });
   });
 });

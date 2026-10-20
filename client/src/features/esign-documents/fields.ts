@@ -25,17 +25,20 @@ export function toFieldPlacements(fields: UploadField[]): EsignFieldPlacement[] 
     });
 }
 
+/** 後端欄位轉成前端欄位；id 由呼叫端決定 */
+export function fromFieldView(f: EsignFieldView, id: number): UploadField {
+  return {
+    id,
+    page: f.page,
+    x: f.xPercent,
+    y: f.yPercent,
+    w: f.widthPercent,
+    h: f.heightPercent,
+    type: f.type === 'signature' ? 'sign' : 'date',
+  };
+}
+
 /** 後端草稿的欄位轉回編輯器欄位（依 sortOrder；id 為編輯器內部用的流水號） */
 export function fromFieldViews(fields: EsignFieldView[]): UploadField[] {
-  return [...fields]
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((f, i) => ({
-      id: i + 1,
-      page: f.page,
-      x: f.xPercent,
-      y: f.yPercent,
-      w: f.widthPercent,
-      h: f.heightPercent,
-      type: f.type === 'signature' ? 'sign' : 'date',
-    }));
+  return [...fields].sort((a, b) => a.sortOrder - b.sortOrder).map((f, i) => fromFieldView(f, i + 1));
 }

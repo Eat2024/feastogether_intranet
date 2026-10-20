@@ -2,7 +2,7 @@
 
 // 確認型 dialog（刪除／提醒／結果回饋）：設計系統的確認型不屬於 MUI maxWidth 尺寸，
 // 寬度、圓角、陰影、外距由 tokens 的 dialog 設定在這裡指定
-import { useId, type ReactNode } from "react";
+import { useId, type ElementType, type ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
@@ -69,14 +69,7 @@ export default function ConfirmDialog({
       }}
       aria-labelledby={titleId}
     >
-      {icon && (
-        <Box sx={{ display: "flex", color: `${color}.main`, "& svg": { fontSize: 48 } }}>
-          {icon}
-        </Box>
-      )}
-      <Typography id={titleId} variant="sectionTitle">
-        {title}
-      </Typography>
+      <ConfirmHeading icon={icon} color={color} title={title} titleId={titleId} />
       {description && <Typography variant="description">{description}</Typography>}
       {children && <Box sx={{ width: "100%", mt: 1, textAlign: "left" }}>{children}</Box>}
       {/* 確認型按鈕垂直堆疊、滿寬、gap 8px */}
@@ -105,5 +98,31 @@ export default function ConfirmDialog({
         </Button>
       </Box>
     </Dialog>
+  );
+}
+
+type ConfirmHeadingProps = {
+  /** 標題上方的大圖示 */
+  icon?: ReactNode;
+  color: "primary" | "error" | "warning";
+  title: ReactNode;
+  titleId?: string;
+  /** 標題元素，預設與 sectionTitle 相同為 h2；頁面上的確認型卡片用 h1 */
+  titleComponent?: ElementType;
+};
+
+/** 確認型的大圖示與標題：ConfirmDialog 與頁面上相同外觀的確認型卡片共用 */
+export function ConfirmHeading({ icon, color, title, titleId, titleComponent = "h2" }: ConfirmHeadingProps) {
+  return (
+    <>
+      {icon && (
+        <Box sx={{ display: "flex", color: `${color}.main`, "& svg": { fontSize: 48 } }}>
+          {icon}
+        </Box>
+      )}
+      <Typography id={titleId} variant="sectionTitle" component={titleComponent}>
+        {title}
+      </Typography>
+    </>
   );
 }

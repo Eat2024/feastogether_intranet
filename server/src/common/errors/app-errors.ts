@@ -1,4 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
+import { formatInTaipei } from '#app/common/date-time.helper';
 import { AppErrorCode } from './app-error-code';
 
 export type AppErrorDefinition = readonly [
@@ -6,6 +7,11 @@ export type AppErrorDefinition = readonly [
   message: string,
   status: HttpStatus,
 ];
+
+/** 「請於 …（台北時間）後簽署」：簽署尚未開始的錯誤訊息與外部邀請頁共用。 */
+export function signAfterHint(startAt: Date): string {
+  return `請於 ${formatInTaipei(startAt, 'yyyy/MM/dd HH:mm')}（台北時間）後簽署`;
+}
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
@@ -33,16 +39,6 @@ export const AppErrors = {
     AppErrorCode.INVALID_REQUEST,
     '請求內容超過大小限制',
     HttpStatus.PAYLOAD_TOO_LARGE,
-  ],
-  ESIGN_INVITATION_SERVICE_UNAVAILABLE: [
-    AppErrorCode.ESIGN_UNAVAILABLE,
-    '電子簽署服務暫時無法使用，請稍後再試',
-    HttpStatus.SERVICE_UNAVAILABLE,
-  ],
-  ESIGN_INVITATION_EXPIRED: [
-    AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
-    '邀請連結無效或已到期',
-    HttpStatus.UNAUTHORIZED,
   ],
   ACCOUNT_DISABLED: [
     AppErrorCode.ACCOUNT_DISABLED,
@@ -179,6 +175,12 @@ export const AppErrors = {
     '外部簽署人資料格式不正確',
     HttpStatus.BAD_REQUEST,
   ],
+  /** 同一瀏覽器後開啟的邀請覆蓋了存取 cookie，頁面所屬簽署人與 cookie 不符 */
+  ESIGN_EXTERNAL_SIGNER_MISMATCH: [
+    AppErrorCode.ESIGN_STATE_CONFLICT,
+    '此頁面的簽署對象已變更，請重新開啟邀請信中的連結',
+    HttpStatus.CONFLICT,
+  ],
   ESIGN_EXTERNAL_UNAUTHORIZED: [
     AppErrorCode.ESIGN_EXTERNAL_UNAUTHORIZED,
     '外部簽署存取已失效',
@@ -222,11 +224,6 @@ export const AppErrors = {
   ESIGN_INTERNAL_SIGNER_UNAVAILABLE: [
     AppErrorCode.INVALID_REQUEST,
     '指定的內部簽署人不存在或已停用',
-    HttpStatus.BAD_REQUEST,
-  ],
-  ESIGN_INVITATION_FORMAT_INVALID: [
-    AppErrorCode.INVALID_REQUEST,
-    '邀請連結格式錯誤',
     HttpStatus.BAD_REQUEST,
   ],
   ESIGN_OUTSIDE_SIGNING_WINDOW: [
@@ -452,6 +449,12 @@ export const AppErrors = {
     `不支援的欄位：${field}`,
     HttpStatus.BAD_REQUEST,
   ],
+  /** 只在邀請憑證有效時使用，開始時間以台北時間呈現。 */
+  ESIGN_SIGNING_NOT_STARTED: (startAt: Date): AppErrorDefinition => [
+    AppErrorCode.ESIGN_STATE_CONFLICT,
+    `簽署尚未開始，${signAfterHint(startAt)}`,
+    HttpStatus.CONFLICT,
+  ],
   /** 只帶設定名稱與規則，不帶憑證或設定值。 */
   OAUTH_CONFIG_MISSING: (key: string): AppErrorDefinition => [
     AppErrorCode.OAUTH_UNAVAILABLE,
@@ -476,5 +479,5 @@ export const AppErrors = {
   ],
 } as const satisfies Record<
   string,
-  AppErrorDefinition | ((...args: string[]) => AppErrorDefinition)
+  AppErrorDefinition | ((...args: never[]) => AppErrorDefinition)
 >;

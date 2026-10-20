@@ -36,6 +36,8 @@ const BODY_EXCLUDED_PATHS = [
   '/api/auth/webview-launches',
   '/auth/session',
   '/api/auth/session',
+  '/external-signature-otps',
+  '/api/external-signature-otps',
   '/external-signature-session',
   '/api/external-signature-session',
   '/external-signing-task/signatures',

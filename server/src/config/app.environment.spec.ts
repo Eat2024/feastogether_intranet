@@ -3,8 +3,18 @@ import { validateAppEnvironment } from './app.environment';
 
 const encryptionKey = randomBytes(32).toString('base64');
 
+/** staging／production 的公司 Gmail SMTP：587 埠 STARTTLS 並以帳號驗證。 */
+const gmailSmtp = {
+  SMTP_HOST: 'smtp.gmail.com',
+  SMTP_PORT: '587',
+  SMTP_SECURE: 'false',
+  SMTP_USER: 'sender@example.internal',
+  SMTP_PASSWORD: 'not-a-real-app-password',
+  SMTP_FROM: 'sender@example.internal',
+};
+
 describe('validateAppEnvironment', () => {
-  it('development 固定使用 local storage 與 SMTP', () => {
+  it('development 固定使用 local storage 與 SMTP，允許不驗證、不加密的本機 Mailpit', () => {
     expect(
       validateAppEnvironment({
         NODE_ENV: 'development',
@@ -36,56 +46,83 @@ describe('validateAppEnvironment', () => {
     });
   });
 
-  it('staging 固定使用 local storage 與 SES', () => {
+  it('staging 固定使用 local storage 與 SMTP', () => {
     expect(
       validateAppEnvironment({
         NODE_ENV: 'staging',
         ESIGN_STORAGE_ROOT: '/mnt/esign',
-        AWS_REGION: 'ap-northeast-1',
-        SES_FROM: 'no-reply@example.internal',
+        ...gmailSmtp,
         EXTERNAL_SIGNING_ORIGIN: 'https://esign-uat.example.internal',
         ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
       }),
     ).toMatchObject({
       ESIGN_STORAGE_DRIVER: 'local',
-      ESIGN_MAIL_DRIVER: 'ses',
+      ESIGN_MAIL_DRIVER: 'smtp',
     });
   });
 
-  it('production 固定使用 S3 與 SES', () => {
+  it('production 固定使用 S3 與 SMTP', () => {
     expect(
       validateAppEnvironment({
         NODE_ENV: 'production',
         ESIGN_S3_BUCKET: 'feastogether-esign-production',
         AWS_REGION: 'ap-northeast-1',
-        SES_FROM: 'no-reply@example.internal',
+        ...gmailSmtp,
         EXTERNAL_SIGNING_ORIGIN: 'https://esign.example.internal',
         ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
       }),
     ).toMatchObject({
       ESIGN_STORAGE_DRIVER: 's3',
-      ESIGN_MAIL_DRIVER: 'ses',
+      ESIGN_MAIL_DRIVER: 'smtp',
     });
   });
 
-  it('production 不得降級到 local 或 SMTP', () => {
+  it('production 不得降級到 local 或改用 SES', () => {
     expect(() =>
       validateAppEnvironment({
         NODE_ENV: 'production',
         ESIGN_STORAGE_DRIVER: 'local',
-        ESIGN_MAIL_DRIVER: 'smtp',
+      }),
+    ).toThrow('NODE_ENV=production');
+    expect(() =>
+      validateAppEnvironment({
+        NODE_ENV: 'production',
+        ESIGN_MAIL_DRIVER: 'ses',
       }),
     ).toThrow('NODE_ENV=production');
   });
+
+  it.each(['staging', 'production'])(
+    '%s 未設定寄信帳密時啟動失敗，並指出缺少的設定',
+    (environment) => {
+      const validate = (smtp: Record<string, string>) => () =>
+        validateAppEnvironment({
+          NODE_ENV: environment,
+          ESIGN_STORAGE_ROOT: '/mnt/esign',
+          ESIGN_S3_BUCKET: 'feastogether-esign-production',
+          AWS_REGION: 'ap-northeast-1',
+          ...gmailSmtp,
+          ...smtp,
+          EXTERNAL_SIGNING_ORIGIN: 'https://esign.example.internal',
+          ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
+        });
+
+      expect(validate({ SMTP_USER: '', SMTP_PASSWORD: '' })).toThrow(
+        '環境變數 SMTP_USER 為必填',
+      );
+      expect(validate({ SMTP_PASSWORD: '' })).toThrow(
+        '環境變數 SMTP_PASSWORD 為必填',
+      );
+    },
+  );
 
   it('staging 與 production 不接受 AWS access key 環境變數', () => {
     expect(() =>
       validateAppEnvironment({
         NODE_ENV: 'staging',
         ESIGN_STORAGE_ROOT: '/mnt/esign',
-        AWS_REGION: 'ap-northeast-1',
+        ...gmailSmtp,
         AWS_ACCESS_KEY_ID: 'not-a-real-key',
-        SES_FROM: 'no-reply@example.internal',
         EXTERNAL_SIGNING_ORIGIN: 'https://esign-uat.example.internal',
         ESIGN_INVITATION_ENCRYPTION_KEY_B64: encryptionKey,
       }),

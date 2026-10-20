@@ -28,7 +28,8 @@ import { PdfValidationService } from './pdf-validation.service';
 
 export type SigningPrincipal =
   | { kind: 'internal'; userId: number }
-  | { kind: 'external'; invitationDigest: string };
+  /** signerId 為存取憑證對應的簽署人 */
+  | { kind: 'external'; signerId: number };
 
 export interface SigningRequestContext {
   sourceIp?: string;
@@ -96,6 +97,14 @@ export class EsignSigningService {
     this.consent.assertAccepted(submission.consentVersion, submission.accepted);
     const manager = this.mysql.getManager();
     const signer = await this.signers.findByPublicId(signerPublicId, manager);
+    // 頁面所屬簽署人須是存取憑證的簽署人：同一瀏覽器後開啟的邀請會覆蓋 cookie，舊分頁不得替他人簽署或取回結果。
+    // public id 不變，交易內依同一 public id 鎖定的簽署人與此相同，不需再比對。
+    if (
+      principal.kind === 'external' &&
+      signer &&
+      signer.id !== principal.signerId
+    )
+      throw new AppException(...AppErrors.ESIGN_EXTERNAL_SIGNER_MISMATCH);
     const document = signer
       ? await this.documents.findById(signer.documentId, manager)
       : null;
@@ -108,12 +117,8 @@ export class EsignSigningService {
       if (principal.kind === 'internal') {
         this.access.assertInternalSigner(document, signer, principal.userId);
       } else {
-        this.access.assertExternalInvitation(
-          document,
-          signer,
-          principal.invitationDigest,
-          new Date(),
-        );
+        // 已簽者重送同一次簽名：只需外部存取，拿回既有結果（新簽名仍經 assertPrincipal 限待簽者）
+        this.access.assertExternalAccess({ document, signer }, new Date());
       }
       return {
         signerPublicId,
@@ -190,10 +195,8 @@ export class EsignSigningService {
               principal.userId,
             );
           } else {
-            this.access.assertExternalInvitation(
-              lockedDocument,
-              lockedSigner,
-              principal.invitationDigest,
+            this.access.assertExternalAccess(
+              { document: lockedDocument, signer: lockedSigner },
               new Date(),
             );
           }
@@ -386,12 +389,7 @@ export class EsignSigningService {
       this.access.assertInternalSigner(document, signer, principal.userId);
       this.validation.assertActiveSigningWindow(document, now);
     } else {
-      this.access.assertExternalInvitation(
-        document,
-        signer,
-        principal.invitationDigest,
-        now,
-      );
+      this.access.assertExternalInvitation({ document, signer }, now);
     }
   }
 

@@ -11,6 +11,7 @@ describe('RedisService permission cache primitives', () => {
       get: jest.fn(),
       set: jest.fn(),
       eval: jest.fn(),
+      ttl: jest.fn(),
       del: jest.fn(),
       connect: jest.fn(),
       quit: jest.fn(),
@@ -130,12 +131,110 @@ describe('RedisService permission cache primitives', () => {
     });
   });
 
+  describe('increment', () => {
+    it('以 Lua 原子遞增，第一次建立時才設定 TTL', async () => {
+      const { service, client } = setup();
+      client.eval.mockResolvedValueOnce(1);
+
+      await expect(service.increment('otp:7:attempts', 600)).resolves.toBe(1);
+      expect(client.eval).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /redis\.call\('INCR', KEYS\[1\]\)[\s\S]*if count == 1 then[\s\S]*redis\.call\('EXPIRE', KEYS\[1\], ARGV\[1\]\)/,
+        ),
+        1,
+        'otp:7:attempts',
+        '600',
+      );
+    });
+
+    it('Lua 執行失敗時記錄 operation 並向上拋出', async () => {
+      const { service, client, logger } = setup();
+      client.eval.mockRejectedValueOnce(new Error('redis down'));
+
+      await expect(service.increment('otp:7:attempts', 600)).rejects.toThrow(
+        'redis down',
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        'Redis command failed: increment (redis down)',
+      );
+    });
+  });
+
+  describe('setIfAbsent', () => {
+    it('以 SET NX EX 一次寫入值與 TTL，寫入成功回 true', async () => {
+      const { service, client } = setup();
+      client.set.mockResolvedValueOnce('OK');
+
+      await expect(
+        service.setIfAbsent('otp:7:cooldown', '1', 60),
+      ).resolves.toBe(true);
+      expect(client.set).toHaveBeenCalledWith(
+        'otp:7:cooldown',
+        '1',
+        'EX',
+        60,
+        'NX',
+      );
+    });
+
+    it('key 已存在時不覆寫並回 false', async () => {
+      const { service, client } = setup();
+      client.set.mockResolvedValueOnce(null);
+
+      await expect(
+        service.setIfAbsent('otp:7:cooldown', '1', 60),
+      ).resolves.toBe(false);
+    });
+
+    it('Redis command 失敗時記錄 operation 並向上拋出', async () => {
+      const { service, client, logger } = setup();
+      client.set.mockRejectedValueOnce(new Error('redis down'));
+
+      await expect(
+        service.setIfAbsent('otp:7:cooldown', '1', 60),
+      ).rejects.toThrow('redis down');
+      expect(logger.error).toHaveBeenCalledWith(
+        'Redis command failed: setIfAbsent (redis down)',
+      );
+    });
+  });
+
+  describe('ttl', () => {
+    it('回傳 key 剩餘的存活秒數', async () => {
+      const { service, client } = setup();
+      client.ttl.mockResolvedValueOnce(42);
+
+      await expect(service.ttl('otp:7:cooldown')).resolves.toBe(42);
+      expect(client.ttl).toHaveBeenCalledWith('otp:7:cooldown');
+    });
+
+    it('Redis command 失敗時記錄 operation 並向上拋出', async () => {
+      const { service, client, logger } = setup();
+      client.ttl.mockRejectedValueOnce(new Error('redis down'));
+
+      await expect(service.ttl('otp:7:cooldown')).rejects.toThrow('redis down');
+      expect(logger.error).toHaveBeenCalledWith(
+        'Redis command failed: ttl (redis down)',
+      );
+    });
+  });
+
   describe('del', () => {
     it('回傳實際刪除數量', async () => {
       const { service, client } = setup();
       client.del.mockResolvedValueOnce(1);
 
       await expect(service.del('auth:101:synthetic-token')).resolves.toBe(1);
+    });
+
+    it('可一次刪除多個 key', async () => {
+      const { service, client } = setup();
+      client.del.mockResolvedValueOnce(2);
+
+      await expect(service.del('otp:7:code', 'otp:7:attempts')).resolves.toBe(
+        2,
+      );
+      expect(client.del).toHaveBeenCalledWith('otp:7:code', 'otp:7:attempts');
     });
 
     it('Redis command 失敗時記錄去敏感 log 並原樣拋出', async () => {

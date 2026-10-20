@@ -1,12 +1,27 @@
 import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
-import { timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
 import { DocumentRepository } from '../repositories/document.repository';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
+
+/** 待簽者在簽署開始前存取（409）：JSON 回應帶 details.startAt，邀請頁以 startAt 顯示開始時間。 */
+export class SigningNotStartedException extends AppException {
+  constructor(readonly startAt: Date) {
+    super(...AppErrors.ESIGN_SIGNING_NOT_STARTED(startAt), {
+      startAt: startAt.toISOString(),
+    });
+  }
+}
+
+export interface ExternalAccess {
+  document: EsignDocument | null;
+  signer: EsignSigner | null;
+}
+
+type CheckedExternalAccess = { document: EsignDocument; signer: EsignSigner };
 
 @Injectable()
 export class EsignAccessPolicyService {
@@ -82,26 +97,51 @@ export class EsignAccessPolicyService {
     throw this.notFound();
   }
 
-  assertExternalInvitation(
-    document: EsignDocument | null,
-    signer: EsignSigner | null,
-    digest: string,
+  /**
+   * 外部存取（寄送與驗證驗證碼、開啟任務、讀原始 PDF、下載本人副本、重送同一次簽名）。
+   * 呼叫端以邀請 token 或存取憑證找出簽署人；共同條件：email 簽署人、屬於該文件、簽署人與文件未刪除。
+   * 已簽者不比對期限、文件狀態與簽署期間；待簽者須在邀請期限與有效簽署期間內。
+   * 待簽者在簽署開始前回 409 告知開始時間；其餘失敗一律回通用 401，不區分原因。
+   */
+  assertExternalAccess(
+    access: ExternalAccess,
     now: Date,
-  ): void {
+  ): asserts access is CheckedExternalAccess {
+    const { document, signer } = access;
     const valid =
       signer !== null &&
       document !== null &&
       signer.signerType === 'email' &&
       signer.documentId === document.id &&
-      signer.status === 'pending' &&
       !signer.deletedAt &&
-      !document.deletedAt &&
-      signer.invitationTokenSha256 != null &&
-      this.equalDigest(signer.invitationTokenSha256, digest) &&
-      signer.invitationExpiresAt != null &&
-      now < signer.invitationExpiresAt;
+      !document.deletedAt;
     if (!valid) throw this.externalUnauthorized();
+    if (signer.status === 'signed') return;
+    this.assertPendingInvitation(document, signer, now);
+  }
 
+  /** 送出新簽名：先通過外部存取，且必須是待簽者 */
+  assertExternalInvitation(
+    access: ExternalAccess,
+    now: Date,
+  ): asserts access is CheckedExternalAccess {
+    this.assertExternalAccess(access, now);
+    if (access.signer.status !== 'pending') throw this.externalUnauthorized();
+  }
+
+  private assertPendingInvitation(
+    document: EsignDocument,
+    signer: EsignSigner,
+    now: Date,
+  ): void {
+    if (
+      signer.status !== 'pending' ||
+      signer.invitationExpiresAt == null ||
+      now >= signer.invitationExpiresAt
+    ) {
+      throw this.externalUnauthorized();
+    }
+    this.assertSigningStarted(document, now);
     try {
       this.documents.assertActiveSigningWindow(document, now);
     } catch {
@@ -109,13 +149,15 @@ export class EsignAccessPolicyService {
     }
   }
 
-  private equalDigest(expected: string, actual: string): boolean {
-    const expectedBytes = Buffer.from(expected, 'ascii');
-    const actualBytes = Buffer.from(actual, 'ascii');
-    return (
-      expectedBytes.byteLength === actualBytes.byteLength &&
-      timingSafeEqual(expectedBytes, actualBytes)
-    );
+  /**
+   * 呼叫端須先確認憑證有效且簽署人待簽：簽署中但尚未到開始時間時告知開始時間；
+   * 其他期間外情況交由簽署期間檢查，維持通用失效。
+   */
+  private assertSigningStarted(document: EsignDocument, now: Date): void {
+    const startAt = document.signStartAt;
+    if (document.status === 'active' && startAt && now < startAt) {
+      throw new SigningNotStartedException(startAt);
+    }
   }
 
   private notFound(): AppException {

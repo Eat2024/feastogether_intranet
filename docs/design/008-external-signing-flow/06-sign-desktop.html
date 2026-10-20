@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>外部簽署・閱讀與簽名（桌面）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+body{margin:0}
+a{color:#288BC8}a:hover{color:#2276AA}
+</style>
+</head>
+<body>
+<div style="min-height: 1740px; display: flex; flex-direction: column; background: #F3F5F6; font-family: 'Noto Sans TC', system-ui, sans-serif; color: #212121">
+  <header style="height: 64px; flex: none; display: flex; align-items: center; padding: 0 24px; background: #202229">
+    <span style="font-size: 20px; font-weight: 700; line-height: 1.25; color: #FFFFFF">電子簽署</span>
+  </header>
+
+  <main style="flex: 1; min-width: 0; padding: 24px; display: flex; flex-direction: column; gap: 24px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h1 style="margin: 0; font-size: 30px; font-weight: 700; line-height: 1.25; color: #424242">供應商保密協議（NDA）</h1>
+      <p style="margin: 0; font-size: 16px; line-height: 1.7; color: #757575">簽署人 王大明（daming.wang@example.com）・簽署期限 2026/10/31</p>
+    </div>
+
+    <ol aria-label="簽署步驟" style="margin: 0; padding: 0; list-style: none; display: flex; align-items: center">
+      <li style="display: flex; align-items: center; gap: 8px; padding: 0 8px 0 0">
+        <svg width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="已完成"><path fill="#1976D2" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2M9.29 16.29 5.7 12.7a.996.996 0 0 1 0-1.41c.39-.39 1.02-.39 1.41 0L10 14.17l6.88-6.88c.39-.39 1.02-.39 1.41 0s.39 1.02 0 1.41l-7.59 7.59c-.38.39-1.02.39-1.41 0"></path></svg>
+        <span style="font-size: 14px; font-weight: 500; color: #212121; white-space: nowrap">同意授權條款</span>
+      </li>
+      <li aria-hidden="true" style="flex: 1; border-top: 1px solid #BDBDBD; margin: 0 8px"></li>
+      <li style="display: flex; align-items: center; gap: 8px; padding: 0 8px">
+        <span style="width: 24px; height: 24px; border-radius: 9999px; background: #1976D2; color: #FFFFFF; font-size: 12px; display: flex; align-items: center; justify-content: center">2</span>
+        <span style="font-size: 14px; font-weight: 500; color: #212121; white-space: nowrap">閱讀文件</span>
+      </li>
+      <li aria-hidden="true" style="flex: 1; border-top: 1px solid #BDBDBD; margin: 0 8px"></li>
+      <li style="display: flex; align-items: center; gap: 8px; padding: 0 8px">
+        <span style="width: 24px; height: 24px; border-radius: 9999px; background: rgba(0,0,0,0.38); color: #FFFFFF; font-size: 12px; display: flex; align-items: center; justify-content: center">3</span>
+        <span style="font-size: 14px; color: rgba(0,0,0,0.6); white-space: nowrap">完成簽名</span>
+      </li>
+      <li aria-hidden="true" style="flex: 1; border-top: 1px solid #BDBDBD; margin: 0 8px"></li>
+      <li style="display: flex; align-items: center; gap: 8px; padding: 0 0 0 8px">
+        <span style="width: 24px; height: 24px; border-radius: 9999px; background: rgba(0,0,0,0.38); color: #FFFFFF; font-size: 12px; display: flex; align-items: center; justify-content: center">4</span>
+        <span style="font-size: 14px; color: rgba(0,0,0,0.6); white-space: nowrap">確認送出</span>
+      </li>
+    </ol>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+      <section aria-label="文件內容" style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 24px; background: #FFFFFF; border: 1px solid #E7E9EA; border-radius: 8px; display: flex; flex-direction: column; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 14px; line-height: 1.7; color: #757575">需簽名的頁面：第 2 頁</span>
+          <div style="display: flex; gap: 12px; align-items: flex-start">
+            <button type="button" aria-label="第 1 頁" style="width: 96px; height: 132px; box-sizing: border-box; border: 1.5px solid #E0E0E0; border-radius: 4px; background: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font: inherit; cursor: pointer">
+              <span style="display: flex; flex-direction: column; gap: 4px; width: 70%">
+                <span style="height: 3px; width: 100%; background: #E0E0E0; border-radius: 4px"></span>
+                <span style="height: 3px; width: 70%; background: #E0E0E0; border-radius: 4px"></span>
+                <span style="height: 3px; width: 85%; background: #E0E0E0; border-radius: 4px"></span>
+              </span>
+              <span style="font-size: 12px; color: #757575">第 1 頁</span>
+            </button>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+              <button type="button" aria-label="第 2 頁，需簽名 1 處" aria-pressed="true" style="width: 96px; height: 132px; box-sizing: border-box; border: 1.5px solid #1976D2; border-radius: 4px; box-shadow: 0 0 0 3px rgba(25,118,210,0.08); background: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font: inherit; cursor: pointer">
+                <span style="display: flex; flex-direction: column; gap: 4px; width: 70%">
+                  <span style="height: 3px; width: 100%; background: #E0E0E0; border-radius: 4px"></span>
+                  <span style="height: 3px; width: 70%; background: #E0E0E0; border-radius: 4px"></span>
+                  <span style="height: 3px; width: 85%; background: #E0E0E0; border-radius: 4px"></span>
+                </span>
+                <span style="font-size: 12px; color: #757575">第 2 頁</span>
+              </button>
+              <span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 9999px; background: #FFEFDD; color: #D97F18; font-size: 12px; font-weight: 500">
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#D97F18" d="m18.85 10.39 1.06-1.06c.78-.78.78-2.05 0-2.83L18.5 5.09c-.78-.78-2.05-.78-2.83 0l-1.06 1.06zm-5.66-2.83-9.05 9.05c-.09.09-.14.22-.14.35v3.54c0 .28.22.5.5.5h3.54c.13 0 .26-.05.35-.15l9.05-9.05zM19 17.5c0 2.19-2.54 3.5-5 3.5-.55 0-1-.45-1-1s.45-1 1-1c1.54 0 3-.73 3-1.5 0-.47-.48-.87-1.23-1.2l1.48-1.48c1.07.63 1.75 1.47 1.75 2.68M4.58 13.35C3.61 12.79 3 12.06 3 11c0-1.8 1.89-2.63 3.56-3.36C7.59 7.18 9 6.56 9 6c0-.41-.78-1-2-1-1.26 0-1.8.61-1.83.64-.35.41-.98.46-1.4.12-.41-.34-.49-.95-.15-1.38C3.73 4.24 4.76 3 7 3s4 1.32 4 3c0 1.87-1.93 2.72-3.64 3.47C6.42 9.88 5 10.5 5 11c0 .31.43.6 1.07.86z"></path></svg>
+                需簽名 1 處
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div style="position: relative; width: 100%; aspect-ratio: 210 / 297; box-sizing: border-box; padding: 64px 48px; background: #FFFFFF; border: 1px solid #E0E0E0; box-shadow: 0 3px 1px -2px rgba(0,0,0,0.2), 0 2px 2px 0 rgba(0,0,0,0.14), 0 1px 5px 0 rgba(0,0,0,0.12); overflow: hidden">
+          <div style="display: flex; flex-direction: column; gap: 12px">
+            <div style="height: 12px; width: 40%; background: #EEEEEE; border-radius: 4px; margin-bottom: 16px"></div>
+            <div style="height: 7px; width: 100%; background: #F5F5F5; border-radius: 4px"></div>
+            <div style="height: 7px; width: 94%; background: #F5F5F5; border-radius: 4px"></div>
+            <div style="height: 7px; width: 98%; background: #F5F5F5; border-radius: 4px"></div>
+            <div style="height: 7px; width: 70%; background: #F5F5F5; border-radius: 4px; margin-bottom: 16px"></div>
+            <div style="height: 7px; width: 100%; background: #F5F5F5; border-radius: 4px"></div>
+            <div style="height: 7px; width: 90%; background: #F5F5F5; border-radius: 4px"></div>
+            <div style="height: 7px; width: 96%; background: #F5F5F5; border-radius: 4px"></div>
+            <div style="height: 7px; width: 60%; background: #F5F5F5; border-radius: 4px"></div>
+          </div>
+
+          <button type="button" style="position: absolute; left: 10%; top: 72%; width: 23.5%; height: 7%; box-sizing: border-box; border: 1.5px dashed #FF951C; border-radius: 4px; background: #FFEFDD; color: #D97F18; font: inherit; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#D97F18" d="m18.85 10.39 1.06-1.06c.78-.78.78-2.05 0-2.83L18.5 5.09c-.78-.78-2.05-.78-2.83 0l-1.06 1.06zm-5.66-2.83-9.05 9.05c-.09.09-.14.22-.14.35v3.54c0 .28.22.5.5.5h3.54c.13 0 .26-.05.35-.15l9.05-9.05zM19 17.5c0 2.19-2.54 3.5-5 3.5-.55 0-1-.45-1-1s.45-1 1-1c1.54 0 3-.73 3-1.5 0-.47-.48-.87-1.23-1.2l1.48-1.48c1.07.63 1.75 1.47 1.75 2.68M4.58 13.35C3.61 12.79 3 12.06 3 11c0-1.8 1.89-2.63 3.56-3.36C7.59 7.18 9 6.56 9 6c0-.41-.78-1-2-1-1.26 0-1.8.61-1.83.64-.35.41-.98.46-1.4.12-.41-.34-.49-.95-.15-1.38C3.73 4.24 4.76 3 7 3s4 1.32 4 3c0 1.87-1.93 2.72-3.64 3.47C6.42 9.88 5 10.5 5 11c0 .31.43.6 1.07.86z"></path></svg>
+            點此簽名
+          </button>
+          <div style="position: absolute; left: 56%; top: 72%; width: 23.5%; height: 7%; box-sizing: border-box; border-bottom: 1px solid #BDBDBD; display: flex; align-items: center; justify-content: center">
+            <span style="font-size: 12px; color: #212121">2026/10/20</span>
+          </div>
+        </div>
+      </section>
+
+      <aside aria-label="簽名進度" style="flex: 1 1 300px; max-width: 100%; box-sizing: border-box; padding: 20px; background: #FFFFFF; border: 1px solid #E7E9EA; border-radius: 8px; display: flex; flex-direction: column; gap: 16px">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; align-items: baseline; justify-content: space-between">
+            <h2 style="margin: 0; font-size: 16px; font-weight: 500; line-height: 1.25; color: #212121">簽名進度</h2>
+            <span style="font-size: 14px; color: #757575">0/1</span>
+          </div>
+          <div style="border: 1px solid #E7E9EA; border-radius: 4px; overflow: hidden">
+            <button type="button" style="width: 100%; padding: 8px 16px; border: 0; background: #FFFFFF; font: inherit; display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer">
+              <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#D97F18" d="m18.85 10.39 1.06-1.06c.78-.78.78-2.05 0-2.83L18.5 5.09c-.78-.78-2.05-.78-2.83 0l-1.06 1.06zm-5.66-2.83-9.05 9.05c-.09.09-.14.22-.14.35v3.54c0 .28.22.5.5.5h3.54c.13 0 .26-.05.35-.15l9.05-9.05zM19 17.5c0 2.19-2.54 3.5-5 3.5-.55 0-1-.45-1-1s.45-1 1-1c1.54 0 3-.73 3-1.5 0-.47-.48-.87-1.23-1.2l1.48-1.48c1.07.63 1.75 1.47 1.75 2.68M4.58 13.35C3.61 12.79 3 12.06 3 11c0-1.8 1.89-2.63 3.56-3.36C7.59 7.18 9 6.56 9 6c0-.41-.78-1-2-1-1.26 0-1.8.61-1.83.64-.35.41-.98.46-1.4.12-.41-.34-.49-.95-.15-1.38C3.73 4.24 4.76 3 7 3s4 1.32 4 3c0 1.87-1.93 2.72-3.64 3.47C6.42 9.88 5 10.5 5 11c0 .31.43.6 1.07.86z"></path></svg>
+              <span style="flex: 1; font-size: 14px; line-height: 1.7; color: #212121">第 2 頁・簽名欄位</span>
+              <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 9999px; background: #FFEFDD; color: #D97F18; font-size: 12px; font-weight: 500">待簽名</span>
+            </button>
+          </div>
+          <span style="font-size: 12px; line-height: 1.7; color: #757575">點擊欄位或文件上的「點此簽名」開啟簽名板，每個欄位都需分別親手簽名。</span>
+        </div>
+
+        <div style="height: 1px; background: rgba(0,0,0,0.12)"></div>
+
+        <label style="display: inline-flex; align-items: center; align-self: flex-start; margin-left: -11px; cursor: pointer">
+          <span style="position: relative; display: inline-flex; padding: 9px">
+            <input type="checkbox" style="position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer">
+            <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path fill="rgba(0,0,0,0.6)" d="M19 5v14H5V5h14m0-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"></path></svg>
+          </span>
+          <span style="font-size: 14px; line-height: 1.7; color: #212121">我已閱讀並同意上述文件內容</span>
+        </label>
+
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <button type="button" disabled style="width: 100%; height: 42px; border: 0; border-radius: 4px; background: rgba(0,0,0,0.12); color: rgba(0,0,0,0.26); font: inherit; font-size: 14px; font-weight: 500">確認簽署</button>
+          <span style="font-size: 12px; line-height: 1.7; color: #757575">請勾選同意文件內容，並完成剩餘 1 個簽名。</span>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>

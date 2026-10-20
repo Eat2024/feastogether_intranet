@@ -151,6 +151,29 @@ describe('EsignAuditService', () => {
     });
   });
 
+  it('驗證碼錯誤事件只保留非負整數的剩餘次數', async () => {
+    const { repository, service } = setup();
+    for (const remainingAttempts of [3, -1, 1.5, Number.NaN]) {
+      await service.append(
+        {
+          documentId: 10,
+          signerId: 20,
+          eventType: 'external_otp.failed',
+          occurredAt: new Date(),
+          metadata: { remainingAttempts },
+        },
+        manager,
+      );
+    }
+    expect(
+      (
+        repository.insert.mock.calls as unknown as Array<
+          [{ metadataJson?: unknown }]
+        >
+      ).map(([row]) => row.metadataJson),
+    ).toEqual([{ remainingAttempts: 3 }, undefined, undefined, undefined]);
+  });
+
   it('metadata 只接受白名單，避免 Email、token、IP 與簽名進入 audit', async () => {
     const { repository, service } = setup();
     await service.append(

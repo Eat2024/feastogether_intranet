@@ -40,15 +40,15 @@
 
 對應 FR-006–009、SC-002–003。獨立驗收：watermark true 每頁中文正常、false 不畫；直橫旋轉裁切皆可讀，既有副本 hash 不變。
 
-- [ ] T010 [P] [US2] 在 `server/src/features/esign/services/completed-pdf.service.spec.ts` 加 true/false、所有頁面、90/180/270度、CropBox、缺字型失敗及已有副本不重繪測試；樣本使用合成 PDF，驗證 hash 在加印後建立。
+- [x] T010 [P] [US2] 在 `server/src/features/esign/services/completed-pdf.service.spec.ts` 加 true/false、所有頁面、90/180/270度、CropBox、缺字型失敗及已有副本不重繪測試；樣本使用合成 PDF，驗證 hash 在加印後建立。
 
-- [ ] T011 [US2] 從 root 以 pnpm filter 安裝 `@pdf-lib/fontkit` 至 `server/package.json` 並更新 `pnpm-lock.yaml`；在 `server/assets/fonts/` 加可合法再散布的固定繁體中文字型與授權檔，於 `server/nest-cli.json` 配置 build 複製並確認 production 路徑，不依賴系統字型。
+- [x] T011 [US2] 從 root 以 pnpm filter 安裝 `@pdf-lib/fontkit` 至 `server/package.json` 並更新 `pnpm-lock.yaml`；在 `server/assets/fonts/` 加可合法再散布的固定繁體中文字型與授權檔，於 `server/nest-cli.json` 配置 build 複製並確認 production 路徑，不依賴系統字型。
 
-- [ ] T012 [US2] 在 `server/src/features/esign/services/completed-pdf.service.ts` 讀固定 payload 的 watermark，依 `client/src/features/my-signature/sign/pdfCanvas.ts` 樣式在可視頁面座標畫「饗賓集團 內部文件 請勿外流」；true 才載字型／繪製，沿用旋轉 helper，在最終 hash／manifest 前完成，不覆寫原檔或舊成果。
+- [x] T012 [US2] 在 `server/src/features/esign/services/completed-pdf.service.ts` 讀固定 payload 的 watermark，依 `client/src/features/my-signature/sign/pdfCanvas.ts` 樣式在可視頁面座標畫「饗賓集團 內部文件 請勿外流」；true 才載字型／繪製，沿用旋轉 helper，在最終 hash／manifest 前完成，不覆寫原檔或舊成果。
 
-- [ ] T013 [US2] 檢查 `client/src/features/my-signature/sign/pdfCanvas.ts` 及正式下載呼叫點，移除正式完成副本的前端水印繪製責任，保留 `DocumentSignersEditor.tsx` 的 watermark 選擇；不將整個 mock 簽署流程宣稱已正式串接。
+- [x] T013 [US2] 檢查 `client/src/features/my-signature/sign/pdfCanvas.ts` 及正式下載呼叫點，移除正式完成副本的前端水印繪製責任，保留 `DocumentSignersEditor.tsx` 的 watermark 選擇；不將整個 mock 簽署流程宣稱已正式串接。
 
-- [ ] T014 [US2] 在 `server/test/esign-watermark.e2e-spec.ts` 驗證 build 後字型可讀、同一副本各下載入口 bytes一致與舊副本未變；將視覺中文／簽名／QR檢查記於 `specs/009-esign-document-delivery/implementation-notes.md`，ZIP一致性留待US3整合。
+- [x] T014 [US2] 在 `server/test/esign-watermark.e2e-spec.ts` 驗證 build 後字型可讀、同一副本各下載入口 bytes一致與舊副本未變；將視覺中文／簽名／QR檢查記於 `specs/009-esign-document-delivery/implementation-notes.md`，ZIP一致性留待US3整合。
 
 ## Phase 5：US3 大量副本 ZIP 與七天重用（P1）
 

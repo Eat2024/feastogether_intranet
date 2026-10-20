@@ -23,7 +23,10 @@ export const toViewerForm = (task: ExternalSigningTask) => ({
   docNumber: null,
 });
 
-/** 送出內容：每個簽名欄位一筆（日期由後端以簽署時間帶入） */
+/**
+ * 送出內容：每個簽名欄位一筆（日期由後端以簽署時間帶入）。
+ * signerPublicId 為頁面所屬簽署人（ExternalSigning 已確認與網址相同），後端據此拒絕 cookie 已被其他邀請覆蓋的送出。
+ */
 export function toSubmission(
   task: ExternalSigningTask,
   layout: SignLayout,
@@ -31,6 +34,7 @@ export function toSubmission(
   requestId: string,
 ): SubmitExternalSignaturesBody {
   return {
+    signerPublicId: task.signerPublicId,
     requestId,
     consentVersion: task.consent.version,
     accepted: true,

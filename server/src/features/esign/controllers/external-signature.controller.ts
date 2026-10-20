@@ -20,7 +20,7 @@ import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
 import { AppException } from '#app/common/errors/app.exception';
 import { Public } from '#app/framework/decorators/public.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
-import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
+import { ExternalSignatureSubmissionDto } from '../dto/signature-submission.dto';
 import {
   clearExternalAccessCookie,
   EXTERNAL_ACCESS_COOKIE,
@@ -175,16 +175,18 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '送出外部簽署人簽名',
     description:
-      '以外部存取 cookie 驗證並提交同意紀錄與簽名，回傳簽署結果（含本人副本狀態 completion 與公開驗證網址 verificationUrl）。首次成功回 201；同一 requestId 重送回 200 與既有結果；已簽者以新的 requestId 再簽回 401。成功（含重送）時以同一 token 重設為 session cookie（不設期限），完成頁可繼續查詢與下載。\n\n前端串接參考：ExternalSignForm 送出簽名，網路重試沿用同一個 requestId；成功後切換到完成頁。',
+      '以外部存取 cookie 驗證並提交同意紀錄與簽名，回傳簽署結果（含本人副本狀態 completion 與公開驗證網址 verificationUrl）。body 必須帶頁面所屬的 signerPublicId，與 cookie 對應的簽署人不符（同一瀏覽器後開啟的邀請覆蓋了 cookie）回 409 ESIGN_EXTERNAL_SIGNER_MISMATCH，不建立簽署。首次成功回 201；同一 requestId 重送回 200 與既有結果；已簽者以新的 requestId 再簽回 401。成功（含重送）時以同一 token 重設為 session cookie（不設期限），完成頁可繼續查詢與下載。\n\n前端串接參考：ExternalSignForm 送出簽名，帶上頁面所屬（與網址相同）的 signerPublicId，網路重試沿用同一個 requestId；成功後切換到完成頁。',
   })
   @Post('external-signing-task/signatures')
   async sign(
-    @Body() body: SignatureSubmissionDto,
+    @Body() body: ExternalSignatureSubmissionDto,
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     const token = this.accessToken(request);
     const signerPublicId = await this.external.signingSignerPublicId(token);
+    if (body.signerPublicId !== signerPublicId)
+      throw new AppException(...AppErrors.ESIGN_EXTERNAL_SIGNER_MISMATCH);
     const result = await this.signing.sign(
       signerPublicId,
       { kind: 'external', invitationDigest: this.tokens.digest(token) },

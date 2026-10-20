@@ -14,6 +14,8 @@ export interface ExternalSigningTask {
 
 /** POST external-signing-task/signatures */
 export interface SubmitExternalSignaturesBody {
+  /** 頁面所屬的簽署人；與外部存取 cookie 的簽署人不符時（cookie 被其他邀請覆蓋）回 409，不建立簽署 */
+  signerPublicId: string;
   /** UUID v4；同一次送出的重試沿用同一個，後端據此辨識重送 */
   requestId: string;
   consentVersion: string;

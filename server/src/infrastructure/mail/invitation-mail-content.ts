@@ -1,3 +1,4 @@
+import { formatInTaipei } from '#app/common/date-time.helper';
 import { escapeHtml } from '#app/common/escape-html';
 import type {
   SendInvitationMailInput,
@@ -14,12 +15,7 @@ export function buildInvitationMail(
   input: SendInvitationMailInput,
   externalOrigin: string,
 ): InvitationMailContent {
-  const deadline = new Intl.DateTimeFormat('zh-TW', {
-    timeZone: 'Asia/Taipei',
-    dateStyle: 'long',
-    timeStyle: 'short',
-    hour12: false,
-  }).format(input.signEndAt);
+  const deadline = formatInTaipei(input.signEndAt, 'yyyy/M/d HH:mm');
   const url = `${externalOrigin}/api/external-signature-invitations/${encodeURIComponent(input.invitationToken)}`;
   const subject = `電子簽署邀請：${input.documentTitle}`;
   const lines = [
@@ -40,7 +36,7 @@ export function buildInvitationMail(
 export function buildOtpMail(input: SendOtpMailInput): InvitationMailContent {
   const lines = [
     `您的電子簽署驗證碼：${input.code}`,
-    '10 分鐘內有效，只能使用一次。',
+    `${input.validMinutes} 分鐘內有效，只能使用一次。`,
     `文件：${input.documentTitle}`,
     '若非本人操作請忽略此信，請勿將驗證碼提供給他人。',
   ];

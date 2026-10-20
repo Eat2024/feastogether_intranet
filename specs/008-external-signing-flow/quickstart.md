@@ -21,7 +21,23 @@ pnpm -C client lint
 pnpm -C client build
 ```
 
-預期全部通過；e2e 涵蓋 research.md 第 11 點列出的情境。
+預期全部通過；e2e 涵蓋 research.md 第 11 點列出的情境，以及第 15 點存取憑證（以邀請 token 自行設 cookie、Redis 憑證過期、結束存取後一律 401）。
+
+### 驗證紀錄
+
+2026-10-20（ticket 12 code review 修正後，branch `008/12-review-fixes`；e2e 使用測試庫 `feastogether_intranet_test_t12`、`REDIS_DB=15`，於 sandbox 外執行）：
+
+| 指令 | 結果 |
+|------|------|
+| `pnpm -C server lint:check` | 通過（0 errors；167 warnings 為既有程式的型別寬鬆警告，幾乎都在測試檔，本次修改的正式程式沒有 warning） |
+| `pnpm -C server test` | 92 suites／814 tests 通過 |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test:e2e` | 11 suites／85 tests 通過 |
+| `pnpm -C server test:e2e:security` | 6 suites／31 tests 通過 |
+| `pnpm -C client lint` | 通過 |
+| `pnpm -C client build` | 通過 |
+
+手動驗收（下方清單）尚未執行，需人工確認。
 
 `core-esign-flow-scale` 依使用者 2026-10-20 決定由 6,000 人降為 10 人（約 1 秒），已不再自動驗證 Spec 003 FR-037 的大量名單規模；需要時調高該測試的 `SIGNER_COUNT`。
 

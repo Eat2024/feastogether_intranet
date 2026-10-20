@@ -382,7 +382,8 @@ Spec 03 以 `PrivateFileStorage` 作為唯一檔案邊界。local 與 automated 
 - 邀請確認頁表單與驗證碼輸入頁的「重新寄送驗證碼」都送 `POST /api/external-signature-otps`（`token`）。先做外部存取檢查，失效回 401 失效頁、尚未開始回 409 尚未開始頁，都不寄信；通過後產生 6 位數驗證碼，在 HTTP 請求中以 `InvitationMailSender.sendOtp` 同步寄到邀請信箱（不走 outbox），回驗證碼輸入頁（遮罩信箱）。驗證碼信只含驗證碼、10 分鐘有效、文件名稱與非本人操作提醒，不含連結。寄送失敗回 503 可重試頁，不保留驗證碼、不記錄寄出、不計入冷卻與寄送次數。
 - 重新寄送限制：距上次寄送須滿 60 秒（`:cooldown`，寄送前以 `SET NX` 佔用，同一簽署人同時只寄出一封），同一簽署人自第一次寄送起 1 小時內最多 5 封（`:hourly`，寄送成功才計次）。不符時回 429 驗證碼輸入頁，不寄信、不覆寫現有驗證碼：冷卻顯示剩餘秒數，每小時上限顯示可再寄送的台北時刻。輸入頁的重新寄送按鈕在冷卻期間停用並倒數，倒數為頁面內一段固定 inline script，CSP 以 `script-src 'sha256-…'` 只放行該段內容。
 - 驗證碼只以 `sha256({signerId}:{code})` 存 Redis：`esign:external-otp:{signerId}:code`（TTL 10 分鐘）與 `:attempts`（輸入次數，同 TTL）。先計次再比對，錯滿 5 次或驗證成功即刪除；重新寄出覆寫舊驗證碼並重設次數。Redis 資料遺失只需重新寄送，不影響簽署證據。
-- 輸入頁送 `POST /api/external-signature-session`（`token`＋`code`）。邀請失效或尚未開始時不比對驗證碼；驗證碼正確才設 session cookie（不設 `Expires`，待簽者與已簽者相同）並 303 導向；錯誤回 401 錯誤頁顯示剩餘次數，過期、已使用或錯滿回 401 提示重新寄送（錯誤頁的重新寄送按鈕一律可按，冷卻與上限由 otps 端點判斷）；token 或 code 格式錯誤回 400 失效頁。
+- 輸入頁送 `POST /api/external-signature-session`（`token`＋`code`）。邀請失效或尚未開始時不比對驗證碼；驗證碼正確才產生存取憑證、設為 session cookie（不設 `Expires`，待簽者與已簽者相同）並 303 導向；錯誤回 401 錯誤頁顯示剩餘次數，過期、已使用或錯滿回 401 提示重新寄送（錯誤頁的重新寄送按鈕一律可按，冷卻與上限由 otps 端點判斷）；token 或 code 格式錯誤回 400 失效頁。
+- 存取憑證（research §15）：cookie `FT_ESIGN_EXTERNAL_ACCESS` 的值是驗證成功時以 `randomBytes(32)` 產生的隨機憑證，不是邀請 token，只持有邀請連結無法自行設 cookie 跳過驗證碼。Redis `esign:external-access:{sha256(憑證)}` 存簽署人 id，TTL 8 小時、不滑動；任務、原始 PDF、本人副本與送出簽名都以憑證查簽署人後再做外部存取檢查，查無即 401。簽署成功不重設 cookie；`DELETE /api/external-signature-session` 刪除憑證並清 cookie。Redis 資料遺失時外部簽署人需重新開啟邀請並驗證。
 - 稽核：寄出 `external_otp.sent`、驗證成功 `external_otp.verified`（並記錄 `external_invitation.opened`）、錯誤 `external_otp.failed`（metadata 只含 `remainingAttempts`）、錯滿 `external_otp.locked`；不記錄驗證碼。
 - 兩個 POST 都經 OriginGuard，並套用 `AuthThrottlerGuard` 依 client IP 限流（超過時回 JSON 429 envelope）；body 不寫入 access log。驗證碼與 token 不進 URL、log、錯誤訊息或稽核。不新增資料表、migration 或環境變數。
 - 限制：寄信失敗頁沒有重新寄送按鈕，需重新開啟邀請信中的連結再寄送。關閉 JavaScript 時冷卻倒數不會結束，按鈕維持停用，可重新開啟邀請連結再寄送（外部簽署頁本身也需要 JavaScript）。
@@ -642,6 +643,6 @@ Spec 3 只涵蓋成功簽署主路徑及 Email 邀請所需的最小通知，不
 
 簽署後即排工作，5 分鐘 lease 位於 signer。只有等待中的 queue 工作做技術性合併，worker 開始時釋放該合併鍵；DB claim、fencing token、唯一約束與 ready 狀態仍是唯一業務權威。既有 30 秒 maintenance 掃描完整候選，失效 queue 可由 DB 狀態補回。
 
-建立人可下載任一 ready 副本，內部員工只能下載本人副本。停止不刪已簽證據，既有 signed 副本繼續產製，stopped 不再結案。外部簽署人簽署成功後，同一瀏覽器的存取改為 session cookie，完成頁以唯讀查詢更新副本狀態，ready 後可下載與建立人取得相同的本人副本（Spec 008）；仍不核發 receipt。
+建立人可下載任一 ready 副本，內部員工只能下載本人副本。停止不刪已簽證據，既有 signed 副本繼續產製，stopped 不再結案。外部簽署人簽署成功後，同一瀏覽器沿用驗證碼通過時的存取憑證，完成頁以唯讀查詢更新副本狀態，ready 後可下載與建立人取得相同的本人副本（Spec 008）；仍不核發 receipt。
 
 新 snapshot 使用 manifest v2，保存各 record/file/hash/copy event；final_pdf_sha256 為 NULL。公開驗證僅 completed 回本人的檔案摘要，其餘狀態為 NULL。migration 僅轉換舊單人完成檔 owner metadata，不更動 bytes/hash/payload；部署及回滾依 specs/003-core-esign-flow/quickstart.md。

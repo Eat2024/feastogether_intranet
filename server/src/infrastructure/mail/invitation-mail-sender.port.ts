@@ -13,6 +13,8 @@ export interface SendOtpMailInput {
   recipientEmail: string;
   documentTitle: string;
   code: string;
+  /** 驗證碼自寄出起的有效分鐘數 */
+  validMinutes: number;
 }
 
 export interface InvitationMailSender {

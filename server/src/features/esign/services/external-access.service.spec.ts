@@ -1,6 +1,7 @@
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
+import { ExternalAccessCredentialService } from './external-access-credential.service';
 import { ExternalAccessService } from './external-access.service';
 import { ExternalOtpService } from './external-otp.service';
 
@@ -15,7 +16,6 @@ describe('ExternalAccessService', () => {
       signerType: 'email',
       email: 'daming.wang@example.com',
       status: 'signed',
-      invitationTokenSha256: 'a'.repeat(64),
       invitationExpiresAt: null as Date | null,
     };
     const document = {
@@ -73,7 +73,12 @@ describe('ExternalAccessService', () => {
       } as never,
       {
         findByInvitationDigest: jest.fn(async () => signer),
-        findByInvitationDigestForUpdate: jest.fn(async () => signer),
+        findById: jest.fn(async (id: number) =>
+          id === signer.id ? signer : null,
+        ),
+        findByIdForUpdate: jest.fn(async (id: number) =>
+          id === signer.id ? signer : null,
+        ),
         completionCounts: jest.fn(async () => ({ pending: 0, signed: 1 })),
       } as never,
       { findByDocument: jest.fn(async () => []) } as never,
@@ -93,6 +98,7 @@ describe('ExternalAccessService', () => {
       completions as never,
       new ExternalOtpService(redis as never),
       mailer,
+      new ExternalAccessCredentialService(redis as never),
     );
     return {
       service,
@@ -120,6 +126,16 @@ describe('ExternalAccessService', () => {
   async function sentCode({ service, mailer }: Setup): Promise<string> {
     await service.sendOtp(token);
     return mailer.otpDeliveries.at(-1)!.code;
+  }
+
+  /** 經驗證碼建立存取，回傳 cookie 中的存取憑證 */
+  async function accessCredential(context: Setup): Promise<string> {
+    const session = await context.service.createSession(
+      token,
+      await sentCode(context),
+    );
+    if (!session.verified) throw new Error('驗證碼應通過');
+    return session.credential;
   }
 
   function pendingInvitation({ signer, document }: Setup) {
@@ -152,6 +168,7 @@ describe('ExternalAccessService', () => {
           recipientEmail: 'daming.wang@example.com',
           documentTitle: '供應商保密協議',
           code: expect.stringMatching(/^\d{6}$/),
+          validMinutes: 10,
         },
       ]);
       expect(auditedEvents(context.audit)).toEqual(['external_otp.sent']);
@@ -197,29 +214,32 @@ describe('ExternalAccessService', () => {
     expect(context.mailer.otpDeliveries).toEqual([]);
   });
 
-  it('寄信失敗回 503，不保存驗證碼、不記錄寄出', async () => {
+  it('寄信失敗時回報寄送失敗，不保存驗證碼、不記錄寄出', async () => {
     const context = setup();
     jest
       .spyOn(context.mailer, 'sendOtp')
       .mockRejectedValueOnce(new Error('smtp down'));
 
-    await expect(context.service.sendOtp(token)).rejects.toMatchObject({
-      status: 503,
-      message: '驗證碼寄送失敗，請稍後再試',
+    await expect(context.service.sendOtp(token)).resolves.toEqual({
+      email: 'daming.wang@example.com',
+      issue: { status: 'delivery-failed' },
     });
     expect(context.store.size).toBe(0);
     expect(context.audit.append).not.toHaveBeenCalled();
   });
 
-  it('正確驗證碼建立存取：記錄驗證成功與開啟邀請，驗證碼不進稽核', async () => {
+  it('正確驗證碼建立存取：產生不同於邀請 token 的存取憑證，記錄驗證成功與開啟邀請，驗證碼不進稽核', async () => {
     const context = setup();
     pendingInvitation(context);
     const code = await sentCode(context);
 
-    await expect(context.service.createSession(token, code)).resolves.toEqual({
+    const session = await context.service.createSession(token, code);
+    expect(session).toEqual({
       verified: true,
       signerPublicId: context.signer.publicId,
+      credential: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
     });
+    expect(session.verified && session.credential).not.toBe(token);
     expect(auditedEvents(context.audit)).toEqual([
       'external_otp.sent',
       'external_otp.verified',
@@ -293,66 +313,81 @@ describe('ExternalAccessService', () => {
     ).resolves.toMatchObject({ verified: true });
   });
 
-  it('已簽者在文件完成後仍可取得簽署人識別碼，供重送同一次簽名取回既有結果', async () => {
-    const { service, signer } = setup();
-    await expect(service.signingSignerPublicId('A'.repeat(43))).resolves.toBe(
-      signer.publicId,
-    );
+  it('存取憑證對應送出簽名的簽署人；已簽者在文件完成後仍可取得，供重送同一次簽名取回既有結果', async () => {
+    const context = setup();
+    await expect(
+      context.service.signingPrincipal(await accessCredential(context)),
+    ).resolves.toEqual({ kind: 'external', signerId: context.signer.id });
   });
 
-  it('有效的待簽邀請可取得簽署人識別碼', async () => {
-    const { service, signer, document } = setup();
-    signer.status = 'pending';
-    signer.invitationExpiresAt = new Date(Date.now() + 60_000);
-    document.status = 'active';
-    await expect(service.signingSignerPublicId('A'.repeat(43))).resolves.toBe(
-      signer.publicId,
-    );
+  it('只持有邀請 token（未通過驗證碼）時，任務、原始檔、本人副本與送出簽名一律 401', async () => {
+    const { service, files, completions } = setup();
+    for (const read of [
+      () => service.task(token, false),
+      () => service.source(token),
+      () => service.completedFile(token),
+      () => service.signingPrincipal(token),
+    ]) {
+      await expect(read()).rejects.toMatchObject({ status: 401 });
+    }
+    expect(files.findDocumentFile).not.toHaveBeenCalled();
+    expect(completions.personalCopy).not.toHaveBeenCalled();
   });
 
-  it('憑證不符時拒絕讀取原始檔', async () => {
-    const { service, signer, files } = setup();
-    signer.invitationTokenSha256 = 'b'.repeat(64);
-    await expect(service.source('A'.repeat(43))).rejects.toMatchObject({
+  it('結束存取後同一憑證一律 401', async () => {
+    const context = setup();
+    const credential = await accessCredential(context);
+    await context.service.endSession(credential);
+
+    await expect(context.service.task(credential, false)).rejects.toMatchObject(
+      { status: 401 },
+    );
+    await expect(
+      context.service.signingPrincipal(credential),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('存取憑證有效但簽署人已刪除時 401', async () => {
+    const context = setup();
+    const credential = await accessCredential(context);
+    Object.assign(context.signer, { deletedAt: new Date() });
+
+    await expect(context.service.source(credential)).rejects.toMatchObject({
       status: 401,
     });
-    expect(files.findDocumentFile).not.toHaveBeenCalled();
+    expect(context.files.findDocumentFile).not.toHaveBeenCalled();
   });
 
   it('唯讀查詢已簽者的任務，不記錄開啟稽核', async () => {
-    const { service, signer, audit } = setup();
-    await expect(service.task('A'.repeat(43), false)).resolves.toMatchObject({
-      signerPublicId: signer.publicId,
-    });
-    expect(audit.append).not.toHaveBeenCalled();
+    const context = setup();
+    const credential = await accessCredential(context);
+    context.audit.append.mockClear();
+    await expect(
+      context.service.task(credential, false),
+    ).resolves.toMatchObject({ signerPublicId: context.signer.publicId });
+    expect(context.audit.append).not.toHaveBeenCalled();
   });
 
   it('已簽者可下載本人副本', async () => {
-    const { service, signer, document, completions } = setup();
-    await expect(service.completedFile('A'.repeat(43))).resolves.toEqual({
+    const context = setup();
+    const credential = await accessCredential(context);
+    await expect(context.service.completedFile(credential)).resolves.toEqual({
       bytes: Buffer.from('%PDF-'),
       fileName: 'completed.pdf',
     });
-    expect(completions.personalCopy).toHaveBeenCalledWith(document, signer);
+    expect(context.completions.personalCopy).toHaveBeenCalledWith(
+      context.document,
+      context.signer,
+    );
   });
 
   it('尚未簽署時下載本人副本回 401', async () => {
-    const { service, signer, document, completions } = setup();
-    signer.status = 'pending';
-    signer.invitationExpiresAt = new Date(Date.now() + 60_000);
-    document.status = 'active';
-    await expect(service.completedFile('A'.repeat(43))).rejects.toMatchObject({
-      status: 401,
-    });
-    expect(completions.personalCopy).not.toHaveBeenCalled();
-  });
-
-  it('憑證不符時不讀取本人副本', async () => {
-    const { service, signer, completions } = setup();
-    signer.invitationTokenSha256 = 'b'.repeat(64);
-    await expect(service.completedFile('A'.repeat(43))).rejects.toMatchObject({
-      status: 401,
-    });
-    expect(completions.personalCopy).not.toHaveBeenCalled();
+    const context = setup();
+    pendingInvitation(context);
+    const credential = await accessCredential(context);
+    await expect(
+      context.service.completedFile(credential),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(context.completions.personalCopy).not.toHaveBeenCalled();
   });
 });

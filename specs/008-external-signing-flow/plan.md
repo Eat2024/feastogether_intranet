@@ -10,7 +10,7 @@
 
 外部簽署人目前點開邀請後沒有前端簽署頁，簽署後也拿不到本人副本。本計畫一次交付前後端：
 
-- **後端**：外部授權拆成「存取」與「簽署」兩種檢查。已簽者可隨時開啟與下載本人副本，不設期限（簽署寫入維持現狀：保留 digest、清除期限與密文），不新增欄位。簽署成功改以 session cookie 重設，不再清除。待簽者在開始時間前開啟時，回「簽署尚未開始」頁。新增唯讀任務查詢與副本下載兩個 GET 端點。邀請確認、失效、尚未開始三個後端 HTML 頁依設計稿改版。
+- **後端**：外部授權拆成「存取」與「簽署」兩種檢查。已簽者可隨時開啟與下載本人副本，不設期限（簽署寫入維持現狀：保留 digest、清除期限與密文），不新增欄位。簽署成功不再清除 cookie，沿用驗證碼通過時產生的存取憑證（research §15）。待簽者在開始時間前開啟時，回「簽署尚未開始」頁。新增唯讀任務查詢與副本下載兩個 GET 端點。邀請確認、失效、尚未開始三個後端 HTML 頁依設計稿改版。
 - **前端**：新增 `/external-signatures/[signerPublicId]`，重用既有簽署元件。流程為同意聲明 → 閱讀與簽名 → 確認送出 → 完成頁；完成頁輪詢副本狀態並提供下載。
 
 另外，開發、staging 與 production 都改用公司 Gmail SMTP 寄邀請信，移除不再使用的 SES 寄信實作與依賴。
@@ -146,7 +146,7 @@ specs/004-signature-verification-qr/spec.md   # 相容更新註記
 | `GET /api/external-signing-task` | 完成頁輪詢副本狀態（FR-013） | 用 POST 輪詢會每 3 秒寫一筆開啟稽核，且 GET 才符合唯讀語意 |
 | `GET /api/external-signing-task/completed-file` | 外部簽署人下載本人副本（FR-012、FR-014） | 既有下載端點只接受建立人或內部員工 session |
 | `ESIGN_SIGNING_NOT_STARTED` 錯誤定義 | 尚未開始時顯示開始時間（FR-003） | 沿用通用 401 會讓有效邀請看到「失效」，誤導簽署人 |
-| `external-invitation-page.ts` | 三個後端 HTML 頁共用設計稿版型 | 現有 `html-error-page.ts` 只有純文字段落，且其他功能也在使用 |
+| `external-invitation-page.ts` | 三個後端 HTML 頁共用設計稿版型 | 原有 `html-error-page.ts` 只有純文字段落；改版後已無呼叫者，已刪除 |
 | `SignProgressPanel` 抽出 | 內部與外部簽署都需要同一個進度、同意與送出面板 | 複製一份會造成兩份邏輯分歧 |
 | `POST /api/external-signature-otps` 與 Redis 驗證碼挑戰 | 使用者 CR：開啟文件前驗證信箱控制權（FR-024～FR-031） | 只靠連結無法防止外流；MySQL 新表需 migration 與清理排程，對 10 分鐘的短期資料不划算 |
 | `ESIGN_EXTERNAL_SIGNER_MISMATCH` 與簽名 body 的 `signerPublicId` | 防止 cookie 被覆蓋時以錯誤身分簽署（FR-032） | 欄位為文件共用，既有欄位檢查擋不下同一文件的不同簽署人 |

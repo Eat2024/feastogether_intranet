@@ -1,31 +1,21 @@
 import type { ConfigService } from '@nestjs/config';
 import type { FastifyReply } from 'fastify';
-import { AppEnvironment } from '#app/config/app.environment';
+import { isDeployedEnvironment } from '#app/config/app.environment';
 
 export const EXTERNAL_ACCESS_COOKIE = 'FT_ESIGN_EXTERNAL_ACCESS';
 export const EXTERNAL_ACCESS_PATH = '/api/external-signing-task';
 
-function secure(config: ConfigService): boolean {
-  const environment = config.get<string>('NODE_ENV');
-  return (
-    environment === AppEnvironment.Staging ||
-    environment === AppEnvironment.Production
-  );
-}
-
-/** expiresAt 省略時為 session cookie（瀏覽器關閉即失效），用於已簽者 */
+/** 值為驗證碼通過後的存取憑證；session cookie（不設期限，瀏覽器關閉即失效），伺服器端另有 8 小時期限 */
 export function setExternalAccessCookie(
   reply: FastifyReply,
   config: ConfigService,
-  token: string,
-  expiresAt?: Date,
+  credential: string,
 ): void {
-  reply.setCookie(EXTERNAL_ACCESS_COOKIE, token, {
+  reply.setCookie(EXTERNAL_ACCESS_COOKIE, credential, {
     httpOnly: true,
-    secure: secure(config),
+    secure: isDeployedEnvironment(config.get<string>('NODE_ENV')),
     sameSite: 'lax',
     path: EXTERNAL_ACCESS_PATH,
-    expires: expiresAt,
   });
 }
 

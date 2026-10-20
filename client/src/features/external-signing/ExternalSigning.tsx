@@ -5,6 +5,7 @@
 import { useGetExternalSigningTaskQuery } from '@/api/queries';
 import { externalSourceFileUrl, openExternalSigningTask } from '@/api/requests';
 import type { ExternalSignatureResult, ExternalSigningTask } from '@/api/types';
+import { ConfirmHeading } from '@/components/ConfirmDialog';
 import PageHeader from '@/components/PageHeader';
 import { usePdfDocument } from '@/features/forms/pdf/usePdf';
 import { SIGN_STEPS } from '@/features/my-signature/sign/steps';
@@ -199,10 +200,7 @@ function NoticeCard({
         textAlign: 'center',
       }}
     >
-      <Box sx={{ display: 'flex', color: `${color}.main`, '& svg': { fontSize: 48 } }}>{icon}</Box>
-      <Typography variant="sectionTitle" component="h1">
-        {title}
-      </Typography>
+      <ConfirmHeading icon={icon} color={color} title={title} titleComponent="h1" />
       {children}
     </Box>
   );

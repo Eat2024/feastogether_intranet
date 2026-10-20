@@ -17,7 +17,6 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
-import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AppException } from '#app/common/errors/app.exception';
 import { Public } from '#app/framework/decorators/public.decorator';
 import { AuthThrottlerGuard } from '#app/framework/guards/auth-throttler.guard';
@@ -32,7 +31,7 @@ import {
   EsignSigningService,
   toSignatureResultView,
 } from '../services/esign-signing.service';
-import { EsignTokenService } from '../services/esign-token.service';
+import { SigningNotStartedException } from '../services/esign-access-policy.service';
 import { ExternalAccessService } from '../services/external-access.service';
 import { ExternalOtpService } from '../services/external-otp.service';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
@@ -54,7 +53,6 @@ export class ExternalSignatureController {
     private readonly external: ExternalAccessService,
     private readonly otp: ExternalOtpService,
     private readonly signing: EsignSigningService,
-    private readonly tokens: EsignTokenService,
     private readonly config: ConfigService,
   ) {}
 
@@ -93,6 +91,14 @@ export class ExternalSignatureController {
       this.external.isTokenFormat(token),
       async () => {
         const { email, issue } = await this.external.sendOtp(token);
+        if (issue.status === 'delivery-failed') {
+          this.sendInvitationPage(
+            reply,
+            HttpStatus.SERVICE_UNAVAILABLE,
+            otpMailFailedPage(),
+          );
+          return;
+        }
         this.sendInvitationPage(
           reply,
           issue.status === 'sent'
@@ -108,7 +114,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '以驗證碼建立外部簽署存取 session',
     description:
-      '以表單欄位 token＋code（6 位數驗證碼）驗證；邀請有效且驗證碼正確時設定 HttpOnly session cookie（不設期限，關閉瀏覽器即失效，待簽者與已簽者相同）並以 303 導向外部簽署頁，記錄 external_otp.verified 與 external_invitation.opened。驗證碼錯誤回 401 錯誤頁並顯示剩餘次數（錯滿 5 次即失效）；驗證碼過期、已使用或已失效回 401 錯誤頁提示重新寄送。邀請無效或過期回 401 失效頁、token 或 code 格式錯誤回 400 失效頁、尚未開始回 409 尚未開始頁，都不比對驗證碼。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由驗證碼輸入頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
+      '以表單欄位 token＋code（6 位數驗證碼）驗證；邀請有效且驗證碼正確時產生隨機存取憑證（不是邀請 token，伺服器只存雜湊、8 小時失效），設為 HttpOnly session cookie（不設期限，關閉瀏覽器即失效，待簽者與已簽者相同）並以 303 導向外部簽署頁，記錄 external_otp.verified 與 external_invitation.opened。驗證碼錯誤回 401 錯誤頁並顯示剩餘次數（錯滿 5 次即失效）；驗證碼過期、已使用或已失效回 401 錯誤頁提示重新寄送。邀請無效或過期回 401 失效頁、token 或 code 格式錯誤回 400 失效頁、尚未開始回 409 尚未開始頁，都不比對驗證碼。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由驗證碼輸入頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
   })
   @Post('external-signature-session')
   async createSession(
@@ -128,7 +134,7 @@ export class ExternalSignatureController {
         );
         return;
       }
-      setExternalAccessCookie(reply, this.config, token);
+      setExternalAccessCookie(reply, this.config, session.credential);
       reply.redirect(
         `/external-signatures/${session.signerPublicId}`,
         HttpStatus.SEE_OTHER,
@@ -138,13 +144,21 @@ export class ExternalSignatureController {
 
   @UseGuards(OriginGuard)
   @ApiOperation({
-    summary: '清除外部簽署存取 cookie',
+    summary: '結束外部簽署存取',
     description:
-      '清除目前瀏覽器的外部簽署存取 cookie。\n\n前端串接參考：目前未找到前端呼叫；尚未接到畫面操作。',
+      '刪除請求所帶外部存取 cookie 對應的存取憑證並清除 cookie，之後以同一憑證存取一律 401。\n\n前端串接參考：目前未找到前端呼叫；尚未接到畫面操作。',
   })
   @Delete('external-signature-session')
   @HttpCode(HttpStatus.NO_CONTENT)
-  clear(@Res({ passthrough: true }) reply: FastifyReply): void {
+  async clear(
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<void> {
+    const credential = cookieTokenFromMap(
+      request.cookies,
+      EXTERNAL_ACCESS_COOKIE,
+    );
+    if (credential) await this.external.endSession(credential);
     clearExternalAccessCookie(reply);
   }
 
@@ -157,7 +171,7 @@ export class ExternalSignatureController {
   @Post('external-signing-task')
   @HttpCode(HttpStatus.OK)
   open(@Req() request: FastifyRequest) {
-    return this.external.task(this.accessToken(request), true);
+    return this.external.task(this.accessCredential(request), true);
   }
 
   @ApiOperation({
@@ -168,7 +182,7 @@ export class ExternalSignatureController {
   @Get('external-signing-task')
   @Header('Cache-Control', 'private, no-store')
   read(@Req() request: FastifyRequest) {
-    return this.external.task(this.accessToken(request), false);
+    return this.external.task(this.accessCredential(request), false);
   }
 
   @ApiOperation({
@@ -183,7 +197,7 @@ export class ExternalSignatureController {
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    const file = await this.external.source(this.accessToken(request));
+    const file = await this.external.source(this.accessCredential(request));
     if (!file) throw this.unauthorized();
     allowPdfPreview(reply);
     reply
@@ -199,7 +213,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '送出外部簽署人簽名',
     description:
-      '以外部存取 cookie 驗證並提交同意紀錄與簽名，回傳簽署結果（含本人副本狀態 completion 與公開驗證網址 verificationUrl）。body 必須帶頁面所屬的 signerPublicId，與 cookie 對應的簽署人不符（同一瀏覽器後開啟的邀請覆蓋了 cookie）回 409 ESIGN_EXTERNAL_SIGNER_MISMATCH，不建立簽署。首次成功回 201；同一 requestId 重送回 200 與既有結果；已簽者以新的 requestId 再簽回 401。成功（含重送）時以同一 token 重設為 session cookie（不設期限），完成頁可繼續查詢與下載。\n\n前端串接參考：ExternalSignForm 送出簽名，帶上頁面所屬（與網址相同）的 signerPublicId，網路重試沿用同一個 requestId；成功後切換到完成頁。',
+      '以外部存取 cookie 驗證並提交同意紀錄與簽名，回傳簽署結果（含本人副本狀態 completion 與公開驗證網址 verificationUrl）。body 必須帶頁面所屬的 signerPublicId，與 cookie 對應的簽署人不符（同一瀏覽器後開啟的邀請覆蓋了 cookie）回 409 ESIGN_EXTERNAL_SIGNER_MISMATCH，不建立簽署。首次成功回 201；同一 requestId 重送回 200 與既有結果；已簽者以新的 requestId 再簽回 401。成功不重設 cookie，完成頁沿用同一存取憑證查詢與下載。\n\n前端串接參考：ExternalSignForm 送出簽名，帶上頁面所屬（與網址相同）的 signerPublicId，網路重試沿用同一個 requestId；成功後切換到完成頁。',
   })
   @Post('external-signing-task/signatures')
   async sign(
@@ -207,21 +221,15 @@ export class ExternalSignatureController {
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const token = this.accessToken(request);
-    const signerPublicId = await this.external.signingSignerPublicId(token);
-    if (body.signerPublicId !== signerPublicId)
-      throw new AppException(...AppErrors.ESIGN_EXTERNAL_SIGNER_MISMATCH);
     const result = await this.signing.sign(
-      signerPublicId,
-      { kind: 'external', invitationDigest: this.tokens.digest(token) },
+      body.signerPublicId,
+      await this.external.signingPrincipal(this.accessCredential(request)),
       body,
       {
         sourceIp: request.ip,
         userAgent: request.headers['user-agent'],
       },
     );
-    // 簽署後原期限已清除：改為 session cookie，避免完成頁輪詢與下載因原簽署期限截止而中斷
-    setExternalAccessCookie(reply, this.config, token);
     reply.status(result.repeated ? HttpStatus.OK : HttpStatus.CREATED);
     return toSignatureResultView(result);
   }
@@ -238,7 +246,9 @@ export class ExternalSignatureController {
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    const file = await this.external.completedFile(this.accessToken(request));
+    const file = await this.external.completedFile(
+      this.accessCredential(request),
+    );
     if (!file)
       throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
     reply
@@ -247,11 +257,15 @@ export class ExternalSignatureController {
       .send(file.bytes);
   }
 
-  private accessToken(request: FastifyRequest): string {
-    const token = cookieTokenFromMap(request.cookies, EXTERNAL_ACCESS_COOKIE);
-    if (!token || !this.external.isTokenFormat(token))
+  /** 外部存取 cookie 中的存取憑證（與邀請 token 同為 43 字元 base64url）；缺少或格式錯誤回 401 */
+  private accessCredential(request: FastifyRequest): string {
+    const credential = cookieTokenFromMap(
+      request.cookies,
+      EXTERNAL_ACCESS_COOKIE,
+    );
+    if (!credential || !this.external.isTokenFormat(credential))
       throw this.unauthorized();
-    return token;
+    return credential;
   }
 
   private unauthorized(): AppException {
@@ -288,16 +302,12 @@ export class ExternalSignatureController {
     }
   }
 
-  /** 寄信失敗與服務異常請稍後再試；尚未開始（409 帶開始時間）告知開始時間；其餘一律失效頁，不區分原因。 */
+  /** 尚未開始告知開始時間；服務異常請稍後再試；其餘一律失效頁，不區分原因。 */
   private accessErrorPage(error: AppException): string {
-    if (error.code === AppErrorCode.ESIGN_UNAVAILABLE)
-      return otpMailFailedPage();
-    if (error.getStatus() >= 500) return serviceUnavailablePage();
-    const { details } = error.getResponse() as {
-      details?: { startAt?: string };
-    };
-    return details?.startAt
-      ? signingNotStartedPage(new Date(details.startAt))
+    if (error instanceof SigningNotStartedException)
+      return signingNotStartedPage(error.startAt);
+    return error.getStatus() >= 500
+      ? serviceUnavailablePage()
       : invitationInvalidPage();
   }
 

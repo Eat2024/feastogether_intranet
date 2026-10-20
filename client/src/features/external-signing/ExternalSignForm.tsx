@@ -4,10 +4,10 @@ import { submitExternalSignatures } from '@/api/requests';
 import type { ExternalSignatureResult, ExternalSigningTask } from '@/api/types';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { signFieldLabel, signFields } from '@/features/forms/signLayout';
-import type { UploadField } from '@/features/forms/types';
 import DocumentViewer from '@/features/my-signature/sign/DocumentViewer';
 import SignaturePadDialog from '@/features/my-signature/sign/SignaturePadDialog';
 import SignProgressPanel from '@/features/my-signature/sign/SignProgressPanel';
+import { useSignaturePad } from '@/features/my-signature/sign/useSignaturePad';
 import { isExternalAccessLost } from '@/lib/apiError';
 import DrawRoundedIcon from '@mui/icons-material/DrawRounded';
 import Box from '@mui/material/Box';
@@ -34,11 +34,19 @@ type ExternalSignFormProps = {
 export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: ExternalSignFormProps) {
   const layout = toSignLayout(task, pdf.numPages);
   const fields = signFields(layout);
-  const [readAgreed, setReadAgreed] = useState(false);
-  const [signatures, setSignatures] = useState<Record<number, string>>({});
   // 先停在第一個需要簽名的頁面
-  const [activePage, setActivePage] = useState(() => fields[0]?.page ?? 1);
-  const [padField, setPadField] = useState<UploadField | null>(null);
+  const {
+    readAgreed,
+    setReadAgreed,
+    signatures,
+    activePage,
+    setActivePage,
+    padField,
+    openPad,
+    closePad,
+    confirmSignature,
+    activeStep,
+  } = useSignaturePad(fields, fields[0]?.page ?? 1);
   const [confirmOpen, setConfirmOpen] = useState(false);
   // 日期欄位顯示開始簽署當天的日期；實際寫入 PDF 的日期以後端簽署時間為準
   const [today] = useState(() => taipeiDate(new Date()));
@@ -60,24 +68,6 @@ export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: 
     if (busy) return;
     setBusy(true);
     submit.mutate(toSubmission(task, layout, signatures, requestId));
-  };
-
-  const allSigned = fields.every((f) => signatures[f.id]);
-  const activeStep = !readAgreed ? 1 : !allSigned ? 2 : 3;
-
-  const openPad = (f: UploadField) => {
-    setActivePage(f.page);
-    setPadField(f);
-  };
-
-  const confirmSignature = (dataUrl: string) => {
-    if (!padField) return;
-    const next = { ...signatures, [padField.id]: dataUrl };
-    setSignatures(next);
-    setPadField(null);
-    // 自動切到下一個尚未簽名的欄位所在頁面（不自動開啟簽名板）
-    const nextField = fields.find((f) => !next[f.id]);
-    if (nextField) setActivePage(nextField.page);
   };
 
   return (
@@ -121,7 +111,7 @@ export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: 
       <SignaturePadDialog
         open={!!padField}
         subtitle={padField ? `${task.document.title}・${signFieldLabel(layout, padField)}` : ''}
-        onClose={() => setPadField(null)}
+        onClose={closePad}
         onConfirm={confirmSignature}
       />
       <ConfirmDialog

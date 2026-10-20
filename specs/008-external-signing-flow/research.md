@@ -66,7 +66,7 @@
 - 字型用系統字型（`'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif`）。
 - 加上 viewport meta，支援手機。
 
-邀請確認、失效與尚未開始三頁共用此 helper。既有 CSP、`no-store`、`no-referrer` 不變；`common/http/html-error-page.ts` 仍供其他功能使用，不改。
+邀請確認、失效與尚未開始三頁共用此 helper。既有 CSP、`no-store`、`no-referrer` 不變；改版後 `common/http/html-error-page.ts` 已無呼叫者，於 code review（ticket 12）刪除。
 
 **Rationale**: 這三頁在使用者取得存取之前由後端直接回應，前端不參與。現行 CSP 為 `default-src 'none'`、`style-src 'unsafe-inline'`，不能載入外部字型或樣式表，但允許 inline style。順帶移除邀請確認頁 `<button>` 上沒有作用的 `nonce` 屬性。
 

@@ -8,6 +8,11 @@ export type AppErrorDefinition = readonly [
   status: HttpStatus,
 ];
 
+/** 「請於 …（台北時間）後簽署」：簽署尚未開始的錯誤訊息與外部邀請頁共用。 */
+export function signAfterHint(startAt: Date): string {
+  return `請於 ${formatInTaipei(startAt, 'yyyy/MM/dd HH:mm')}（台北時間）後簽署`;
+}
+
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
   ORG_CHART_UPSTREAM_UNAVAILABLE: [
@@ -220,12 +225,6 @@ export const AppErrors = {
     AppErrorCode.INVALID_REQUEST,
     '指定的內部簽署人不存在或已停用',
     HttpStatus.BAD_REQUEST,
-  ],
-  /** 外部簽署驗證碼信寄送失敗；邀請頁依 ESIGN_UNAVAILABLE 顯示可重試頁。 */
-  ESIGN_OTP_MAIL_FAILED: [
-    AppErrorCode.ESIGN_UNAVAILABLE,
-    '驗證碼寄送失敗，請稍後再試',
-    HttpStatus.SERVICE_UNAVAILABLE,
   ],
   ESIGN_OUTSIDE_SIGNING_WINDOW: [
     AppErrorCode.ESIGN_STATE_CONFLICT,
@@ -453,7 +452,7 @@ export const AppErrors = {
   /** 只在邀請憑證有效時使用，開始時間以台北時間呈現。 */
   ESIGN_SIGNING_NOT_STARTED: (startAt: Date): AppErrorDefinition => [
     AppErrorCode.ESIGN_STATE_CONFLICT,
-    `簽署尚未開始，請於 ${formatInTaipei(startAt, 'yyyy/MM/dd HH:mm')}（台北時間）後簽署`,
+    `簽署尚未開始，${signAfterHint(startAt)}`,
     HttpStatus.CONFLICT,
   ],
   /** 只帶設定名稱與規則，不帶憑證或設定值。 */

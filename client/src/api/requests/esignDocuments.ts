@@ -1,4 +1,9 @@
-import type { EsignNotificationBatch } from '../types/esignDocuments';
+import type {
+  EsignNotificationBatch,
+  EsignNotificationBatchList,
+  NotificationListParams,
+  NotificationPageParams,
+} from '../types/esignDocuments';
 import type { DraftSettingsBody } from '../types/esignDocuments';
 import api from '@/api/config';
 import axios from 'axios';
@@ -23,7 +28,11 @@ import type {
  * @description 依角色與狀態查詢目前登入員工可見的文件，依更新時間由新到舊；不分頁
  */
 export const getDocuments = async (params: GetDocumentsParams = {}): Promise<EsignDocumentListItem[]> => {
-  const res = await api<EsignDocumentListItem[]>({ method: 'GET', url: endpoints.ESIGN_DOCUMENTS, params });
+  const res = await api<EsignDocumentListItem[]>({
+    method: 'GET',
+    url: endpoints.ESIGN_DOCUMENTS,
+    params,
+  });
   return res.data;
 };
 
@@ -69,7 +78,10 @@ export const updateDocument = async ({ id, title, file, fields }: UpdateDocument
  * @description 含簽署人、欄位與原始 PDF 資訊；只有建立人可讀取
  */
 export const getDocument = async (id: string): Promise<EsignDocumentDetail> => {
-  const res = await api<EsignDocumentDetail>({ method: 'GET', url: endpoints.ESIGN_DOCUMENT(id) });
+  const res = await api<EsignDocumentDetail>({
+    method: 'GET',
+    url: endpoints.ESIGN_DOCUMENT(id),
+  });
   return res.data;
 };
 
@@ -78,7 +90,10 @@ export const getDocument = async (id: string): Promise<EsignDocumentDetail> => {
  * @description 建立人可看到文件的所有事件（依時間由舊到新），含停止原因
  */
 export const getDocumentHistory = async (id: string): Promise<EsignHistoryItem[]> => {
-  const res = await api<EsignHistoryItem[]>({ method: 'GET', url: endpoints.ESIGN_DOCUMENT_HISTORY(id) });
+  const res = await api<EsignHistoryItem[]>({
+    method: 'GET',
+    url: endpoints.ESIGN_DOCUMENT_HISTORY(id),
+  });
   return res.data;
 };
 
@@ -177,7 +192,11 @@ export const downloadSignerCompletedFile = async ({
  * @description 以關鍵字或完整八碼員編查詢；本地查無完整員編時，後端會向饗賓人 API 查詢並建立帳號
  */
 export const getSignerCandidates = async (q: string): Promise<EsignSignerCandidate[]> => {
-  const res = await api<EsignSignerCandidate[]>({ method: 'GET', url: endpoints.ESIGN_SIGNER_CANDIDATES, params: { q } });
+  const res = await api<EsignSignerCandidate[]>({
+    method: 'GET',
+    url: endpoints.ESIGN_SIGNER_CANDIDATES,
+    params: { q },
+  });
   return res.data;
 };
 
@@ -186,19 +205,69 @@ export const documentSourceFileUrl = (id: string) =>
   `${api.defaults.baseURL}/${endpoints.ESIGN_DOCUMENT_SOURCE_FILE(id)}`;
 
 /** 同一交易保存草稿完整設定。 */
-export const saveDraftSettings = async ({ id, body }: { id: string; body: DraftSettingsBody }): Promise<EsignDocumentDetail> => {
-  const res = await api<EsignDocumentDetail>({ method: 'PATCH', url: endpoints.ESIGN_DOCUMENT_DRAFT_SETTINGS(id), data: body });
+export const saveDraftSettings = async ({
+  id,
+  body,
+}: {
+  id: string;
+  body: DraftSettingsBody;
+}): Promise<EsignDocumentDetail> => {
+  const res = await api<EsignDocumentDetail>({
+    method: 'PATCH',
+    url: endpoints.ESIGN_DOCUMENT_DRAFT_SETTINGS(id),
+    data: body,
+  });
   return res.data;
 };
 
-export async function createNotificationBatch(id: string, body: {requestId: string; selection: 'selected' | 'all_pending'; signerPublicIds?: string[]}): Promise<EsignNotificationBatch> {
-  return (await api<EsignNotificationBatch>({method:'POST',url:endpoints.ESIGN_NOTIFICATION_BATCHES(id),data:body})).data;
+export async function createNotificationBatch(
+  id: string,
+  body: {
+    requestId: string;
+    selection: 'selected' | 'all_pending';
+    signerPublicIds?: string[];
+  },
+): Promise<EsignNotificationBatch> {
+  return (
+    await api<EsignNotificationBatch>({
+      method: 'POST',
+      url: endpoints.ESIGN_NOTIFICATION_BATCHES(id),
+      data: body,
+    })
+  ).data;
 }
-export async function getNotificationBatch(id: string,batchId: string): Promise<EsignNotificationBatch> {
-  return (await api<EsignNotificationBatch>({method:'GET',url:endpoints.ESIGN_NOTIFICATION_BATCH(id,batchId)})).data;
+export async function getNotificationBatch(
+  id: string,
+  batchId: string,
+  params: NotificationPageParams = {},
+): Promise<EsignNotificationBatch> {
+  return (
+    await api<EsignNotificationBatch>({
+      method: 'GET',
+      url: endpoints.ESIGN_NOTIFICATION_BATCH(id, batchId),
+      params,
+    })
+  ).data;
 }
 /** 建立人儲存管理備註；空字串清除。 */
 export const saveSignerNote = async ({ id, signerPublicId, note }: SaveSignerNoteBody): Promise<SignerNoteResult> => {
-  const res = await api<SignerNoteResult>({ method: 'PATCH', url: endpoints.ESIGN_SIGNER_NOTE(id, signerPublicId), data: { note } });
+  const res = await api<SignerNoteResult>({
+    method: 'PATCH',
+    url: endpoints.ESIGN_SIGNER_NOTE(id, signerPublicId),
+    data: { note },
+  });
   return res.data;
 };
+
+export async function getNotificationBatches(
+  id: string,
+  params: NotificationListParams = {},
+): Promise<EsignNotificationBatchList> {
+  return (
+    await api<EsignNotificationBatchList>({
+      method: 'GET',
+      url: endpoints.ESIGN_NOTIFICATION_BATCHES(id),
+      params,
+    })
+  ).data;
+}

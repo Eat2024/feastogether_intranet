@@ -104,23 +104,23 @@
 
 對應 FR-027–034、041、SC-011–012。獨立驗收：多位外部逐人結果、同日限額、午夜重置、原邀請與提醒均走OTP，未知投遞不盲重送。
 
-- [ ] T036 [P] [US5] 新增 `server/src/features/esign/services/esign-reminder.service.spec.ts` 測selected/all_pending、跨頁、重複ID、混合內外部、跨文件整批拒、0 eligible、台北23:59:59/00:00、並發批次與跨午夜pending；確認初邀/OTP不占催簽額度。
+- [x] T036 [P] [US5] 新增 `server/src/features/esign/services/esign-reminder.service.spec.ts` 測selected/all_pending、跨頁、重複ID、混合內外部、跨文件整批拒、0 eligible、台北23:59:59/00:00、並發批次與跨午夜pending；確認初邀/OTP不占催簽額度。
 
-- [ ] T037 [US5] 擴充 `server/src/features/esign/entities/esign-notification-batch.entity.ts`：publicId UUID unique、kind invitation/reminder（舊資料invitation）、requestId nullable、requestPayloadSha256及unique(documentId,notifiedByUserId,requestId)；log entity加skipped/unknown、dispatchDate DATE nullable、leaseToken、attemptHistoryJson、reminderTokenSha256 unique nullable/ciphertext/generationSha256/expiresAt nullable；同步migration/schema/tests與signerId/result/dispatchDate索引，保留既有逐人唯一鍵。
+- [x] T037 [US5] 擴充 `server/src/features/esign/entities/esign-notification-batch.entity.ts`：publicId UUID unique、kind invitation/reminder（舊資料invitation）、requestId nullable、requestPayloadSha256及unique(documentId,notifiedByUserId,requestId)；log entity加skipped/unknown、dispatchDate DATE nullable、leaseToken、attemptHistoryJson、reminderTokenSha256 unique nullable/ciphertext/generationSha256/expiresAt nullable；同步migration/schema/tests與signerId/result/dispatchDate索引，保留既有逐人唯一鍵。
 
-- [ ] T038 [US5] 在 `server/src/features/esign/repositories/notification.repository.ts` 與新 `services/esign-reminder.service.ts` 實作建立人授權、文件→排序signer鎖、正規化payload hash防重、當日額度與in-flight去重、batch/log原子保存後enqueue；略過者留穩定原因，無可寄者409且不建空批次。
+- [x] T038 [US5] 在 `server/src/features/esign/repositories/notification.repository.ts` 與新 `services/esign-reminder.service.ts` 實作建立人授權、文件→排序signer鎖、正規化payload hash防重、當日額度與in-flight去重、batch/log原子保存後enqueue；略過者留穩定原因，無可寄者409且不建空批次。
 
-- [ ] T039 [US5] 擴充 `server/src/features/esign/services/esign-token.service.ts`、`external-access.service.ts`、`external-otp.service.ts` 及 `repositories/notification.repository.ts` 的reminder憑證解析：不旋轉原invitation digest，依log hash與generation驗當輪、加密原值供寄送；仍走OTP，signed本人下載不受提醒或ZIP期限影響，不能用publicId授權。
+- [x] T039 [US5] 擴充 `server/src/features/esign/services/esign-token.service.ts`、`external-access.service.ts`、`external-otp.service.ts` 及 `repositories/notification.repository.ts` 的reminder憑證解析：不旋轉原invitation digest，依log hash與generation驗當輪、加密原值供寄送；仍走OTP，signed本人下載不受提醒或ZIP期限影響，不能用publicId授權。
 
-- [ ] T040 [US5] 擴充 `server/src/worker/esign/external-invitation.processor.ts`：依kind讀原邀請或reminder密文，SMTP前再驗pending/期間/當日額度並持久保留dispatchDate與lease；成功清密文留hash，明確失敗重試原log，未知結果unknown不自動再寄；逐人信僅含文件/期限/本人入口，attemptHistory不含憑證或SMTP原文。
+- [x] T040 [US5] 擴充 `server/src/worker/esign/external-invitation.processor.ts`：依kind讀原邀請或reminder密文，SMTP前再驗pending/期間/當日額度並持久保留dispatchDate與lease；成功清密文留hash，明確失敗重試原log，未知結果unknown不自動再寄；逐人信僅含文件/期限/本人入口，attemptHistory不含憑證或SMTP原文。
 
-- [ ] T041 [US5] 修改 `server/src/worker/esign/esign-maintenance.processor.ts` 與 `server/src/features/esign/repositories/notification.repository.ts` 納入reminder補列、有限失敗重試及過期processing轉unknown；防跨午夜舊工作重排，不新增午夜或自動催簽scheduler，完成後清理無需再寄的密文。
+- [x] T041 [US5] 修改 `server/src/worker/esign/esign-maintenance.processor.ts` 與 `server/src/features/esign/repositories/notification.repository.ts` 納入reminder補列、有限失敗重試及過期processing轉unknown；防跨午夜舊工作重排，不新增午夜或自動催簽scheduler，完成後清理無需再寄的密文。
 
-- [ ] T042 [US5] 新增 `server/src/features/esign/controllers/notification-batches.controller.ts`、`dto/notification-batch.dto.ts` 並註冊module，接POST202與GET批次/明細分頁、kind篩選、逐人原因／attempt history裁切；管理名單通知摘要與eligibility回傳依契約，不把受理說成已送達。
+- [x] T042 [US5] 新增 `server/src/features/esign/controllers/notification-batches.controller.ts`、`dto/notification-batch.dto.ts` 並註冊module，接POST202與GET批次/明細分頁、kind篩選、逐人原因／attempt history裁切；管理名單通知摘要與eligibility回傳依契約，不把受理說成已送達。
 
-- [ ] T043 [US5] 擴充 `client/src/api/` 通知request/types/query與 `client/src/features/esign-documents/DocumentDetailView.tsx`，接單人、多選、所有外部催簽、當日限制、逐人通知紀錄／初邀區分；按鈕人數只算外部，mutation同次重送沿用requestId、刷新結果，不加入內部同事寄信。
+- [x] T043 [US5] 擴充 `client/src/api/` 通知request/types/query與 `client/src/features/esign-documents/DocumentDetailView.tsx`，接單人、多選、所有外部催簽、當日限制、逐人通知紀錄／初邀區分；按鈕人數只算外部，mutation同次重送沿用requestId、刷新結果，不加入內部同事寄信。
 
-- [ ] T044 [US5] 新增 `server/test/esign-reminders.e2e-spec.ts` 並擴充 `server/src/worker/esign/external-invitation.processor.spec.ts`，驗SMTP前失效、同日跨批去重、未知結果、舊輪token失效、原邀請仍可下載、重試密文清除及無個資外洩；結果記入 `specs/009-esign-document-delivery/implementation-notes.md`。
+- [x] T044 [US5] 新增 `server/test/esign-reminders.e2e-spec.ts` 並擴充 `server/src/worker/esign/external-invitation.processor.spec.ts`，驗SMTP前失效、同日跨批去重、未知結果、舊輪token失效、原邀請仍可下載、重試密文清除及無個資外洩；結果記入 `specs/009-esign-document-delivery/implementation-notes.md`。
 
 ## Phase 8：US6 備註、結果列表與歷程身分（P1）
 
@@ -130,7 +130,7 @@
 
 - [x] T046 [US6] 在 `server/src/features/esign/entities/esign-signer.entity.ts` 加note「varchar(30)，utf8mb4；service 限30 code points、預設空字串」並同步migration/schema tests；沿用 `services/esign-signer.service.ts` 並新增 `dto/signer-note.dto.ts`，在 `controllers/documents.controller.ts` 接PATCH note，最後成功寫入值為準，非建立人/錯歸屬拒絕。
 
-- [ ] T047 [US6]（Ticket04已完成日期、原因、note與actor；通知摘要留待Ticket06整合） 修改 `server/src/features/esign/services/esign-document-query.service.ts`、`esign-view.mapper.ts` 與 `dto/document.dto.ts` 回signedAt/rejectedAt/rejectReason/note/通知摘要及actor kind/name/publicId；依事件類型辨別系統與本人，不只看signerId、不回寫audit；本人mapper排除note及他人通知資料。
+- [x] T047 [US6]（Ticket04完成日期、原因、note與actor；Ticket06完成通知摘要） 修改 `server/src/features/esign/services/esign-document-query.service.ts`、`esign-view.mapper.ts` 與 `dto/document.dto.ts` 回signedAt/rejectedAt/rejectReason/note/通知摘要及actor kind/name/publicId；依事件類型辨別系統與本人，不只看signerId、不回寫audit；本人mapper排除note及他人通知資料。
 
 - [x] T048 [US6] 在 `client/src/api/types/esignDocuments.ts` 與requests/queries同步欄位及note mutation，接 `client/src/features/esign-documents/DocumentDetailView.tsx` 的備註保存/清空/取消/失敗恢復、已拒頁籤與歷程；更新 `DocumentExportView.tsx` 簽署紀錄匯出的拒簽時間/原因，已拒不算已簽。
 

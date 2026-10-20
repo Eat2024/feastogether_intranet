@@ -7,6 +7,55 @@ import { EsignNotificationLog } from '../entities/esign-notification-log.entity'
 
 @Injectable()
 export class NotificationRepository {
+  listBatches(
+    documentId: number,
+    manager: EntityManager,
+    limit: number,
+    cursor?: string,
+    kind?: string,
+  ) {
+    const query = manager
+      .createQueryBuilder(EsignNotificationBatch, 'batch')
+      .leftJoinAndSelect('batch.notifiedByUser', 'user')
+      .where('batch.documentId = :documentId', { documentId });
+    if (cursor) query.andWhere('batch.id < :cursor', { cursor });
+    if (kind) query.andWhere('batch.kind = :kind', { kind });
+    return query
+      .orderBy('batch.id', 'DESC')
+      .take(limit + 1)
+      .getMany();
+  }
+  pageBatchLogs(
+    batchId: number,
+    manager: EntityManager,
+    limit: number,
+    cursor?: string,
+  ) {
+    const query = manager
+      .createQueryBuilder(EsignNotificationLog, 'log')
+      .leftJoinAndSelect('log.signer', 'signer')
+      .where('log.batchId = :batchId', { batchId });
+    if (cursor) query.andWhere('log.id > :cursor', { cursor });
+    return query
+      .orderBy('log.id', 'ASC')
+      .take(limit + 1)
+      .getMany();
+  }
+  async batchCounts(batchId: number, manager: EntityManager) {
+    const status =
+      "CASE WHEN log.result = 'failed' AND log.next_attempt_at IS NOT NULL THEN 'pending' ELSE log.result END";
+    const rows = await manager
+      .createQueryBuilder(EsignNotificationLog, 'log')
+      .select(status, 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('log.batchId = :batchId', { batchId })
+      .groupBy(status)
+      .getRawMany<{ status: string; count: string }>();
+    return Object.fromEntries(
+      rows.map((row) => [row.status, Number(row.count)]),
+    );
+  }
+
   findBatchRequest(
     documentId: number,
     notifiedByUserId: number,
@@ -24,6 +73,7 @@ export class NotificationRepository {
   ) {
     return manager.findOne(EsignNotificationBatch, {
       where: { documentId, publicId },
+      relations: { notifiedByUser: true },
     });
   }
   findBatchLogs(batchId: number, manager: EntityManager) {
@@ -96,11 +146,13 @@ export class NotificationRepository {
     if (!signer) return null;
     const log = await this.findLogByIdForUpdate(id, manager);
     if (!log) return null;
-    signer.document =
+    const documentWithCreator =
       (await manager.findOne(EsignDocument, {
         where: { id: document.id },
         relations: { createdByUser: true },
       })) ?? undefined;
+    document.createdByUser = documentWithCreator?.createdByUser;
+    signer.document = document;
     log.signer = signer;
     log.batch =
       (await manager.findOne(EsignNotificationBatch, {

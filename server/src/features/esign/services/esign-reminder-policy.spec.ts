@@ -25,7 +25,7 @@ describe('外部催簽資格', () => {
       batch: { kind: 'reminder' },
     };
     expect(reminderEligibility(document, signer, [delivered], before)).toBe(
-      'DAILY_LIMIT',
+      'REMINDER_DAILY_LIMIT',
     );
     expect(
       reminderEligibility(document, signer, [delivered], after),
@@ -37,7 +37,7 @@ describe('外部催簽資格', () => {
         [{ ...delivered, result: 'processing' }],
         after,
       ),
-    ).toBe('IN_FLIGHT');
+    ).toBe('REMINDER_IN_PROGRESS');
     expect(
       reminderEligibility(
         document,
@@ -45,13 +45,36 @@ describe('外部催簽資格', () => {
         [{ ...delivered, result: 'pending' }],
         after,
       ),
-    ).toBe('IN_FLIGHT');
+    ).toBe('REMINDER_IN_PROGRESS');
     expect(
       reminderEligibility(
         document,
         signer,
         [{ ...delivered, batch: { kind: 'invitation' } }],
         before,
+      ),
+    ).toBeNull();
+  });
+  it('已排定的明確失敗重試跨午夜仍佔用原明細；重試終止後才能再申請', () => {
+    const retry = {
+      result: 'failed',
+      nextAttemptAt: new Date('2026-10-20T16:05:00Z'),
+      batch: { kind: 'reminder' },
+    };
+    expect(
+      reminderEligibility(
+        document,
+        signer,
+        [retry],
+        new Date('2026-10-20T16:00:00Z'),
+      ),
+    ).toBe('REMINDER_IN_PROGRESS');
+    expect(
+      reminderEligibility(
+        document,
+        signer,
+        [{ ...retry, nextAttemptAt: null }],
+        new Date('2026-10-20T16:00:00Z'),
       ),
     ).toBeNull();
   });
@@ -70,13 +93,13 @@ describe('外部催簽資格', () => {
         ],
         now,
       ),
-    ).toBe('DAILY_LIMIT');
+    ).toBe('REMINDER_DAILY_LIMIT');
     expect(
       reminderEligibility(document, { ...signer, signerType: 'user' }, [], now),
-    ).toBe('INTERNAL_NOT_SUPPORTED');
+    ).toBe('INTERNAL_REMINDER_UNSUPPORTED');
     expect(
       reminderEligibility(document, { ...signer, status: 'rejected' }, [], now),
-    ).toBe('SIGNER_NOT_PENDING');
+    ).toBe('SIGNER_ALREADY_COMPLETED');
     expect(
       reminderEligibility(
         document,
@@ -84,6 +107,6 @@ describe('外部催簽資格', () => {
         [],
         new Date('2026-10-19T00:00:00Z'),
       ),
-    ).toBe('DOCUMENT_NOT_SIGNABLE');
+    ).toBe('SIGNING_WINDOW_CLOSED');
   });
 });

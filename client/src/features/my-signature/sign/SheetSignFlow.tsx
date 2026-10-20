@@ -17,7 +17,7 @@ import { useState, useTransition } from 'react';
 import { signDocument } from '../actions';
 import SignaturePadDialog from './SignaturePadDialog';
 import TermsStep from './TermsStep';
-import { SIGN_TERMS_VERSION } from './terms';
+import { SIGN_TERMS, SIGN_TERMS_VERSION } from './terms';
 
 const SHEET_SIGN_STEPS = ['同意授權條款', '簽到', '確認送出'];
 
@@ -61,6 +61,9 @@ export default function SheetSignFlow({
         <StepFlow steps={SHEET_SIGN_STEPS} activeIndex={0} />
         <TermsStep
           docName={form.name}
+          terms={SIGN_TERMS}
+          version={SIGN_TERMS_VERSION}
+          backHref="/my-signature"
           onAgree={() => {
             setConsent({ version: SIGN_TERMS_VERSION, agreedAt: nowStr() });
             window.scrollTo({ top: 0 });

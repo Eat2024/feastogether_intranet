@@ -123,6 +123,19 @@ describe('EsignCompletionAccessService 個人下載', () => {
     expect(f.storage.openReadStream).not.toHaveBeenCalled();
   });
 
+  it('personalCopy 由呼叫端授權後直接讀取本人副本，不限簽署人類型', async () => {
+    const f = await setup('stopped');
+    f.signer.signerType = 'email';
+    expect(
+      (await f.service.personalCopy(f.document as never, f.signer as never))
+        ?.bytes,
+    ).toEqual(f.bytes);
+    f.signer.completionStatus = 'processing';
+    await expect(
+      f.service.personalCopy(f.document as never, f.signer as never),
+    ).resolves.toBeNull();
+  });
+
   it.each(['owner', 'record', 'hash', 'size', 'evidence'])(
     '完成產物 %s 不一致時拒絕',
     async (change) => {

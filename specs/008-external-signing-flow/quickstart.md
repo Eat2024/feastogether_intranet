@@ -29,7 +29,7 @@ pnpm -C client build
 
 | 指令 | 結果 |
 |------|------|
-| `pnpm -C server lint:check` | 通過（0 errors；167 warnings 皆為既有測試檔的型別寬鬆警告） |
+| `pnpm -C server lint:check` | 通過（0 errors；167 warnings 為既有程式的型別寬鬆警告，幾乎都在測試檔，本次修改的正式程式沒有 warning） |
 | `pnpm -C server test` | 92 suites／814 tests 通過 |
 | `pnpm -C server build` | 通過 |
 | `pnpm -C server test:e2e` | 11 suites／85 tests 通過 |

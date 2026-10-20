@@ -11,6 +11,12 @@
           "introspectComments": true
         }
       }
+    ],
+    "assets": [
+      {
+        "include": "assets/fonts/**/*",
+        "watchAssets": true
+      }
     ]
   }
 }

@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto';
+import fs from 'node:fs/promises';
+import fontkit from '@pdf-lib/fontkit';
 import { Readable } from 'node:stream';
-import { PDFDocument, PDFPage, degrees } from 'pdf-lib';
+import {
+  PDFDocument,
+  PDFPage,
+  PDFRawStream,
+  decodePDFRawStream,
+  degrees,
+} from 'pdf-lib';
 import { create as createQr } from 'qrcode';
 import { canonicalJson } from './esign-audit.service';
 import {
@@ -11,6 +19,7 @@ import { EsignDocumentValidationService } from './esign-document-validation.serv
 import { PdfValidationService } from './pdf-validation.service';
 
 describe('CompletedPdfService', () => {
+  afterEach(() => jest.restoreAllMocks());
   it.each([
     {
       rotation: 0,
@@ -47,6 +56,7 @@ describe('CompletedPdfService', () => {
       const sourcePage = sourcePdf.addPage([595, 842]);
       sourcePage.setRotation(degrees(rotation));
       if (cropped) sourcePage.setCropBox(50, 80, 400, 600);
+      sourcePdf.addPage([842, 595]);
       const sourceBytes = Buffer.from(await sourcePdf.save());
       const sourceHash = createHash('sha256').update(sourceBytes).digest('hex');
       const pngBytes = Buffer.from(
@@ -85,6 +95,7 @@ describe('CompletedPdfService', () => {
         },
       ];
       const payload = {
+        options: { watermark: true },
         consent: { version: 'v1' },
         document: { id: '4', sourceFileSha256: sourceHash },
         fields: fields.map((field) => ({
@@ -228,10 +239,88 @@ describe('CompletedPdfService', () => {
         '2026/10/14',
         expect.objectContaining({ color: expect.anything() }),
       );
-      expect(result.metadata.pageCount).toBe(1);
+      expect(result.metadata.pageCount).toBe(2);
+      const completed = await PDFDocument.load(bytes.get('completed.pdf')!);
+      // 真正嵌入可解析的 TrueType 子集，避免僅有 Unicode 對照但 CFF 字型損壞。
+      const embeddedTrueType = completed.context
+        .enumerateIndirectObjects()
+        .flatMap(([, value]) =>
+          value instanceof PDFRawStream
+            ? [Buffer.from(decodePDFRawStream(value).decode())]
+            : [],
+        )
+        .find(
+          (value) =>
+            value.length > 4 &&
+            [0x00010000, 0x74727565].includes(value.readUInt32BE(0)),
+        );
+      expect(embeddedTrueType).toBeDefined();
+      expect(fontkit.create(embeddedTrueType!).numGlyphs).toBeGreaterThan(10);
+      const streams = completed.context
+        .enumerateIndirectObjects()
+        .flatMap(([, value]) =>
+          value instanceof PDFRawStream
+            ? [Buffer.from(decodePDFRawStream(value).decode()).toString()]
+            : [],
+        );
+      // 完成 PDF 內建字型的 Unicode 對照須含完整中文字樣，不依賴作業系統字型。
+      const cmap = streams.find((text) => text.includes('beginbfchar')) ?? '';
+      for (const code of [
+        '9957',
+        '8CD3',
+        '96C6',
+        '5718',
+        '5167',
+        '90E8',
+        '6587',
+        '4EF6',
+        '8ACB',
+        '52FF',
+        '5916',
+        '6D41',
+      ]) {
+        expect(cmap.toUpperCase()).toContain(`<${code}>`);
+      }
+      expect(
+        completed
+          .getPages()
+          .every((page) => page.node.normalizedEntries().Font.keys().length),
+      ).toBe(true);
       expect(result.metadata.sha256).toBe(result.stored.sha256);
       expect(bytes.get('source.pdf')).toEqual(sourceBytes);
       expect(bytes.get('completed.pdf')).not.toEqual(sourceBytes);
+
+      const readFont = jest
+        .spyOn(fs, 'readFile')
+        .mockRejectedValueOnce(new Error('字型不存在'));
+      await expect(service.create(4, 7)).rejects.toThrow('字型不存在');
+      readFont.mockRestore();
+      expect(storage.store).toHaveBeenCalledTimes(1);
+
+      // false 不讀取字型、不加印，即使部署字型無法讀取也不影響原本無浮水印文件。
+      payload.options.watermark = false;
+      document.signingPayloadSha256 = createHash('sha256')
+        .update(canonicalJson(payload))
+        .digest('hex');
+      record.signingPayloadSha256 = document.signingPayloadSha256;
+      const unavailableFont = jest
+        .spyOn(fs, 'readFile')
+        .mockRejectedValue(new Error('字型不存在'));
+      const plain = await service.create(4, 7);
+      unavailableFont.mockRestore();
+      const plainPdf = await PDFDocument.load(bytes.get('completed.pdf')!);
+      expect(
+        plainPdf.context
+          .enumerateIndirectObjects()
+          .some(
+            ([, value]) =>
+              value instanceof PDFRawStream &&
+              Buffer.from(decodePDFRawStream(value).decode())
+                .toString()
+                .includes('beginbfchar'),
+          ),
+      ).toBe(false);
+      expect(plain.metadata.sha256).not.toEqual(result.metadata.sha256);
 
       signatureFile.sha256 = '0'.repeat(64);
       await expect(service.create(4, 7)).rejects.toThrow('文件完整性驗證失敗');
@@ -251,7 +340,7 @@ describe('CompletedPdfService', () => {
         new Error('storage unavailable'),
       );
       await expect(service.create(4, 7)).rejects.toThrow('storage unavailable');
-      expect(storage.store).toHaveBeenCalledTimes(1);
+      expect(storage.store).toHaveBeenCalledTimes(2);
       pushOperators.mockRestore();
       drawText.mockRestore();
       drawImage.mockRestore();

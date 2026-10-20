@@ -1,10 +1,10 @@
 // 在瀏覽器端產生「已簽署副本」PDF：
 // - 有原始檔：在原始 PDF 上合成本人的簽名、日期與追蹤 QR code（保留原文件的文字與向量內容）。
 // - 舊資料沒有原始檔：每頁以示意版面繪製（canvas，可沿用網頁字型顯示中文；pdf-lib 內建字型不支援中文）。
+// 浮水印僅由正式後端依固定設定產製；此 mock 工具不補印。
 // TODO: 串接後端後，改由後端合成並加上數位簽章，避免在瀏覽器端產生。
-import { formOptions } from '@/features/forms/options';
 import type { SheetRow } from '@/features/forms/sheet/rules';
-import { A4_PT, drawWatermark, H, loadImage, S, W } from './pdfCanvas';
+import { A4_PT, H, loadImage, S, W } from './pdfCanvas';
 import { buildSheetPdf } from './sheetPdf';
 import { fieldSize, getSignLayout, type SignLayout } from '@/features/forms/signLayout';
 import type { EFormDoc, Signer } from '@/features/forms/types';
@@ -78,14 +78,13 @@ function drawPage(
   ctx.textAlign = 'left';
 }
 
-/** 以 canvas 繪製一頁示意版面（含本人的簽名、日期與浮水印），回傳 PNG */
+/** 以 canvas 繪製一頁示意版面（含本人的簽名與日期），回傳 PNG */
 async function renderCanvasPage(
   form: EFormDoc,
   me: Signer,
   layout: SignLayout,
   page: number,
   font: string,
-  watermark: boolean,
 ): Promise<ArrayBuffer> {
   const signedDate = (me.signedAt ?? '').slice(0, 10);
   const canvas = document.createElement('canvas');
@@ -145,7 +144,6 @@ async function renderCanvasPage(
     }
   }
 
-  if (watermark) drawWatermark(ctx, font);
   const png = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
   return png.arrayBuffer();
 }
@@ -154,11 +152,11 @@ const qrDataUrl = (sigId: string, width: number) =>
   QRCode.toDataURL(signatureVerifyUrl(sigId, window.location.origin), { margin: 0, errorCorrectionLevel: 'M', width });
 
 /** 沒有原始檔（舊資料）：每頁以示意版面繪製 */
-async function buildCanvasCopy(form: EFormDoc, me: Signer, layout: SignLayout, font: string, watermark: boolean) {
+async function buildCanvasCopy(form: EFormDoc, me: Signer, layout: SignLayout, font: string) {
   const pdf = await PDFDocument.create();
   pdf.setTitle(`${form.name}（已簽署）`);
   for (let page = 1; page <= layout.pageCount; page++) {
-    const image = await pdf.embedPng(await renderCanvasPage(form, me, layout, page, font, watermark));
+    const image = await pdf.embedPng(await renderCanvasPage(form, me, layout, page, font));
     pdf.addPage([A4_PT.w, A4_PT.h]).drawImage(image, { x: 0, y: 0, width: A4_PT.w, height: A4_PT.h });
   }
   return pdf.save();
@@ -226,7 +224,7 @@ function pageMapper(page: PDFPage) {
 }
 
 /** 有原始檔：在原始 PDF 上合成本人的簽名、日期與追蹤 QR code（需要時附加系統簽署確認頁） */
-async function buildOriginalCopy(form: EFormDoc, me: Signer, layout: SignLayout, font: string, watermark: boolean) {
+async function buildOriginalCopy(form: EFormDoc, me: Signer, layout: SignLayout, font: string) {
   const res = await fetch(`/files/forms/${encodeURIComponent(form.id)}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`無法取得原始文件（${res.status}）`);
   const pdf = await PDFDocument.load(await res.arrayBuffer());
@@ -271,22 +269,9 @@ async function buildOriginalCopy(form: EFormDoc, me: Signer, layout: SignLayout,
     }
   }
 
-  // 浮水印：依每頁閱讀方向的比例畫成透明圖片後覆蓋整頁
-  if (watermark) {
-    for (const page of pages) {
-      const map = pageMapper(page);
-      const canvas = document.createElement('canvas');
-      canvas.width = W;
-      canvas.height = Math.round((W * map.viewH) / map.viewW);
-      drawWatermark(canvas.getContext('2d')!, font);
-      const png = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
-      map.drawImage(await pdf.embedPng(await png.arrayBuffer()), { x: 0, y: 0, w: map.viewW, h: map.viewH });
-    }
-  }
-
   // 系統簽署確認頁（公版 A4）附加在原文件最後
   if (layout.confirmPage) {
-    const image = await pdf.embedPng(await renderCanvasPage(form, me, layout, layout.confirmPage, font, watermark));
+    const image = await pdf.embedPng(await renderCanvasPage(form, me, layout, layout.confirmPage, font));
     pdf.addPage([A4_PT.w, A4_PT.h]).drawImage(image, { x: 0, y: 0, width: A4_PT.w, height: A4_PT.h });
   }
   return pdf.save();
@@ -300,10 +285,9 @@ export async function buildSignedCopyPdf(form: EFormDoc, me: Signer): Promise<Ui
   const layout = getSignLayout(form);
   if (!layout) throw new Error('此文件沒有可簽署的內容');
   const font = getComputedStyle(document.body).fontFamily;
-  const { watermark } = formOptions(form);
   return form.upload?.fileId
-    ? buildOriginalCopy(form, me, layout, font, watermark)
-    : buildCanvasCopy(form, me, layout, font, watermark);
+    ? buildOriginalCopy(form, me, layout, font)
+    : buildCanvasCopy(form, me, layout, font);
 }
 
 /** 加密（選用）並觸發瀏覽器下載 */

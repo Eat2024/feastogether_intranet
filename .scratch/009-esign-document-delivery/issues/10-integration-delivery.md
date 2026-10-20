@@ -4,13 +4,13 @@
 
 **Blocked by:** 01: 完整保存草稿名單與設定；02: 後端依設定繪製浮水印；04: 管理備註、拒簽結果與歷程身分；06: 批次催簽與通知歷史；09: 6,000 份匯出容量與故障恢復驗收
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] ZIP和個別下載浮水印與hash一致，拒簽不計已簽或ZIP。
 - [x] 跨故事schema/migration、API/session/Origin、時間邊界、證據與資料裁切回歸通過。
 - [x] server lint/test/build/e2e/security/schema及client lint/build依環境驗證。
-- [ ] code-review Standards/Spec兩軸問題修復並重驗。
-- [ ] 逐票驗收與commit紀錄完整；整合分支交付，未經要求不發布PR或部署。
+- [x] code-review Standards/Spec兩軸問題修復並重驗。
+- [x] 逐票驗收與commit紀錄完整；整合分支交付，未經要求不發布PR或部署。
 
 **Spec:** 009 — 對應任務 T035整合、T050–T053。以已確認規格、計畫及契約為準。
 
@@ -29,3 +29,11 @@
 - ticket 分支 tip：`fb971df`；以 `--no-ff` 合併，merge commit：`725eab4cf0ce3265d4679697d3951040d12216b2`，無衝突。
 - 整合分支重跑本機 storage、拒簽 service 與 maintenance 單測，3 suites／19 tests 通過；`git diff --check` 通過，未重跑全量共用 DB 測試。
 - 保留 `claimed` 與未完成 review／最終交付驗收；待 Standards／Spec 雙軸審查及集中修復後再結案。T028 仍未勾選，ticket 11 維持 `ready-for-human`。
+
+## 最終結案（2026-10-21）
+
+- 全部 4 項審查 finding 由同一 implementer 修正，commit `5d0519e`；以 `--no-ff` 整合於 `67693d778abbb73bd88dba411e2c6a546b790c16`。
+- Standards／Spec reviewer 分別在上述固定整合版本回查：Standards 原 2 項 P3、Spec 原 2 項 P2 均已解決；兩軸未解決與新增 finding 各為 0。完整分軸報告見 `specs/009-esign-document-delivery/review-results.md`。
+- 修正後 841 unit、9 S3 adapter、4 S3 API/worker tests 通過；真 Chrome LA 跨時區流程、ExcelJS 產檔讀回與 root build/lint 通過。合併 diff 檢查通過，回查未重跑完整測試。
+- Tickets 01–10 驗收與整合紀錄完整，本票結案為 resolved；上方 claimed 為當時整合階段的歷史紀錄。交付分支 `feature/009-esign-document-delivery`。
+- 部署 S3 容量／實際 IAM 與網路仍由 ticket11（ready-for-human）承接，T028 未勾選；本票結案不代表部署容量驗收完成。

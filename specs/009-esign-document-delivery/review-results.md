@@ -48,4 +48,19 @@
 - Chrome 臨時腳本 `/tmp/esign009-review-browser.cjs`；截圖 `/tmp/esign009-review-timezone.png`。確定性日期腳本 `/tmp/esign009-review-dates.cjs`；原版失敗紀錄 `/tmp/esign009-review-dates-red.log`。不包含正式資料或憑證。
 - 測試 log：`/tmp/esign009-review-{unit,s3-final,s3-e2e-final,browser,build,lint}.log`。這些是本次本機執行證據，不宣稱臨時路徑為可攜 CI 工具。
 - 本次只調整日期、入列參數共用與 S3 完成／讀取的固定版本防線，沒有改 ZIP 打包演算法，因此未重跑 6,000 份容量 benchmark；沿用先前已記錄的本機結果及限制。**T028 維持未勾選，ticket11 維持 ready-for-human**；沒有 AWS 部署容量／實際 IAM 通過的宣稱。
-- ticket10 在最終整合回查前維持 claimed；此文件為兩軸審查與本輪修正證據，非提早結案。
+- 修正 commit `5d0519e` 已整合於 `67693d778abbb73bd88dba411e2c6a546b790c16`；兩軸最終回查通過，ticket10 已結案為 resolved。部署驗收限制如上。
+
+## 最終 Standards 回查
+
+- 固定範圍：`71ac3ee...67693d778abbb73bd88dba411e2c6a546b790c16`，由原 Standards reviewer 唯讀回查。
+- 日期格式 P3 已解決：實際 TypeScript helper 的午夜前後及一般時間皆輸出補零的 `YYYY/MM/DD HH:mm`，固定台北時區；ZIP 與內部拒簽頁已使用同一 formatter。
+- 重複入列參數 P3 建議已處理：API 與 maintenance 共用 `exportJobArguments()`，payload、去重、重試與錯誤處理皆維持既有行為。
+- 修正未發現新的 Standards 違規或可具體舉證的回歸。**原 2 項已解決；未解決 0、新增 0，現存最高嚴重度：無。** 未重跑大型測試。
+
+## 最終 Spec 回查
+
+- 固定範圍：`71ac3ee...67693d778abbb73bd88dba411e2c6a546b790c16`，由原 Spec reviewer 唯讀回查。
+- 日期 P2 已解決：列表、篩選、編輯器、詳情及 Excel 均使用台北時間；已檢閱確定性腳本、Chrome LA 與真 ExcelJS workbook 證據，FR-005 路徑完整。
+- S3 固定版本 P2 已解決：串流發布與 HEAD／GET 均拒絕缺少或 `null` 的 VersionId；有效版本仍釘選原物件。同 key 等長覆寫、未版本化／Suspended、失敗清理及原快照重試由 9 adapter／4 API-worker tests 證據覆蓋。
+- 修正未發現新的 Spec regression 或範圍擴張。**原 2 項已解決；未解決 0、新增 0，現存最高嚴重度：無。** 本輪檢閱既有驗證證據，未重跑整套測試。
+- T028 未完成／ticket11 ready-for-human 保持正確；本機與 Moto 通過不代表部署 S3 的 6,000 份／>4 GiB、實際 IAM 及網路容量已驗收。

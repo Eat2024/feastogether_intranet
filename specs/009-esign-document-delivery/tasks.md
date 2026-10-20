@@ -1,7 +1,7 @@
 # Tasks: 電子簽文件與簽署人管理補強（Spec 009）
 
 **Input**：[spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、[contracts](contracts/)、[quickstart.md](quickstart.md)。
-**Status**：Tickets 01–09 已整合；Ticket 10 本機整合回歸完成，待最終 Standards／Spec review。T028 的部署 S3 容量門檻移交 ticket11，維持未勾選。
+**Status**：Tickets 01–10 已驗收並整合；最終 Standards／Spec review 的 4 項問題已修復，兩軸回查均為 0 項待處理。T028 的部署 S3 容量門檻移交 ticket11（ready-for-human），維持未勾選。
 **Tests**：依 spec 驗收要求與 constitution 的身分／交易／Hash／migration驗證義務列入風險相稱測試；client 現無test script，不新增框架。測試任務先於對應實作準備，實作後必須跑過，不能只新增檔案即算驗收完成。
 
 格式 `- [ ] Txxx [P?] [US?] 說明＋路徑`。[P] 僅表示同一階段、前置完成後可與不同檔案任務並行，不代表可跳過依賴。新增檔案路徑是預定位置；TypeORM migration 用實作當時合法時間戳產生於指定 migrations 目錄。近距離路徑省略前綴時承接該任務已寫出的 feature 目錄。

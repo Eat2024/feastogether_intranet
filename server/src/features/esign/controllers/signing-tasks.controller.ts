@@ -1,3 +1,5 @@
+import { EsignRejectionService } from '../services/esign-rejection.service';
+import { RejectionDto } from '../dto/rejection.dto';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { ApiOperation } from '@nestjs/swagger';
 import {
@@ -31,11 +33,30 @@ import {
 @Controller('esign/signing-tasks')
 export class SigningTasksController {
   constructor(
+    private readonly rejection: EsignRejectionService,
     private readonly tasks: EsignSigningTaskService,
     private readonly signing: EsignSigningService,
     private readonly config: ConfigService,
     private readonly completions: EsignCompletionAccessService,
   ) {}
+
+  @UseGuards(OriginGuard)
+  @ApiOperation({ summary: '拒絕本人簽署任務' })
+  @Post(':signerPublicId/rejection')
+  async reject(
+    @Param('signerPublicId') signerPublicId: string,
+    @CurrentUserId() userId: number,
+    @Body() body: RejectionDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const { repeated, ...result } = await this.rejection.reject(
+      signerPublicId,
+      { kind: 'internal', userId },
+      body,
+    );
+    reply.status(repeated ? HttpStatus.OK : HttpStatus.CREATED);
+    return result;
+  }
 
   @ApiOperation({
     summary: '列出本人的簽署任務',

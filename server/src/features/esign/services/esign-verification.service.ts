@@ -28,6 +28,7 @@ import {
 } from './esign-audit.service';
 import { EsignTokenService } from './esign-token.service';
 
+const REJECTION_MANIFEST_SCHEMA = 'esign-verification-manifest-v3';
 export const VERIFICATION_MANIFEST_SCHEMA = 'esign-verification-manifest-v2';
 
 /** 結案 transaction 內已鎖定、即將標示完成的文件狀態。 */
@@ -222,9 +223,40 @@ export class EsignVerificationService {
         )
         .map((event) => [event.signerId, event]),
     );
+    const rejected = signers
+      .filter((signer) => signer.status === 'rejected')
+      .map((signer) => {
+        const event = events.find(
+          (event) =>
+            event.signerId === signer.id &&
+            event.eventType === 'signer.rejected' &&
+            chain.has(event.eventHash),
+        );
+        if (
+          !event ||
+          !signer.rejectedAt ||
+          signer.signedAt ||
+          signer.completionStatus != null ||
+          event.occurredAt.getTime() !== signer.rejectedAt.getTime() ||
+          (event.metadataJson?.reason ?? '') !== signer.rejectReason ||
+          (event.requestId ?? null) !== (signer.rejectRequestId ?? null)
+        )
+          throw this.integrity();
+        return {
+          signerPublicId: signer.publicId,
+          rejectedAt: signer.rejectedAt.toISOString(),
+          reasonSha256: canonicalSha256(signer.rejectReason),
+          rejectionEventHash: event.eventHash,
+        };
+      });
+    if (
+      signers.some((signer) => !['signed', 'rejected'].includes(signer.status))
+    )
+      throw this.integrity();
+    const signed = signers.filter((signer) => signer.status === 'signed');
     const entries: ReturnType<typeof manifestSigner>[] = [];
-    for (let offset = 0; offset < signers.length; offset += 250) {
-      const batch = signers.slice(offset, offset + 250);
+    for (let offset = 0; offset < signed.length; offset += 250) {
+      const batch = signed.slice(offset, offset + 250);
       const records = await this.records.findBySignerIds(
         batch.map((signer) => signer.id),
         manager,
@@ -262,7 +294,10 @@ export class EsignVerificationService {
       }
     }
     const manifest = {
-      schemaVersion: VERIFICATION_MANIFEST_SCHEMA,
+      schemaVersion: rejected.length
+        ? REJECTION_MANIFEST_SCHEMA
+        : VERIFICATION_MANIFEST_SCHEMA,
+      ...(rejected.length ? { rejected } : {}),
       document: manifestDocument(document, source.sha256, input.completedAt),
       signers: entries,
       auditRootHash: input.auditRootHash,
@@ -346,7 +381,11 @@ export class EsignVerificationService {
     );
     const consistent =
       snapshot?.status === 'valid' &&
-      manifest.schemaVersion === VERIFICATION_MANIFEST_SCHEMA &&
+      [VERIFICATION_MANIFEST_SCHEMA, REJECTION_MANIFEST_SCHEMA].includes(
+        String(manifest.schemaVersion),
+      ) &&
+      (manifest.schemaVersion !== REJECTION_MANIFEST_SCHEMA ||
+        this.rejectionsConsistent(manifest, events, chain || new Set())) &&
       signer.completionStatus === 'ready' &&
       completedPdf &&
       copyEvent &&
@@ -362,6 +401,36 @@ export class EsignVerificationService {
       chain;
     if (!consistent) throw this.integrityFailed(document.id);
     return completedPdf.sha256;
+  }
+
+  private rejectionsConsistent(
+    manifest: Record<string, unknown>,
+    events: EsignAuditEvent[],
+    chain: Set<string>,
+  ): boolean {
+    if (!Array.isArray(manifest.rejected) || manifest.rejected.length === 0)
+      return false;
+    const rejections = events.filter(
+      (event) =>
+        event.eventType === 'signer.rejected' && chain.has(event.eventHash),
+    );
+    return (
+      rejections.length === manifest.rejected.length &&
+      manifest.rejected.every((entry: unknown) => {
+        if (!entry || typeof entry !== 'object') return false;
+        const row = entry as Record<string, unknown>;
+        const event = rejections.find(
+          (event) => event.eventHash === row.rejectionEventHash,
+        );
+        return (
+          event &&
+          row.rejectedAt === event.occurredAt.toISOString() &&
+          row.reasonSha256 ===
+            canonicalSha256(event.metadataJson?.reason ?? '') &&
+          typeof row.signerPublicId === 'string'
+        );
+      })
+    );
   }
 
   private notFound(): AppException {

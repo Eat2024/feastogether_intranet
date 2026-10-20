@@ -181,6 +181,7 @@ export class ExternalAccessService {
       };
       return {
         signerPublicId: signer.publicId,
+        allowReject: document.allowReject,
         document: this.mapper.documentSummary(document, counts),
         signer: this.mapper.signer(signer, null),
         fields: allFields.map((field) => this.mapper.field(field)),
@@ -195,7 +196,12 @@ export class ExternalAccessService {
 
   async source(credential: string) {
     const manager = this.mysql.getManager();
-    const { document } = await this.checkedAccess({ credential }, manager);
+    const { document, signer } = await this.checkedAccess(
+      { credential },
+      manager,
+    );
+    if (signer.status === 'rejected')
+      throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
     const source = await this.files.findDocumentFile(
       document.id,
       'source_pdf',

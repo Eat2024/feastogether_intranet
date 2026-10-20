@@ -379,8 +379,8 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
         <Button size="large" variant="outlined" href={`/forms/${doc.id}/edit`} disabled={busy}>
           上一步，回到上傳文件
         </Button>
-        {/* 後端草稿只儲存簽署名單；簽署期間與可選功能於發起時設定 */}
-        <Tooltip title="只會儲存簽署名單，簽署期間請在發起時設定">
+        {/* 暫存不會發起簽署或寄送邀請。 */}
+        <Tooltip title="儲存簽署名單、期間與可選功能，不會發起或寄送邀請">
           <span>
             <Button
               size="large"
@@ -389,7 +389,7 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
               loading={save.isPending || save.isSuccess}
               disabled={busy && !save.isPending && !save.isSuccess}
             >
-              儲存簽署名單（暫不發起）
+              儲存草稿設定（暫不發起）
             </Button>
           </span>
         </Tooltip>

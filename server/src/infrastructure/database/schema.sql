@@ -332,6 +332,7 @@ CREATE TABLE `esign_signers` (
   `invitation_delivered_at` datetime(6) DEFAULT NULL COMMENT '外部邀請寄送接受時間',
   `rejected_at` datetime(6) DEFAULT NULL COMMENT '拒絕時間',
   `reject_request_id` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '拒簽冪等請求 UUID',
+  `note` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '建立人管理備註，不屬簽署證據',
   `reject_reason` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '拒絕原因',
   `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序',
   `created_by_user_id` bigint DEFAULT NULL COMMENT '建立者員工 ID',

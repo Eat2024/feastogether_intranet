@@ -4,6 +4,8 @@ import api from '@/api/config';
 import axios from 'axios';
 import { endpoints } from '@/api/endpoints';
 import type {
+  SaveSignerNoteBody,
+  SignerNoteResult,
   CreateDocumentBody,
   EsignDocumentDetail,
   EsignDocumentListItem,
@@ -195,3 +197,8 @@ export async function createNotificationBatch(id: string, body: {requestId: stri
 export async function getNotificationBatch(id: string,batchId: string): Promise<EsignNotificationBatch> {
   return (await api<EsignNotificationBatch>({method:'GET',url:endpoints.ESIGN_NOTIFICATION_BATCH(id,batchId)})).data;
 }
+/** 建立人儲存管理備註；空字串清除。 */
+export const saveSignerNote = async ({ id, signerPublicId, note }: SaveSignerNoteBody): Promise<SignerNoteResult> => {
+  const res = await api<SignerNoteResult>({ method: 'PATCH', url: endpoints.ESIGN_SIGNER_NOTE(id, signerPublicId), data: { note } });
+  return res.data;
+};

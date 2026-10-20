@@ -13,11 +13,19 @@
 
 - TDD：新增 service 公開入口測試先失敗（缺少 saveDraftSettings），實作後通過。
 - `pnpm -C server test --runInBand`：92 suites／815 tests 通過。
-- `DB_MYSQL_DB=feastogether_intranet_test_009_01 pnpm -C server test:e2e esign-draft-settings`：15 tests 通過，含登入後回填、舊 API、單端／清空／省略、非法日期及名單全不變、名單替換後注入資料庫失敗亦完整回滾、session／Origin／建立人／正式狀態保護、暫存不建立邀請。
+- `DB_MYSQL_DB=feastogether_intranet_test_009_01 pnpm -C server test:e2e esign-draft-settings`：16 tests 通過，含登入後回填、舊 API、單端／清空／省略、非法日期及名單全不變、名單替換後注入資料庫失敗亦完整回滾、session／Origin／建立人／正式狀態保護、暫存不建立邀請、實際同時儲存與發起後僅完整發起設定生效。
 - `DB_MYSQL_DB=feastogether_intranet_test pnpm -C server test:schema`：2 suites／6 tests 通過；schema helper 建立隨機隔離資料庫，含 no drift、指定歷史版本升級、單端草稿拒絕 down。schema helper 會追加 UUID，因此不使用超過 MySQL 64 字元上限的長前綴。
-- `pnpm build` 與 `pnpm lint`：通過；server lint 有既有 warnings。client 無自動測試框架，沒有宣稱已做瀏覽器互動驗收。
-- 瀏覽器 roundtrip 與真實併發發起競態仍留 Ticket 10 整合驗收；以上 HTTP 登入 roundtrip 不等同瀏覽器測試。
+- `pnpm build` 與 `pnpm lint`：通過；server lint 有既有 warnings。client 未新增自動測試框架；另以本機既有 Playwright core + Chrome 執行臨時瀏覽器驗收，詳見下節。
+- T004／T009 的原未完成驗收已在第二輪補齊，不再留待 Ticket 10。
 - 工作目錄使用 frozen lockfile 安裝依賴；初始共用 node_modules symlink 被 Turbopack 拒絕後已移除，沒有修改 lockfile。
+
+### 第二輪：實際並發與瀏覽器驗收（2026-10-20）
+
+- 基於整合 commit `489a0bd`，新增永久 HTTP e2e 同時發出保存與發起兩請求；允許保存先成功或被409拒絕，最終名單、完整期間及兩選項必須全為發起版本，不能混入草稿內容。永久 suite 16/16 通過。
+- 使用本機既有 Playwright core 1.57 + Google Chrome，Next dev `39002` → 真正 Nest HTTP `39001` → 隔離 MySQL，沒有 mock API。臨時 suite 含永久16項與瀏覽器1項，17/17 通過。
+- Chrome 時區刻意設為 `America/Los_Angeles`。以合成組織與一內部一外部名單載入，確認台北起迄日期與選項；畫面新增外部人、取消 watermark、清空開始日並按暫存，API回傳草稿、三位完整名單、null 開始日、台北結束日、watermark=false／allowReject=true。關閉 browser context 後重新進入，同樣回填名單與日期選項，無發起。
+- 實測修正舊 tooltip／按鈕／成功訊息，清楚表示暫存名單、期間與選項。
+- 合成截圖：`/tmp/esign009-draft-roundtrip.png`；臨時自動化腳本 `/tmp/esign009-draft-browser.cjs`。測試腳本只從環境取合成 session，不輸出 cookie。臨時 Jest spec、合成 org-chart.json、Next 生成 AGENTS 區塊均已移除，Next已停止；未新增專案框架或提交個資。
 
 ## Ticket 02 — 後端依固定設定繪製浮水印
 

@@ -27,6 +27,7 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   INVALID_REQUEST: '輸入資料格式有誤，請確認後再試',
 
   // --- 電子簽 ---
+  ESIGN_SIGNER_NOTE_INVALID: '備註須為最多 30 字的文字',
   ESIGN_DRAFT_OPTIONS_INVALID: '草稿選項必須為布林值',
   ESIGN_INVALID_PDF: 'PDF 格式、大小或頁數不符合規格',
   ESIGN_RESOURCE_NOT_FOUND: '找不到此文件，或您沒有權限存取',

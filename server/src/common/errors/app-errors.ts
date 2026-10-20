@@ -45,6 +45,11 @@ export const AppErrors = {
     '此文件未開放拒絕簽署',
     HttpStatus.CONFLICT,
   ],
+  ESIGN_SIGNER_NOTE_INVALID: [
+    AppErrorCode.ESIGN_SIGNER_NOTE_INVALID,
+    '備註須為最多 30 字的文字',
+    HttpStatus.BAD_REQUEST,
+  ],
   ESIGN_DRAFT_OPTIONS_INVALID: [
     AppErrorCode.ESIGN_DRAFT_OPTIONS_INVALID,
     '草稿選項必須為布林值',

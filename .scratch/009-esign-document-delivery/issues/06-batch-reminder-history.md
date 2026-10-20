@@ -4,7 +4,7 @@
 
 **Blocked by:** 05: 單位外部簽署人的催簽
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] all_pending涵蓋完整跨頁名單，selected去重且不接受任意收件地址。
 - [x] 跨文件整批拒；同文件不合格保留skip原因，無合格者不建空批次。
@@ -30,3 +30,9 @@
 - 整合後 `pnpm build`（server＋client正常Turbopack）與 `pnpm lint` 通過；server 194 warnings／0 errors，client 0 warnings／0 errors。
 - HTTP/worker 13項及真Chrome證據在 `/tmp/esign009-06-e2e.log`、`/tmp/esign009-06-browser.log`；整合後unit/build/lint在 `/tmp/esign009-06-final-{unit,build,lint}.log`。本票不修改migration，既有schema驗證沿用05／07，最終全量驗證由10整合。
 - 工作目錄乾淨；臨時瀏覽器fixture與Next生成的AGENTS區塊已移除。狀態保留 claimed，待 merger 合併整合分支後結案。
+
+## 整合紀錄
+
+- ticket 分支 tip：`726a4dc`；以 `--no-ff` 合併，merge commit：`04ce2563e2981cc7735b66a4f44f6bc4268795f8`，無衝突，保留 ZIP query keys 與備註功能。
+- 整合分支重跑催簽資格、通知狀態及 view mapper，3 suites／16 tests 通過；`git diff --check` 通過。本輪未占用共用 DB／Redis，無 schema 變更。
+- 多人催簽、分頁歷史及通知摘要驗收完成並整合，標記 `resolved`；全系統整合驗收仍由 ticket 10 執行。

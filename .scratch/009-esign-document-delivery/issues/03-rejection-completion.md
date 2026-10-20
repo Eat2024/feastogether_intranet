@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 依allowReject與本人資格；原因選填trim最多200 code points。
 - [x] 拒簽不可逆、不補簽或催簽、不產假PDF；簽拒競態只一終態。
@@ -29,3 +29,9 @@
 - server 全量 unit：94 suites、826 tests 通過；rejection e2e：4/4；schema migration/constraints：6/6。
 - server build、client `build --webpack`、client lint 通過。server lint：0 errors（沿用既有 warnings）。
 - T029–T034 已勾選；T035 的拒簽／結案部分完成，但包含 ticket 10 的 ZIP 整合，故整體任務留待整合時勾選。
+
+## 合併紀錄
+
+- ticket 分支最終 commit：`5fab4ca`；以 `--no-ff` 合併至整合分支，merge commit：`6fc76633c061d78b381b0ea22adce064a4fbad43`，無衝突。
+- 整合分支重跑拒簽 service、DTO、manifest 驗證與結案 processor，4 suites／45 tests 通過；`git diff --check` 通過。本輪未占用共用 DB／Redis。
+- 本 ticket 驗收與整合已完成，標記 `resolved`。T035 的 ZIP 整合與 root 正常 Next build 留 ticket 10，並未宣稱內部 mock 簽署已全面遷移。

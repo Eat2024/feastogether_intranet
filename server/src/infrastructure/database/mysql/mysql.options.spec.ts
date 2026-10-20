@@ -37,11 +37,11 @@ describe('buildMysqlOptions', () => {
     });
   });
 
-  it('明確註冊電子簽 entities、AuthSession 與七支 migration', () => {
+  it('明確註冊電子簽 entities、AuthSession 與八支 migration', () => {
     const options = buildMysqlOptions(readEnv);
 
     expect(options.entities).toHaveLength(13);
-    expect(options.migrations).toHaveLength(7);
+    expect(options.migrations).toHaveLength(8);
     expect(
       (options.entities as Array<{ name: string }>).map(
         (entity) => entity.name,
@@ -66,6 +66,7 @@ describe('buildMysqlOptions', () => {
       'SharedFieldsPersonalCopies1792195200000',
       'ExpiredDocuments1792368000000',
       'DraftSettings1792454400000',
+      'LocalZipExports1792454403000',
     ]);
   });
 

@@ -11,6 +11,27 @@ import {
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from './esign-document.entity';
 
+export interface ExportSnapshotEntry {
+  recordId: number;
+  signerPublicId: string;
+  fileName: string;
+  file?: ExportResolvedFile;
+}
+export interface ExportResolvedFile {
+  recordId: number;
+  fileId: number;
+  objectKey: string;
+  objectVersion?: string;
+  sha256: string;
+  fileSize: number;
+}
+export interface ExportStaging {
+  generation: string;
+  objectKey?: string;
+  objectVersion?: string;
+  uploadId?: string;
+}
+
 @Entity({ name: 'esign_export_jobs', comment: '匯出工作' })
 @Index('idx_esign_export_jobs_document_id', ['documentId'])
 @Index('idx_esign_export_jobs_creator_status_created_id', [
@@ -23,7 +44,134 @@ import { EsignDocument } from './esign-document.entity';
 @Index('idx_esign_export_jobs_created_at', ['createdAt'])
 @Index('idx_esign_export_jobs_updated_at', ['updatedAt'])
 @Index('idx_esign_export_jobs_completed_at', ['completedAt'])
+@Index('uq_esign_export_jobs_public_id', ['publicId'], { unique: true })
+@Index('idx_esign_exports_reuse', [
+  'documentId',
+  'exportType',
+  'status',
+  'expiresAt',
+  'id',
+])
+@Index('idx_esign_exports_retry', ['status', 'nextAttemptAt', 'id'])
+@Index('idx_esign_export_jobs_lease_expires_at', ['leaseExpiresAt'])
+@Index('idx_esign_export_jobs_snapshot_at', ['snapshotAt'])
+@Index('idx_esign_export_jobs_expires_at', ['expiresAt'])
+@Index('idx_esign_export_jobs_next_attempt_at', ['nextAttemptAt'])
 export class EsignExportJob {
+  @Column({
+    name: 'public_id',
+    type: 'char',
+    nullable: true,
+    comment: '公開工作 UUID',
+    length: 36,
+  })
+  publicId?: string | null;
+
+  @Column({
+    name: 'snapshot_at',
+    type: 'datetime',
+    nullable: true,
+    comment: '固定快照時間',
+    precision: 6,
+  })
+  snapshotAt?: Date | null;
+
+  @Column({
+    name: 'snapshot_json',
+    type: 'json',
+    nullable: true,
+    comment: '不可變簽署快照',
+  })
+  snapshotJson?: ExportSnapshotEntry[] | null;
+
+  @Column({
+    name: 'snapshot_sha256',
+    type: 'char',
+    nullable: true,
+    comment: '快照 SHA-256',
+    length: 64,
+  })
+  snapshotSha256?: string | null;
+
+  @Column({
+    name: 'resolved_files_json',
+    type: 'json',
+    nullable: true,
+    comment: '已固定來源副本',
+  })
+  resolvedFilesJson?: ExportResolvedFile[] | null;
+
+  @Column({
+    name: 'processed_count',
+    type: 'int',
+    nullable: true,
+    comment: '當次處理數',
+    unsigned: true,
+  })
+  processedCount?: number | null;
+
+  @Column({
+    name: 'waiting_count',
+    type: 'int',
+    nullable: true,
+    comment: '等待副本數',
+    unsigned: true,
+  })
+  waitingCount?: number | null;
+
+  @Column({
+    name: 'expires_at',
+    type: 'datetime',
+    nullable: true,
+    comment: '成果到期時間',
+    precision: 6,
+  })
+  expiresAt?: Date | null;
+
+  @Column({
+    name: 'lease_token',
+    type: 'char',
+    nullable: true,
+    comment: '工作 generation',
+    length: 36,
+  })
+  leaseToken?: string | null;
+
+  @Column({
+    name: 'lease_expires_at',
+    type: 'datetime',
+    nullable: true,
+    comment: '租約到期時間',
+    precision: 6,
+  })
+  leaseExpiresAt?: Date | null;
+
+  @Column({
+    name: 'attempt_count',
+    type: 'int',
+    nullable: true,
+    comment: '嘗試次數',
+    unsigned: true,
+  })
+  attemptCount?: number | null;
+
+  @Column({
+    name: 'next_attempt_at',
+    type: 'datetime',
+    nullable: true,
+    comment: '再次排入時間',
+    precision: 6,
+  })
+  nextAttemptAt?: Date | null;
+
+  @Column({
+    name: 'staging_json',
+    type: 'json',
+    nullable: true,
+    comment: '暫存成果位置',
+  })
+  stagingJson?: ExportStaging | null;
+
   @PrimaryGeneratedColumn({ type: 'bigint', comment: '匯出工作流水號' })
   id!: number;
 

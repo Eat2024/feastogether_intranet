@@ -217,6 +217,7 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_file_objects_owner',
           'chk_esign_file_objects_signature_field',
           'chk_esign_file_objects_source_owner',
+          'chk_esign_files_export_owner',
           'chk_esign_notification_logs_channel',
           'chk_esign_notification_logs_result',
           'chk_esign_signers_completion',

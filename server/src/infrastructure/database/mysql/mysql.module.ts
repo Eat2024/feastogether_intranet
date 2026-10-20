@@ -1,3 +1,4 @@
+import { ExportJobRepository } from '#app/features/esign/repositories/export-job.repository';
 // mysql.module.ts
 import { Module } from '@nestjs/common';
 import { OauthIdentityRepository } from '#app/features/auth/repositories/oauth-identity.repository';
@@ -16,6 +17,7 @@ import { MysqlProvider } from './mysql.provider';
 import { MysqlService } from './mysql.service';
 
 const repositories = [
+  ExportJobRepository,
   UserRepository,
   OauthIdentityRepository,
   AuthSessionRepository,

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 固定已簽record快照，等待既有副本、不重繪不漏檔。
 - [ ] 本機串流ZIP64，安全唯一檔名，全成果落檔並驗證後發布。

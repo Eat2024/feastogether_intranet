@@ -3,6 +3,13 @@
  * getErrorMessage 優先使用後端回傳的 message，後端沒有給 message 時才使用這裡的對照。
  */
 export const ERROR_CODE_MAP: Record<string, string> = {
+  ESIGN_EXPORT_SOURCE_FAILED: '既有已簽副本產製失敗，待修復後可重試',
+  ESIGN_EXPORT_EMPTY: '沒有可匯出的已簽署副本',
+  ESIGN_EXPORT_EXPIRED: '匯出成果已到期，請重新申請',
+  ESIGN_EXPORT_UNAVAILABLE: '匯出成果暫時無法下載',
+  ESIGN_EXPORT_NOT_READY: '匯出尚未完成',
+  ESIGN_EXPORT_RETRY_INVALID: '來源完整性異常，無法重試',
+
   // --- Auth ---
   UNAUTHORIZED: '登入已過期，請從入口網重新進入電子簽',
   INVALID_CREDENTIALS: '員工編號或密碼錯誤，或登入已失效',

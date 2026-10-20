@@ -70,6 +70,7 @@ describe('buildMysqlOptions', () => {
       'SharedFieldsPersonalCopies1792195200000',
       'ExpiredDocuments1792368000000',
       'DraftSettings1792454400000',
+      'RejectionCompletion1792454401000',
     ]);
   });
 

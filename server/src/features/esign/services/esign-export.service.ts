@@ -121,6 +121,7 @@ export class EsignExportService {
       )
         throw new AppException(...AppErrors.ESIGN_EXPORT_RETRY_INVALID);
       original.status = 'pending';
+      original.failureCode = null;
       original.nextAttemptAt = null;
       original.processedCount = 0;
       return this.jobs.save(original, m);

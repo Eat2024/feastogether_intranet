@@ -60,6 +60,7 @@ export class DocumentExportProcessor
         return null;
       }
       job.status = 'processing';
+      job.failureCode = null;
       job.leaseToken = generation;
       job.leaseExpiresAt = new Date(Date.now() + LEASE_MS);
       job.attemptCount = (job.attemptCount ?? 0) + 1;
@@ -233,6 +234,7 @@ export class DocumentExportProcessor
         );
         await this.files.save(file, m);
         current.status = 'completed';
+        current.failureCode = null;
         current.completedAt = new Date();
         current.expiresAt = new Date(
           current.completedAt.getTime() + 7 * 24 * 60 * 60_000,

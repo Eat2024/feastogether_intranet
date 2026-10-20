@@ -92,6 +92,39 @@ describe('Spec009 匯出 API', () => {
       .set('Origin', origin)
       .send({ type: 'signed_copies_zip' })
       .expect(409);
+    await db.manager.save(
+      EsignSigner,
+      db.manager.create(EsignSigner, {
+        publicId: randomUUID(),
+        documentId: Number(id),
+        signerType: 'email',
+        email: 'rejected@example.test',
+        nameSnapshot: '已拒測試者',
+        status: 'rejected',
+        rejectedAt: new Date(),
+        rejectReason: '拒絕測試',
+        rejectRequestId: randomUUID(),
+        sortOrder: 0,
+      }),
+    );
+    await request(ctx.server)
+      .post(`/api/esign/documents/${id}/exports`)
+      .set('Cookie', other)
+      .set('Origin', origin)
+      .send({ type: 'signed_copies_zip' })
+      .expect(409);
+    await request(ctx.server)
+      .post(`/api/esign/documents/${id}/exports`)
+      .set('Cookie', other)
+      .send({ type: 'signed_copies_zip' })
+      .expect(403);
+    await request(ctx.server)
+      .get('/api/esign/exportable-documents')
+      .expect(401);
+    await request(ctx.server)
+      .get('/api/esign/exportable-documents?limit=101')
+      .set('Cookie', other)
+      .expect(400);
   });
 
   it('兩員工共用固定快照，worker 完成 ZIP 後可原生續傳', async () => {
@@ -268,6 +301,17 @@ describe('Spec009 匯出 API', () => {
       expect(before.expiresAt!.getTime() - before.completedAt!.getTime()).toBe(
         168 * 60 * 60_000,
       );
+      // 七天內成果物遺失回 503，不偷偷建立新工作。
+      const lost = await db.manager.findOneByOrFail(EsignFileObject, {
+        exportJobId: before.id,
+        filePurpose: 'signed_copies_zip',
+      });
+      await storage.delete(lost);
+      await make(other).expect(503);
+      await request(ctx.server)
+        .get(file.downloadPath)
+        .set('Cookie', other)
+        .expect(503);
       // 到期即阻擋續傳，不依賴 maintenance 是否刪除實體檔。
       await db.manager.update(
         EsignExportJob,
@@ -382,6 +426,7 @@ describe('Spec009 匯出 API', () => {
       );
       expect(retried.id).toBe(next.id);
       expect(await waitFor(next.id, 'completed')).toMatchObject({
+        failureCode: null,
         expectedCount: 2,
       });
       // storage 已落檔後租約被下一 generation 接管：舊 worker 不可發布。

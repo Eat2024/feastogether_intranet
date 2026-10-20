@@ -244,7 +244,7 @@ export class EsignExportJob {
     nullable: true,
     comment: '失敗錯誤碼',
   })
-  failureCode?: string;
+  failureCode?: string | null;
 
   @Column({
     name: 'completed_at',

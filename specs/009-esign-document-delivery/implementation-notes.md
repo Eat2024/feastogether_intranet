@@ -44,3 +44,14 @@
 - 已merge `9f22302`，保留ticket04管理備註/拒簽/歷程。合併後root build/lint、98 suites/833 tests及schema6 tests通過。
 - 真Chrome（台北時區）對真Nest/API+MySQL執行單人催簽→202受理→worker fake SMTP投遞→當日限制→reload仍已寄出，全部通過。截圖 `/tmp/esign009-reminder-browser.png`；臨時fixture及server已清除，沒有新增測試框架。
 - 發布順序：先通知migration，再以新worker取代所有舊邀請worker，最後開啟新催簽API；不能讓舊worker消費reminder。若需回退，先停新API受理與worker並保留通知資料，已有reminder時migration拒絕down；原邀請寫入可使用public UUID資料庫預設。
+
+
+## Ticket 07：本機背景 ZIP 匯出（2026-10-21）
+
+- 交付 T015–T017、T019、T021–T027；T018 的 archiver／stream port 已完成，S3 dependency／adapter 與 multipart 保留給 08，因此 T018 未整項勾選。風險驗證統一放在 `server/test/esign-export.e2e-spec.ts` 的 HTTP、真 queue worker 及 storage 公開邊界，取代預定內部 service／processor mock 測試。
+- 正式 UI：`/export-history` 預設使用後端的跨建立人查找、ZIP 歷史；建立人 `/forms/[id]/export` 也可申請 ZIP。歷史與下載不走 creator-only detail。mock Excel／其他歷史頁籤仍為舊原型，不宣稱已正式串接。
+- 新增 7 支匯出相關路由，固定快照／等待來源／安全檔名／SHA-256／ZIP64 STORE／全域 concurrency=1／五分鐘租約與 generation fencing／七天共享。`storeStream.expectedSize` 僅估計容量，禁止作 Content-Length。成果大小及 hash 來自實際串流，原生下載與 Next rewrite 保留 Range／If-Range。
+- e2e 三項完整情境通過：身分與 Origin、全拒409、並發重用、enqueue 故障補列、GET 唯讀、七天後410及清理、有效期內缺檔503、來源等待／失敗／修復同快照retry、篡改fail、stale worker不能發布、兩個 worker＋慢 storage。使用 2×64 份小合成副本驗證有界讀取；並非6000份容量測試。
+- 真 Chrome 瀏覽器使用非建立人員工 session，完成查找、申請、重整、原生ZIP下載並解壓核對內容；206／If-Range200／ETag／Cache-Control／nosniff 經 Next proxy 核對。測試程式與截圖在 `/tmp/esign009-zip-browser.cjs`、`/tmp/esign009-zip-browser.png`；未新增 client 測試框架。
+- 最終整合 01–05 後 root build/lint 通過，server 98 suites／836 tests，schema 6 tests。詳細本機 log：`/tmp/esign009-07-code-green.log`、`/tmp/esign009-07-browser.log`、`/tmp/esign009-07-final-unit.log`、`/tmp/esign009-07-final-schema.log`、`/tmp/esign009-07-final-root-build.log`、`/tmp/esign009-07-final-root-lint.log`。lint 0 error，既有 warnings 保留。
+- 08 交接：S3 ZIP尚未啟用，既有S3 PDF功能保留；需支援 multipart uploadId／abort／版本清理，並收窄 `isReferenced` 為 active generation，避免 failed staging 永久保護殘件。09 才實測6000份、大於4GiB與效能門檻，未把小量驗證視為容量達標。

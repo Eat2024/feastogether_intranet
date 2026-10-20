@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalPrivateFileStorage } from './local-private-file-storage.service';
@@ -119,6 +119,21 @@ describe('LocalPrivateFileStorage', () => {
     expect(await readFile(join(root, original.objectKey), 'utf8')).toBe(
       'source',
     );
+  });
+
+  it('目的端目錄不可寫入時中止來源串流，保留既有檔案', async () => {
+    await writeFile(join(root, 'exports'), 'existing');
+    const stream = Readable.from(['partial']);
+    await expect(
+      storage.storeStream({
+        directory: 'exports/job',
+        extension: 'zip',
+        mimeType: 'application/zip',
+        stream,
+      }),
+    ).rejects.toThrow();
+    expect(stream.destroyed).toBe(true);
+    expect(await readFile(join(root, 'exports'), 'utf8')).toBe('existing');
   });
 
   it('拒絕 traversal 與不安全的 logical directory', async () => {

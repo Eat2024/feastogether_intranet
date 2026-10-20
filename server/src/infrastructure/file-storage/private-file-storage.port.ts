@@ -15,9 +15,12 @@ export interface StorePrivateStreamInput {
   mimeType: 'application/zip';
   stream: Readable;
   signal?: AbortSignal;
+  /** 容量／multipart partSize 預估，並非精確 ContentLength；禁止當作 HTTP Content-Length。 */
   expectedSize?: number;
   /** 在資料開始寫入前保存 generation 物件位置，供中斷後清理。 */
-  onStaging?: (reference: PrivateFileReference) => Promise<void>;
+  onStaging?: (
+    reference: PrivateFileReference & { uploadId?: string },
+  ) => Promise<void>;
 }
 
 export interface ReadPrivateFileOptions {

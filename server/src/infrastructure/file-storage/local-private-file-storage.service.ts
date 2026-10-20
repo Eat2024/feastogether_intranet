@@ -58,7 +58,6 @@ export class LocalPrivateFileStorage implements PrivateFileStorage {
     const objectKey = createPrivateObjectKey(input.directory, input.extension);
     const target = this.resolveObjectKey(objectKey);
     const temporary = `${target}.tmp`;
-    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     const hash = createHash('sha256');
     let fileSize = 0;
     const meter = new Transform({
@@ -69,6 +68,7 @@ export class LocalPrivateFileStorage implements PrivateFileStorage {
       },
     });
     try {
+      await mkdir(dirname(target), { recursive: true, mode: 0o700 });
       await input.onStaging?.({ objectKey });
       await pipeline(
         input.stream,
@@ -86,7 +86,7 @@ export class LocalPrivateFileStorage implements PrivateFileStorage {
       };
     } catch (error) {
       input.stream.destroy();
-      await rm(temporary, { force: true });
+      await rm(temporary, { force: true }).catch(() => undefined);
       throw error;
     }
   }

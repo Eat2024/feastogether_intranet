@@ -1,3 +1,4 @@
+import type { EsignNotificationBatch } from '../types/esignDocuments';
 import type { DraftSettingsBody } from '../types/esignDocuments';
 import api from '@/api/config';
 import axios from 'axios';
@@ -187,3 +188,10 @@ export const saveDraftSettings = async ({ id, body }: { id: string; body: DraftS
   const res = await api<EsignDocumentDetail>({ method: 'PATCH', url: endpoints.ESIGN_DOCUMENT_DRAFT_SETTINGS(id), data: body });
   return res.data;
 };
+
+export async function createNotificationBatch(id: string, body: {requestId: string; selection: 'selected' | 'all_pending'; signerPublicIds?: string[]}): Promise<EsignNotificationBatch> {
+  return (await api<EsignNotificationBatch>({method:'POST',url:endpoints.ESIGN_NOTIFICATION_BATCHES(id),data:body})).data;
+}
+export async function getNotificationBatch(id: string,batchId: string): Promise<EsignNotificationBatch> {
+  return (await api<EsignNotificationBatch>({method:'GET',url:endpoints.ESIGN_NOTIFICATION_BATCH(id,batchId)})).data;
+}

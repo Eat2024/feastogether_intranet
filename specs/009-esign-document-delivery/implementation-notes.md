@@ -22,3 +22,11 @@
 ## Ticket 02 — 後端依固定設定繪製浮水印
 
 程式、字型來源、TDD、實際渲染與下載一致性結果見 [浮水印驗證紀錄](implementation-notes-watermark.md)。保留 watermark 選擇，由後端在副本 hash 前加印；繁體字型為改名 OFL TrueType 子集，正式下載不重畫。已實際渲染八頁並解碼四種旋轉頁的 QR。ZIP 一致性待 Ticket 10 整合。
+
+## Ticket 05 — 單人外部催簽
+
+- 真API先提交batch/log後入列；目前沿用外部邀請queue與既有maintenance，不新增排程或環境變數。通知worker按kind分流，原邀請digest不旋轉；提醒token獨立雜湊/密文且綁原邀請世代，SMTP接受後清密文、保留OTP入口。
+- 明確未寄送最多三次；SMTP資料階段斷線等不確定結果及過期lease均標unknown，不自動再寄。pending/processing跨午夜阻擋新申請，delivered/unknown按實際派送台北曆日佔額度。
+- 新增notification欄位migration `1792454402000`，同步entity/schema、時間索引、唯一鍵及舊邀請寫入預設。已有reminder紀錄時拒絕down，避免抹掉憑證與稽核。
+- 單人通知正式元件透過API、同操作requestId與結果輪詢；原邀請狀態不會被催簽結果蓋掉。完整多選/全部及分頁歷史仍由ticket06交付。
+- 驗證：server 830 unit tests、schema 6 tests、reminder API/worker 8 e2e tests；server/client build與lint通過（server既有warning）。純資格測試覆蓋台北23:59:59/00:00及跨日in-flight；e2e覆蓋新舊邀請OTP、世代撤銷、SMTP unknown、有限重試、寄前停止、過期lease、並發受理與migration回退保護。

@@ -17,9 +17,13 @@ export function buildInvitationMail(
 ): InvitationMailContent {
   const deadline = formatInTaipei(input.signEndAt, 'yyyy/M/d HH:mm');
   const url = `${externalOrigin}/api/external-signature-invitations/${encodeURIComponent(input.invitationToken)}`;
-  const subject = `電子簽署邀請：${input.documentTitle}`;
+  const subject = `${input.kind === 'reminder' ? '電子簽署提醒' : '電子簽署邀請'}：${input.documentTitle}`;
+  const opening =
+    input.kind === 'reminder'
+      ? '提醒您尚有文件待簽署，請於期限前完成。'
+      : `您收到 ${input.creatorName} 發起的電子簽署邀請。`;
   const lines = [
-    `您收到 ${input.creatorName} 發起的電子簽署邀請。`,
+    opening,
     `文件：${input.documentTitle}`,
     `簽署期限（台北時間）：${deadline}`,
     `開啟邀請：${url}`,
@@ -28,7 +32,7 @@ export function buildInvitationMail(
   return {
     subject,
     text: lines.join('\n'),
-    html: `<p>您收到 ${escapeHtml(input.creatorName)} 發起的電子簽署邀請。</p><p>文件：${escapeHtml(input.documentTitle)}</p><p>簽署期限（台北時間）：${escapeHtml(deadline)}</p><p><a href="${escapeHtml(url)}">開啟簽署邀請</a></p><p>此連結僅供指定簽署人使用，請勿轉寄。</p>`,
+    html: `<p>${escapeHtml(opening)}</p><p>文件：${escapeHtml(input.documentTitle)}</p><p>簽署期限（台北時間）：${escapeHtml(deadline)}</p><p><a href="${escapeHtml(url)}">開啟簽署邀請</a></p><p>此連結僅供指定簽署人使用，請勿轉寄。</p>`,
   };
 }
 

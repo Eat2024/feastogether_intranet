@@ -3,6 +3,7 @@
 // 檢視頁（後端文件）的簽署人清單：本頁資料已在外層篩選、排序、分頁。
 // 欄位與 mock 版相同；後端尚未提供的資料（拒絕原因、通知次數、備註）與操作（通知）保留位置並標示「後端未支援」。
 // 外部簽署人的邀請信寄送結果顯示在「通知紀錄」，個人副本產製狀態顯示在操作欄的匯出按鈕。
+import SingleReminderButton from './SingleReminderButton';
 import type { EsignSignerStatus, EsignSignerView } from '@/api/types';
 import { downloadSignerCompletedFile } from '@/api/requests';
 import SortableHeaderCell from '@/components/SortableHeaderCell';
@@ -246,12 +247,7 @@ export default function DocumentSignerTable({
                       />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <TooltipIconButton
-                        label={`通知（${UNSUPPORTED}）`}
-                        icon={<NotificationsActiveRoundedIcon />}
-                        color="info"
-                        disabled
-                      />
+                      <SingleReminderButton documentId={documentId} signer={s} />
                       {/* 個人副本產製完成後才能下載；產製失敗改顯示警示圖示 */}
                       {s.completion.status === 'failed' ? (
                         <Tooltip title={`無法匯出：${COMPLETION_HINT.failed}${s.signedAt ? `（${formatTime(s.signedAt)} 簽署）` : ''}`}>

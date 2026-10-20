@@ -71,6 +71,7 @@ describe('buildMysqlOptions', () => {
       'ExpiredDocuments1792368000000',
       'DraftSettings1792454400000',
       'RejectionCompletion1792454401000',
+      'ExternalReminders1792454402000',
     ]);
   });
 

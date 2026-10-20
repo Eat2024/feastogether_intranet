@@ -26,6 +26,9 @@ export const endpoints = {
   EXTERNAL_SIGNING_TASK_SIGNATURES: 'external-signing-task/signatures',
   EXTERNAL_SIGNING_TASK_COMPLETED_FILE: 'external-signing-task/completed-file',
 
+  ESIGN_NOTIFICATION_BATCHES: (id: string) => `esign/documents/${encodeURIComponent(id)}/notification-batches`,
+  ESIGN_NOTIFICATION_BATCH: (id: string, batchId: string) => `esign/documents/${encodeURIComponent(id)}/notification-batches/${encodeURIComponent(batchId)}`,
+
   // Health
   HEALTH: 'health',
 };

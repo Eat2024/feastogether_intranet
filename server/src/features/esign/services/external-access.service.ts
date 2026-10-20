@@ -1,3 +1,4 @@
+import { NotificationRepository } from '../repositories/notification.repository';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { Inject, Injectable } from '@nestjs/common';
@@ -66,6 +67,7 @@ export class ExternalAccessService {
     @Inject(INVITATION_MAIL_SENDER)
     private readonly mailer: InvitationMailSender,
     private readonly credentials: ExternalAccessCredentialService,
+    private readonly notifications: NotificationRepository,
   ) {}
 
   isTokenFormat(token: string): boolean {
@@ -256,8 +258,12 @@ export class ExternalAccessService {
       : lock
         ? await this.documents.findByIdForUpdate(signer.documentId, manager)
         : await this.documents.findById(signer.documentId, manager);
-    if (signer && document && lock)
-      signer = await this.signers.findByIdForUpdate(signer.id, manager);
+    if (signer && document && lock) {
+      const current = await this.findSigner(key, manager);
+      signer = current
+        ? await this.signers.findByIdForUpdate(current.id, manager)
+        : null;
+    }
     const access = { document, signer };
     this.access.assertExternalAccess(access, new Date());
     return access;
@@ -265,11 +271,35 @@ export class ExternalAccessService {
 
   /** 存取憑證不存在或已過期時找不到簽署人，與邀請失效相同處理 */
   private async findSigner(key: SignerKey, manager: EntityManager) {
-    if ('invitationToken' in key)
-      return this.signers.findByInvitationDigest(
-        this.tokens.digest(key.invitationToken),
+    if ('invitationToken' in key) {
+      const digest = this.tokens.digest(key.invitationToken);
+      const original = await this.signers.findByInvitationDigest(
+        digest,
         manager,
       );
+      if (original) return original;
+      const reminder = await this.notifications.findReminderDigest(
+        digest,
+        manager,
+      );
+      const signer = reminder?.signer;
+      if (
+        !reminder ||
+        !signer ||
+        !['delivered', 'unknown'].includes(reminder.result) ||
+        signer.deletedAt ||
+        reminder.invitationGenerationSha256 !== signer.invitationTokenSha256
+      )
+        return null;
+      // 已簽本人仍可透過舊信重新 OTP 下載；待簽才檢查提醒期限。
+      if (
+        signer.status === 'pending' &&
+        (!reminder.reminderExpiresAt ||
+          new Date() >= reminder.reminderExpiresAt)
+      )
+        return null;
+      return signer;
+    }
     const signerId = await this.credentials.signerId(key.credential);
     return signerId === null ? null : this.signers.findById(signerId, manager);
   }

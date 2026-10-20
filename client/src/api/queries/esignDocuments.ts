@@ -1,3 +1,4 @@
+import { getNotificationBatch } from '../requests/esignDocuments';
 import { queryKeys } from '@/api/query-keys';
 import { queryOptions } from '@/api/query-options';
 import { getDocument, getDocumentHistory, getDocuments } from '@/api/requests';
@@ -47,4 +48,8 @@ export function useGetDocumentHistoryQuery<
     ...queryOptions.useGetDocumentHistoryQuery,
     ...options,
   });
+}
+
+export function useGetNotificationBatchQuery(id: string,batchId: string | null) {
+  return useQuery({queryKey:[queryKeys.ESIGN_NOTIFICATION_BATCH,id,batchId],queryFn:()=>getNotificationBatch(id,batchId!),enabled:batchId !== null,...queryOptions.useGetNotificationBatchQuery,refetchInterval:(query)=>query.state.data?.status === 'completed' ? false : 2000});
 }

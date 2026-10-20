@@ -75,6 +75,9 @@ export interface UpdateDocumentBody {
 export type EsignSignerStatus = 'pending' | 'signed' | 'rejected' | 'rejected';
 
 export interface EsignSignerView {
+  reminderEligibility?: { eligible: boolean; reasonCode: string | null; nextEligibleAt: string | null };
+  latestReminder?: { status: string; reasonCode: string | null; completedAt: string | null } | null;
+  deliveredReminderCount?: number;
   publicId: string;
   type: 'user' | 'email';
   name: string;
@@ -158,4 +161,16 @@ export interface DraftSettingsBody {
   signEndAt?: string | null;
   watermark?: boolean;
   allowReject?: boolean;
+}
+
+/** 催簽受理不是已送達；SMTP 接受後才顯示已寄出。 */
+export interface EsignNotificationBatch {
+  batchId: string;
+  kind: 'invitation' | 'reminder';
+  status: 'pending' | 'completed';
+  selectedCount: number;
+  queuedCount: number;
+  notSentCount: number;
+  createdAt: string;
+  items: Array<{ signerPublicId: string; name: string; status: string; reasonCode: string | null; attemptCount: number; completedAt: string | null; attemptHistory: Array<{ status: string; at: string; reasonCode: string | null }> }>;
 }

@@ -1,3 +1,4 @@
+import { EsignSigner } from '../entities/esign-signer.entity';
 import { Injectable } from '@nestjs/common';
 import { type DeepPartial, type EntityManager, In } from 'typeorm';
 import { EsignDocument } from '../entities/esign-document.entity';
@@ -6,6 +7,39 @@ import { EsignNotificationLog } from '../entities/esign-notification-log.entity'
 
 @Injectable()
 export class NotificationRepository {
+  findBatchRequest(
+    documentId: number,
+    notifiedByUserId: number,
+    requestId: string,
+    manager: EntityManager,
+  ) {
+    return manager.findOne(EsignNotificationBatch, {
+      where: { documentId, notifiedByUserId, requestId },
+    });
+  }
+  findBatchPublic(
+    documentId: number,
+    publicId: string,
+    manager: EntityManager,
+  ) {
+    return manager.findOne(EsignNotificationBatch, {
+      where: { documentId, publicId },
+    });
+  }
+  findBatchLogs(batchId: number, manager: EntityManager) {
+    return manager.find(EsignNotificationLog, {
+      where: { batchId },
+      relations: { signer: true },
+      order: { id: 'ASC' },
+    });
+  }
+  findReminderDigest(reminderTokenSha256: string, manager: EntityManager) {
+    return manager.findOne(EsignNotificationLog, {
+      where: { reminderTokenSha256 },
+      relations: { signer: true },
+    });
+  }
+
   createBatch(
     fields: DeepPartial<EsignNotificationBatch>,
     manager: EntityManager,
@@ -49,15 +83,30 @@ export class NotificationRepository {
       relations: { signer: true },
     });
     if (!candidate?.signer) return null;
-    // 與停止、簽署及 audit 一致，先鎖 document，避免反向鎖定。
-    await this.lockDocument(candidate.signer.documentId, manager);
-    return manager.findOne(EsignNotificationLog, {
-      where: { id },
-      relations: {
-        signer: { document: { createdByUser: true } },
-      },
+    // 明確依 document → signer → log 鎖定，避免 joined lock 讓 MySQL 自選鎖序。
+    const document = await this.lockDocument(
+      candidate.signer.documentId,
+      manager,
+    );
+    if (!document) return null;
+    const signer = await manager.findOne(EsignSigner, {
+      where: { id: candidate.signerId },
       lock: { mode: 'pessimistic_write' },
     });
+    if (!signer) return null;
+    const log = await this.findLogByIdForUpdate(id, manager);
+    if (!log) return null;
+    signer.document =
+      (await manager.findOne(EsignDocument, {
+        where: { id: document.id },
+        relations: { createdByUser: true },
+      })) ?? undefined;
+    log.signer = signer;
+    log.batch =
+      (await manager.findOne(EsignNotificationBatch, {
+        where: { id: log.batchId },
+      })) ?? undefined;
+    return log;
   }
 
   saveLog(log: EsignNotificationLog, manager: EntityManager) {
@@ -72,18 +121,21 @@ export class NotificationRepository {
   ) {
     return manager
       .createQueryBuilder(EsignNotificationLog, 'log')
+      .innerJoin('log.batch', 'batch')
       .innerJoin('log.signer', 'signer')
       .innerJoin('signer.document', 'document')
       .select('log.id', 'id')
       .where(
-        "((log.result IN ('pending','failed') AND (log.next_attempt_at IS NULL OR log.next_attempt_at <= :now)) OR (log.result = 'processing' AND log.processing_started_at < :staleBefore))",
+        `(
+        (batch.kind = 'reminder' AND (
+          (log.result IN ('pending','failed') AND log.attempt_count < 3 AND log.reminder_token_ciphertext IS NOT NULL AND (log.next_attempt_at IS NULL OR log.next_attempt_at <= :now))
+          OR (log.result = 'processing' AND log.processing_started_at < :staleBefore)))
+        OR (batch.kind = 'invitation' AND
+          ((log.result IN ('pending','failed') AND (log.next_attempt_at IS NULL OR log.next_attempt_at <= :now)) OR (log.result = 'processing' AND log.processing_started_at < :staleBefore))
+          AND signer.status = 'pending' AND document.status = 'active'
+          AND signer.invitation_token_ciphertext IS NOT NULL AND signer.invitation_expires_at > :now AND document.sign_end_at > :now)
+        )`,
         { now, staleBefore },
-      )
-      .andWhere("signer.status = 'pending' AND document.status = 'active'")
-      .andWhere('signer.invitation_token_ciphertext IS NOT NULL')
-      .andWhere(
-        'signer.invitation_expires_at > :now AND document.sign_end_at > :now',
-        { now },
       )
       .andWhere('log.id > :afterId', { afterId })
       .orderBy('log.id', 'ASC')
@@ -95,6 +147,7 @@ export class NotificationRepository {
     if (signerIds.length === 0) return Promise.resolve([]);
     return manager.find(EsignNotificationLog, {
       where: { signerId: In(signerIds) },
+      relations: { batch: true },
       order: { createdAt: 'DESC', id: 'DESC' },
     });
   }

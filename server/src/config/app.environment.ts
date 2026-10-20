@@ -9,9 +9,17 @@ export enum AppEnvironment {
 }
 
 export type EsignStorageDriver = 'local' | 's3';
-export type EsignMailDriver = 'fake' | 'smtp' | 'ses';
+export type EsignMailDriver = 'fake' | 'smtp';
 
 type Environment = Record<string, unknown>;
+
+/** staging／production 為對外部署環境：寄信須驗證且加密、不接受 AWS access key。 */
+export function isDeployedEnvironment(environment: unknown): boolean {
+  return (
+    environment === AppEnvironment.Staging ||
+    environment === AppEnvironment.Production
+  );
+}
 
 const EXPECTED_ESIGN_DRIVERS: Record<
   AppEnvironment,
@@ -19,8 +27,8 @@ const EXPECTED_ESIGN_DRIVERS: Record<
 > = {
   [AppEnvironment.Development]: { storage: 'local', mail: 'smtp' },
   [AppEnvironment.Test]: { storage: 'local', mail: 'fake' },
-  [AppEnvironment.Staging]: { storage: 'local', mail: 'ses' },
-  [AppEnvironment.Production]: { storage: 's3', mail: 'ses' },
+  [AppEnvironment.Staging]: { storage: 'local', mail: 'smtp' },
+  [AppEnvironment.Production]: { storage: 's3', mail: 'smtp' },
 };
 
 function requiredString(config: Environment, key: string): string {
@@ -82,7 +90,7 @@ function validateMailAddress(value: string, key: string): void {
 /**
  * 驗證電子簽部署矩陣並回傳正規化設定。
  *
- * Driver 只能依 NODE_ENV 選擇，避免 production 因設定錯誤降級到本機檔案或 SMTP。
+ * Driver 只能依 NODE_ENV 選擇，避免 production 因設定錯誤降級到本機檔案或 fake mailer。
  */
 export function validateAppEnvironment(config: Environment): Environment {
   const environment = (optionalString(config, 'NODE_ENV') ??
@@ -111,6 +119,7 @@ export function validateAppEnvironment(config: Environment): Environment {
     }
   } else {
     requiredString(config, 'ESIGN_S3_BUCKET');
+    requiredString(config, 'AWS_REGION');
   }
 
   if (mailDriver === 'smtp') {
@@ -125,6 +134,11 @@ export function validateAppEnvironment(config: Environment): Environment {
     }
     validateMailAddress(requiredString(config, 'SMTP_FROM'), 'SMTP_FROM');
 
+    // 部署環境一律以帳號驗證寄信；連線加密由 SMTP adapter 依環境強制
+    if (isDeployedEnvironment(environment)) {
+      requiredString(config, 'SMTP_USER');
+      requiredString(config, 'SMTP_PASSWORD');
+    }
     const user = optionalString(config, 'SMTP_USER');
     const password = optionalString(config, 'SMTP_PASSWORD');
     if ((user === undefined) !== (password === undefined)) {
@@ -132,18 +146,7 @@ export function validateAppEnvironment(config: Environment): Environment {
     }
   }
 
-  if (mailDriver === 'ses') {
-    validateMailAddress(requiredString(config, 'SES_FROM'), 'SES_FROM');
-  }
-
-  if (storageDriver === 's3' || mailDriver === 'ses') {
-    requiredString(config, 'AWS_REGION');
-  }
-
-  if (
-    environment === AppEnvironment.Staging ||
-    environment === AppEnvironment.Production
-  ) {
+  if (isDeployedEnvironment(environment)) {
     for (const key of [
       'AWS_ACCESS_KEY_ID',
       'AWS_SECRET_ACCESS_KEY',

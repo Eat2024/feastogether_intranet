@@ -58,7 +58,7 @@ Request：`application/x-www-form-urlencoded`，`token`（43 字元 base64url）
 
 | 狀態 | 條件 |
 |------|------|
-| 200 | 待簽者在有效期間；或已簽者在期限內 |
+| 200 | 待簽者在有效期間；或已簽者（不設期限，不受文件停止、到期或完成影響） |
 | 401 | 失效（`ESIGN_EXTERNAL_UNAUTHORIZED`） |
 | 409 | 待簽者早於開始時間（`ESIGN_SIGNING_NOT_STARTED`，message 含開始時間，`details.startAt` 為 ISO 8601） |
 
@@ -93,7 +93,7 @@ Request：`application/x-www-form-urlencoded`，`token`（43 字元 base64url）
 
 ## GET /api/external-signing-task/source-file
 
-- 狀態碼不變，授權改為存取檢查（已簽者在期限內也可讀取原始 PDF）。
+- 狀態碼不變，授權改為存取檢查（已簽者不設期限，也可讀取原始 PDF）。
 
 ## POST /api/external-signing-task/signatures
 

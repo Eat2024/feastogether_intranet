@@ -73,7 +73,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '建立外部簽署存取 session',
     description:
-      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁；有效邀請但簽署尚未開始時回 409 尚未開始頁（顯示開始時間，不設 cookie）；token 格式錯誤（400）、邀請無效或過期（401）時回相同的失效頁，服務暫時無法使用時回服務暫停頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
+      '驗證邀請 token，設定 HttpOnly 存取 cookie，並以 303 導向外部簽署頁；待簽者的 cookie 期限為邀請期限，已簽者任何時間都可重新建立（session cookie，不受簽署期限、文件停止或完成影響）；有效邀請但簽署尚未開始時回 409 尚未開始頁（顯示開始時間，不設 cookie）；token 格式錯誤（400）、邀請無效或過期（401）時回相同的失效頁，服務暫時無法使用時回服務暫停頁。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
   })
   @Post('external-signature-session')
   async createSession(
@@ -91,11 +91,12 @@ export class ExternalSignatureController {
     }
     try {
       const session = await this.external.createSession(token);
+      // 已簽者沒有期限：省略 expires 即為 session cookie
       setExternalAccessCookie(
         reply,
         this.config,
         token,
-        session.invitationExpiresAt,
+        session.invitationExpiresAt ?? undefined,
       );
       reply.redirect(
         `/external-signatures/${session.signerPublicId}`,

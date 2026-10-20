@@ -44,6 +44,10 @@ export class ExternalAccessService {
     return /^[A-Za-z0-9_-]{43}$/.test(token);
   }
 
+  /**
+   * 以邀請憑證建立外部存取並記錄開啟。
+   * 待簽者回傳邀請期限（帶期限的 cookie）；已簽者不設期限，回傳 null（session cookie）。
+   */
   async createSession(token: string) {
     const digest = this.tokens.digest(token);
     return this.mysql.transaction(async (manager) => {
@@ -57,21 +61,8 @@ export class ExternalAccessService {
       const signer = document
         ? await this.signers.findByInvitationDigestForUpdate(digest, manager)
         : null;
-      if (!signer || !document) {
-        this.access.assertExternalInvitation(
-          document,
-          signer,
-          digest,
-          new Date(),
-        );
-        throw new Error('unreachable');
-      }
-      this.access.assertExternalInvitation(
-        document,
-        signer,
-        digest,
-        new Date(),
-      );
+      this.access.assertExternalAccess(document, signer, digest, new Date());
+      if (!signer || !document) throw new Error('unreachable');
       await this.audit.append(
         {
           documentId: document.id,
@@ -83,7 +74,7 @@ export class ExternalAccessService {
       );
       return {
         signerPublicId: signer.publicId,
-        invitationExpiresAt: signer.invitationExpiresAt!,
+        invitationExpiresAt: signer.invitationExpiresAt,
       };
     });
   }

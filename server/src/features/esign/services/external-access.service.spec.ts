@@ -34,10 +34,17 @@ describe('ExternalAccessService', () => {
       {} as never,
     );
     const service = new ExternalAccessService(
-      { getManager: () => manager } as never,
-      { findById: jest.fn(async () => document) } as never,
+      {
+        getManager: () => manager,
+        transaction: (run: (m: never) => unknown) => run(manager),
+      } as never,
+      {
+        findById: jest.fn(async () => document),
+        findByIdForUpdate: jest.fn(async () => document),
+      } as never,
       {
         findByInvitationDigest: jest.fn(async () => signer),
+        findByInvitationDigestForUpdate: jest.fn(async () => signer),
         completionCounts: jest.fn(async () => ({ pending: 0, signed: 1 })),
       } as never,
       { findByDocument: jest.fn(async () => []) } as never,
@@ -65,6 +72,45 @@ describe('ExternalAccessService', () => {
     expect(service.isTokenFormat('A'.repeat(42))).toBe(false);
     expect(service.isTokenFormat(`${'A'.repeat(42)}=`)).toBe(false);
     expect(service.isTokenFormat(`${'A'.repeat(42)}+`)).toBe(false);
+  });
+
+  it.each(['active', 'stopped', 'expired', 'completed'])(
+    '已簽者在文件 %s 時可重新建立 session：不回傳期限（session cookie）並記錄開啟',
+    async (status) => {
+      const { service, signer, document, audit } = setup();
+      document.status = status;
+      await expect(service.createSession('A'.repeat(43))).resolves.toEqual({
+        signerPublicId: signer.publicId,
+        invitationExpiresAt: null,
+      });
+      expect(audit.append).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'external_invitation.opened' }),
+        manager,
+      );
+    },
+  );
+
+  it('待簽者建立 session 回傳邀請期限', async () => {
+    const { service, signer, document } = setup();
+    const expiresAt = new Date(Date.now() + 60_000);
+    signer.status = 'pending';
+    signer.invitationExpiresAt = expiresAt;
+    document.status = 'active';
+    await expect(service.createSession('A'.repeat(43))).resolves.toEqual({
+      signerPublicId: signer.publicId,
+      invitationExpiresAt: expiresAt,
+    });
+  });
+
+  it('待簽者在文件停止後建立 session 回 401，不記錄開啟', async () => {
+    const { service, signer, document, audit } = setup();
+    signer.status = 'pending';
+    signer.invitationExpiresAt = new Date(Date.now() + 60_000);
+    document.status = 'stopped';
+    await expect(service.createSession('A'.repeat(43))).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(audit.append).not.toHaveBeenCalled();
   });
 
   it('已簽者在文件完成後仍可取得簽署人識別碼，供重送同一次簽名取回既有結果', async () => {

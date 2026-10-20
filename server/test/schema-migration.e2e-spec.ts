@@ -162,7 +162,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(58);
+        expect(first.timeColumns).toHaveLength(60);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(

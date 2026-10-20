@@ -243,6 +243,13 @@ DROP TABLE IF EXISTS `esign_notification_batches`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `esign_notification_batches` (
+  `public_id` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT (uuid()) COMMENT '通知批次公開 UUID',
+  `kind` varchar(20) NOT NULL DEFAULT 'invitation' COMMENT '初邀或催簽',
+  `request_id` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '催簽請求 UUID',
+  `request_payload_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '正規化請求雜湊',
+  UNIQUE KEY `uq_esign_notification_batches_public_id` (`public_id`),
+  UNIQUE KEY `uq_esign_notification_batches_request` (`document_id`,`notified_by_user_id`,`request_id`),
+  CONSTRAINT `chk_esign_notification_batches_kind` CHECK (`kind` IN ('invitation','reminder')),
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '通知批次流水號',
   `document_id` bigint NOT NULL COMMENT '文件 ID',
   `filter_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '通知篩選',
@@ -261,6 +268,17 @@ DROP TABLE IF EXISTS `esign_notification_logs`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `esign_notification_logs` (
+  `dispatch_date` date DEFAULT NULL COMMENT '台北寄送曆日',
+  `lease_token` char(36) DEFAULT NULL COMMENT '寄送租約 UUID',
+  `attempt_history_json` json DEFAULT NULL COMMENT '有限次投遞狀態歷史，不含憑證',
+  `reminder_token_sha256` char(64) DEFAULT NULL COMMENT '催簽憑證雜湊',
+  `reminder_token_ciphertext` text DEFAULT NULL COMMENT '催簽憑證密文',
+  `invitation_generation_sha256` char(64) DEFAULT NULL COMMENT '建立時邀請世代雜湊',
+  `reminder_expires_at` datetime(6) DEFAULT NULL COMMENT '待簽催簽憑證期限',
+  UNIQUE KEY `uq_esign_notification_logs_reminder_token` (`reminder_token_sha256`),
+  KEY `idx_esign_notification_logs_dispatch_date` (`dispatch_date`),
+  KEY `idx_esign_notification_logs_reminder_expires_at` (`reminder_expires_at`),
+  KEY `idx_esign_notification_logs_signer_result_date` (`signer_id`,`result`,`dispatch_date`),
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '通知明細流水號',
   `batch_id` bigint NOT NULL COMMENT '通知批次 ID',
   `signer_id` bigint NOT NULL COMMENT '簽署人 ID',
@@ -285,7 +303,7 @@ CREATE TABLE `esign_notification_logs` (
   CONSTRAINT `fk_esign_notification_logs_batch` FOREIGN KEY (`batch_id`) REFERENCES `esign_notification_batches` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_notification_logs_signer` FOREIGN KEY (`signer_id`) REFERENCES `esign_signers` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `chk_esign_notification_logs_channel` CHECK ((`channel` = _utf8mb4'email')),
-  CONSTRAINT `chk_esign_notification_logs_result` CHECK ((`result` in (_utf8mb4'pending',_utf8mb4'processing',_utf8mb4'delivered',_utf8mb4'failed')))
+  CONSTRAINT `chk_esign_notification_logs_result` CHECK ((`result` in (_utf8mb4'pending',_utf8mb4'processing',_utf8mb4'delivered',_utf8mb4'failed',_utf8mb4'skipped',_utf8mb4'unknown')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知明細';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_signature_records`;

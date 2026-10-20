@@ -15,7 +15,7 @@ import { EsignSigner } from './esign-signer.entity';
 @Check('chk_esign_notification_logs_channel', "`channel` = 'email'")
 @Check(
   'chk_esign_notification_logs_result',
-  "`result` IN ('pending','processing','delivered','failed')",
+  "`result` IN ('pending','processing','delivered','failed','skipped','unknown')",
 )
 @Index(
   'uq_esign_notification_logs_batch_signer_channel',
@@ -36,7 +36,81 @@ import { EsignSigner } from './esign-signer.entity';
   'nextAttemptAt',
   'id',
 ])
+@Index('idx_esign_notification_logs_signer_result_date', [
+  'signerId',
+  'result',
+  'dispatchDate',
+])
+@Index('uq_esign_notification_logs_reminder_token', ['reminderTokenSha256'], {
+  unique: true,
+})
+@Index('idx_esign_notification_logs_dispatch_date', ['dispatchDate'])
+@Index('idx_esign_notification_logs_reminder_expires_at', ['reminderExpiresAt'])
 export class EsignNotificationLog {
+  @Column({
+    name: 'dispatch_date',
+    type: 'date',
+    nullable: true,
+    comment: '台北寄送曆日',
+  })
+  dispatchDate?: string | null;
+
+  @Column({
+    name: 'lease_token',
+    type: 'char',
+    nullable: true,
+    comment: '寄送租約 UUID',
+    length: 36,
+  })
+  leaseToken?: string | null;
+
+  @Column({
+    name: 'reminder_token_sha256',
+    type: 'char',
+    nullable: true,
+    comment: '催簽憑證雜湊',
+    length: 64,
+  })
+  reminderTokenSha256?: string | null;
+
+  @Column({
+    name: 'reminder_token_ciphertext',
+    type: 'text',
+    nullable: true,
+    comment: '催簽憑證密文',
+  })
+  reminderTokenCiphertext?: string | null;
+
+  @Column({
+    name: 'invitation_generation_sha256',
+    type: 'char',
+    nullable: true,
+    comment: '建立時邀請世代雜湊',
+    length: 64,
+  })
+  invitationGenerationSha256?: string | null;
+
+  @Column({
+    name: 'reminder_expires_at',
+    type: 'datetime',
+    nullable: true,
+    comment: '待簽催簽憑證期限',
+    precision: 6,
+  })
+  reminderExpiresAt?: Date | null;
+
+  @Column({
+    name: 'attempt_history_json',
+    type: 'json',
+    nullable: true,
+    comment: '有限次投遞狀態歷史，不含憑證',
+  })
+  attemptHistoryJson?: Array<{
+    status: string;
+    at: string;
+    reasonCode: string | null;
+  }> | null;
+
   @PrimaryGeneratedColumn({ type: 'bigint', comment: '通知明細流水號' })
   id!: number;
 

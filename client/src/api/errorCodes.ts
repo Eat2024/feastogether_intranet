@@ -10,6 +10,9 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   ESIGN_EXPORT_NOT_READY: '匯出尚未完成',
   ESIGN_EXPORT_RETRY_INVALID: '來源完整性異常，無法重試',
 
+  ESIGN_REMINDER_REQUEST_CONFLICT: '同一催簽請求不得變更內容',
+  ESIGN_NO_ELIGIBLE_REMINDER_RECIPIENTS: '目前沒有可通知的外部待簽署人',
+  ESIGN_REMINDER_SELECTION_INVALID: '請選擇有效的催簽名單',
   ESIGN_REJECTION_REASON_INVALID: '拒絕原因須為最多 200 字的文字',
   ESIGN_REJECTION_CONFLICT: '簽署人已完成簽署或拒簽，無法變更結果',
   ESIGN_REJECTION_NOT_ALLOWED: '此文件未開放拒絕簽署',

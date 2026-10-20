@@ -6,7 +6,7 @@
   ],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "(?:^|/)(?:esign-signer-management|esign-export|esign-rejection|esign-draft-settings|org-chart|oauth-runtime|oauth-login|password-login|request-id|api-coverage|dev-login|webview-session|core-esign-flow|core-esign-flow-queue|core-esign-flow-scale)\\.e2e-spec\\.ts$",
+  "testRegex": "(?:^|/)(?:esign-reminders|esign-signer-management|esign-export|esign-rejection|esign-draft-settings|org-chart|oauth-runtime|oauth-login|password-login|request-id|api-coverage|dev-login|webview-session|core-esign-flow|core-esign-flow-queue|core-esign-flow-scale)\\.e2e-spec\\.ts$",
   "testPathIgnorePatterns": [
     "/node_modules/"
   ],

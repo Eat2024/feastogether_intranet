@@ -13,15 +13,16 @@ import { randomClientIp } from './signature-verification.helper';
 describe('核心電子簽安全邊界', () => {
   let ctx: SecurityE2eContext;
   const token = 'A'.repeat(43);
+  /** script 只放行單一固定內容（重新寄送倒數）的雜湊，不允許 inline 或外部 script。 */
   const INVITATION_PAGE_CSP =
-    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+    /^default-src 'none'; script-src 'sha256-[A-Za-z0-9+/]{43}='; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'$/;
 
   /** 邀請頁在取得存取前由後端直接回應：HTML、不快取、不送 referrer、不可嵌入、不設 cookie。 */
   function expectInvitationPageHeaders(response: request.Response) {
     expect(response.headers['content-type']).toMatch(/^text\/html/);
     expect(response.headers['cache-control']).toBe('no-store');
     expect(response.headers['referrer-policy']).toBe('no-referrer');
-    expect(response.headers['content-security-policy']).toBe(
+    expect(response.headers['content-security-policy']).toMatch(
       INVITATION_PAGE_CSP,
     );
     expect(response.headers['set-cookie']).toBeUndefined();

@@ -37,6 +37,7 @@ import { ExternalAccessService } from '../services/external-access.service';
 import { ExternalOtpService } from '../services/external-otp.service';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
 import {
+  INVITATION_PAGE_CSP,
   invitationConfirmPage,
   invitationInvalidPage,
   otpInputPage,
@@ -80,7 +81,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '寄出外部簽署驗證碼',
     description:
-      '以表單欄位 token 驗證邀請；有效（待簽者在簽署期間，或已簽者）時寄 6 位數驗證碼到邀請信箱（10 分鐘有效，舊驗證碼失效），回驗證碼輸入頁（顯示遮罩後的信箱），並記錄 external_otp.sent。有效邀請但簽署尚未開始回 409 尚未開始頁；token 格式錯誤（400）、邀請無效或過期（401）回相同的失效頁；以上都不寄信。寄信失敗回 503 可重試頁，不保留驗證碼。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由邀請確認頁的 HTML 表單送出，不是 Next.js 頁面直接呼叫。',
+      '以表單欄位 token 驗證邀請；有效（待簽者在簽署期間，或已簽者）時寄 6 位數驗證碼到邀請信箱（10 分鐘有效，舊驗證碼失效），回驗證碼輸入頁（顯示遮罩後的信箱、重新寄送按鈕倒數 60 秒），並記錄 external_otp.sent。距上次寄送未滿 60 秒或同一簽署人 1 小時內已寄滿 5 封時回 429 驗證碼輸入頁並顯示可再寄送的時間，不寄信、不覆寫現有驗證碼。有效邀請但簽署尚未開始回 409 尚未開始頁；token 格式錯誤（400）、邀請無效或過期（401）回相同的失效頁；以上都不寄信。寄信失敗回 503 可重試頁，不保留驗證碼、不計入冷卻與寄送次數。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由邀請確認頁與驗證碼輸入頁（重新寄送）的 HTML 表單送出，不是 Next.js 頁面直接呼叫。',
   })
   @Post('external-signature-otps')
   async sendOtp(
@@ -91,11 +92,13 @@ export class ExternalSignatureController {
       reply,
       this.external.isTokenFormat(token),
       async () => {
-        const { email } = await this.external.sendOtp(token);
+        const { email, issue } = await this.external.sendOtp(token);
         this.sendInvitationPage(
           reply,
-          HttpStatus.OK,
-          otpInputPage(token, email),
+          issue.status === 'sent'
+            ? HttpStatus.OK
+            : HttpStatus.TOO_MANY_REQUESTS,
+          otpInputPage(token, email, issue),
         );
       },
     );
@@ -105,7 +108,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '以驗證碼建立外部簽署存取 session',
     description:
-      '以表單欄位 token＋code（6 位數驗證碼）驗證；邀請有效且驗證碼正確時設定 HttpOnly session cookie（不設期限，關閉瀏覽器即失效，待簽者與已簽者相同）並以 303 導向外部簽署頁，記錄 external_otp.verified 與 external_invitation.opened。驗證碼錯誤回 401 錯誤頁並顯示剩餘次數（錯滿 5 次即失效）；驗證碼過期、已使用或已失效回 401 錯誤頁提示重新開啟。邀請無效或過期回 401 失效頁、token 或 code 格式錯誤回 400 失效頁、尚未開始回 409 尚未開始頁，都不比對驗證碼。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由驗證碼輸入頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
+      '以表單欄位 token＋code（6 位數驗證碼）驗證；邀請有效且驗證碼正確時設定 HttpOnly session cookie（不設期限，關閉瀏覽器即失效，待簽者與已簽者相同）並以 303 導向外部簽署頁，記錄 external_otp.verified 與 external_invitation.opened。驗證碼錯誤回 401 錯誤頁並顯示剩餘次數（錯滿 5 次即失效）；驗證碼過期、已使用或已失效回 401 錯誤頁提示重新寄送。邀請無效或過期回 401 失效頁、token 或 code 格式錯誤回 400 失效頁、尚未開始回 409 尚未開始頁，都不比對驗證碼。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由驗證碼輸入頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
   })
   @Post('external-signature-session')
   async createSession(
@@ -303,10 +306,7 @@ export class ExternalSignatureController {
     reply
       .header('Cache-Control', 'no-store')
       .header('Referrer-Policy', 'no-referrer')
-      .header(
-        'Content-Security-Policy',
-        `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
-      );
+      .header('Content-Security-Policy', INVITATION_PAGE_CSP);
   }
 
   /** 邀請頁一律回 HTML（包含錯誤），不讓外部簽署人看到 JSON。 */

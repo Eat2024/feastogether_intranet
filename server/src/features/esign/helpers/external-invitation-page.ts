@@ -1,11 +1,37 @@
+import { createHash } from 'node:crypto';
 import { formatInTaipei } from '#app/common/date-time.helper';
 import { escapeHtml } from '#app/common/escape-html';
+import type { OtpIssue } from '../services/external-otp.service';
 
 /*
  * 外部簽署人取得存取前由後端直接回應的頁面，版型依設計稿 docs/design/008-external-signing-flow。
- * 回應帶 CSP default-src 'none'、style-src 'unsafe-inline'：只用內嵌樣式（手機版面需要 media query）、
- * inline SVG 與系統字型，不引用任何外部資源。
+ * 回應帶 INVITATION_PAGE_CSP：只用內嵌樣式（手機版面需要 media query）、inline SVG 與系統字型，
+ * 不引用任何外部資源；script 只有重新寄送倒數一段，以內容雜湊放行。
  */
+
+/**
+ * 重新寄送按鈕的倒數：從伺服器給的 data-wait 秒數倒數，到時啟用按鈕。
+ * 以截止時刻計算剩餘秒數，手機切到信箱 App 時計時器暫停也不會失準。
+ */
+const RESEND_COUNTDOWN_SCRIPT = [
+  "const button=document.getElementById('otp-resend');",
+  'const end=Date.now()+Number(button.dataset.wait)*1000;',
+  'const timer=setInterval(()=>{',
+  'const seconds=Math.ceil((end-Date.now())/1000);',
+  "if(seconds>0){button.textContent='重新寄送驗證碼（'+seconds+' 秒後）';return}",
+  "clearInterval(timer);button.disabled=false;button.textContent='重新寄送驗證碼'",
+  '},1000);',
+].join('');
+
+/** 邀請頁的 CSP：script 只放行上面那段固定內容的 SHA-256。 */
+export const INVITATION_PAGE_CSP = [
+  "default-src 'none'",
+  `script-src 'sha256-${createHash('sha256').update(RESEND_COUNTDOWN_SCRIPT).digest('base64')}'`,
+  "style-src 'unsafe-inline'",
+  "form-action 'self'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+].join('; ');
 
 /** 卡片圖示：MUI Rounded 圖示的 SVG path 與顏色。 */
 const ICONS = {
@@ -40,8 +66,17 @@ const ICONS = {
 type PageForm =
   /** 「開啟電子簽署文件」：寄出驗證碼 */
   | { kind: 'open'; token: string }
-  /** 輸入驗證碼建立存取；error 有值時標示輸入錯誤 */
-  | { kind: 'otp'; token: string; error?: string };
+  /**
+   * 輸入驗證碼建立存取，同一表單附「重新寄送驗證碼」。resendWaitSeconds 大於 0 時重新寄送按鈕停用並倒數；
+   * error 有值時標示輸入錯誤；notice 說明寄送受限（429）。
+   */
+  | {
+      kind: 'otp';
+      token: string;
+      resendWaitSeconds: number;
+      error?: string;
+      notice?: string;
+    };
 
 interface ExternalPage {
   icon: keyof typeof ICONS;
@@ -71,6 +106,10 @@ const STYLE = [
   '#otp-error{padding:0 14px;font-size:12px;line-height:1.7;color:#D94647}',
   'button{width:100%;height:42px;padding:0 22px;border:0;border-radius:4px;background:#1976D2;color:#FFFFFF;font:inherit;font-size:14px;font-weight:500;box-shadow:0 3px 1px -2px rgba(0,0,0,0.2),0 2px 2px 0 rgba(0,0,0,0.14),0 1px 5px 0 rgba(0,0,0,0.12);cursor:pointer}',
   'button:hover{background:#1565C0}',
+  // 重新寄送：MUI text button，停用時轉灰
+  'button.text{background:transparent;color:#1976D2;box-shadow:none}button.text:hover{background:rgba(25,118,210,0.04)}',
+  'button.text:disabled{background:transparent;color:rgba(0,0,0,0.38);cursor:default}',
+  '#otp-notice{font-size:14px;color:#D94647}',
   // 手機寬度：較矮的頁首，卡片滿版並改靠上；驗證碼卡片較高，上方留白較少
   '@media (max-width:599.95px){header{height:56px;padding:0 16px}main{align-items:flex-start;padding:160px 16px 16px}main.otp{padding-top:120px}section{width:100%}}',
 ].join('');
@@ -112,12 +151,26 @@ function renderForm(form: PageForm): string {
           input: ' aria-invalid="true" aria-describedby="otp-error"',
           message: `<span id="otp-error" role="alert">${escapeHtml(form.error)}</span>`,
         };
+  const notice = form.notice
+    ? `<p id="otp-notice" role="alert">${escapeHtml(form.notice)}</p>`
+    : '';
   return (
     `<form method="post" action="/api/external-signature-session">${token}` +
     `<div class="field${error.field}"><div class="box"><label for="otp-code">6 位數驗證碼</label>` +
     '<input id="otp-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="000000"' +
     `${error.input}></div>${error.message}</div>` +
-    '<button type="submit">驗證並開啟文件</button></form>'
+    `<button type="submit">驗證並開啟文件</button>${resendButton(form.resendWaitSeconds)}${notice}</form>`
+  );
+}
+
+/** 重新寄送改送 otps 端點（同表單的 hidden token），不檢查驗證碼欄位；冷卻中停用並倒數。 */
+function resendButton(waitSeconds: number): string {
+  const attributes =
+    'type="submit" class="text" formaction="/api/external-signature-otps" formnovalidate';
+  if (waitSeconds <= 0) return `<button ${attributes}>重新寄送驗證碼</button>`;
+  return (
+    `<button ${attributes} id="otp-resend" disabled data-wait="${waitSeconds}">重新寄送驗證碼（${waitSeconds} 秒後）</button>` +
+    `<script>${RESEND_COUNTDOWN_SCRIPT}</script>`
   );
 }
 
@@ -140,15 +193,43 @@ export function invitationConfirmPage(token: string): string {
   });
 }
 
-/** 驗證碼輸入頁：寄出驗證碼後顯示，輸入正確才建立存取。 */
-export function otpInputPage(token: string, email: string): string {
+/**
+ * 驗證碼輸入頁：寄出驗證碼後顯示，重新寄送按鈕倒數冷卻秒數。冷卻中或已達每小時上限（429）時未寄新驗證碼，
+ * 同頁說明可再寄送的時間，先前寄出的驗證碼仍可輸入。
+ */
+export function otpInputPage(
+  token: string,
+  email: string,
+  issue: OtpIssue,
+): string {
   return renderPage({
     icon: 'otp',
     title: '輸入驗證碼',
     description: `驗證碼已寄到 ${maskEmail(email)}，10 分鐘內有效。`,
-    form: { kind: 'otp', token },
+    form: {
+      kind: 'otp',
+      token,
+      // 每小時上限可能要等數十分鐘：按鈕不倒數，改以 notice 說明可再寄送的時刻
+      resendWaitSeconds:
+        issue.status === 'hourly-limit' ? 0 : issue.retryAfterSeconds,
+      notice: resendLimitNotice(issue),
+    },
     notes: ['沒收到信？請檢查垃圾郵件。驗證碼只能使用一次，請勿提供給他人。'],
   });
+}
+
+/** 寄送受限的說明；每小時上限的時刻（台北時間）無條件進位到分鐘，照著時刻重試不會太早。 */
+function resendLimitNotice(issue: OtpIssue): string | undefined {
+  if (issue.status === 'cooldown')
+    return `請於 ${issue.retryAfterSeconds} 秒後再重新寄送。`;
+  if (issue.status === 'hourly-limit') {
+    const minute = 60_000;
+    const retryAt =
+      Math.ceil((Date.now() + issue.retryAfterSeconds * 1000) / minute) *
+      minute;
+    return `寄送次數已達上限，請於 ${formatInTaipei(retryAt, 'HH:mm')} 後再試。`;
+  }
+  return undefined;
 }
 
 /** 驗證碼錯誤頁：remainingAttempts 為 0 表示驗證碼已失效（過期、已使用或錯滿）。 */
@@ -164,14 +245,14 @@ export function otpRejectedPage(
     form: {
       kind: 'otp',
       token,
+      // 冷卻與上限由 otps 端點判斷，錯誤頁的重新寄送一律可按
+      resendWaitSeconds: 0,
       error:
         remainingAttempts > 0
           ? `驗證碼錯誤，還可以再試 ${remainingAttempts} 次。`
-          : '驗證碼已失效，請重新開啟邀請信中的連結，取得新的驗證碼。',
+          : '驗證碼已失效，請重新寄送。',
     },
-    notes: [
-      '錯誤 5 次或超過 10 分鐘，驗證碼即失效，請重新開啟邀請信中的連結。',
-    ],
+    notes: ['錯誤 5 次或超過 10 分鐘，驗證碼即失效，請重新寄送。'],
   });
 }
 

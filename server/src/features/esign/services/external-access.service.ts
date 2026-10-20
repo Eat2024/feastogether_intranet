@@ -25,7 +25,7 @@ import { EsignConsentService } from './esign-consent.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
 import { EsignViewMapper } from './esign-view.mapper';
-import { ExternalOtpService } from './external-otp.service';
+import { ExternalOtpService, type OtpIssue } from './external-otp.service';
 import { PdfValidationService } from './pdf-validation.service';
 
 export type ExternalSessionResult =
@@ -61,13 +61,14 @@ export class ExternalAccessService {
   }
 
   /**
-   * 按下「開啟電子簽署文件」：先做存取檢查（失效 401、尚未開始 409，都不寄信），
-   * 通過後寄驗證碼到邀請信箱並記錄寄出；回傳收件信箱供輸入頁遮罩顯示。
+   * 按下「開啟電子簽署文件」或「重新寄送驗證碼」：先做存取檢查（失效 401、尚未開始 409，都不寄信），
+   * 通過後寄驗證碼到邀請信箱並記錄寄出；冷卻中或已達每小時上限時不寄送、不記錄。
+   * 回傳收件信箱供輸入頁遮罩顯示，以及寄送結果供顯示可再寄送的時間。
    */
-  async sendOtp(token: string): Promise<{ email: string }> {
+  async sendOtp(token: string): Promise<{ email: string; issue: OtpIssue }> {
     const { signer, document } = await this.readAccess(token);
     const email = invitationEmail(signer);
-    await this.otp.issue(signer.id, async (code) => {
+    const issue = await this.otp.issue(signer.id, async (code) => {
       try {
         await this.mailer.sendOtp({
           recipientEmail: email,
@@ -79,6 +80,7 @@ export class ExternalAccessService {
         throw new AppException(...AppErrors.ESIGN_OTP_MAIL_FAILED);
       }
     });
+    if (issue.status !== 'sent') return { email, issue };
     await this.mysql.transaction((manager) =>
       this.audit.append(
         {
@@ -90,7 +92,7 @@ export class ExternalAccessService {
         manager,
       ),
     );
-    return { email };
+    return { email, issue };
   }
 
   /**

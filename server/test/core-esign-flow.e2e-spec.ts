@@ -1,3 +1,4 @@
+import { todayInTaipei } from '#app/common/date-time.helper';
 import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
 import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
@@ -41,6 +42,7 @@ import {
   VERIFICATION_URL,
 } from './signature-verification.helper';
 import {
+  clearOtpResendLimits,
   openExternalSession as openExternalSessionWithOtp,
   otpMails,
   requestOtp,
@@ -1675,21 +1677,7 @@ describe('核心電子簽 US1', () => {
     });
     expect(await openedEvents()).toEqual([]);
 
-    jest.useFakeTimers({
-      now: start,
-      doNotFake: [
-        'hrtime',
-        'nextTick',
-        'performance',
-        'queueMicrotask',
-        'setImmediate',
-        'clearImmediate',
-        'setInterval',
-        'clearInterval',
-        'setTimeout',
-        'clearTimeout',
-      ],
-    });
+    useFakeDate(start);
     try {
       expect(await openExternalSession(invitationToken)).toContain(
         'FT_ESIGN_EXTERNAL_ACCESS=',
@@ -1744,9 +1732,7 @@ describe('核心電子簽 US1', () => {
       // 同一驗證碼不能再用來建立另一個存取
       const reused = await submitOtp(ctx, token, code).expect(401);
       expect(reused.headers['set-cookie']).toBeUndefined();
-      expect(reused.text).toContain(
-        '驗證碼已失效，請重新開啟邀請信中的連結，取得新的驗證碼。',
-      );
+      expect(reused.text).toContain('驗證碼已失效，請重新寄送。');
 
       const audits = await db.query<
         Array<{ event_type: string; metadata_json: unknown }>
@@ -1783,7 +1769,7 @@ describe('核心電子簽 US1', () => {
     }
   });
 
-  it('驗證碼錯滿 5 次即失效並記錄；重新開啟寄出的新驗證碼使舊的立即失效', async () => {
+  it('驗證碼錯滿 5 次即失效並記錄；重新寄送的新驗證碼使舊的立即失效', async () => {
     const { documentId, token } = await initiateEmailDocument(
       '驗證碼錯誤次數文件',
       'otp-lock@example.test',
@@ -1802,8 +1788,11 @@ describe('核心電子簽 US1', () => {
     expect(afterLocked.text).toContain('驗證碼已失效');
     expect(afterLocked.headers['set-cookie']).toBeUndefined();
 
+    // 每次重新寄送前模擬冷卻已過
+    await clearOtpResendLimits(ctx);
     await requestOtp(ctx, token).expect(200);
     const { code: second } = otpMails(ctx).at(-1)!;
+    await clearOtpResendLimits(ctx);
     await requestOtp(ctx, token).expect(200);
     const { code: latest } = otpMails(ctx).at(-1)!;
     const replaced = await submitOtp(ctx, token, second).expect(401);
@@ -1860,6 +1849,108 @@ describe('核心電子簽 US1', () => {
     expect(expired.headers['set-cookie']).toBeUndefined();
   });
 
+  it('重新寄送驗證碼：冷卻期間按鈕停用並倒數；60 秒內重寄回 429、不寄信也不覆寫；冷卻後重寄使舊驗證碼失效、錯誤次數重算', async () => {
+    const { documentId, token } = await initiateEmailDocument(
+      '驗證碼重新寄送文件',
+      'otp-resend@example.test',
+    );
+    const redis = ctx.app.get<Redis>(REDIS_MAIN);
+    const cooldownKey = `esign:external-otp:${await onlySignerId(documentId)}:cooldown`;
+
+    const page = await requestOtp(ctx, token).expect(200);
+    const { code: first } = otpMails(ctx).at(-1)!;
+    const wrong = first === '000000' ? '000001' : '000000';
+    // 重新寄送與驗證在同一表單，冷卻期間停用並顯示剩餘秒數
+    expect(page.text).toMatch(
+      /<button [^>]*formaction="\/api\/external-signature-otps" formnovalidate [^>]*disabled[^>]*>重新寄送驗證碼（60 秒後）<\/button>/,
+    );
+    expect(page.text).toContain('沒收到信？請檢查垃圾郵件。');
+    // 倒數用的 inline script 只以內容雜湊經 CSP 放行
+    const [, script] = /<script>([^<]*)<\/script>/.exec(page.text)!;
+    expect(page.headers['content-security-policy']).toContain(
+      `script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'`,
+    );
+    await submitOtp(ctx, token, wrong).expect(401);
+
+    const mailCount = otpMails(ctx).length;
+    const limited = await requestOtp(ctx, token)
+      .expect(429)
+      .expect('Content-Type', /^text\/html/)
+      .expect('Cache-Control', 'no-store');
+    expect(otpMails(ctx)).toHaveLength(mailCount);
+    expect(limited.headers['set-cookie']).toBeUndefined();
+    expect(limited.text).toContain(
+      '驗證碼已寄到 o***@example.test，10 分鐘內有效。',
+    );
+    expect(limited.text).toMatch(/請於 (5\d|60) 秒後再重新寄送。/);
+    expect(limited.text).toMatch(
+      /disabled[^>]*>重新寄送驗證碼（(5\d|60) 秒後）</,
+    );
+    // 未覆寫現有驗證碼：錯誤次數接續計算
+    const stillFirst = await submitOtp(ctx, token, wrong).expect(401);
+    expect(stillFirst.text).toContain('驗證碼錯誤，還可以再試 3 次。');
+    // 錯誤頁的重新寄送可直接按
+    expect(stillFirst.text).toMatch(
+      /formaction="\/api\/external-signature-otps" formnovalidate>重新寄送驗證碼<\/button>/,
+    );
+    expect(stillFirst.text).toContain(
+      '錯誤 5 次或超過 10 分鐘，驗證碼即失效，請重新寄送。',
+    );
+
+    const cooldown = await redis.ttl(cooldownKey);
+    expect(cooldown).toBeGreaterThan(50);
+    expect(cooldown).toBeLessThanOrEqual(60);
+    // fake timers 推不動 Redis 的 TTL：直接讓冷卻到期，模擬 60 秒經過
+    await redis.del(cooldownKey);
+    await requestOtp(ctx, token).expect(200);
+    const { code: second } = otpMails(ctx).at(-1)!;
+    const replaced = await submitOtp(ctx, token, first).expect(401);
+    expect(replaced.text).toContain('驗證碼錯誤，還可以再試 4 次。');
+    await submitOtp(ctx, token, second).expect(303);
+  });
+
+  it('同一簽署人 1 小時內寄滿 5 封後重寄回 429 並顯示可再寄送的時刻，自第一次寄送滿 1 小時才可再寄', async () => {
+    const { documentId, token } = await initiateEmailDocument(
+      '驗證碼寄送上限文件',
+      'otp-hourly@example.test',
+    );
+    const redis = ctx.app.get<Redis>(REDIS_MAIN);
+    const signerId = await onlySignerId(documentId);
+    const cooldownKey = `esign:external-otp:${signerId}:cooldown`;
+    const hourlyKey = `esign:external-otp:${signerId}:hourly`;
+    for (let i = 0; i < 5; i += 1) {
+      await requestOtp(ctx, token).expect(200);
+      // 模擬 60 秒經過
+      await redis.del(cooldownKey);
+    }
+    const hourly = await redis.ttl(hourlyKey);
+    expect(hourly).toBeGreaterThan(3570);
+    expect(hourly).toBeLessThanOrEqual(3600);
+
+    const mailCount = otpMails(ctx).length;
+    // 在簽署期間內（之後 24 小時）下一個台北 10:00:30 查詢：剩約 1 小時，可再寄送的時刻無條件進位到分鐘
+    const todayAt = new Date(`${todayInTaipei()}T10:00:30+08:00`);
+    useFakeDate(
+      todayAt.getTime() > Date.now()
+        ? todayAt
+        : new Date(todayAt.getTime() + 86_400_000),
+    );
+    try {
+      const limited = await requestOtp(ctx, token)
+        .expect(429)
+        .expect('Content-Type', /^text\/html/);
+      expect(limited.text).toContain('寄送次數已達上限，請於 11:01 後再試。');
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(otpMails(ctx)).toHaveLength(mailCount);
+
+    // 模擬自第一次寄送起滿 1 小時
+    await redis.del(hourlyKey);
+    await requestOtp(ctx, token).expect(200);
+    expect(otpMails(ctx)).toHaveLength(mailCount + 1);
+  });
+
   it('驗證碼信寄送失敗：顯示可重試頁，不保留驗證碼、不記錄寄出，之後可重新開啟', async () => {
     const { documentId, token } = await initiateEmailDocument(
       '驗證碼寄送失敗文件',
@@ -1884,10 +1975,15 @@ describe('核心電子簽 US1', () => {
       'SELECT id FROM esign_signers WHERE document_id = ?',
       [documentId],
     );
+    // 不保留驗證碼，也不計入重新寄送冷卻與每小時寄送次數
     expect(
       await ctx.app
         .get<Redis>(REDIS_MAIN)
-        .exists(`esign:external-otp:${signer.id}:code`),
+        .exists(
+          `esign:external-otp:${signer.id}:code`,
+          `esign:external-otp:${signer.id}:cooldown`,
+          `esign:external-otp:${signer.id}:hourly`,
+        ),
     ).toBe(0);
     const [{ count }] = await db.query<Array<{ count: number }>>(
       `SELECT COUNT(*) count FROM esign_audit_events
@@ -2054,21 +2150,7 @@ describe('核心電子簽 US1', () => {
     const beforeSnapshot: unknown = await snapshot();
     const beforeEvidence: unknown = await evidence();
     const beforeCounts = await esignRowCounts(db);
-    jest.useFakeTimers({
-      now: end,
-      doNotFake: [
-        'hrtime',
-        'nextTick',
-        'performance',
-        'queueMicrotask',
-        'setImmediate',
-        'clearImmediate',
-        'setInterval',
-        'clearInterval',
-        'setTimeout',
-        'clearTimeout',
-      ],
-    });
+    useFakeDate(end);
     try {
       const detail = apiData<Record<string, unknown>>(
         await request(ctx.server)
@@ -2859,6 +2941,34 @@ describe('核心電子簽 US1', () => {
       tokenService.decrypt(credential.invitation_token_ciphertext),
     );
     return { documentId, token: tokens[0], tokens };
+  }
+
+  /** 只固定系統時間（Date），計時器與 I/O 照常運作 */
+  function useFakeDate(now: Date): void {
+    jest.useFakeTimers({
+      now,
+      doNotFake: [
+        'hrtime',
+        'nextTick',
+        'performance',
+        'queueMicrotask',
+        'setImmediate',
+        'clearImmediate',
+        'setInterval',
+        'clearInterval',
+        'setTimeout',
+        'clearTimeout',
+      ],
+    });
+  }
+
+  /** 單一簽署人文件的簽署人 id（Redis 驗證碼 key 以它區分） */
+  async function onlySignerId(documentId: number): Promise<number> {
+    const [signer] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM esign_signers WHERE document_id = ?',
+      [documentId],
+    );
+    return Number(signer.id);
   }
 
   /** 經驗證碼建立外部存取（寄出 → fake mailer 取碼 → 驗證），回傳存取 cookie */

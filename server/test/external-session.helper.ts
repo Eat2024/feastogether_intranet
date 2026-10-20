@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import type { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import {
   INVITATION_MAIL_SENDER,
@@ -44,11 +45,24 @@ export function otpMails(ctx: SecurityE2eContext): SendOtpMailInput[] {
     .otpDeliveries;
 }
 
-/** 寄出驗證碼、自 fake mailer 取碼並驗證，回傳外部存取 cookie */
+/**
+ * fake timers 推不動 Redis 的 TTL：清除所有簽署人的重新寄送冷卻與每小時寄送計數，
+ * 模擬距上次寄送已超過 1 小時。
+ */
+export async function clearOtpResendLimits(
+  ctx: SecurityE2eContext,
+): Promise<void> {
+  const redis = ctx.app.get(RedisService);
+  await redis.deleteByPattern('esign:external-otp:*:cooldown');
+  await redis.deleteByPattern('esign:external-otp:*:hourly');
+}
+
+/** 寄出驗證碼、自 fake mailer 取碼並驗證，回傳外部存取 cookie；同一邀請可重複開啟，不受重新寄送限制 */
 export async function openExternalSession(
   ctx: SecurityE2eContext,
   token: string,
 ): Promise<string> {
+  await clearOtpResendLimits(ctx);
   await requestOtp(ctx, token).expect(200);
   const { code } = otpMails(ctx).at(-1)!;
   const session = await submitOtp(ctx, token, code).expect(303);

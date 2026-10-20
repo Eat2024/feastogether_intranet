@@ -38,6 +38,8 @@ export interface StoredPrivateFile {
 }
 
 export interface PrivateFileReference {
+  /** 只供匯出 staging 中斷清理，不是對外下載身分。 */
+  uploadId?: string;
   objectKey: string;
   objectVersion?: string;
 }

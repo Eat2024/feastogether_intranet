@@ -83,6 +83,7 @@ export class DocumentExportProcessor
         await this.storage.delete({
           objectKey: claim.stagingJson.objectKey,
           objectVersion: claim.stagingJson.objectVersion,
+          uploadId: claim.stagingJson.uploadId,
         });
         await this.mutate(id, generation, (j) => {
           j.stagingJson = null;
@@ -341,7 +342,11 @@ export class DocumentExportProcessor
       new Date(now.getTime() - 24 * 60 * 60_000),
       100,
       (reference) =>
-        this.jobs.isReferenced(reference.objectKey, this.mysql.getManager()),
+        this.jobs.isReferenced(
+          reference.objectKey,
+          this.mysql.getManager(),
+          now,
+        ),
     );
   }
 }

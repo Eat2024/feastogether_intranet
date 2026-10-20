@@ -23,3 +23,9 @@
 - 驗證：99 suites/841 unit、17 suites/130 e2e、7 suites/34 security、2 suites/6 schema；root server/client build 與 lint 通過。測試環境 Node26.4.0／MySQL8.4.11／Redis8.8.0。
 - 41FR對照、實際路徑、發版／回退及未驗證限制見 `specs/009-esign-document-delivery/implementation-notes-integration.md`。T028 保持未完成，部署 S3 容量移交 ticket11，不能以本機結果宣稱部署通過。
 - 本票維持 claimed；待整合後 Standards／Spec review、修復與最終交付完成，再由 merger/root 結案。
+
+## 整合紀錄
+
+- ticket 分支 tip：`fb971df`；以 `--no-ff` 合併，merge commit：`725eab4cf0ce3265d4679697d3951040d12216b2`，無衝突。
+- 整合分支重跑本機 storage、拒簽 service 與 maintenance 單測，3 suites／19 tests 通過；`git diff --check` 通過，未重跑全量共用 DB 測試。
+- 保留 `claimed` 與未完成 review／最終交付驗收；待 Standards／Spec 雙軸審查及集中修復後再結案。T028 仍未勾選，ticket 11 維持 `ready-for-human`。

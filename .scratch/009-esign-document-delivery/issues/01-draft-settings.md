@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 混合與純外部名單可保存，日期未傳保留、null清空、單端可存。
 - [x] 非法日期或名單整筆不變；非建立人及發起後不可修改。
@@ -27,3 +27,9 @@
 ## 補齊驗收
 
 第二輪基於 `489a0bd` 補上實際保存／發起併發 e2e，以及真實 Chrome 的混合名單、清空單端日期、選項保存後新 browser context 回填驗收；永久 e2e 16/16，臨時含 Chrome suite 17/17 通過。T004／T009 已完成，先前留待 Ticket 10 的兩項限制已解除。狀態仍交 merger 在補充 commit 整合後更新。
+
+### 補充整合與結案
+
+- 補充實作 `0a42af5`、ticket 分支 tip `61bf2ba`，已以 `--no-ff` 整合；merge commit：`1c75c085f44c0ace5e3aa42375c7a68f833f5fb0`，無衝突。
+- 整合分支重跑 `esign-signer.service.spec.ts`，1 suite／16 tests 通過；`git diff --check` 通過，未占用共用 DB／Redis。
+- 原瀏覽器與保存／發起競態驗收缺口已有實際證據，所有 ticket 驗收條件完成，標記 `resolved`。

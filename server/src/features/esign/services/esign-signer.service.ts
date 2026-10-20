@@ -36,6 +36,37 @@ export class EsignSignerService {
     private readonly documents: DocumentRepository,
   ) {}
 
+  async saveNote(
+    documentId: number,
+    signerPublicId: string,
+    userId: number,
+    input: unknown,
+  ) {
+    if (typeof input !== 'string' || Array.from(input.trim()).length > 30) {
+      throw new AppException(...AppErrors.ESIGN_SIGNER_NOTE_INVALID);
+    }
+    const note = input.trim();
+    return this.mysql.transaction(async (manager) => {
+      // 與簽署、停止及名單變更使用相同鎖順序；不修改文件或簽署證據。
+      const document = await this.documents.findByIdForUpdate(
+        documentId,
+        manager,
+      );
+      this.access.checkEsignCreator(document, userId);
+      const signer = await this.signers.findByPublicIdForUpdate(
+        signerPublicId,
+        manager,
+      );
+      if (!signer || signer.documentId !== documentId) {
+        throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+      }
+      signer.note = note;
+      signer.updatedByUserId = userId;
+      await this.signers.save(signer, manager);
+      return { signerPublicId: signer.publicId, note };
+    });
+  }
+
   normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
   }

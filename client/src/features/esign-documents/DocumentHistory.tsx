@@ -26,9 +26,10 @@ const EVENT_LABEL: Record<string, string> = {
   'document.opened': '簽署人開啟文件',
   'consent.accepted': '簽署人同意電子簽名條款',
   'signature.submitted': '簽署人送出簽名',
+  'signer.rejected': '簽署人拒絕簽署',
   'signature.completed': '簽署人完成簽署',
   'signer.copy_completed': '個人簽署副本產生完成',
-  'document.completed': '所有簽署人皆已完成簽署',
+  'document.completed': '所有簽署人皆已完成簽署或拒簽',
   'document.expired': '簽署期限已到，文件已到期',
   'document.reopened': '建立人設定補簽，重新開放未簽署者簽署',
   'document.stopped_by_creator': '建立人停止簽署',
@@ -45,14 +46,14 @@ const EVENT_COLOR: Record<string, string> = {
 
 /**
  * 合併同一秒、同類型、同操作者且沒有原因的連續事件（例如發起時每位簽署人各一筆「指派簽署人」），
- * 後端事件沒有帶出是哪位簽署人，逐筆列出只會是重複的內容
+ * 只有相同身分的事件才合併；同名簽署人仍依公開識別區分。
  */
 function groupEvents(events: EsignHistoryItem[]) {
   const groups: (EsignHistoryItem & { count: number })[] = [];
   for (const e of events) {
     const last = groups.at(-1);
     const sameSecond = last && dayjs(last.occurredAt).isSame(e.occurredAt, 'second');
-    if (last && sameSecond && last.type === e.type && last.actor === e.actor && !last.reason && !e.reason) {
+    if (last && sameSecond && last.type === e.type && last.actor.kind === e.actor.kind && last.actor.name === e.actor.name && last.actor.signerPublicId === e.actor.signerPublicId && !last.reason && !e.reason) {
       last.count += 1;
     } else {
       groups.push({ ...e, count: 1 });
@@ -114,7 +115,7 @@ export default function DocumentHistory({ documentId }: { documentId: string }) 
                   {e.count > 1 && `（${e.count} 筆）`}
                   {e.actor && (
                     <Typography variant="helper" component="span" sx={{ ml: 1 }}>
-                      {e.actor}
+                      {e.actor.name}
                     </Typography>
                   )}
                 </Typography>

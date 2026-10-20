@@ -36,8 +36,11 @@ import { EsignStoppageService } from './services/esign-stoppage.service';
 import { EsignCompletionAccessService } from './services/esign-completion-access.service';
 import { EsignVerificationService } from './services/esign-verification.service';
 
+import { EsignRejectionService } from './services/esign-rejection.service';
+
 const esignServices = [
   EsignExportService,
+  EsignRejectionService,
   EsignAccessPolicyService,
   EsignAuditService,
   EsignConsentService,

@@ -24,7 +24,7 @@
 
 對應 FR-001–005、SC-001。獨立驗收：混合／純外部名單與完整、單端、清空日期，登出登入後一致；非法輸入整筆不變且不發信。
 
-- [ ] T004 [P] [US1] 在 `server/src/features/esign/services/esign-signer.service.spec.ts` 補草稿原子保存與回填案例：日期 omitted 保留、null 清空、單端與過去日期可存、兩端時 start<end、非法名單及期間全部回滾、非建立人與發起競態。
+- [x] T004 [P] [US1] 在 `server/src/features/esign/services/esign-signer.service.spec.ts` 補草稿原子保存與回填案例：日期 omitted 保留、null 清空、單端與過去日期可存、兩端時 start<end、非法名單及期間全部回滾、非建立人與發起競態。
 
 - [x] T005 [US1] 修改 `server/src/features/esign/entities/esign-document.entity.ts` 日期 check：引用「draft 日期允許任一端 null；皆有時 start<end。非草稿必須兩端完整」；新增對應 TypeORM migration 於 `server/src/infrastructure/database/migrations/`，同步 `server/src/infrastructure/database/schema.sql` 及 schema metadata tests，down 對單端草稿不得偷偷清值。
 
@@ -34,21 +34,21 @@
 
 - [x] T008 [US1] 在 `client/src/api/endpoints.ts`、`types/esignDocuments.ts`、`requests/esignDocuments.ts` 新增草稿設定契約及匯出索引；接入 `client/src/features/esign-documents/DocumentSignersEditor.tsx` 的名單／日期／選項暫存、重新載入與台北日期轉換，移除發起固定傳 false 的行為。
 
-- [ ] T009 [US1] 在 `server/test/esign-draft-settings.e2e-spec.ts` 驗證新舊 API、session／Origin、schema 與交易回滾；將 US1 瀏覽器 roundtrip 結果記入 `specs/009-esign-document-delivery/implementation-notes.md`，確認沒有寄信或發起。
+- [x] T009 [US1] 在 `server/test/esign-draft-settings.e2e-spec.ts` 驗證新舊 API、session／Origin、schema 與交易回滾；將 US1 瀏覽器 roundtrip 結果記入 `specs/009-esign-document-delivery/implementation-notes.md`，確認沒有寄信或發起。
 
 ## Phase 4：US2 後端依設定繪製浮水印（P1）
 
 對應 FR-006–009、SC-002–003。獨立驗收：watermark true 每頁中文正常、false 不畫；直橫旋轉裁切皆可讀，既有副本 hash 不變。
 
-- [ ] T010 [P] [US2] 在 `server/src/features/esign/services/completed-pdf.service.spec.ts` 加 true/false、所有頁面、90/180/270度、CropBox、缺字型失敗及已有副本不重繪測試；樣本使用合成 PDF，驗證 hash 在加印後建立。
+- [x] T010 [P] [US2] 在 `server/src/features/esign/services/completed-pdf.service.spec.ts` 加 true/false、所有頁面、90/180/270度、CropBox、缺字型失敗及已有副本不重繪測試；樣本使用合成 PDF，驗證 hash 在加印後建立。
 
-- [ ] T011 [US2] 從 root 以 pnpm filter 安裝 `@pdf-lib/fontkit` 至 `server/package.json` 並更新 `pnpm-lock.yaml`；在 `server/assets/fonts/` 加可合法再散布的固定繁體中文字型與授權檔，於 `server/nest-cli.json` 配置 build 複製並確認 production 路徑，不依賴系統字型。
+- [x] T011 [US2] 從 root 以 pnpm filter 安裝 `@pdf-lib/fontkit` 至 `server/package.json` 並更新 `pnpm-lock.yaml`；在 `server/assets/fonts/` 加可合法再散布的固定繁體中文字型與授權檔，於 `server/nest-cli.json` 配置 build 複製並確認 production 路徑，不依賴系統字型。
 
-- [ ] T012 [US2] 在 `server/src/features/esign/services/completed-pdf.service.ts` 讀固定 payload 的 watermark，依 `client/src/features/my-signature/sign/pdfCanvas.ts` 樣式在可視頁面座標畫「饗賓集團 內部文件 請勿外流」；true 才載字型／繪製，沿用旋轉 helper，在最終 hash／manifest 前完成，不覆寫原檔或舊成果。
+- [x] T012 [US2] 在 `server/src/features/esign/services/completed-pdf.service.ts` 讀固定 payload 的 watermark，依 `client/src/features/my-signature/sign/pdfCanvas.ts` 樣式在可視頁面座標畫「饗賓集團 內部文件 請勿外流」；true 才載字型／繪製，沿用旋轉 helper，在最終 hash／manifest 前完成，不覆寫原檔或舊成果。
 
-- [ ] T013 [US2] 檢查 `client/src/features/my-signature/sign/pdfCanvas.ts` 及正式下載呼叫點，移除正式完成副本的前端水印繪製責任，保留 `DocumentSignersEditor.tsx` 的 watermark 選擇；不將整個 mock 簽署流程宣稱已正式串接。
+- [x] T013 [US2] 檢查 `client/src/features/my-signature/sign/pdfCanvas.ts` 及正式下載呼叫點，移除正式完成副本的前端水印繪製責任，保留 `DocumentSignersEditor.tsx` 的 watermark 選擇；不將整個 mock 簽署流程宣稱已正式串接。
 
-- [ ] T014 [US2] 在 `server/test/esign-watermark.e2e-spec.ts` 驗證 build 後字型可讀、同一副本各下載入口 bytes一致與舊副本未變；將視覺中文／簽名／QR檢查記於 `specs/009-esign-document-delivery/implementation-notes.md`，ZIP一致性留待US3整合。
+- [x] T014 [US2] 在 `server/test/esign-watermark.e2e-spec.ts` 驗證 build 後字型可讀、同一副本各下載入口 bytes一致與舊副本未變；將視覺中文／簽名／QR檢查記於 `specs/009-esign-document-delivery/implementation-notes.md`，ZIP一致性留待US3整合。
 
 ## Phase 5：US3 大量副本 ZIP 與七天重用（P1）
 
@@ -86,17 +86,17 @@
 
 對應 FR-022–026、SC-009–010。獨立驗收：一簽一拒、全員拒、簽拒競態與重送，已拒不補簽、不產PDF且他人仍能簽。
 
-- [ ] T029 [P] [US4] 新增 `server/src/features/esign/services/esign-rejection.service.spec.ts`，覆蓋內外部本人、allowReject=false、期間外、簽拒競態、相同requestId回原結果與不同內容409；原因「trim 後最多200 code points」、留白、null非法。
+- [x] T029 [P] [US4] 新增 `server/src/features/esign/services/esign-rejection.service.spec.ts`，覆蓋內外部本人、allowReject=false、期間外、簽拒競態、相同requestId回原結果與不同內容409；原因「trim 後最多200 code points」、留白、null非法。
 
-- [ ] T030 [US4] 修改 `server/src/features/esign/entities/esign-signer.entity.ts` 狀態與completion check，新增「rejectRequestId（nullable UUID）」；沿用rejectedAt/rejectReason，pending/rejected completion欄位全null、signedAt與rejectedAt互斥，建立migration並同步 `server/src/infrastructure/database/schema.sql` 和schema tests；down有rejected時拒絕破壞資料。
+- [x] T030 [US4] 修改 `server/src/features/esign/entities/esign-signer.entity.ts` 狀態與completion check，新增「rejectRequestId（nullable UUID）」；沿用rejectedAt/rejectReason，pending/rejected completion欄位全null、signedAt與rejectedAt互斥，建立migration並同步 `server/src/infrastructure/database/schema.sql` 和schema tests；down有rejected時拒絕破壞資料。
 
-- [ ] T031 [US4] 實作 `server/src/features/esign/services/esign-rejection.service.ts`，document→signer鎖定、本人/allowReject/有效窗口檢查、單一終態、原requestId與正規化內容重送驗證；追加signer.rejected audit且不建signature record，沿用 `esign-signing.service.ts` 鎖序並注入 `esign.module.ts`。
+- [x] T031 [US4] 實作 `server/src/features/esign/services/esign-rejection.service.ts`，document→signer鎖定、本人/allowReject/有效窗口檢查、單一終態、原requestId與正規化內容重送驗證；追加signer.rejected audit且不建signature record，沿用 `esign-signing.service.ts` 鎖序並注入 `esign.module.ts`。
 
-- [ ] T032 [US4] 在 `server/src/features/esign/controllers/signing-tasks.controller.ts`、`external-signature.controller.ts` 接rejection子資源與 `dto/rejection.dto.ts`；擴充 `services/esign-access-policy.service.ts`／`external-access.service.ts` 讓已拒本人僅可讀結果及同次重送，不可讀來源或完成PDF；201首次/200重送。
+- [x] T032 [US4] 在 `server/src/features/esign/controllers/signing-tasks.controller.ts`、`external-signature.controller.ts` 接rejection子資源與 `dto/rejection.dto.ts`；擴充 `services/esign-access-policy.service.ts`／`external-access.service.ts` 讓已拒本人僅可讀結果及同次重送，不可讀來源或完成PDF；201首次/200重送。
 
-- [ ] T033 [US4] 修正 `server/src/worker/esign/document-finalization.processor.ts` 與 `server/src/features/esign/services/esign-verification.service.ts`：pending=0且readySigned=signed才結案，全拒不等PDF；新manifest含拒簽摘要及audit對應、只signed有PDF，保留舊版本驗證與stopped/expired狀態語意。
+- [x] T033 [US4] 修正 `server/src/worker/esign/document-finalization.processor.ts` 與 `server/src/features/esign/services/esign-verification.service.ts`：pending=0且readySigned=signed才結案，全拒不等PDF；新manifest含拒簽摘要及audit對應、只signed有PDF，保留舊版本驗證與stopped/expired狀態語意。
 
-- [ ] T034 [US4] 在 `client/src/api/` 的既有簽署型別／request檔新增拒簽；串接 `client/src/features/external-signing/ExternalSigning.tsx`、`client/src/features/my-signature/sign/SignFlow.tsx` 與相鄰正式Server Action，恢復allowReject選項、確認拒簽/200字原因與結果頁，不以mock拒簽算完成。
+- [x] T034 [US4] 在 `client/src/api/` 的既有簽署型別／request檔新增拒簽；串接 `client/src/features/external-signing/ExternalSigning.tsx`、`client/src/features/my-signature/sign/SignFlow.tsx` 與相鄰正式Server Action，恢復allowReject選項、確認拒簽/200字原因與結果頁，不以mock拒簽算完成。
 
 - [ ] T035 [US4] 新增 `server/test/esign-rejection.e2e-spec.ts` 並擴充finalization／verification相鄰tests，驗混合、全拒、事件hash、同時簽拒與舊manifest；在 `server/test/esign-export.e2e-spec.ts` 加拒簽不計入ZIP且全拒回409案例。
 
@@ -126,15 +126,15 @@
 
 對應 FR-035–040、SC-013–014。依賴 US4/US5 的正式結果；備註及actor mapping可先獨立進行。驗收：儲存後重整一致，簽/拒時間與匯出一致，真正系統動作仍顯示系統。
 
-- [ ] T045 [P] [US6] 在 `server/src/features/esign/services/esign-view.mapper.spec.ts` 補actor事件類型、姓名快照與本人裁切測試；新增 `services/esign-signer-note.service.spec.ts` 測note 0/30/31 code points、trim、null非法、清空、取消與非建立人，完成/停止後可存但不改證據。
+- [x] T045 [P] [US6] 在 `server/src/features/esign/services/esign-view.mapper.spec.ts` 補actor事件類型、姓名快照與本人裁切測試；透過 `server/test/esign-signer-management.e2e-spec.ts` 公開 HTTP 接縫測note 0/30/31 code points、trim、null非法、清空、取消與非建立人，完成/停止後可存但不改證據。
 
-- [ ] T046 [US6] 在 `server/src/features/esign/entities/esign-signer.entity.ts` 加note「varchar(30)，utf8mb4；service 限30 code points、預設空字串」並同步migration/schema tests；新增 `services/esign-signer-note.service.ts` 及 `dto/signer-note.dto.ts`，在 `controllers/documents.controller.ts` 接PATCH note，最後成功寫入值為準，非建立人/錯歸屬拒絕。
+- [x] T046 [US6] 在 `server/src/features/esign/entities/esign-signer.entity.ts` 加note「varchar(30)，utf8mb4；service 限30 code points、預設空字串」並同步migration/schema tests；沿用 `services/esign-signer.service.ts` 並新增 `dto/signer-note.dto.ts`，在 `controllers/documents.controller.ts` 接PATCH note，最後成功寫入值為準，非建立人/錯歸屬拒絕。
 
-- [ ] T047 [US6] 修改 `server/src/features/esign/services/esign-document-query.service.ts`、`esign-view.mapper.ts` 與 `dto/document.dto.ts` 回signedAt/rejectedAt/rejectReason/note/通知摘要及actor kind/name/publicId；依事件類型辨別系統與本人，不只看signerId、不回寫audit；本人mapper排除note及他人通知資料。
+- [ ] T047 [US6]（Ticket04已完成日期、原因、note與actor；通知摘要留待Ticket06整合） 修改 `server/src/features/esign/services/esign-document-query.service.ts`、`esign-view.mapper.ts` 與 `dto/document.dto.ts` 回signedAt/rejectedAt/rejectReason/note/通知摘要及actor kind/name/publicId；依事件類型辨別系統與本人，不只看signerId、不回寫audit；本人mapper排除note及他人通知資料。
 
-- [ ] T048 [US6] 在 `client/src/api/types/esignDocuments.ts` 與requests/queries同步欄位及note mutation，接 `client/src/features/esign-documents/DocumentDetailView.tsx` 的備註保存/清空/取消/失敗恢復、已拒頁籤與歷程；更新 `DocumentExportView.tsx` 簽署紀錄匯出的拒簽時間/原因，已拒不算已簽。
+- [x] T048 [US6] 在 `client/src/api/types/esignDocuments.ts` 與requests/queries同步欄位及note mutation，接 `client/src/features/esign-documents/DocumentDetailView.tsx` 的備註保存/清空/取消/失敗恢復、已拒頁籤與歷程；更新 `DocumentExportView.tsx` 簽署紀錄匯出的拒簽時間/原因，已拒不算已簽。
 
-- [ ] T049 [US6] 新增 `server/test/esign-signer-management.e2e-spec.ts` 驗證列表、歷程、本人資料裁切與note更新不改payload/PDF/hash；依 `specs/009-esign-document-delivery/quickstart.md` 核對畫面/匯出一致，記錄瀏覽器驗收而不宣稱client自動測試。
+- [x] T049 [US6] 新增 `server/test/esign-signer-management.e2e-spec.ts` 驗證列表、歷程、本人資料裁切與note更新不改payload/PDF/hash；依 `specs/009-esign-document-delivery/quickstart.md` 核對畫面/匯出一致，記錄瀏覽器驗收而不宣稱client自動測試。
 
 ## Phase 9：整合與交付
 

@@ -72,7 +72,7 @@ export interface UpdateDocumentBody {
   fields?: EsignFieldPlacement[];
 }
 
-export type EsignSignerStatus = 'pending' | 'signed' | 'rejected';
+export type EsignSignerStatus = 'pending' | 'signed' | 'rejected' | 'rejected';
 
 export interface EsignSignerView {
   publicId: string;
@@ -84,6 +84,8 @@ export interface EsignSignerView {
   email: string | null;
   status: EsignSignerStatus;
   signedAt: string | null;
+  rejectedAt: string | null;
+  rejectReason: string | null;
   /** 個人簽署副本的產製狀態；尚未簽署時 status 為 null */
   completion: { status: 'pending' | 'processing' | 'ready' | 'failed' | null; readyAt: string | null };
   /** 外部（Email）簽署人的邀請寄送結果；內部簽署人為 null */
@@ -91,6 +93,12 @@ export interface EsignSignerView {
   /** 簽章公開驗證網址；只有 status 為 signed 時有值 */
   verificationUrl: string | null;
 }
+
+/** 僅建立人管理頁可見，不用於本人簽署任務。 */
+export interface EsignManagedSignerView extends EsignSignerView { note: string; }
+
+export interface SaveSignerNoteBody { id: string; signerPublicId: string; note: string; }
+export interface SignerNoteResult { signerPublicId: string; note: string; }
 
 /** 共用欄位：屬於文件、不屬於特定簽署人 */
 export interface EsignFieldView extends EsignFieldPlacement {
@@ -106,7 +114,7 @@ export interface EsignDocumentDetail extends Omit<EsignDocumentListItem, 'signSt
   signStartAt: string | null;
   signEndAt: string | null;
   stopReason: string | null;
-  signers: EsignSignerView[];
+  signers: EsignManagedSignerView[];
   fields: EsignFieldView[];
 }
 
@@ -133,8 +141,8 @@ export interface EsignHistoryItem {
   /** 事件類型，例如 document.initiated、signature.completed、document.stopped_by_creator */
   type: string;
   occurredAt: string;
-  /** 建立人檢視時為「建立人」或「系統」 */
-  actor: string | null;
+  /** 依事件辨識動作者；系統事件不以工作對象冒充本人。 */
+  actor: { kind: 'signer' | 'employee' | 'system'; name: string; signerPublicId?: string };
   /** 停止簽署等事件的原因 */
   reason: string | null;
 }

@@ -1,3 +1,4 @@
+import { SignerNoteDto } from '../dto/signer-note.dto';
 import { DraftSettingsDto } from '../dto/draft-settings.dto';
 import { ApiOperation } from '@nestjs/swagger';
 import {
@@ -261,6 +262,23 @@ export class DocumentsController {
   @Get(':documentId/history')
   history(@Param('documentId') id: string, @CurrentUserId() userId: number) {
     return this.queries.history(this.id(id), userId);
+  }
+
+  @UseGuards(OriginGuard)
+  @ApiOperation({ summary: '儲存或清除簽署人的管理備註' })
+  @Patch(':documentId/signers/:signerPublicId/note')
+  saveSignerNote(
+    @Param('documentId') id: string,
+    @Param('signerPublicId') signerPublicId: string,
+    @CurrentUserId() userId: number,
+    @Body() body: SignerNoteDto,
+  ) {
+    return this.signerService.saveNote(
+      this.id(id),
+      signerPublicId,
+      userId,
+      body.note,
+    );
   }
 
   @ApiOperation({

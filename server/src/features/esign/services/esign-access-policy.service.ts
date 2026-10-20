@@ -100,7 +100,8 @@ export class EsignAccessPolicyService {
   /**
    * 外部存取（寄送與驗證驗證碼、開啟任務、讀原始 PDF、下載本人副本、重送同一次簽名）。
    * 呼叫端以邀請 token 或存取憑證找出簽署人；共同條件：email 簽署人、屬於該文件、簽署人與文件未刪除。
-   * 已簽者不比對期限、文件狀態與簽署期間；待簽者須在邀請期限與有效簽署期間內。
+   * 已簽／已拒者不比對期限、文件狀態與簽署期間；待簽者須在邀請期限與有效簽署期間內。
+   * 已拒者僅可讀結果／重送同一次拒簽；來源與副本端點另行拒絕。
    * 待簽者在簽署開始前回 409 告知開始時間；其餘失敗一律回通用 401，不區分原因。
    */
   assertExternalAccess(
@@ -116,7 +117,7 @@ export class EsignAccessPolicyService {
       !signer.deletedAt &&
       !document.deletedAt;
     if (!valid) throw this.externalUnauthorized();
-    if (signer.status === 'signed') return;
+    if (signer.status === 'signed' || signer.status === 'rejected') return;
     this.assertPendingInvitation(document, signer, now);
   }
 

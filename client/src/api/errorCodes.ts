@@ -10,6 +10,9 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   ESIGN_EXPORT_NOT_READY: '匯出尚未完成',
   ESIGN_EXPORT_RETRY_INVALID: '來源完整性異常，無法重試',
 
+  ESIGN_REJECTION_REASON_INVALID: '拒絕原因須為最多 200 字的文字',
+  ESIGN_REJECTION_CONFLICT: '簽署人已完成簽署或拒簽，無法變更結果',
+  ESIGN_REJECTION_NOT_ALLOWED: '此文件未開放拒絕簽署',
   // --- Auth ---
   UNAUTHORIZED: '登入已過期，請從入口網重新進入電子簽',
   INVALID_CREDENTIALS: '員工編號或密碼錯誤，或登入已失效',
@@ -28,6 +31,7 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   INVALID_REQUEST: '輸入資料格式有誤，請確認後再試',
 
   // --- 電子簽 ---
+  ESIGN_SIGNER_NOTE_INVALID: '備註須為最多 30 字的文字',
   ESIGN_DRAFT_OPTIONS_INVALID: '草稿選項必須為布林值',
   ESIGN_INVALID_PDF: 'PDF 格式、大小或頁數不符合規格',
   ESIGN_RESOURCE_NOT_FOUND: '找不到此文件，或您沒有權限存取',

@@ -7,7 +7,7 @@ export type EsignDocumentStatus =
   | 'stopped';
 
 export type EsignSignerType = 'user' | 'email';
-export type EsignSignerStatus = 'pending' | 'signed';
+export type EsignSignerStatus = 'pending' | 'signed' | 'rejected';
 export type EsignFieldType = 'signature' | 'date';
 export type EsignInvitationDelivery = 'pending' | 'delivered' | 'failed';
 
@@ -61,6 +61,8 @@ export class EsignSignerViewDto {
   email!: string | null;
   status!: EsignSignerStatus;
   signedAt!: string | null;
+  rejectedAt!: string | null;
+  rejectReason!: string | null;
   completion!: PersonalCompletionDto;
   invitationDelivery!: EsignInvitationDelivery | null;
   /** 簽章公開驗證網址；只有 status = signed 時有值 */
@@ -78,19 +80,30 @@ export class EsignFieldViewDto {
   sortOrder!: number;
 }
 
+/** 管理欄位不加入共用本人 DTO。 */
+export class EsignManagedSignerViewDto extends EsignSignerViewDto {
+  note!: string;
+}
+
 export class EsignDocumentDetailDto extends EsignDocumentSummaryDto {
   /** 建立人帳號不存在時為 null */
   createdBy!: EsignDocumentCreatorDto | null;
   sourceFile?: EsignSourceFileDto;
   signStartAt!: string | null;
   stopReason!: string | null;
-  signers!: EsignSignerViewDto[];
+  signers!: EsignManagedSignerViewDto[];
   fields!: EsignFieldViewDto[];
+}
+
+export class EsignHistoryActorDto {
+  kind!: 'signer' | 'employee' | 'system';
+  name!: string;
+  signerPublicId?: string;
 }
 
 export class EsignHistoryItemDto {
   type!: string;
   occurredAt!: string;
-  actor!: string | null;
+  actor!: EsignHistoryActorDto;
   reason!: string | null;
 }

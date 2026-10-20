@@ -1,5 +1,8 @@
 import { AppErrors } from '#app/common/errors/app-errors';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import fontkit from '@pdf-lib/fontkit';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   concatTransformationMatrix,
@@ -10,6 +13,7 @@ import {
   type PDFPage,
   StandardFonts,
   rgb,
+  degrees,
 } from 'pdf-lib';
 import { type BitMatrix, create as createQr } from 'qrcode';
 import { AppException } from '#app/common/errors/app.exception';
@@ -223,6 +227,52 @@ export class CompletedPdfService {
       signatureFiles.length !== signatureFields.length
     ) {
       throw this.integrity();
+    }
+
+    const options = (
+      document.signingPayloadJson as { options?: { watermark?: boolean } }
+    ).options;
+    if (options?.watermark === true) {
+      // 開發與部署均只使用隨專案交付的字型；缺檔時讓產製失敗，不能靜默省略浮水印。
+      const fontBytes = await readFile(
+        resolve(__dirname, '../../../assets/fonts/EsignWatermarkTC-Medium.ttf'),
+      );
+      output.registerFontkit(fontkit);
+      const watermarkFont = await output.embedFont(fontBytes, { subset: true });
+      const text = '饗賓集團 內部文件 請勿外流';
+      const characters = new Set(watermarkFont.getCharacterSet());
+      if (
+        Array.from(text).some(
+          (character) => !characters.has(character.codePointAt(0)!),
+        )
+      )
+        throw this.integrity();
+      for (const page of output.getPages()) {
+        const { width, height } = beginVisiblePage(page);
+        const scale = width / 460;
+        const size = 16 * scale;
+        const stepX = 260 * scale;
+        const stepY = 110 * scale;
+        const span = Math.hypot(width, height) / 2;
+        const textWidth = watermarkFont.widthOfTextAtSize(text, size);
+        const cosine = Math.cos(Math.PI / 6);
+        const sine = Math.sin(Math.PI / 6);
+        for (let row = 0, y = -span; y <= span; row += 1, y += stepY) {
+          for (let x = -span; x <= span; x += stepX) {
+            const centered = x + ((row % 2) * stepX) / 2 - textWidth / 2;
+            page.drawText(text, {
+              x: width / 2 + centered * cosine - y * sine,
+              y: height / 2 + centered * sine + y * cosine,
+              size,
+              font: watermarkFont,
+              rotate: degrees(30),
+              color: rgb(0.62, 0.62, 0.62),
+              opacity: 0.18,
+            });
+          }
+        }
+        page.pushOperators(popGraphicsState());
+      }
     }
 
     for (const field of fields) {

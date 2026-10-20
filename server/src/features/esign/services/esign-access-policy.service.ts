@@ -102,10 +102,24 @@ export class EsignAccessPolicyService {
       now < signer.invitationExpiresAt;
     if (!valid) throw this.externalUnauthorized();
 
+    this.assertSigningStarted(document, now);
     try {
       this.documents.assertActiveSigningWindow(document, now);
     } catch {
       throw this.externalUnauthorized();
+    }
+  }
+
+  /**
+   * 呼叫端須先確認憑證有效且簽署人待簽：簽署中但尚未到開始時間時告知開始時間；
+   * 其他期間外情況交由簽署期間檢查，維持通用失效。
+   */
+  private assertSigningStarted(document: EsignDocument, now: Date): void {
+    const startAt = document.signStartAt;
+    if (document.status === 'active' && startAt && now < startAt) {
+      throw new AppException(...AppErrors.ESIGN_SIGNING_NOT_STARTED(startAt), {
+        startAt: startAt.toISOString(),
+      });
     }
   }
 

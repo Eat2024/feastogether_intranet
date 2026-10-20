@@ -2,6 +2,7 @@ import {
   invitationConfirmPage,
   invitationInvalidPage,
   serviceUnavailablePage,
+  signingNotStartedPage,
 } from './external-invitation-page';
 
 describe('外部簽署邀請頁', () => {
@@ -61,10 +62,22 @@ describe('外部簽署邀請頁', () => {
     expect(html).not.toContain('<form');
   });
 
+  it('尚未開始頁以台北時間告知開始時間，提醒勿轉寄，不提供開啟表單', () => {
+    const html = signingNotStartedPage(new Date('2026-10-24T16:00:00.000Z'));
+
+    expect(html).toContain('簽署尚未開始</h1>');
+    expect(html).toContain(
+      '請於 2026/10/25 00:00（台北時間）後簽署，屆時再開啟邀請信中的連結即可。',
+    );
+    expect(html).toContain('此連結僅供受邀的簽署人本人使用，請勿轉寄。');
+    expect(html).not.toContain('<form');
+  });
+
   it.each([
     ['邀請確認頁', invitationConfirmPage(token)],
     ['失效頁', invitationInvalidPage()],
     ['服務暫停頁', serviceUnavailablePage()],
+    ['尚未開始頁', signingNotStartedPage(new Date())],
   ])('%s支援手機寬度，只用系統字型且不載入外部資源', (_name, html) => {
     expect(html).toContain(
       '<meta name="viewport" content="width=device-width, initial-scale=1">',

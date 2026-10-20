@@ -1,4 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
+import { formatInTaipei } from '#app/common/date-time.helper';
 import { AppErrorCode } from './app-error-code';
 
 export type AppErrorDefinition = readonly [
@@ -437,6 +438,12 @@ export const AppErrors = {
     `不支援的欄位：${field}`,
     HttpStatus.BAD_REQUEST,
   ],
+  /** 只在邀請憑證有效時使用，開始時間以台北時間呈現。 */
+  ESIGN_SIGNING_NOT_STARTED: (startAt: Date): AppErrorDefinition => [
+    AppErrorCode.ESIGN_STATE_CONFLICT,
+    `簽署尚未開始，請於 ${formatInTaipei(startAt, 'yyyy/MM/dd HH:mm')}（台北時間）後簽署`,
+    HttpStatus.CONFLICT,
+  ],
   /** 只帶設定名稱與規則，不帶憑證或設定值。 */
   OAUTH_CONFIG_MISSING: (key: string): AppErrorDefinition => [
     AppErrorCode.OAUTH_UNAVAILABLE,
@@ -461,5 +468,5 @@ export const AppErrors = {
   ],
 } as const satisfies Record<
   string,
-  AppErrorDefinition | ((...args: string[]) => AppErrorDefinition)
+  AppErrorDefinition | ((...args: never[]) => AppErrorDefinition)
 >;

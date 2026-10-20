@@ -512,6 +512,36 @@ export const AppErrors = {
     message || '請求參數驗證失敗',
     HttpStatus.BAD_REQUEST,
   ],
+  ESIGN_EXPORT_SOURCE_FAILED: [
+    AppErrorCode.ESIGN_EXPORT_SOURCE_FAILED,
+    '既有已簽副本產製失敗，待修復後可重試',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_EXPORT_EMPTY: [
+    AppErrorCode.ESIGN_EXPORT_EMPTY,
+    '沒有可匯出的已簽署副本',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_EXPORT_EXPIRED: [
+    AppErrorCode.ESIGN_EXPORT_EXPIRED,
+    '匯出成果已到期，請重新申請',
+    HttpStatus.GONE,
+  ],
+  ESIGN_EXPORT_UNAVAILABLE: [
+    AppErrorCode.ESIGN_EXPORT_UNAVAILABLE,
+    '匯出成果暫時無法下載',
+    HttpStatus.SERVICE_UNAVAILABLE,
+  ],
+  ESIGN_EXPORT_NOT_READY: [
+    AppErrorCode.ESIGN_EXPORT_NOT_READY,
+    '匯出尚未完成',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_EXPORT_RETRY_INVALID: [
+    AppErrorCode.ESIGN_EXPORT_RETRY_INVALID,
+    '來源完整性異常，無法重試',
+    HttpStatus.CONFLICT,
+  ],
   INTERNAL_ERROR: [
     AppErrorCode.INTERNAL_ERROR,
     '系統發生未預期錯誤',

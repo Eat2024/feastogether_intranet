@@ -1,7 +1,8 @@
 'use client';
 
 // 匯出簽署紀錄（後端文件）：畫面與 mock 版 /forms/[id]/export 相同，條件記在網址上。
-// 後端沒有匯出 API，以 GET /api/esign/documents/:id 的簽署人在瀏覽器端產生 Excel。
+// Excel 使用建立人列表；ZIP 透過正式背景匯出 API。
+import { ZipExportPanel } from './ZipExportsView';
 import { useGetDocumentQuery } from '@/api/queries';
 import type { EsignDocumentDetail, EsignSignerStatus } from '@/api/types';
 import LinkPagination from '@/components/LinkPagination';
@@ -50,12 +51,7 @@ const UNSUPPORTED = '後端尚未支援';
 
 const CONTENT_TYPES = [
   { key: 'list', label: '簽署紀錄清單（Excel）', description: '每位簽署人一列，可選擇欄位與範圍。', enabled: true },
-  {
-    key: 'docs',
-    label: '已簽署文件（PDF，每人一份打包為 ZIP）',
-    description: `${UNSUPPORTED}，之後提供。`,
-    enabled: false,
-  },
+
 ];
 
 function Section({ step, title, children }: { step: number; title: string; children: ReactNode }) {
@@ -166,6 +162,7 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
         ].join('・')}
       />
 
+      <ZipExportPanel documentId={doc.id} />
       <Alert severity="warning" variant="outlined">
         匯出的檔案含姓名、員工編號、部門等個人資料，請妥善保管，勿任意轉傳。
       </Alert>

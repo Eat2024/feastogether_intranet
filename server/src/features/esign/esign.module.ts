@@ -1,3 +1,5 @@
+import { ExportsController } from './controllers/exports.controller';
+import { EsignExportService } from './services/esign-export.service';
 import { NotificationBatchesController } from './controllers/notification-batches.controller';
 import { EsignReminderService } from './services/esign-reminder.service';
 import { RedisModule } from '#app/infrastructure/database/redis/redis.module';
@@ -39,6 +41,7 @@ import { EsignVerificationService } from './services/esign-verification.service'
 import { EsignRejectionService } from './services/esign-rejection.service';
 
 const esignServices = [
+  EsignExportService,
   EsignReminderService,
   EsignRejectionService,
   EsignAccessPolicyService,
@@ -77,6 +80,7 @@ const esignServices = [
   ],
   providers: esignServices,
   controllers: [
+    ExportsController,
     NotificationBatchesController,
     DocumentsController,
     SignerCandidatesController,

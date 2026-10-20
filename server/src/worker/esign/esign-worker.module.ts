@@ -1,3 +1,4 @@
+import { DocumentExportProcessor } from './document-export.processor';
 import { Module } from '@nestjs/common';
 import { EsignQueueModule } from '#app/features/esign/esign-queue.module';
 import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
@@ -27,6 +28,7 @@ import { DocumentFinalizationProcessor } from './document-finalization.processor
     EsignQueueModule.register('worker'),
   ],
   providers: [
+    DocumentExportProcessor,
     EsignTokenService,
     EsignAuditService,
     EsignDocumentValidationService,

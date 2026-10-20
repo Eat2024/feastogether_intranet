@@ -72,6 +72,7 @@ describe('buildMysqlOptions', () => {
       'DraftSettings1792454400000',
       'RejectionCompletion1792454401000',
       'ExternalReminders1792454402000',
+      'LocalZipExports1792454403000',
       'SignerNote1792454404000',
     ]);
   });

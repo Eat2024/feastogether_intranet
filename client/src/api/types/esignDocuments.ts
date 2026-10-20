@@ -1,7 +1,10 @@
 // 電子簽文件（server/src/features/esign/dto/esign-common.dto.ts、document-query.dto.ts）
 
-/** 後端文件狀態；finalizing 為所有人已簽署、系統正在產生完成檔 */
-export type EsignDocumentStatus = 'draft' | 'active' | 'finalizing' | 'completed' | 'stopped';
+/**
+ * 後端文件狀態：finalizing 為所有人已簽署、系統正在產生完成檔；
+ * expired 為超過簽署期限仍有人未簽署（後端即時計算，可補簽重新開放）
+ */
+export type EsignDocumentStatus = 'draft' | 'active' | 'expired' | 'finalizing' | 'completed' | 'stopped';
 
 /** GET esign/documents 的查詢參數（皆選填） */
 export interface GetDocumentsParams {
@@ -25,7 +28,12 @@ export interface EsignDocumentListItem {
   /** 已簽署人數 */
   signedCount: number;
   signStartAt: string | null;
+  /** 目前的簽署截止時間；補簽後為補簽的新期限 */
   signEndAt: string | null;
+  /** 發起時設定的截止時間（草稿為 null） */
+  originalSignEndAt: string | null;
+  /** 是否補簽過（signEndAt 與 originalSignEndAt 不同） */
+  isReopened: boolean;
   /** 建立人帳號不存在時為 null */
   createdBy: { name: string; employeeNo: string } | null;
 }

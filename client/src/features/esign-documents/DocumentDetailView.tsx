@@ -26,7 +26,7 @@ import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import DocumentHistory from './DocumentHistory';
 import DocumentSignerTable from './DocumentSignerTable';
-import { DOCUMENT_STATUS_META, documentStatus, formatDate } from './listQuery';
+import { DOCUMENT_STATUS_META, periodText } from './listQuery';
 import {
   countByStatus,
   nextSignerSort,
@@ -91,8 +91,7 @@ export default function DocumentDetailView({ documentId }: { documentId: string 
 function Detail({ doc }: { doc: EsignDocumentDetail }) {
   const params = useSearchParams();
   const query = useMemo(() => parseSignerQuery(params), [params]);
-  const status = documentStatus(doc);
-  const statusMeta = DOCUMENT_STATUS_META[status];
+  const statusMeta = DOCUMENT_STATUS_META[doc.status];
   const counts = countByStatus(doc.signers);
   const { items, page, pageCount, total } = querySigners(doc.signers, query);
   const percent = counts.all ? Math.round((counts.signed / counts.all) * 100) : 0;
@@ -108,7 +107,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
         description={[
           doc.docNumber,
           doc.createdBy && `建立人 ${doc.createdBy.name}（${doc.createdBy.employeeNo}）`,
-          `簽署期間 ${formatDate(doc.signStartAt) ?? '—'} ～ ${formatDate(doc.signEndAt) ?? '不限'}`,
+          `簽署期間 ${periodText(doc)}`,
         ]
           .filter(Boolean)
           .join('・')}
@@ -122,11 +121,22 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
                 </Button>
               </span>
             </Tooltip>
-            {/* 簽署中（含已過結束時間仍有人未簽、顯示為已到期）才能停止 */}
-            <StopDocumentButton doc={doc} variant="button" disabled={doc.status !== 'active'} />
+            {/* 簽署中、已到期才能停止 */}
+            <StopDocumentButton
+              doc={doc}
+              variant="button"
+              disabled={doc.status !== 'active' && doc.status !== 'expired'}
+            />
           </>
         }
       />
+
+      {doc.status === 'expired' && (
+        <Alert severity="info" variant="outlined">
+          此文件已於 {doc.signEndAt ? dayjs(doc.signEndAt).format('YYYY/MM/DD HH:mm') : '—'} 到期，尚有{' '}
+          {counts.pending} 人未簽署，未簽署的人目前無法簽署。可設定補簽重新開放未簽署的人簽署（補簽功能尚未串接後端），或停止簽署。
+        </Alert>
+      )}
 
       {doc.status === 'stopped' && (
         <Alert severity="error" variant="outlined">

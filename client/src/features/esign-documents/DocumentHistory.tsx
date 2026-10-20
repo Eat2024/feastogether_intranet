@@ -25,6 +25,8 @@ const EVENT_LABEL: Record<string, string> = {
   'signature.completed': '簽署人完成簽署',
   'signer.copy_completed': '個人簽署副本產生完成',
   'document.completed': '所有簽署人皆已完成簽署',
+  'document.expired': '簽署期限已到，文件已到期',
+  'document.reopened': '建立人設定補簽，重新開放未簽署者簽署',
   'document.stopped_by_creator': '建立人停止簽署',
   'document.stopped_by_deadline': '簽署期限已到，系統自動停止',
 };
@@ -32,6 +34,7 @@ const EVENT_LABEL: Record<string, string> = {
 /** 需要特別標示的事件 */
 const EVENT_COLOR: Record<string, string> = {
   'document.completed': 'success.dark',
+  'document.expired': 'info.dark',
   'document.stopped_by_creator': 'error.dark',
   'document.stopped_by_deadline': 'error.dark',
 };

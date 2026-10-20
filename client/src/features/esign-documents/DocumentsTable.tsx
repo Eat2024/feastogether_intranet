@@ -18,7 +18,6 @@ import type { ReactNode } from 'react';
 import DocumentRowActions from './DocumentRowActions';
 import {
   DOCUMENT_STATUS_META,
-  documentStatus,
   documentsHref,
   formatDate,
   type DocumentFilters,
@@ -50,7 +49,6 @@ export default function DocumentsTable({
   filters: DocumentFilters;
   placeholder?: ReactNode;
 }) {
-  const now = new Date();
   return (
     <TableContainer component={Paper} variant="outlined">
       <Table>
@@ -78,7 +76,7 @@ export default function DocumentsTable({
             </TableRow>
           ) : (
             docs.map((doc) => {
-              const status = DOCUMENT_STATUS_META[documentStatus(doc, now)];
+              const status = DOCUMENT_STATUS_META[doc.status];
               const total = doc.signedCount + doc.pendingCount;
               return (
                 <TableRow key={doc.id} hover>
@@ -88,6 +86,12 @@ export default function DocumentsTable({
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(doc.signStartAt) ?? '—'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     {formatDate(doc.signEndAt) ?? (doc.signStartAt ? '不限' : '—')}
+                    {/* 補簽過：結束日為補簽的新期限 */}
+                    {doc.isReopened && (
+                      <Typography variant="helper" component="div">
+                        補簽；原 {formatDate(doc.originalSignEndAt)}
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Chip size="small" variant="soft" label={status.label} color={status.color} />

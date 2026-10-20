@@ -33,8 +33,7 @@ export default function DocumentsListView() {
   const { data, isPending, isError, error, refetch, isFetching } = useGetDocumentsQuery({ role: 'created' });
 
   const docs = useMemo(() => {
-    const now = new Date();
-    return sortDocuments(filterDocuments(data ?? [], filters, now), sort, now);
+    return sortDocuments(filterDocuments(data ?? [], filters), sort);
   }, [data, filters, sort]);
   const { items, page, pageCount } = paginate(docs, parsePage(params.get('page') ?? undefined), PAGE_SIZE);
 

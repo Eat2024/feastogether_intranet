@@ -61,8 +61,8 @@ export default function DocumentRowActions({
       {NOT_CONNECTED.map((a) => (
         <TooltipIconButton key={a.label} label={`${a.label}（尚未串接後端）`} icon={a.icon} disabled />
       ))}
-      {/* 簽署中（含已過結束時間仍有人未簽、畫面顯示為已到期）才能停止 */}
-      <StopDocumentButton doc={doc} disabled={doc.status !== 'active'} />
+      {/* 簽署中、已到期才能停止 */}
+      <StopDocumentButton doc={doc} disabled={doc.status !== 'active' && doc.status !== 'expired'} />
       {/* 後端只允許刪除尚未發起的草稿 */}
       <DeleteDocumentButton doc={doc} disabled={doc.status !== 'draft'} />
     </Box>

@@ -44,7 +44,7 @@ import {
   type ExportQuery,
   type FieldKey,
 } from './exportQuery';
-import { DOCUMENT_STATUS_META, documentStatus, formatDate } from './listQuery';
+import { DOCUMENT_STATUS_META, periodText } from './listQuery';
 
 const UNSUPPORTED = '後端尚未支援';
 
@@ -122,7 +122,6 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
   const rows = useMemo(() => exportRows(doc.signers, query), [doc.signers, query]);
   const preview = paginate(rows, parsePage(params.get('page') ?? undefined), PAGE_SIZE);
   const fields = FIELDS.filter((f) => query.fields.includes(f.key));
-  const status = documentStatus(doc);
   const signed = doc.signers.filter((s) => s.status === 'signed').length;
 
   const update = (change: Partial<ExportQuery>) =>
@@ -162,8 +161,8 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
         title={`匯出「${doc.title}」`}
         description={[
           doc.docNumber,
-          `簽署期間 ${formatDate(doc.signStartAt) ?? '—'} ～ ${formatDate(doc.signEndAt) ?? '不限'}`,
-          `${DOCUMENT_STATUS_META[status].label}（${signed}/${doc.signers.length} 已簽署）`,
+          `簽署期間 ${periodText(doc)}`,
+          `${DOCUMENT_STATUS_META[doc.status].label}（${signed}/${doc.signers.length} 已簽署）`,
         ].join('・')}
       />
 

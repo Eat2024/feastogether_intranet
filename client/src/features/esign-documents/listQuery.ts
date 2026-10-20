@@ -1,12 +1,12 @@
 // 電子簽列表（後端資料）的狀態顯示、搜尋、篩選、排序與網址規則。
 // 後端 GET /api/esign/documents 不分頁、不搜尋，這些都在前端依網址參數處理（與原本 mock 列表的網址格式相同）。
-import type { EsignDocumentListItem } from '@/api/types';
+import type { EsignDocumentListItem, EsignDocumentStatus } from '@/api/types';
 import { parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
 import type { ChipProps } from '@mui/material/Chip';
 import dayjs from 'dayjs';
 
-/** 列表顯示的狀態：後端狀態，加上由簽署期間推導的「已到期」 */
-export type DocumentListStatus = 'draft' | 'active' | 'expired' | 'finalizing' | 'completed' | 'stopped';
+/** 列表顯示的狀態：直接使用後端狀態（「已到期」由後端判斷） */
+export type DocumentListStatus = EsignDocumentStatus;
 
 export const DOCUMENT_STATUS_META: Record<DocumentListStatus, { label: string; color: ChipProps['color'] }> = {
   draft: { label: '草稿', color: 'default' },
@@ -22,19 +22,17 @@ export const DOCUMENT_STATUSES: DocumentListStatus[] = ['draft', 'active', 'expi
 
 export const DOCUMENT_STATUS_OPTIONS = DOCUMENT_STATUSES.map((s) => ({ value: s, label: DOCUMENT_STATUS_META[s].label }));
 
-/** 簽署中但已超過簽署結束時間、仍有人未簽署時，顯示為已到期 */
-export function documentStatus(
-  doc: Pick<EsignDocumentListItem, 'status' | 'pendingCount' | 'signEndAt'>,
-  now: Date = new Date(),
-): DocumentListStatus {
-  if (doc.status === 'active' && doc.pendingCount > 0 && doc.signEndAt && new Date(doc.signEndAt) < now) {
-    return 'expired';
-  }
-  return doc.status;
-}
 
 /** ISO 時間轉成畫面日期 YYYY/MM/DD（本地時區） */
 export const formatDate = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD') : null);
+
+/** 簽署期間文字；補簽過時加註原本的結束日，例如「2026/10/19 ～ 2026/10/31（補簽；原 2026/10/24）」 */
+export function periodText(
+  doc: Pick<EsignDocumentListItem, 'signStartAt' | 'signEndAt' | 'originalSignEndAt' | 'isReopened'>,
+) {
+  const period = `${formatDate(doc.signStartAt) ?? '—'} ～ ${formatDate(doc.signEndAt) ?? '不限'}`;
+  return doc.isReopened && doc.originalSignEndAt ? `${period}（補簽；原 ${formatDate(doc.originalSignEndAt)}）` : period;
+}
 
 // ── 篩選 ──────────────────────────────────────────────
 
@@ -74,13 +72,13 @@ const localDate = (iso: string) => dayjs(iso).format('YYYY-MM-DD');
  * - 狀態：符合任一勾選的狀態
  * - 簽署期間：與指定日期區間有重疊（未設結束時間視為不限）；尚未發起、沒有簽署期間的文件不會列出
  */
-export function filterDocuments(docs: EsignDocumentListItem[], filters: DocumentFilters, now: Date = new Date()) {
+export function filterDocuments(docs: EsignDocumentListItem[], filters: DocumentFilters) {
   const q = filters.query.toLowerCase();
   return docs.filter((d) => {
     if (q && ![d.title, d.createdBy?.name ?? '', d.createdBy?.employeeNo ?? ''].some((v) => v.toLowerCase().includes(q))) {
       return false;
     }
-    if (filters.statuses.length && !filters.statuses.includes(documentStatus(d, now))) return false;
+    if (filters.statuses.length && !filters.statuses.includes(d.status)) return false;
     if (filters.from || filters.to) {
       if (!d.signStartAt) return false;
       if (filters.to && localDate(d.signStartAt) > filters.to) return false;
@@ -99,7 +97,7 @@ export type DocumentSort = Sort<DocumentSortKey>;
 const STATUS_ORDER = Object.fromEntries(DOCUMENT_STATUSES.map((s, i) => [s, i])) as Record<DocumentListStatus, number>;
 
 /** 各欄的排序值；null 表示沒有值，不論升冪或降冪都排在最後 */
-const sortValue = (key: DocumentSortKey, now: Date) => (d: EsignDocumentListItem): SortValue => {
+const sortValue = (key: DocumentSortKey) => (d: EsignDocumentListItem): SortValue => {
   const total = d.signedCount + d.pendingCount;
   switch (key) {
     case 'name':
@@ -112,7 +110,7 @@ const sortValue = (key: DocumentSortKey, now: Date) => (d: EsignDocumentListItem
     case 'endAt':
       return d.signEndAt ?? (d.signStartAt ? '￿' : null);
     case 'status':
-      return STATUS_ORDER[documentStatus(d, now)];
+      return STATUS_ORDER[d.status];
     // 依完成比例，再依已簽人數；沒有簽署人視為無值
     case 'progress':
       return total ? [d.signedCount / total, d.signedCount] : null;
@@ -129,8 +127,8 @@ export function parseDocumentSort(params: URLSearchParams): DocumentSort {
 }
 
 /** 未指定排序時維持後端的順序（更新時間由新到舊） */
-export function sortDocuments(docs: EsignDocumentListItem[], sort: DocumentSort, now: Date = new Date()) {
-  return sort ? sortByValue(docs, sortValue(sort.key, now), sort.order) : docs;
+export function sortDocuments(docs: EsignDocumentListItem[], sort: DocumentSort) {
+  return sort ? sortByValue(docs, sortValue(sort.key), sort.order) : docs;
 }
 
 // ── 網址 ──────────────────────────────────────────────

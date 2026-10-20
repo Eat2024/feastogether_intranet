@@ -4,7 +4,7 @@ import type { EsignDocumentDetail, EsignSignerView } from '@/api/types';
 import { color } from '@/theme/tokens';
 import dayjs from 'dayjs';
 import ExcelJS from 'exceljs';
-import { formatDate } from './listQuery';
+import { periodText } from './listQuery';
 import { describeScope, FIELDS, type ExportQuery } from './exportQuery';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -51,7 +51,7 @@ export async function buildExportXlsx(
     ['文件名稱', doc.title],
     ['文件編號', doc.docNumber],
     ['建立人', doc.createdBy ? `${doc.createdBy.name}（${doc.createdBy.employeeNo}）` : ''],
-    ['簽署期間', `${formatDate(doc.signStartAt) ?? '—'} ～ ${formatDate(doc.signEndAt) ?? '不限'}`],
+    ['簽署期間', periodText(doc)],
     [
       '簽署進度',
       `已簽署 ${count('signed')}／待簽署 ${count('pending')}／已拒絕 ${count('rejected')}（共 ${doc.signers.length} 人）`,

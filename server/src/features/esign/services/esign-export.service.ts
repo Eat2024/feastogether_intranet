@@ -44,9 +44,12 @@ export class EsignExportService {
         records.map((r) => r.id),
         m,
       );
+      const readyByRecord = new Map(
+        ready.map((file) => [file.signatureRecordId, file]),
+      );
       const snapshot: ExportSnapshotEntry[] = records.map((record) => {
         const signer = record.signer!;
-        const file = ready.find((f) => f.signatureRecordId === record.id);
+        const file = readyByRecord.get(record.id);
         return {
           recordId: record.id,
           signerPublicId: signer.publicId,
@@ -75,6 +78,10 @@ export class EsignExportService {
           scopeDescription: '此次簽署的所有已簽副本',
           snapshotAt: new Date(),
           snapshotJson: snapshot,
+          // 受理時已固定的副本同次持久化，worker 不重查/重存 6,000 份 metadata。
+          resolvedFilesJson: snapshot.flatMap((entry) =>
+            entry.file ? [entry.file] : [],
+          ),
           snapshotSha256: canonicalSha256(snapshot),
           recordCount: snapshot.length,
           processedCount: 0,

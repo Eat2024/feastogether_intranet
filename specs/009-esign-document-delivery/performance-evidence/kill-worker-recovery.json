@@ -1,0 +1,14 @@
+{
+  "killedPid": 51520,
+  "completedEntriesBeforeKill": 575,
+  "competingJobCompleted": true,
+  "signal": "SIGKILL",
+  "attempts": 2,
+  "peakProcessing": 1,
+  "unchangedSnapshot": true,
+  "completed": true,
+  "oldStaging": "exports/job-1/fdf5fd4e-0ff6-4c06-9866-268a33ffc9e3/14e14213-c41b-4914-a13c-b195220d7fb7.zip",
+  "newObject": "exports/job-1/b3defa8e-bfc9-42f4-abc8-3a97d32f2e75/990268a2-ff1e-44cb-916e-8f9811580211.zip",
+  "businessLeaseClockAccelerated": true,
+  "oldStagingRemoved": true
+}

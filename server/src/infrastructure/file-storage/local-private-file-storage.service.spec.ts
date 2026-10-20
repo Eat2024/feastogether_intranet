@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -134,6 +135,45 @@ describe('LocalPrivateFileStorage', () => {
     ).rejects.toThrow();
     expect(stream.destroyed).toBe(true);
     expect(await readFile(join(root, 'exports'), 'utf8')).toBe('existing');
+  });
+
+  it('目的磁碟回 ENOSPC 時移除半包並中止輸入，重試可完整保存', async () => {
+    const original = fs.createWriteStream;
+    const diskFull = jest
+      .spyOn(fs, 'createWriteStream')
+      .mockImplementationOnce((path, options) => {
+        const stream = original(path, options);
+        stream.once('open', () =>
+          stream.destroy(
+            Object.assign(new Error('合成磁碟已滿'), { code: 'ENOSPC' }),
+          ),
+        );
+        return stream;
+      });
+    const input = Readable.from([Buffer.alloc(1024 * 1024)]);
+    try {
+      await expect(
+        storage.storeStream({
+          directory: 'exports/disk-full',
+          extension: 'zip',
+          mimeType: 'application/zip',
+          stream: input,
+        }),
+      ).rejects.toMatchObject({ code: 'ENOSPC' });
+      expect(input.destroyed).toBe(true);
+      expect(await readdir(join(root, 'exports/disk-full'))).toEqual([]);
+    } finally {
+      diskFull.mockRestore();
+    }
+    const retried = await storage.storeStream({
+      directory: 'exports/disk-full',
+      extension: 'zip',
+      mimeType: 'application/zip',
+      stream: Readable.from(['complete']),
+    });
+    expect(await readFile(join(root, retried.objectKey), 'utf8')).toBe(
+      'complete',
+    );
   });
 
   it('拒絕 traversal 與不安全的 logical directory', async () => {

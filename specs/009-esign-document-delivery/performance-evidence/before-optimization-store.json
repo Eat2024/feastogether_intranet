@@ -1,0 +1,98 @@
+[
+  {
+    "label": "store-0",
+    "compression": "store",
+    "count": 6000,
+    "acceptedMs": 294.4668329999995,
+    "acceptedStatus": 202,
+    "processingObserved": 1792514344773,
+    "ended": 1792514366442,
+    "elapsedMs": 21780,
+    "bytes": 6245350572,
+    "ratio": 1.0002098516261166,
+    "baseline": {
+      "label": "baseline-store-0",
+      "count": 60,
+      "p95": 17.680499999999483,
+      "start": 1792514343639,
+      "end": 1792514344061,
+      "failures": 0
+    },
+    "during": {
+      "label": "export-store-0",
+      "count": 60,
+      "p95": 31.928916999999274,
+      "start": 1792514344773,
+      "end": 1792514345251,
+      "failures": 0
+    },
+    "allSigningDuringProcessing": true,
+    "signingP95Growth": 80.58831481010269,
+    "resumed": true,
+    "zip64Verified": true
+  },
+  {
+    "label": "store-1",
+    "compression": "store",
+    "count": 6000,
+    "acceptedMs": 293.6794169999994,
+    "acceptedStatus": 202,
+    "processingObserved": 1792514380620,
+    "ended": 1792514402844,
+    "elapsedMs": 22335,
+    "bytes": 6245350572,
+    "ratio": 1.0002098516261166,
+    "baseline": {
+      "label": "baseline-store-1",
+      "count": 60,
+      "p95": 21.072790999998688,
+      "start": 1792514379459,
+      "end": 1792514379909,
+      "failures": 0
+    },
+    "during": {
+      "label": "export-store-1",
+      "count": 60,
+      "p95": 33.581458000000566,
+      "start": 1792514380620,
+      "end": 1792514381141,
+      "failures": 0
+    },
+    "allSigningDuringProcessing": true,
+    "signingP95Growth": 59.35932739048499,
+    "resumed": false,
+    "zip64Verified": true
+  },
+  {
+    "label": "store-2",
+    "compression": "store",
+    "count": 6000,
+    "acceptedMs": 313.2782909999951,
+    "acceptedStatus": 202,
+    "processingObserved": 1792514410481,
+    "ended": 1792514432738,
+    "elapsedMs": 22367,
+    "bytes": 6245350572,
+    "ratio": 1.0002098516261166,
+    "baseline": {
+      "label": "baseline-store-2",
+      "count": 60,
+      "p95": 17.84833299998718,
+      "start": 1792514409325,
+      "end": 1792514409750,
+      "failures": 0
+    },
+    "during": {
+      "label": "export-store-2",
+      "count": 60,
+      "p95": 36.930916999990586,
+      "start": 1792514410481,
+      "end": 1792514411026,
+      "failures": 0
+    },
+    "allSigningDuringProcessing": true,
+    "signingP95Growth": 106.91521723634985,
+    "resumed": false,
+    "zip64Verified": true
+  }
+]

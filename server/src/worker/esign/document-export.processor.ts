@@ -89,10 +89,13 @@ export class DocumentExportProcessor
           j.stagingJson = null;
         });
       }
-      const resolved = claim.resolvedFilesJson ?? [];
+      const resolved = [...(claim.resolvedFilesJson ?? [])];
+      const resolvedByRecord = new Map(
+        resolved.map((file) => [file.recordId, file]),
+      );
       // 原快照已存在的副本身分不能被可更新的 resolved metadata 置換。
       for (const entry of claim.snapshotJson!) {
-        const fixed = resolved.find((f) => f.recordId === entry.recordId);
+        const fixed = resolvedByRecord.get(entry.recordId);
         if (
           entry.file &&
           fixed &&
@@ -101,16 +104,17 @@ export class DocumentExportProcessor
           throw new IntegrityError();
       }
       const missing = claim.snapshotJson!.filter(
-        (s) => !resolved.some((f) => f.recordId === s.recordId),
+        (s) => !resolvedByRecord.has(s.recordId),
       );
       const ready = await this.files.findCompletedFiles(
-        missing.map((s) => s.recordId),
+        missing.filter((s) => !s.file).map((s) => s.recordId),
         this.mysql.getManager(),
       );
+      const readyByRecord = new Map(
+        ready.map((file) => [file.signatureRecordId, file]),
+      );
       for (const entry of missing) {
-        const current = ready.find(
-          (f) => f.signatureRecordId === entry.recordId,
-        );
+        const current = readyByRecord.get(entry.recordId);
         if (entry.file) resolved.push(entry.file);
         else if (current)
           resolved.push({
@@ -122,8 +126,9 @@ export class DocumentExportProcessor
             fileSize: Number(current.fileSize),
           });
       }
+      for (const file of resolved) resolvedByRecord.set(file.recordId, file);
       const unresolved = claim.snapshotJson!.filter(
-        (entry) => !resolved.some((f) => f.recordId === entry.recordId),
+        (entry) => !resolvedByRecord.has(entry.recordId),
       );
       if (unresolved.length) {
         const records = await this.jobs.snapshotRecords(
@@ -141,16 +146,22 @@ export class DocumentExportProcessor
           throw new SourceFailedError();
       }
       const waiting = unresolved.length;
-      await this.mutate(id, generation, (j) => {
-        j.resolvedFilesJson = resolved;
-        j.waitingCount = waiting;
-        if (waiting) {
-          j.status = 'waiting';
-          j.nextAttemptAt = new Date(Date.now() + 30_000);
-          j.leaseToken = null;
-          j.leaseExpiresAt = null;
-        }
-      });
+      if (
+        waiting ||
+        resolved.length !== (claim.resolvedFilesJson?.length ?? 0) ||
+        waiting !== claim.waitingCount
+      ) {
+        await this.mutate(id, generation, (j) => {
+          j.resolvedFilesJson = resolved;
+          j.waitingCount = waiting;
+          if (waiting) {
+            j.status = 'waiting';
+            j.nextAttemptAt = new Date(Date.now() + 30_000);
+            j.leaseToken = null;
+            j.leaseExpiresAt = null;
+          }
+        });
+      }
       if (waiting) return;
       if (!this.storage.storeStream)
         throw new Error('儲存介面尚未支援串流 ZIP');
@@ -181,9 +192,10 @@ export class DocumentExportProcessor
       });
       try {
         let processed = 0;
+        let progressSavedAt = Date.now();
         for (const entry of claim.snapshotJson!) {
           abort.signal.throwIfAborted();
-          const source = resolved.find((f) => f.recordId === entry.recordId)!;
+          const source = resolvedByRecord.get(entry.recordId)!;
           const stream = await this.storage.openReadStream(source, {
             signal: abort.signal,
           });
@@ -198,10 +210,17 @@ export class DocumentExportProcessor
             consumed,
           ]);
           processed += 1;
-          if (processed % 25 === 0 || processed === resolved.length)
+          // 進度為觀察資料；限制每秒一次完整稽核 save，避免大量快照 JSON
+          // 在 6,000 份小副本時反覆讀寫，與線上簽署競爭 DB/CPU。
+          if (
+            (processed % 25 === 0 && Date.now() - progressSavedAt >= 1000) ||
+            processed === resolved.length
+          ) {
             await this.mutate(id, generation, (j) => {
               j.processedCount = processed;
             });
+            progressSavedAt = Date.now();
+          }
         }
         await archive.finalize();
         stored = await storagePromise;

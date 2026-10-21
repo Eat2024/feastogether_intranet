@@ -1,6 +1,6 @@
 # Quickstart：後續實作驗證指南
 
-目前已完成 plan 與 [tasks](tasks.md)，以下是實作完成後的驗證步驟，**本階段尚未執行功能測試、發信或 migration**。
+目前依八張本機 tickets 進入實作，以下是完整功能的驗證步驟；已執行項目見末尾紀錄。尚未完成的功能不得視為可交付。
 
 ## 前置條件
 
@@ -48,3 +48,13 @@ HTTP 測試直接從 Set-Cookie 捕捉 HttpOnly credential，勿把 token／OTP 
 ## 交付紀錄
 
 實作交付分別記錄 server、schema migration、前端未修改、config／dependency 無新增，以及實際執行的命令與結果。若 MySQL／Redis 不可用，明列未執行的整合測試及風險，不宣稱完整驗收。前端接續 [frontend-handoff.md](contracts/frontend-handoff.md)。
+
+### 2026-10-21 實作前基準
+
+- 整合分支：`feat/010-internal-email-signing`；程式基準：`615ade2`。使用者已授權依票單圖平行實作，票單分支完成驗收並整合後才標記 resolved。
+- 規格品質 checklist：16／16 已確認；沒有 implementation extension hooks。
+- Node `v26.4.0`、pnpm `11.9.0`；沿用現有依賴，未安裝或修改 lockfile。
+- `pnpm -C server test --runInBand`：101 suites、873 tests 通過。
+- `pnpm -C server lint:check`：0 errors、202 既有 warnings；`pnpm -C server build`：通過。
+- 既有測試設定經不揭露 secret 的檢查：MySQL 可連線、Redis PONG，測試 DB 前綴與 Redis 非 0 guard 有效；未操作開發資料。後續具資料清理的測試由協調者序列安排。
+- 以上只是修改前基準，不代表 Spec 010 的新功能已通過驗收；各票單另追加 red／green、驗證與整合紀錄。前端未修改，未發真實郵件、未呼叫真實 HR 名冊、未部署。

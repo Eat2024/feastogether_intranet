@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 內部員工透過 Email＋OTP 簽署或拒簽。
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 010 — US3、FR-010、FR-012～013、FR-017。對應 T029～T032。
 
@@ -27,3 +27,10 @@
 - `pnpm --config.verifyDepsBeforeRun=false -C server lint:check` 通過（既有 warnings）；新增測試再以 ESLint `--max-warnings 0` 單獨檢查。`pnpm --config.verifyDepsBeforeRun=false -C server build` 通過。
 - 契約校正：副本未就緒沿用既有 `409 ESIGN_STATE_CONFLICT`／「個人副本尚未產生」，不是尚未存在的 `ESIGN_PERSONAL_COPY_NOT_READY`。
 - 無 client、migration、環境變數、dependency、真實 HR／寄信或部署變更。前端輪詢、手機／瀏覽器畫面驗收仍未實作。狀態維持 claimed，待 merger 整合並追加 commit 紀錄後才 resolved。
+
+## 整合驗收紀錄（2026-10-21）
+
+- 實作 `8456a8a` 以 `--no-ff` 合入功能整合分支，merge commit `9fad65b`；無衝突，保留一般及 security 測試登錄。
+- 首次整合重跑 6／7：錯誤世代 fixture 固定使用 64 個 a，與先前合成資料撞到唯一索引。改用每次隨機 32-byte digest，保留錯世代拒絕斷言；不刪除既有資料、不改正式邏輯。
+- 修正後執行 `pnpm --config.verifyDepsBeforeRun=false -C server test:e2e --testRegex 'internal-email-copy.e2e-spec.ts$'`：1 suite／7 tests 通過；定向 ESLint `--max-warnings 0` 與 `git diff --check` 通過。實作 build／lint 證據如上；真實 PDF worker、HTTP、MySQL／Redis 驗收完成並釋放共用 slot。
+- 合併者核對實際產物、各終態重新 OTP、憑證 TTL、GET 唯讀、跨人拒絕及完整性斷言；六項驗收均完成，改 resolved。補簽後已簽副本的跨流程保護仍交由 08 驗收。

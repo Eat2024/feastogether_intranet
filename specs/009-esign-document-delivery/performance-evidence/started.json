@@ -1,0 +1,12 @@
+{
+  "started": "2026-10-20T16:50:14.780Z",
+  "machine": {
+    "cpu": "Apple M5 Pro",
+    "cores": 15,
+    "ram": 25769803776,
+    "os": "darwin",
+    "release": "25.6.0",
+    "node": "v26.4.0"
+  },
+  "count": 6000
+}

@@ -30,11 +30,11 @@ export class InitiateDocumentDto {
   @IsISO8601({ strict: true })
   signEndAt!: string;
 
-  /** 浮水印選項快照；本次尚未提供繪製功能，正式前端傳 false */
+  /** 浮水印選項快照；正式發起時保存文件設定 */
   @IsBoolean()
   watermark!: boolean;
 
-  /** 拒簽選項快照；本次尚未提供拒簽流程，正式前端傳 false */
+  /** 拒簽選項快照；正式發起時保存文件設定 */
   @IsBoolean()
   allowReject!: boolean;
 }

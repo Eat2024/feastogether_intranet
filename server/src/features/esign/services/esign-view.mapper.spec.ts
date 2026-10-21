@@ -1,5 +1,6 @@
+import { EsignAuditEvent } from '../entities/esign-audit-event.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
-import type { EsignSigner } from '../entities/esign-signer.entity';
+import { EsignSigner } from '../entities/esign-signer.entity';
 import { EsignViewMapper } from './esign-view.mapper';
 
 describe('EsignViewMapper', () => {
@@ -95,4 +96,55 @@ describe('有效狀態邊界', () => {
       ).toBe(expected);
     },
   );
+});
+
+describe('歷程動作者身分與管理資料裁切', () => {
+  const mapper = new EsignViewMapper({ verificationUrl: () => null } as never);
+  const signer = Object.assign(new EsignSigner(), {
+    id: 91,
+    publicId: 'c854d925-1d70-49dc-9c81-abf18409ae42',
+    signerType: 'email',
+    nameSnapshot: '外部甲',
+    note: '不給本人看的管理資料',
+  });
+  it('本人動作使用姓名快照與穩定公開識別', () => {
+    for (const eventType of [
+      'signature.submitted',
+      'signature.completed',
+      'signer.rejected',
+      'document.opened',
+      'external_otp.verified',
+    ]) {
+      const event = Object.assign(new EsignAuditEvent(), {
+        eventType,
+        signerId: 91,
+      });
+      expect(mapper.historyActor(event, signer)).toEqual({
+        kind: 'signer',
+        name: '外部甲',
+        signerPublicId: signer.publicId,
+      });
+    }
+  });
+  it('寄信與副本產製即使有 signerId 和 actorUserId 仍是系統；不洩漏管理備註', () => {
+    for (const eventType of [
+      'external_invitation.delivered',
+      'external_otp.sent',
+      'external_otp.locked',
+      'signer.copy_completed',
+      'signer.copy_failed',
+      'document.completed',
+    ]) {
+      const event = Object.assign(new EsignAuditEvent(), {
+        eventType,
+        signerId: 91,
+        actorUserId: 1,
+      });
+      expect(mapper.historyActor(event, signer)).toEqual({
+        kind: 'system',
+        name: '系統',
+      });
+    }
+    expect(mapper.signer(signer, null)).not.toHaveProperty('note');
+  });
 });

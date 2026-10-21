@@ -140,6 +140,8 @@ export class EsignDocumentValidationService {
     signer: EsignSigner,
     now: Date,
   ): void {
+    if (signer.status === 'rejected')
+      throw new AppException(...AppErrors.ESIGN_SOURCE_UNAVAILABLE);
     if (signer.status === 'signed') {
       if (
         !['active', 'expired', 'finalizing', 'completed', 'stopped'].includes(

@@ -1,3 +1,9 @@
+import type { EsignSigner } from '../entities/esign-signer.entity';
+import type { EsignNotificationLog } from '../entities/esign-notification-log.entity';
+import { reminderEligibility } from './esign-reminder-policy';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
+import { EsignTokenService } from './esign-token.service';
 import { Inject, Injectable } from '@nestjs/common';
 import type { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
@@ -39,7 +45,52 @@ export class EsignDocumentQueryService {
     private readonly storage: PrivateFileStorage,
     private readonly users: UserRepository,
     private readonly records: SignatureRecordRepository,
+    private readonly tokens: EsignTokenService,
   ) {}
+
+  private reminderSummary(
+    document: EsignDocument,
+    signer: EsignSigner,
+    logs: EsignNotificationLog[],
+  ) {
+    const now = new Date();
+    const reasonCode =
+      reminderEligibility(document, signer, logs, now) ??
+      (!signer.email || !signer.invitationTokenSha256
+        ? 'RECIPIENT_UNAVAILABLE'
+        : null);
+    const latest = logs.find((l) => l.batch?.kind === 'reminder');
+    const invitation = logs.find((l) => l.batch?.kind === 'invitation');
+    const midnight = new Date(now.getTime() + 8 * 60 * 60_000);
+    midnight.setUTCHours(24, 0, 0, 0);
+    return {
+      reminderEligibility: {
+        eligible: reasonCode === null,
+        reasonCode,
+        nextEligibleAt:
+          reasonCode === 'REMINDER_DAILY_LIMIT'
+            ? new Date(midnight.getTime() - 8 * 60 * 60_000).toISOString()
+            : null,
+      },
+      latestInvitation: invitation
+        ? {
+            status: invitation.result,
+            completedAt: invitation.completedAt?.toISOString() ?? null,
+            reasonCode: invitation.errorCode ?? null,
+          }
+        : null,
+      latestReminder: latest
+        ? {
+            status: latest.result,
+            completedAt: latest.completedAt?.toISOString() ?? null,
+            reasonCode: latest.errorCode ?? null,
+          }
+        : null,
+      deliveredReminderCount: logs.filter(
+        (l) => l.batch?.kind === 'reminder' && l.result === 'delivered',
+      ).length,
+    };
+  }
 
   async list(
     userId: number,
@@ -124,6 +175,7 @@ export class EsignDocumentQueryService {
     );
     const deliveryBySigner = new Map<number, EsignInvitationDelivery>();
     for (const log of logs) {
+      if (log.batch?.kind === 'reminder') continue;
       if (!deliveryBySigner.has(log.signerId)) {
         const result =
           log.result === 'delivered'
@@ -141,24 +193,77 @@ export class EsignDocumentQueryService {
       this.validation.assertSourceIntegrity(document, source, metadata.sha256);
       sourceFile = this.mapper.sourceFile(source, metadata.pageCount);
     }
+    const summary = this.mapper.documentSummary(document, this.count(signers));
     return {
-      ...this.mapper.documentSummary(document, this.count(signers)),
+      ...summary,
       sourceFile,
       signStartAt: document.signStartAt?.toISOString() ?? null,
       signEndAt: document.signEndAt?.toISOString() ?? null,
+      watermark: document.watermarkEnabled,
+      allowReject: document.allowReject,
       stopReason: document.stopReason ?? null,
       createdBy: this.mapper.creator(creator),
-      signers: signers.map((signer) =>
-        this.mapper.signer(
+      signers: signers.map((signer) => ({
+        ...this.mapper.signer(
           signer,
-          signer.signerType === 'email'
+          signer.signerType === 'email' && !summary.isReopened
             ? (deliveryBySigner.get(signer.id) ?? null)
             : null,
           codeBySigner.get(signer.id),
         ),
-      ),
+        ...this.reminderSummary(
+          document,
+          signer,
+          logs.filter((l) => l.signerId === signer.id),
+        ),
+        note: signer.note ?? '',
+      })),
       fields: fields.map((field) => this.mapper.field(field)),
     };
+  }
+
+  reopeningInvitations(documentId: number, userId: number) {
+    return this.mysql.transaction(async (manager) => {
+      const document = await this.documents.findById(documentId, manager);
+      this.policy.checkEsignCreator(document, userId);
+      const signers = await this.signers.findByDocument(documentId, manager);
+      const now = new Date();
+      const summary = this.mapper.documentSummary(
+        document,
+        this.count(signers),
+        now,
+      );
+      if (summary.status !== 'active' || !summary.isReopened) return [];
+      return signers
+        .filter(
+          (signer) =>
+            signer.status === 'pending' && signer.signerType === 'email',
+        )
+        .map((signer) => {
+          try {
+            if (
+              !signer.invitationTokenCiphertext ||
+              !signer.invitationExpiresAt ||
+              signer.invitationExpiresAt <= now ||
+              !document.signEndAt ||
+              signer.invitationExpiresAt > document.signEndAt
+            )
+              throw new Error();
+            const token = this.tokens.decrypt(signer.invitationTokenCiphertext);
+            if (this.tokens.digest(token) !== signer.invitationTokenSha256)
+              throw new Error();
+            return {
+              signerPublicId: signer.publicId,
+              invitationUrl: this.tokens.invitationUrl(token),
+              expiresAt: signer.invitationExpiresAt.toISOString(),
+            };
+          } catch {
+            throw new AppException(
+              ...AppErrors.ESIGN_INVITATION_SERVICE_UNAVAILABLE,
+            );
+          }
+        });
+    });
   }
 
   async creatorSource(documentId: number, userId: number) {
@@ -189,6 +294,23 @@ export class EsignDocumentQueryService {
     }
     const events = await this.audits.findDocumentEvents(documentId, manager);
     const isCreator = document?.createdByUserId === userId;
+    const bySignerId = new Map(signers.map((item) => [item.id, item]));
+    const actorIds = [
+      ...new Set(
+        events.flatMap((event) =>
+          event.actorUserId ? [event.actorUserId] : [],
+        ),
+      ),
+    ];
+    const actors = new Map(
+      (
+        await Promise.all(
+          actorIds.map((id) => this.users.findById(id, manager)),
+        )
+      )
+        .filter((user): user is User => user !== null)
+        .map((user) => [user.id, user]),
+    );
     const documentEvents = new Set([
       'document.created',
       'document.initiated',
@@ -196,6 +318,7 @@ export class EsignDocumentQueryService {
       'document.stopped_by_creator',
       'document.stopped_by_deadline',
       'document.expired',
+      'document.reopened',
     ]);
     return events
       .filter(
@@ -204,21 +327,37 @@ export class EsignDocumentQueryService {
           documentEvents.has(event.eventType) ||
           event.signerId === signer?.id,
       )
-      .map((event) => ({
-        type: event.eventType,
-        occurredAt: event.occurredAt.toISOString(),
-        actor: isCreator
-          ? event.actorUserId === userId
-            ? '建立人'
-            : '系統'
-          : event.signerId === signer?.id
-            ? '本人'
-            : '系統',
-        reason:
-          typeof event.metadataJson?.reason === 'string'
-            ? event.metadataJson.reason
-            : null,
-      }));
+      .map((event) => {
+        if (event.eventType === 'document.reopened') {
+          const base = {
+            type: event.eventType,
+            occurredAt: event.occurredAt.toISOString(),
+            signEndAt: event.metadataJson?.signEndAt,
+          };
+          return isCreator
+            ? {
+                ...base,
+                actor: '建立人',
+                actorUserId: String(event.actorUserId),
+                previousSignEndAt: event.metadataJson?.previousSignEndAt,
+                reason: event.metadataJson?.reason,
+              }
+            : base;
+        }
+        return {
+          type: event.eventType,
+          occurredAt: event.occurredAt.toISOString(),
+          actor: this.mapper.historyActor(
+            event,
+            event.signerId ? bySignerId.get(event.signerId) : undefined,
+            event.actorUserId ? actors.get(event.actorUserId) : undefined,
+          ),
+          reason:
+            typeof event.metadataJson?.reason === 'string'
+              ? event.metadataJson.reason
+              : null,
+        };
+      });
   }
 
   private count(signers: Array<{ status: string }>) {

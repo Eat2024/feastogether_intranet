@@ -29,7 +29,7 @@ import { PdfValidationService } from './pdf-validation.service';
 export type SigningPrincipal =
   | { kind: 'internal'; userId: number }
   /** signerId 為存取憑證對應的簽署人 */
-  | { kind: 'external'; signerId: number };
+  | { kind: 'external'; signerId: number; invitationGenerationSha256: string };
 
 export interface SigningRequestContext {
   sourceIp?: string;
@@ -389,6 +389,8 @@ export class EsignSigningService {
       this.access.assertInternalSigner(document, signer, principal.userId);
       this.validation.assertActiveSigningWindow(document, now);
     } else {
+      if (signer.invitationTokenSha256 !== principal.invitationGenerationSha256)
+        throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
       this.access.assertExternalInvitation({ document, signer }, now);
     }
   }

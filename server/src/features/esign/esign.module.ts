@@ -1,3 +1,9 @@
+import { ExportsController } from './controllers/exports.controller';
+import { EsignExportService } from './services/esign-export.service';
+import { NotificationBatchesController } from './controllers/notification-batches.controller';
+import { EsignReminderService } from './services/esign-reminder.service';
+import { EsignExpiryService } from './services/esign-expiry.service';
+import { EsignReopeningService } from './services/esign-reopening.service';
 import { RedisModule } from '#app/infrastructure/database/redis/redis.module';
 import { Module } from '@nestjs/common';
 import { FileStorageModule } from '#app/infrastructure/file-storage/file-storage.module';
@@ -34,7 +40,14 @@ import { EsignStoppageService } from './services/esign-stoppage.service';
 import { EsignCompletionAccessService } from './services/esign-completion-access.service';
 import { EsignVerificationService } from './services/esign-verification.service';
 
+import { EsignRejectionService } from './services/esign-rejection.service';
+
 const esignServices = [
+  EsignExportService,
+  EsignReminderService,
+  EsignRejectionService,
+  EsignExpiryService,
+  EsignReopeningService,
   EsignAccessPolicyService,
   EsignAuditService,
   EsignConsentService,
@@ -71,6 +84,8 @@ const esignServices = [
   ],
   providers: esignServices,
   controllers: [
+    ExportsController,
+    NotificationBatchesController,
     DocumentsController,
     SignerCandidatesController,
     SigningTasksController,

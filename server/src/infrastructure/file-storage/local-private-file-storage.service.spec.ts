@@ -1,5 +1,7 @@
+import fs from 'node:fs';
+import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalPrivateFileStorage } from './local-private-file-storage.service';
@@ -60,6 +62,133 @@ describe('LocalPrivateFileStorage', () => {
 
     await storage.delete(stored);
     await expect(storage.delete(stored)).resolves.toBeUndefined();
+  });
+
+  it('串流保存 ZIP 並依 bytes 範圍續傳，中止不發布半包', async () => {
+    const stored = await storage.storeStream({
+      directory: 'exports/job-1/generation-1',
+      extension: 'zip',
+      mimeType: 'application/zip',
+      stream: Readable.from([Buffer.from('hello'), Buffer.from(' world')]),
+    });
+    expect(stored.fileSize).toBe(11);
+    expect(stored.sha256).toBe(
+      'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9',
+    );
+    const stream = await storage.openReadStream(stored, { start: 6, end: 10 });
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+    expect(Buffer.concat(chunks).toString()).toBe('world');
+    const signal = AbortSignal.abort();
+    await expect(
+      storage.storeStream({
+        directory: 'exports/job-1/generation-2',
+        extension: 'zip',
+        mimeType: 'application/zip',
+        stream: Readable.from(['partial']),
+        signal,
+      }),
+    ).rejects.toThrow();
+    expect(await readdir(join(root, 'exports/job-1/generation-2'))).toEqual([]);
+    expect(await readFile(join(root, stored.objectKey), 'utf8')).toBe(
+      'hello world',
+    );
+  });
+
+  it('固定 ZIP 版本可偵測同長度覆寫，拒絕讀取及續傳但保留舊 PDF 行為', async () => {
+    const stored = await storage.storeStream({
+      directory: 'exports/versioned',
+      extension: 'zip',
+      mimeType: 'application/zip',
+      stream: Readable.from(['original']),
+    });
+    expect(await storage.stat(stored)).toEqual({ fileSize: 8 });
+    await writeFile(join(root, stored.objectKey), 'tampered');
+    await expect(storage.stat(stored)).rejects.toThrow('版本');
+    await expect(
+      storage.openReadStream(stored, { start: 0, end: 2 }),
+    ).rejects.toThrow('版本');
+  });
+
+  it('來源中斷不發布 ZIP，也不刪除其他來源檔', async () => {
+    const original = await storage.store({
+      directory: 'documents/source',
+      extension: 'pdf',
+      mimeType: 'application/pdf',
+      bytes: Buffer.from('source'),
+    });
+    const stream = Readable.from(
+      (async function* () {
+        yield Buffer.from('partial');
+        throw new Error('合成來源中斷');
+      })(),
+    );
+    await expect(
+      storage.storeStream({
+        directory: 'exports/failure/generation',
+        extension: 'zip',
+        mimeType: 'application/zip',
+        stream,
+      }),
+    ).rejects.toThrow('合成來源中斷');
+    expect(await readdir(join(root, 'exports/failure/generation'))).toEqual([]);
+    expect(await readFile(join(root, original.objectKey), 'utf8')).toBe(
+      'source',
+    );
+  });
+
+  it('目的端目錄不可寫入時中止來源串流，保留既有檔案', async () => {
+    await writeFile(join(root, 'exports'), 'existing');
+    const stream = Readable.from(['partial']);
+    await expect(
+      storage.storeStream({
+        directory: 'exports/job',
+        extension: 'zip',
+        mimeType: 'application/zip',
+        stream,
+      }),
+    ).rejects.toThrow();
+    expect(stream.destroyed).toBe(true);
+    expect(await readFile(join(root, 'exports'), 'utf8')).toBe('existing');
+  });
+
+  it('目的磁碟回 ENOSPC 時移除半包並中止輸入，重試可完整保存', async () => {
+    const original = fs.createWriteStream;
+    const diskFull = jest
+      .spyOn(fs, 'createWriteStream')
+      .mockImplementationOnce((path, options) => {
+        const stream = original(path, options);
+        stream.once('open', () =>
+          stream.destroy(
+            Object.assign(new Error('合成磁碟已滿'), { code: 'ENOSPC' }),
+          ),
+        );
+        return stream;
+      });
+    const input = Readable.from([Buffer.alloc(1024 * 1024)]);
+    try {
+      await expect(
+        storage.storeStream({
+          directory: 'exports/disk-full',
+          extension: 'zip',
+          mimeType: 'application/zip',
+          stream: input,
+        }),
+      ).rejects.toMatchObject({ code: 'ENOSPC' });
+      expect(input.destroyed).toBe(true);
+      expect(await readdir(join(root, 'exports/disk-full'))).toEqual([]);
+    } finally {
+      diskFull.mockRestore();
+    }
+    const retried = await storage.storeStream({
+      directory: 'exports/disk-full',
+      extension: 'zip',
+      mimeType: 'application/zip',
+      stream: Readable.from(['complete']),
+    });
+    expect(await readFile(join(root, retried.objectKey), 'utf8')).toBe(
+      'complete',
+    );
   });
 
   it('拒絕 traversal 與不安全的 logical directory', async () => {

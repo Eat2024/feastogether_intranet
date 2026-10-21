@@ -61,6 +61,32 @@ describe('S3PrivateFileStorage', () => {
     ).toMatchObject({ VersionId: 'version-1' });
   });
 
+  it('Range 讀取指定版本且 HEAD 回傳實際大小，取消訊號傳到 S3', async () => {
+    const body = Readable.from(Buffer.from('bc'));
+    const send = jest
+      .fn()
+      .mockResolvedValueOnce({ Body: body })
+      .mockResolvedValueOnce({ ContentLength: 3 });
+    const storage = new S3PrivateFileStorage('private-bucket', {
+      send,
+    } as unknown as S3Client);
+    const signal = new AbortController().signal;
+    const reference = {
+      objectKey: 'exports/job/generation.zip',
+      objectVersion: 'v1',
+    };
+    await expect(
+      storage.openReadStream(reference, { start: 1, end: 2, signal }),
+    ).resolves.toBe(body);
+    expect(send.mock.calls[0][0].input).toMatchObject({
+      Range: 'bytes=1-2',
+      VersionId: 'v1',
+    });
+    expect(send.mock.calls[0][1]).toEqual({ abortSignal: signal });
+    await expect(storage.stat(reference)).resolves.toEqual({ fileSize: 3 });
+    expect(send.mock.calls[1][0].input).toMatchObject({ VersionId: 'v1' });
+  });
+
   it('S3/IAM 失敗直接 fail closed', async () => {
     const storage = new S3PrivateFileStorage('private-bucket', {
       send: jest.fn().mockRejectedValue(new Error('AccessDenied')),

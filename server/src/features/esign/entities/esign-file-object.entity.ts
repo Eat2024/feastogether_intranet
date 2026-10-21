@@ -53,6 +53,13 @@ import { EsignVerificationRecord } from './esign-verification-record.entity';
 @Index('idx_esign_file_objects_verification_record_id', [
   'verificationRecordId',
 ])
+@Index('uq_esign_files_export_purpose', ['exportJobId', 'filePurpose'], {
+  unique: true,
+})
+@Check(
+  'chk_esign_files_export_owner',
+  "file_purpose <> 'signed_copies_zip' OR (export_job_id IS NOT NULL AND document_id IS NULL AND signature_record_id IS NULL AND verification_record_id IS NULL AND mime_type = 'application/zip')",
+)
 @Index('idx_esign_file_objects_export_job_id', ['exportJobId'])
 @Index('idx_esign_file_objects_file_purpose', ['filePurpose'])
 @Index('idx_esign_file_objects_sha256', ['sha256'])

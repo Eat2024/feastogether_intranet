@@ -40,6 +40,8 @@ const BODY_EXCLUDED_PATHS = [
   '/api/external-signature-otps',
   '/external-signature-session',
   '/api/external-signature-session',
+  '/external-signing-task/rejection',
+  '/api/external-signing-task/rejection',
   '/external-signing-task/signatures',
   '/api/external-signing-task/signatures',
 ];

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 到期持久化為 expired；背景處理延遲時查詢／篩選仍顯示已到期，截止當下不得新增簽署。
 - [x] 狀態 migration 保留既有 stopped 與證據；不新增欄位、資料表或排程。
@@ -17,7 +17,7 @@
 
 本張是可由正式後端 API 驗收的完整增量。前端正式串接另行交付。下一張才加入重新開放入口。
 
-## 實作與驗證（待整合後結案）
+## 實作與驗證
 
 - 完成已到期持久化、唯讀有效狀態／期限投影、並發到期防護、已簽副本及停止；補簽端點留待 ticket 02。
 - T003–T011 已交付；T007 使用真實 DB 的 101 筆批次、重複執行及新期限案例，避免對內部 repository mocks 寫測試。
@@ -27,3 +27,13 @@
 - schema：2 suites／5 tests 通過，包含 up/down/up、expired／reopened 資料禁止回滾與既有個人副本遷移。
 - server build 通過；lint:check 通過（0 errors，仍有 repository 既存 warnings）；git diff --check 通過。
 - 前端未修改；不新增依賴、環境變數、資料表或欄位。部署需停止舊 expiry worker，再套 migration 及更新 HTTP／worker。
+
+## 整合與結案
+
+- 實作 commit：`819aa747d89a2232b931d437fc5e6c017dc72c22`。
+- 已無衝突合併至整合分支 `007-esign-expiry-reopen`，merge commit：`8e083d1e1b07d9b33e1eb2b8f9833507e698053b`。
+- 合併後 `git diff --check HEAD^1 HEAD` 通過；沿用上述實作驗證結果，未重跑資料庫測試。
+
+## PR 對應
+
+- [PR #13](https://github.com/Eat2024/feastogether_intranet/pull/13)：供獨立審查；ticket 在本機整合分支結案，遠端 PR 尚未合併。

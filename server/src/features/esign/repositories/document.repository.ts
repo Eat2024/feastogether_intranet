@@ -59,7 +59,7 @@ export class DocumentRepository {
       .where("document.status = 'finalizing'")
       .andWhere('document.id > :afterId', { afterId })
       .andWhere(
-        `NOT EXISTS (SELECT 1 FROM esign_signers signer WHERE signer.document_id = document.id AND signer.deleted_at IS NULL AND (signer.status <> 'signed' OR signer.completion_status IS NULL OR signer.completion_status <> 'ready'))`,
+        `NOT EXISTS (SELECT 1 FROM esign_signers signer WHERE signer.document_id = document.id AND signer.deleted_at IS NULL AND (signer.status = 'pending' OR (signer.status = 'signed' AND (signer.completion_status IS NULL OR signer.completion_status <> 'ready'))))`,
       )
       .orderBy('document.id', 'ASC')
       .limit(100)

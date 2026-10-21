@@ -1,3 +1,4 @@
+import { NotificationRepository } from '../repositories/notification.repository';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { Inject, Injectable } from '@nestjs/common';
@@ -66,6 +67,7 @@ export class ExternalAccessService {
     @Inject(INVITATION_MAIL_SENDER)
     private readonly mailer: InvitationMailSender,
     private readonly credentials: ExternalAccessCredentialService,
+    private readonly notifications: NotificationRepository,
   ) {}
 
   isTokenFormat(token: string): boolean {
@@ -138,7 +140,10 @@ export class ExternalAccessService {
         return {
           verified: true,
           signerPublicId: signer.publicId,
-          credential: await this.credentials.issue(signer.id),
+          credential: await this.credentials.issue(
+            signer.id,
+            signer.invitationTokenSha256!,
+          ),
         };
       }
       const email = invitationEmail(signer);
@@ -181,6 +186,7 @@ export class ExternalAccessService {
       };
       return {
         signerPublicId: signer.publicId,
+        allowReject: document.allowReject,
         document: this.mapper.documentSummary(document, counts),
         signer: this.mapper.signer(signer, null),
         fields: allFields.map((field) => this.mapper.field(field)),
@@ -195,7 +201,12 @@ export class ExternalAccessService {
 
   async source(credential: string) {
     const manager = this.mysql.getManager();
-    const { document } = await this.checkedAccess({ credential }, manager);
+    const { document, signer } = await this.checkedAccess(
+      { credential },
+      manager,
+    );
+    if (signer.status === 'rejected')
+      throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
     const source = await this.files.findDocumentFile(
       document.id,
       'source_pdf',
@@ -224,10 +235,14 @@ export class ExternalAccessService {
    * 頁面所屬簽署人是否相符與存取檢查由簽署服務進行。
    */
   async signingPrincipal(credential: string): Promise<SigningPrincipal> {
-    const signerId = await this.credentials.signerId(credential);
-    if (signerId === null)
+    const session = await this.credentials.read(credential);
+    const signer = await this.findSigner(
+      { credential },
+      this.mysql.getManager(),
+    );
+    if (!session || !signer)
       throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
-    return { kind: 'external', signerId };
+    return { kind: 'external', ...session };
   }
 
   /** 結束外部存取：刪除存取憑證，之後以同一 cookie 存取一律 401 */
@@ -250,8 +265,12 @@ export class ExternalAccessService {
       : lock
         ? await this.documents.findByIdForUpdate(signer.documentId, manager)
         : await this.documents.findById(signer.documentId, manager);
-    if (signer && document && lock)
+    if (signer && document && lock) {
+      // 文件鎖取得前可能已補簽；用鎖定讀取比對先前驗證的邀請世代。
+      const generation = signer.invitationTokenSha256;
       signer = await this.signers.findByIdForUpdate(signer.id, manager);
+      if (signer?.invitationTokenSha256 !== generation) signer = null;
+    }
     const access = { document, signer };
     this.access.assertExternalAccess(access, new Date());
     return access;
@@ -259,13 +278,41 @@ export class ExternalAccessService {
 
   /** 存取憑證不存在或已過期時找不到簽署人，與邀請失效相同處理 */
   private async findSigner(key: SignerKey, manager: EntityManager) {
-    if ('invitationToken' in key)
-      return this.signers.findByInvitationDigest(
-        this.tokens.digest(key.invitationToken),
+    if ('invitationToken' in key) {
+      const digest = this.tokens.digest(key.invitationToken);
+      const original = await this.signers.findByInvitationDigest(
+        digest,
         manager,
       );
-    const signerId = await this.credentials.signerId(key.credential);
-    return signerId === null ? null : this.signers.findById(signerId, manager);
+      if (original) return original;
+      const reminder = await this.notifications.findReminderDigest(
+        digest,
+        manager,
+      );
+      const signer = reminder?.signer;
+      if (
+        !reminder ||
+        !signer ||
+        !['delivered', 'unknown'].includes(reminder.result) ||
+        signer.deletedAt ||
+        reminder.invitationGenerationSha256 !== signer.invitationTokenSha256
+      )
+        return null;
+      // 已簽本人仍可透過舊信重新 OTP 下載；待簽才檢查提醒期限。
+      if (
+        signer.status === 'pending' &&
+        (!reminder.reminderExpiresAt ||
+          new Date() >= reminder.reminderExpiresAt)
+      )
+        return null;
+      return signer;
+    }
+    const session = await this.credentials.read(key.credential);
+    if (!session) return null;
+    const signer = await this.signers.findById(session.signerId, manager);
+    return signer?.invitationTokenSha256 === session.invitationGenerationSha256
+      ? signer
+      : null;
   }
 }
 

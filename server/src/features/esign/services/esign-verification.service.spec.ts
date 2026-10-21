@@ -191,6 +191,46 @@ function setup(
 }
 
 describe('EsignVerificationService.saveSnapshot', () => {
+  it('全拒建立含可追查拒簽摘要的 v3 manifest，不要求簽名或 PDF', async () => {
+    const f = setup();
+    const events = auditChain([
+      'document.created',
+      'signer.rejected',
+      'document.completed',
+    ]);
+    f.repositories.audits.findDocumentEvents.mockResolvedValue(events);
+    await f.service.saveSnapshot(
+      {
+        document: f.document as never,
+        signers: [
+          {
+            ...f.signer,
+            status: 'rejected',
+            signedAt: undefined,
+            completionStatus: null,
+            rejectedAt: events[1].occurredAt,
+            rejectReason: '',
+            rejectRequestId: null,
+          },
+        ] as never,
+        completedAt,
+        auditRootHash: events[2].eventHash,
+      },
+      {} as never,
+    );
+    expect(f.state.snapshot?.manifestJson).toMatchObject({
+      schemaVersion: 'esign-verification-manifest-v3',
+      signers: [],
+      rejected: [
+        {
+          signerPublicId,
+          rejectedAt: events[1].occurredAt.toISOString(),
+          rejectionEventHash: events[1].eventHash,
+        },
+      ],
+    });
+  });
+
   it('依 canonical manifest 寫入一筆快照，signers 依簽署人順序且不含個資', async () => {
     const { state, saveSnapshot, events } = setup();
     await saveSnapshot();

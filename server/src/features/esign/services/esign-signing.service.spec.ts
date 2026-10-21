@@ -18,6 +18,7 @@ describe('EsignSigningService', () => {
       publicId: signerPublicId,
       documentId: 4,
       signerType: 'email',
+      invitationTokenSha256: 'a'.repeat(64),
       userId: 20,
       status: repeated ? 'signed' : 'pending',
     };
@@ -83,7 +84,19 @@ describe('EsignSigningService', () => {
     );
   }
 
-  const externalPrincipal = { kind: 'external' as const, signerId: 8 };
+  const externalPrincipal = {
+    kind: 'external' as const,
+    invitationGenerationSha256: 'a'.repeat(64),
+    signerId: 8,
+  };
+
+  it('補簽邀請世代改變後拒絕舊 session 簽署', async () => {
+    const { service, signer } = setup();
+    signer.invitationTokenSha256 = 'b'.repeat(64);
+    await expect(
+      service.sign(signerPublicId, externalPrincipal, submission, {}),
+    ).rejects.toMatchObject({ code: 'ESIGN_EXTERNAL_UNAUTHORIZED' });
+  });
 
   const submission = {
     requestId,
@@ -142,7 +155,11 @@ describe('EsignSigningService', () => {
       await expect(
         service.sign(
           signerPublicId,
-          { kind: 'external', signerId: 9 },
+          {
+            kind: 'external',
+            invitationGenerationSha256: 'a'.repeat(64),
+            signerId: 9,
+          },
           submission,
           {},
         ),

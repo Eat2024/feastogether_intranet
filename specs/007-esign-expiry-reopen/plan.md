@@ -4,7 +4,7 @@
 
 **Input**: `specs/007-esign-expiry-reopen/spec.md`
 
-**Status**: 設計與任務拆分完成，尚未實作。功能分支自更新後的 `dev`（`b9ae324`）建立。
+**Status**: 後端實作與驗證完成，前端正式串接另行交付。功能分支自更新後的 `dev`（`b9ae324`）建立。
 
 ## Summary
 
@@ -44,7 +44,7 @@ Phase 0 前檢查與 Phase 1 後複查均通過：
 | 系統邊界 | REST 子資源；Controller → Service → Repository；前端只依契約串接 |
 | 風險相稱驗證 | 覆蓋截止、重送、競態、邀請、證據及 migration；未完成前端不宣稱完成產品 |
 
-本次只有規劃文件，不執行程式 lint/test/build；後續實作必須完成 quickstart 的驗證。本功能無 extension hooks 設定。
+後端 lint/test/build、HTTP/DB、security 與 schema 檢查結果已記錄於 quickstart。本功能無 extension hooks 設定。
 
 ## Project Structure
 
@@ -62,7 +62,7 @@ specs/007-esign-expiry-reopen/
 └── checklists/requirements.md
 ```
 
-`tasks.md` 已依本計畫產生，所有實作項目均尚未完成。
+`tasks.md` 已依本計畫產生，後端任務已完成；實際測試配置與交接限制見 tasks.md 及 quickstart。
 
 ### Source Code (repository root)
 
@@ -98,3 +98,9 @@ client/src/features/my-signature/
 ## Complexity Tracking
 
 無需原則例外。唯一 schema 變更是已授權新狀態所需的 CHECK；邀請讀取端點是原規格要求建立人轉交連結所必需，現有程式沒有此入口。完整設計取捨見 research.md。
+
+## 實作交付
+
+補簽 POST 與建立人邀請 GET、完整性／重送保護、舊通知退休及 worker 世代防護、角色歷程裁切已完成。沿用現有表與欄位；signer 邀請送達時間的 TypeScript 型別補齊既有 nullable schema，不新增 migration。無新增 dependency、環境變數、排程，.env.example 不需變更。
+
+部署順序：先停止舊 expiry worker，套用 ticket 01 的 expired CHECK migration，再協調更新 HTTP／worker 並恢復 worker；不能混跑舊版到期永久停止邏輯。已有 expired 或 reopened 歷史時 migration down 拒絕，應向前修正。本次未部署、未修改正式資料；client 仍為 mock 原型。

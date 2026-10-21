@@ -1,4 +1,8 @@
-import { ApiOperation } from '@nestjs/swagger';
+import { SignerNoteDto } from '../dto/signer-note.dto';
+import { DraftSaveDto, DraftSettingsDto } from '../dto/draft-settings.dto';
+import { ReopenDocumentDto, type ReopeningInput } from '../dto/reopening.dto';
+import { EsignReopeningService } from '../services/esign-reopening.service';
+import { ApiBody, ApiOperation } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -15,6 +19,7 @@ import {
   Res,
   UseGuards,
   UseInterceptors,
+  ValidationPipe,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ConfigService } from '@nestjs/config';
@@ -26,7 +31,6 @@ import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { ReplaceFieldsDto } from '../dto/field.dto';
 import { ListDocumentsQueryDto } from '../dto/document-query.dto';
 import { InitiateDocumentDto } from '../dto/initiation.dto';
-import { ReplaceSignersDto } from '../dto/signer.dto';
 import {
   CreateDocumentDto,
   UpdateDocumentDto,
@@ -55,6 +59,7 @@ export class DocumentsController {
     private readonly stoppages: EsignStoppageService,
     private readonly completions: EsignCompletionAccessService,
     private readonly config: ConfigService,
+    private readonly reopenings: EsignReopeningService,
   ) {}
 
   @ApiOperation({
@@ -139,19 +144,32 @@ export class DocumentsController {
 
   @UseGuards(OriginGuard)
   @ApiOperation({
-    summary: '儲存草稿簽署人名單',
+    summary: '儲存草稿簽署人名單、期間與選項',
     description:
-      '整批取代草稿簽署人，保留共用欄位；此 API 不儲存 PDF、欄位位置或發起簽署。',
+      '相容既有回應形狀；可在同一交易整批取代簽署人並保存起迄時間、浮水印與允許拒簽。此 API 不儲存 PDF、欄位位置或發起簽署。',
   })
   @Put(':documentId/draftSave')
   async replaceSigners(
     @Param('documentId') id: string,
-    @Body() body: ReplaceSignersDto,
+    @Body() body: DraftSaveDto,
     @CurrentUserId() userId: number,
   ) {
     const documentId = this.id(id);
-    await this.signerService.draftSave(documentId, userId, body.signers);
+    await this.signerService.draftSave(documentId, userId, body);
     return (await this.queries.creatorDetail(documentId, userId)).signers;
+  }
+
+  @UseGuards(OriginGuard)
+  @ApiOperation({ summary: '完整暫存草稿名單、期間與選項' })
+  @Patch(':documentId/draft-settings')
+  async saveDraftSettings(
+    @Param('documentId') id: string,
+    @Body() body: DraftSettingsDto,
+    @CurrentUserId() userId: number,
+  ) {
+    const documentId = this.id(id);
+    await this.signerService.saveDraftSettings(documentId, userId, body);
+    return this.queries.creatorDetail(documentId, userId);
   }
 
   @UseGuards(OriginGuard)
@@ -195,6 +213,46 @@ export class DocumentsController {
       allowReject: body.allowReject,
     });
     return this.queries.creatorDetail(documentId, userId);
+  }
+
+  @UseGuards(OriginGuard)
+  @ApiOperation({
+    summary: '重新開放已到期文件補簽',
+    description:
+      '僅建立人可設定新期限及原因；舊期限不符回 409，保留原簽署證據。',
+  })
+  @ApiBody({ type: ReopenDocumentDto })
+  @Post(':documentId/reopenings')
+  reopen(
+    @Param('documentId') id: string,
+    @CurrentUserId() userId: number,
+    @Body(
+      new ValidationPipe({
+        expectedType: ReopenDocumentDto,
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        exceptionFactory: () =>
+          new AppException(...AppErrors.ESIGN_REOPEN_INPUT_INVALID),
+      }),
+    )
+    body: ReopeningInput,
+  ) {
+    return this.reopenings.reopen(this.id(id), userId, body);
+  }
+
+  @ApiOperation({
+    summary: '取得補簽外部邀請',
+    description: '僅建立人主動讀取目前補簽輪的邀請，不寄信、不輪替憑證。',
+  })
+  @Get(':documentId/reopening-invitations')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('Referrer-Policy', 'no-referrer')
+  reopeningInvitations(
+    @Param('documentId') id: string,
+    @CurrentUserId() userId: number,
+  ) {
+    return this.queries.reopeningInvitations(this.id(id), userId);
   }
 
   @ApiOperation({
@@ -249,6 +307,23 @@ export class DocumentsController {
     return this.queries.history(this.id(id), userId);
   }
 
+  @UseGuards(OriginGuard)
+  @ApiOperation({ summary: '儲存或清除簽署人的管理備註' })
+  @Patch(':documentId/signers/:signerPublicId/note')
+  saveSignerNote(
+    @Param('documentId') id: string,
+    @Param('signerPublicId') signerPublicId: string,
+    @CurrentUserId() userId: number,
+    @Body() body: SignerNoteDto,
+  ) {
+    return this.signerService.saveNote(
+      this.id(id),
+      signerPublicId,
+      userId,
+      body.note,
+    );
+  }
+
   @ApiOperation({
     summary: '下載指定簽署人的個人 PDF',
     description: '僅建立人可依簽署人下載已產製完成的個人副本',
@@ -272,7 +347,10 @@ export class DocumentsController {
     }
     reply
       .type('application/pdf')
-      .header('Content-Disposition', 'attachment; filename="completed.pdf"')
+      .header(
+        'Content-Disposition',
+        `attachment; filename="completed.pdf"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      )
       .send(file.bytes);
   }
 

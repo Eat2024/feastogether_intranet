@@ -1,3 +1,5 @@
+import type { EsignAuditEvent } from '../entities/esign-audit-event.entity';
+import type { EsignHistoryActorDto } from '../dto/esign-common.dto';
 import { Injectable } from '@nestjs/common';
 import type { User } from '#app/features/users/entities/user.entity';
 import { EsignDocumentField } from '../entities/esign-document-field.entity';
@@ -29,6 +31,44 @@ export interface EsignSignerCounts {
 @Injectable()
 export class EsignViewMapper {
   constructor(private readonly tokens: EsignTokenService) {}
+
+  /** 事件種類決定動作者，signerId 也可能只是系統工作的對象。 */
+  historyActor(
+    event: EsignAuditEvent,
+    signer?: EsignSigner,
+    employee?: User,
+  ): EsignHistoryActorDto {
+    const signerActions = new Set([
+      'document.opened',
+      'consent.accepted',
+      'signature.submitted',
+      'signature.completed',
+      'signer.rejected',
+      'external_invitation.opened',
+      'external_otp.verified',
+      'external_otp.failed',
+    ]);
+    if (signerActions.has(event.eventType) && signer) {
+      return {
+        kind: 'signer',
+        name: signer.nameSnapshot,
+        signerPublicId: signer.publicId,
+      };
+    }
+    const employeeActions = new Set([
+      'document.created',
+      'document.draft_updated',
+      'document.draft_deleted',
+      'document.initiated',
+      'document.stopped_by_creator',
+      'document.reopened',
+      'signer.assigned',
+    ]);
+    if (employeeActions.has(event.eventType) && event.actorUserId) {
+      return { kind: 'employee', name: employee?.name ?? '員工' };
+    }
+    return { kind: 'system', name: '系統' };
+  }
 
   documentSummary(
     document: EsignDocument,
@@ -114,6 +154,8 @@ export class EsignViewMapper {
       email: signer.email ?? null,
       status: signer.status as EsignSignerStatus,
       signedAt: signer.signedAt?.toISOString() ?? null,
+      rejectedAt: signer.rejectedAt?.toISOString() ?? null,
+      rejectReason: signer.rejectReason ?? null,
       completion: {
         status: signer.completionStatus ?? null,
         readyAt: signer.completionReadyAt?.toISOString() ?? null,

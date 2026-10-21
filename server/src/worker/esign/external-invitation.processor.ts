@@ -1,3 +1,10 @@
+import { randomUUID } from 'node:crypto';
+import { isDefinitelyUnsent } from '#app/infrastructure/mail/mail-delivery-outcome';
+import { EsignNotificationLog } from '#app/features/esign/entities/esign-notification-log.entity';
+import {
+  reminderEligibility,
+  taipeiDispatchDate,
+} from '#app/features/esign/services/esign-reminder-policy';
 import { Inject } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
@@ -14,6 +21,18 @@ import { ESIGN_EXTERNAL_INVITATION_QUEUE } from '#app/features/esign/esign-queue
 
 interface InvitationJobData {
   notificationLogId: number;
+}
+
+interface ClaimedInvitation {
+  signerId: number;
+  signerPublicId: string;
+  documentId: number;
+  recipientEmail: string;
+  documentTitle: string;
+  creatorName: string;
+  signEndAt: Date;
+  token: string;
+  claimedAt: Date;
 }
 
 @Processor(ESIGN_EXTERNAL_INVITATION_QUEUE)
@@ -35,18 +54,37 @@ export class ExternalInvitationProcessor extends WorkerHost {
     if (job.opts?.deduplication) await job.removeDeduplicationKey();
     const id = job.data?.notificationLogId;
     if (!Number.isSafeInteger(id) || id < 1) return;
+    const claim = await this.claimInvitation(id);
+    if (!claim) return;
+    if ('reminder' in claim) return this.processReminder(id);
+
+    try {
+      await this.sendInvitation(claim);
+    } catch {
+      await this.finishFailed(id, claim.claimedAt);
+      return;
+    }
+
+    await this.finishDelivered(id, claim);
+  }
+
+  private async claimInvitation(
+    id: number,
+  ): Promise<ClaimedInvitation | { reminder: true } | null> {
     const now = new Date();
-    const claim = await this.mysql.transaction(async (manager) => {
+    return this.mysql.transaction(async (manager) => {
       const log = await this.notifications.findInvitationContextForUpdate(
         id,
         manager,
       );
+      if (log?.batch?.kind === 'reminder') return { reminder: true } as const;
       const stale =
         log?.result === 'processing' &&
         log.processingStartedAt != null &&
         log.processingStartedAt.getTime() < now.getTime() - 5 * 60_000;
       const eligible =
         log &&
+        log.errorCode !== 'INVITATION_SUPERSEDED' &&
         ((['pending', 'failed'].includes(log.result) &&
           (!log.nextAttemptAt || log.nextAttemptAt <= now)) ||
           stale);
@@ -87,21 +125,22 @@ export class ExternalInvitationProcessor extends WorkerHost {
         claimedAt: now,
       };
     });
-    if (!claim) return;
+  }
 
-    try {
-      await this.mailer.send({
-        recipientEmail: claim.recipientEmail,
-        documentTitle: claim.documentTitle,
-        creatorName: claim.creatorName,
-        signEndAt: claim.signEndAt,
-        invitationToken: claim.token,
-      });
-    } catch {
-      await this.finishFailed(id, claim.claimedAt);
-      return;
-    }
+  private async sendInvitation(claim: ClaimedInvitation): Promise<void> {
+    await this.mailer.send({
+      recipientEmail: claim.recipientEmail,
+      documentTitle: claim.documentTitle,
+      creatorName: claim.creatorName,
+      signEndAt: claim.signEndAt,
+      invitationToken: claim.token,
+    });
+  }
 
+  private async finishDelivered(
+    id: number,
+    claim: ClaimedInvitation,
+  ): Promise<void> {
     await this.mysql.transaction(async (manager) => {
       const document = await this.notifications.lockDocument(
         claim.documentId,
@@ -156,6 +195,168 @@ export class ExternalInvitationProcessor extends WorkerHost {
         manager,
       );
     });
+  }
+
+  /** 催簽使用獨立憑證；未知 SMTP 結果不自動重寄。 */
+  private async processReminder(id: number): Promise<void> {
+    const claim = await this.mysql.transaction(async (manager) => {
+      const now = new Date();
+      const log = await this.notifications.findInvitationContextForUpdate(
+        id,
+        manager,
+      );
+      if (!log || log.batch?.kind !== 'reminder') return null;
+      if (log.result === 'processing') {
+        if (
+          log.processingStartedAt &&
+          log.processingStartedAt.getTime() < now.getTime() - 5 * 60_000
+        ) {
+          log.result = 'unknown';
+          log.errorCode = 'DELIVERY_OUTCOME_UNKNOWN';
+          log.completedAt = now;
+          log.processingStartedAt = null;
+          log.leaseToken = null;
+          log.nextAttemptAt = null;
+          log.reminderTokenCiphertext = null;
+          this.recordAttempt(log, now);
+          await this.notifications.saveLog(log, manager);
+        }
+        return null;
+      }
+      if (
+        !['pending', 'failed'].includes(log.result) ||
+        log.attemptCount >= 3 ||
+        (log.nextAttemptAt && log.nextAttemptAt > now)
+      )
+        return null;
+      const signer = log.signer;
+      const document = signer?.document;
+      if (!signer || !document) return null;
+      const history = await this.notifications.findBySignerIds(
+        [signer.id],
+        manager,
+      );
+      const reason =
+        reminderEligibility(
+          document,
+          signer,
+          history.filter((other) => other.id !== log.id),
+          now,
+        ) ??
+        (log.invitationGenerationSha256 !== signer.invitationTokenSha256
+          ? 'INVITATION_GENERATION_CHANGED'
+          : null) ??
+        (!log.reminderExpiresAt ||
+        now >= log.reminderExpiresAt ||
+        !log.reminderTokenCiphertext ||
+        !signer.email
+          ? 'INVITATION_EXPIRED'
+          : null);
+      if (reason) {
+        log.result = 'skipped';
+        log.errorCode = reason;
+        log.completedAt = now;
+        log.reminderTokenCiphertext = null;
+        log.nextAttemptAt = null;
+        this.recordAttempt(log, now);
+        await this.notifications.saveLog(log, manager);
+        return null;
+      }
+      // 明文僅留在 worker 記憶體，先解密才宣告已開始 SMTP。
+      let token: string;
+      try {
+        token = this.tokens.decrypt(log.reminderTokenCiphertext!);
+      } catch {
+        log.result = 'skipped';
+        log.errorCode = 'INVITATION_CREDENTIAL_UNAVAILABLE';
+        log.completedAt = now;
+        log.reminderTokenCiphertext = null;
+        log.nextAttemptAt = null;
+        this.recordAttempt(log, now);
+        await this.notifications.saveLog(log, manager);
+        return null;
+      }
+      log.result = 'processing';
+      log.attemptCount += 1;
+      log.processingStartedAt = now;
+      log.dispatchDate = taipeiDispatchDate(now);
+      log.leaseToken = randomUUID();
+      log.errorCode = null;
+      this.recordAttempt(log, now);
+      await this.notifications.saveLog(log, manager);
+      return {
+        lease: log.leaseToken,
+        token,
+        documentId: document.id,
+        signerId: signer.id,
+        recipientEmail: signer.email!,
+        documentTitle: document.title,
+        creatorName: document.createdByUser?.name ?? '',
+        signEndAt: document.signEndAt!,
+      };
+    });
+    if (!claim) return;
+    let outcome: 'delivered' | 'failed' | 'unknown' = 'delivered';
+    try {
+      await this.mailer.send({
+        recipientEmail: claim.recipientEmail,
+        documentTitle: claim.documentTitle,
+        creatorName: claim.creatorName,
+        signEndAt: claim.signEndAt,
+        invitationToken: claim.token,
+        kind: 'reminder',
+      });
+    } catch (error) {
+      outcome = isDefinitelyUnsent(error) ? 'failed' : 'unknown';
+    }
+    await this.mysql.transaction(async (manager) => {
+      const log = await this.notifications.findInvitationContextForUpdate(
+        id,
+        manager,
+      );
+      if (!log || log.result !== 'processing' || log.leaseToken !== claim.lease)
+        return;
+      const now = new Date();
+      log.result = outcome;
+      log.errorCode =
+        outcome === 'delivered'
+          ? null
+          : outcome === 'failed'
+            ? 'MAIL_NOT_ACCEPTED'
+            : 'DELIVERY_OUTCOME_UNKNOWN';
+      log.completedAt = now;
+      log.processingStartedAt = null;
+      log.leaseToken = null;
+      log.nextAttemptAt =
+        outcome === 'failed' && log.attemptCount < 3
+          ? new Date(now.getTime() + 30_000 * 2 ** (log.attemptCount - 1))
+          : null;
+      if (!log.nextAttemptAt) log.reminderTokenCiphertext = null;
+      this.recordAttempt(log, now);
+      await this.notifications.saveLog(log, manager);
+      // SMTP 已接受就是 delivered，不因隨後簽署／停止而改寫歷史。
+      if (outcome === 'delivered')
+        await this.audit.append(
+          {
+            documentId: claim.documentId,
+            signerId: claim.signerId,
+            eventType: 'external_reminder.delivered',
+            occurredAt: now,
+          },
+          manager,
+        );
+    });
+  }
+
+  private recordAttempt(log: EsignNotificationLog, now: Date) {
+    log.attemptHistoryJson = [
+      ...(log.attemptHistoryJson ?? []),
+      {
+        status: log.result,
+        at: now.toISOString(),
+        reasonCode: log.errorCode ?? null,
+      },
+    ].slice(-10);
   }
 
   private async finishFailed(id: number, claimedAt: Date): Promise<void> {

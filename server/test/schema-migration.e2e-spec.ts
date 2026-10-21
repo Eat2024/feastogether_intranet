@@ -32,13 +32,13 @@ describe('e-sign schema migrations', () => {
       await ds.initialize();
       try {
         await ds.runMigrations();
-        await ds.undoLastMigration(); // 已到期狀態
+        await revertAfter(ds, 'SharedFieldsPersonalCopies1792195200000');
         await ds.undoLastMigration(); // 個人副本
         await ds.query(
           "INSERT INTO users (empid,name) VALUES ('MIGRATION001','合成員工')",
         );
         await ds.query(
-          "INSERT INTO esign_documents (doc_number,title,created_by_user_id,status,signing_payload_json,signing_payload_sha256) VALUES ('00000000-0000-4000-8000-000000000001','既有單人文件',1,'completed',?,?)",
+          "INSERT INTO esign_documents (doc_number,title,created_by_user_id,status,sign_start_at,sign_end_at,signing_payload_json,signing_payload_sha256) VALUES ('00000000-0000-4000-8000-000000000001','既有單人文件',1,'completed','2026-01-01','2026-12-31',?,?)",
           [
             JSON.stringify({ schemaVersion: 1, original: true }),
             'a'.repeat(64),
@@ -109,7 +109,7 @@ describe('e-sign schema migrations', () => {
             "INSERT INTO users (empid,name) VALUES ('EXPIRY001','合成員工')",
           );
           await ds.query(
-            "INSERT INTO esign_documents (doc_number,title,created_by_user_id,status) VALUES ('00000000-0000-4000-8000-000000000001','到期文件',1,?)",
+            "INSERT INTO esign_documents (doc_number,title,created_by_user_id,status,sign_start_at,sign_end_at) VALUES ('00000000-0000-4000-8000-000000000001','到期文件',1,?,'2026-01-01','2026-12-31')",
             [kind === 'expired' ? 'expired' : 'stopped'],
           );
           if (kind === 'reopened')
@@ -120,6 +120,7 @@ describe('e-sign schema migrations', () => {
           const before: unknown = await ds.query(
             'SELECT * FROM esign_documents',
           );
+          await revertAfter(ds, 'ExpiredDocuments1792368000000');
           await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
           expect(await ds.query('SELECT * FROM esign_documents')).toEqual(
             before,
@@ -131,6 +132,28 @@ describe('e-sign schema migrations', () => {
     },
   );
 
+  it('單端期間草稿禁止回滾，不能遺失已保存日期', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = new DataSource(optionsFor(database));
+      await ds.initialize();
+      try {
+        await ds.runMigrations();
+        await ds.query(
+          "INSERT INTO users (empid,name) VALUES ('DRAFT009','合成員工')",
+        );
+        await ds.query(
+          "INSERT INTO esign_documents (doc_number,title,created_by_user_id,sign_start_at) VALUES ('00000000-0000-4000-8000-000000000009','單端草稿',1,'2020-01-01')",
+        );
+        const before: unknown = await ds.query('SELECT * FROM esign_documents');
+        await revertAfter(ds, 'DraftSettings1792454400000');
+        await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
+        expect(await ds.query('SELECT * FROM esign_documents')).toEqual(before);
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
+
   it('最新 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const dataSource = new DataSource(optionsFor(database));
@@ -139,7 +162,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(54);
+        expect(first.timeColumns).toHaveLength(60);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(
@@ -266,4 +289,16 @@ async function authSessionForeignKeys(
     [database],
   );
   return rows.map((row) => row.CONSTRAINT_NAME);
+}
+
+/** 後續 migration 增加時，舊資料測試仍在其指定版本執行。 */
+async function revertAfter(ds: DataSource, migration: string): Promise<void> {
+  while (true) {
+    const rows = await ds.query<Array<{ name: string }>>(
+      'SELECT name FROM migrations ORDER BY id DESC LIMIT 1',
+    );
+    if (rows[0]?.name === migration) return;
+    if (!rows.length) throw new Error(`找不到測試 migration：${migration}`);
+    await ds.undoLastMigration();
+  }
 }

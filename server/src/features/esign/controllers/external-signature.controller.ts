@@ -1,3 +1,5 @@
+import { EsignRejectionService } from '../services/esign-rejection.service';
+import { ExternalRejectionDto } from '../dto/rejection.dto';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { ApiOperation } from '@nestjs/swagger';
 import {
@@ -50,11 +52,29 @@ import {
 @Controller()
 export class ExternalSignatureController {
   constructor(
+    private readonly rejection: EsignRejectionService,
     private readonly external: ExternalAccessService,
     private readonly otp: ExternalOtpService,
     private readonly signing: EsignSigningService,
     private readonly config: ConfigService,
   ) {}
+
+  @UseGuards(OriginGuard)
+  @ApiOperation({ summary: '拒絕外部本人簽署任務' })
+  @Post('external-signing-task/rejection')
+  async reject(
+    @Body() body: ExternalRejectionDto,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const { repeated, ...result } = await this.rejection.reject(
+      body.signerPublicId,
+      await this.external.signingPrincipal(this.accessCredential(request)),
+      body,
+    );
+    reply.status(repeated ? HttpStatus.OK : HttpStatus.CREATED);
+    return result;
+  }
 
   @ApiOperation({
     summary: '開啟外部簽署邀請確認頁',
@@ -253,7 +273,10 @@ export class ExternalSignatureController {
       throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
     reply
       .type('application/pdf')
-      .header('Content-Disposition', 'attachment; filename="completed.pdf"')
+      .header(
+        'Content-Disposition',
+        `attachment; filename="completed.pdf"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      )
       .send(file.bytes);
   }
 

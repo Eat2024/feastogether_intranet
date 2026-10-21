@@ -1,5 +1,8 @@
 import { AppErrors } from '#app/common/errors/app-errors';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import fontkit from '@pdf-lib/fontkit';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   concatTransformationMatrix,
@@ -10,8 +13,10 @@ import {
   type PDFPage,
   StandardFonts,
   rgb,
+  degrees,
 } from 'pdf-lib';
 import { type BitMatrix, create as createQr } from 'qrcode';
+import type { EntityManager } from 'typeorm';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
@@ -19,23 +24,43 @@ import {
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
+import type { EsignDocument } from '../entities/esign-document.entity';
+import type { EsignDocumentField } from '../entities/esign-document-field.entity';
+import type { EsignFileObject } from '../entities/esign-file-object.entity';
+import type { EsignSignatureRecord } from '../entities/esign-signature-record.entity';
+import type { EsignSigner } from '../entities/esign-signer.entity';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
-import type { EsignFileObject } from '../entities/esign-file-object.entity';
-import type { EsignSignatureRecord } from '../entities/esign-signature-record.entity';
 import { canonicalSha256 } from './esign-audit.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
-import { PdfValidationService } from './pdf-validation.service';
+import {
+  PdfValidationService,
+  type ValidatedPdf,
+} from './pdf-validation.service';
 
 interface Box {
   x: number;
   y: number;
   width: number;
   height: number;
+}
+
+interface CompletionContext {
+  manager: EntityManager;
+  document: EsignDocument;
+  signer: EsignSigner;
+  fields: EsignDocumentField[];
+  sourceBytes: Buffer;
+  sourceMetadata: ValidatedPdf;
+}
+
+interface SigningEvidence {
+  record: EsignSignatureRecord;
+  signatureByField: ReadonlyMap<number | undefined, EsignFileObject>;
 }
 
 /** 與 PDF.js 相同，百分比以 MediaBox/CropBox 交集的旋轉後可視區域為準。 */
@@ -151,6 +176,20 @@ export class CompletedPdfService {
   ) {}
 
   async create(documentId: number, signerId: number) {
+    const context = await this.loadAndValidateCompletionContext(
+      documentId,
+      signerId,
+    );
+    const evidence = await this.loadAndValidateSigningEvidence(context);
+    const completedPdf = await this.renderCompletedPdf(context, evidence);
+    return this.storeAndValidateCompletedPdf(completedPdf, context, evidence);
+  }
+
+  /** 載入並驗證文件、簽署人、原始 PDF、欄位及簽署快照。 */
+  private async loadAndValidateCompletionContext(
+    documentId: number,
+    signerId: number,
+  ): Promise<CompletionContext> {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
     if (
@@ -190,10 +229,26 @@ export class CompletedPdfService {
       sourceMetadata.sha256,
       fields,
     );
-    const record = await this.records.findBySignerId(signerId, manager);
+
+    return {
+      manager,
+      document,
+      signer,
+      fields,
+      sourceBytes,
+      sourceMetadata,
+    };
+  }
+
+  /** 載入並驗證簽署紀錄、簽名圖片及欄位對應關係。 */
+  private async loadAndValidateSigningEvidence(
+    context: CompletionContext,
+  ): Promise<SigningEvidence> {
+    const { document, signer, fields, sourceMetadata, manager } = context;
+    const record = await this.records.findBySignerId(signer.id, manager);
     if (
       !record ||
-      record.signerId !== signerId ||
+      record.signerId !== signer.id ||
       record.documentSha256 !== sourceMetadata.sha256 ||
       record.signingPayloadSha256 !== document.signingPayloadSha256 ||
       record.consentVersion !==
@@ -210,10 +265,6 @@ export class CompletedPdfService {
     const signatureByField = new Map(
       signatureFiles.map((file) => [file.documentFieldId, file]),
     );
-    const output = await PDFDocument.load(sourceBytes, {
-      updateMetadata: false,
-    });
-    const font = await output.embedFont(StandardFonts.Helvetica);
     const signatureFields = fields.filter(
       (field) => field.fieldType === 'signature',
     );
@@ -225,9 +276,127 @@ export class CompletedPdfService {
       throw this.integrity();
     }
 
-    for (const field of fields) {
-      if (field.pageNumber < 1 || field.pageNumber > output.getPageCount())
+    return { record, signatureByField };
+  }
+
+  /** 載入 PDF，依序繪製浮水印、簽名、QR code 與日期。 */
+  private async renderCompletedPdf(
+    context: CompletionContext,
+    evidence: SigningEvidence,
+  ): Promise<Buffer> {
+    const { document, fields, sourceBytes } = context;
+    const { record, signatureByField } = evidence;
+    const output = await PDFDocument.load(sourceBytes, {
+      updateMetadata: false,
+    });
+    const options = (
+      document.signingPayloadJson as { options?: { watermark?: boolean } }
+    ).options;
+    await this.drawWatermark(output, options?.watermark === true);
+    await this.drawSigningFields(output, fields, signatureByField, record);
+
+    return Buffer.from(await output.save({ useObjectStreams: false }));
+  }
+
+  /** 儲存完成檔並重新讀取驗證；驗證失敗時刪除已儲存的檔案。 */
+  private async storeAndValidateCompletedPdf(
+    rendered: Buffer,
+    context: CompletionContext,
+    evidence: SigningEvidence,
+  ) {
+    const { document, signer, sourceMetadata } = context;
+    const { record } = evidence;
+    const stored = await this.storage.store({
+      directory: `documents/${document.docNumber}/completed/${signer.publicId}`,
+      extension: 'pdf',
+      mimeType: 'application/pdf',
+      bytes: rendered,
+    });
+    try {
+      const persisted = await this.pdfValidation.validatePersistedPdf(
+        await readPrivateFile(this.storage, stored),
+      );
+      if (
+        persisted.pageCount !== sourceMetadata.pageCount ||
+        persisted.sha256 !== stored.sha256
+      ) {
         throw this.integrity();
+      }
+      return {
+        stored,
+        metadata: persisted,
+        signatureRecordId: record.id,
+        sourceSha256: sourceMetadata.sha256,
+        signingPayloadSha256: record.signingPayloadSha256,
+      };
+    } catch (error) {
+      await this.storage.delete(stored).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async drawWatermark(
+    output: PDFDocument,
+    enabled: boolean,
+  ): Promise<void> {
+    if (!enabled) return;
+
+    // 開發與部署均只使用隨專案交付的字型；缺檔時讓產製失敗，不能靜默省略浮水印。
+    const fontBytes = await readFile(
+      resolve(__dirname, '../../../assets/fonts/EsignWatermarkTC-Medium.ttf'),
+    );
+    output.registerFontkit(fontkit);
+    const watermarkFont = await output.embedFont(fontBytes, { subset: true });
+    const text = '饗賓集團 內部文件 請勿外流';
+    const characters = new Set(watermarkFont.getCharacterSet());
+    if (
+      Array.from(text).some(
+        (character) => !characters.has(character.codePointAt(0)!),
+      )
+    ) {
+      throw this.integrity();
+    }
+
+    for (const page of output.getPages()) {
+      const { width, height } = beginVisiblePage(page);
+      const scale = width / 460;
+      const size = 16 * scale;
+      const stepX = 260 * scale;
+      const stepY = 110 * scale;
+      const span = Math.hypot(width, height) / 2;
+      const textWidth = watermarkFont.widthOfTextAtSize(text, size);
+      const cosine = Math.cos(Math.PI / 6);
+      const sine = Math.sin(Math.PI / 6);
+      for (let row = 0, y = -span; y <= span; row += 1, y += stepY) {
+        for (let x = -span; x <= span; x += stepX) {
+          const centered = x + ((row % 2) * stepX) / 2 - textWidth / 2;
+          page.drawText(text, {
+            x: width / 2 + centered * cosine - y * sine,
+            y: height / 2 + centered * sine + y * cosine,
+            size,
+            font: watermarkFont,
+            rotate: degrees(30),
+            color: rgb(0.62, 0.62, 0.62),
+            opacity: 0.18,
+          });
+        }
+      }
+      page.pushOperators(popGraphicsState());
+    }
+  }
+
+  private async drawSigningFields(
+    output: PDFDocument,
+    fields: EsignDocumentField[],
+    signatureByField: ReadonlyMap<number | undefined, EsignFileObject>,
+    record: EsignSignatureRecord,
+  ): Promise<void> {
+    const font = await output.embedFont(StandardFonts.Helvetica);
+
+    for (const field of fields) {
+      if (field.pageNumber < 1 || field.pageNumber > output.getPageCount()) {
+        throw this.integrity();
+      }
       const page = output.getPage(field.pageNumber - 1);
       const { width: pageWidth, height: pageHeight } = beginVisiblePage(page);
       const x = (Number(field.xPercent) / 100) * pageWidth;
@@ -237,6 +406,7 @@ export class CompletedPdfService {
         pageHeight -
         ((Number(field.yPercent) + Number(field.heightPercent)) / 100) *
           pageHeight;
+
       if (field.fieldType === 'signature') {
         const png = await this.embedSignature(
           output,
@@ -268,37 +438,6 @@ export class CompletedPdfService {
         throw this.integrity();
       }
       page.pushOperators(popGraphicsState());
-    }
-
-    const rendered = Buffer.from(
-      await output.save({ useObjectStreams: false }),
-    );
-    const stored = await this.storage.store({
-      directory: `documents/${document.docNumber}/completed/${signer.publicId}`,
-      extension: 'pdf',
-      mimeType: 'application/pdf',
-      bytes: rendered,
-    });
-    try {
-      const persisted = await this.pdfValidation.validatePersistedPdf(
-        await readPrivateFile(this.storage, stored),
-      );
-      if (
-        persisted.pageCount !== sourceMetadata.pageCount ||
-        persisted.sha256 !== stored.sha256
-      ) {
-        throw this.integrity();
-      }
-      return {
-        stored,
-        metadata: persisted,
-        signatureRecordId: record.id,
-        sourceSha256: sourceMetadata.sha256,
-        signingPayloadSha256: record.signingPayloadSha256,
-      };
-    } catch (error) {
-      await this.storage.delete(stored).catch(() => undefined);
-      throw error;
     }
   }
 

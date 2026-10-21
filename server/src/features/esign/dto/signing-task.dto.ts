@@ -13,6 +13,7 @@ export class EsignConsentViewDto {
 
 export class EsignSigningTaskDto {
   signerPublicId!: string;
+  allowReject!: boolean;
   document!: EsignDocumentSummaryDto;
   signer!: EsignSignerViewDto;
   fields!: EsignFieldViewDto[];

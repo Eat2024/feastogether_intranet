@@ -1,0 +1,47 @@
+[
+  {
+    "label": "store-0",
+    "elapsedMs": 10966,
+    "bytes": 6245350572,
+    "apiPeakRssMiB": 524.03125,
+    "workerPeakRssMiB": 488.609375,
+    "workerCpuSeconds": 20.987931,
+    "sampleWindowSeconds": 10.764
+  },
+  {
+    "label": "store-1",
+    "elapsedMs": 10905,
+    "bytes": 6245350572,
+    "apiPeakRssMiB": 477.09375,
+    "workerPeakRssMiB": 434.03125,
+    "workerCpuSeconds": 21.279150999999995,
+    "sampleWindowSeconds": 10.756
+  },
+  {
+    "label": "store-2",
+    "elapsedMs": 10909,
+    "bytes": 6245350572,
+    "apiPeakRssMiB": 484.453125,
+    "workerPeakRssMiB": 427.875,
+    "workerCpuSeconds": 21.27632,
+    "sampleWindowSeconds": 10.502
+  },
+  {
+    "label": "1-0",
+    "elapsedMs": 94876,
+    "bytes": 6230593236,
+    "apiPeakRssMiB": 358.5,
+    "workerPeakRssMiB": 548.046875,
+    "workerCpuSeconds": 128.59159400000001,
+    "sampleWindowSeconds": 94.546
+  },
+  {
+    "label": "6-0",
+    "elapsedMs": 92297,
+    "bytes": 6229996236,
+    "apiPeakRssMiB": 356.8125,
+    "workerPeakRssMiB": 549.90625,
+    "workerCpuSeconds": 125.672426,
+    "sampleWindowSeconds": 92.056
+  }
+]

@@ -1,0 +1,71 @@
+# Spec 009 實作紀錄
+
+> 最終交付邊界：本 PR 只包含 server、worker、migration 與後端契約。本文提到的 client／真 Chrome 結果是開發期原型驗證紀錄；相關 client 程式已自分支移除，正式 API 串接由獨立前端 PR 交付。
+
+## Ticket 01：草稿完整設定
+
+- 基線：整合分支 `feature/009-esign-document-delivery`，commit `f28272b`；工作分支 `009/01-draft-settings` 由此建立，沒有覆寫根工作目錄變更。
+- 六故事對照：US1 草稿由 Ticket 01 交付；US2 浮水印 → 02、US3 ZIP → 07–09、US4 拒簽 → 03、US5 催簽 → 05–06、US6 管理 → 04；整體驗收 → 10。
+- 新增 PATCH `documents/:id/draft-settings`，名單／日期／選項在既有文件鎖交易內保存；舊 PUT `draftSave` 委派相同服務、HTTP 回應仍為簽署人陣列。
+- 草稿日期允許單端／過去日期；未傳保留、null 清空；明確帶時區的 ISO 日期，兩端皆有時須開始早於結束。正式發起維持原驗證。建立人詳情回傳 watermark／allowReject，沒有憑證或簽名新增洩漏。
+- 正式設定頁回填混合／外部名單、日期、選項；使用台北日界線、提供清空日期操作；發起送選取值。水印繪製與拒簽流程仍依賴 Tickets 02／03，必須隨完整 Spec 009 整合發布。
+- migration `1792454400000-DraftSettings` 只改現有期間 CHECK，正式狀態需要完整期間；有單端草稿時 down 拒絕清值回滾。沒有新增環境變數或相依套件。
+
+### 驗證
+
+- TDD：新增 service 公開入口測試先失敗（缺少 saveDraftSettings），實作後通過。
+- `pnpm -C server test --runInBand`：92 suites／815 tests 通過。
+- `DB_MYSQL_DB=feastogether_intranet_test_009_01 pnpm -C server test:e2e esign-draft-settings`：16 tests 通過，含登入後回填、舊 API、單端／清空／省略、非法日期及名單全不變、名單替換後注入資料庫失敗亦完整回滾、session／Origin／建立人／正式狀態保護、暫存不建立邀請、實際同時儲存與發起後僅完整發起設定生效。
+- `DB_MYSQL_DB=feastogether_intranet_test pnpm -C server test:schema`：2 suites／6 tests 通過；schema helper 建立隨機隔離資料庫，含 no drift、指定歷史版本升級、單端草稿拒絕 down。schema helper 會追加 UUID，因此不使用超過 MySQL 64 字元上限的長前綴。
+- `pnpm build` 與 `pnpm lint`：通過；server lint 有既有 warnings。client 未新增自動測試框架；另以本機既有 Playwright core + Chrome 執行臨時瀏覽器驗收，詳見下節。
+- T004／T009 的原未完成驗收已在第二輪補齊，不再留待 Ticket 10。
+- 工作目錄使用 frozen lockfile 安裝依賴；初始共用 node_modules symlink 被 Turbopack 拒絕後已移除，沒有修改 lockfile。
+
+### 第二輪：實際並發與瀏覽器驗收（2026-10-20）
+
+- 基於整合 commit `489a0bd`，新增永久 HTTP e2e 同時發出保存與發起兩請求；允許保存先成功或被409拒絕，最終名單、完整期間及兩選項必須全為發起版本，不能混入草稿內容。永久 suite 16/16 通過。
+- 使用本機既有 Playwright core 1.57 + Google Chrome，Next dev `39002` → 真正 Nest HTTP `39001` → 隔離 MySQL，沒有 mock API。臨時 suite 含永久16項與瀏覽器1項，17/17 通過。
+- Chrome 時區刻意設為 `America/Los_Angeles`。以合成組織與一內部一外部名單載入，確認台北起迄日期與選項；畫面新增外部人、取消 watermark、清空開始日並按暫存，API回傳草稿、三位完整名單、null 開始日、台北結束日、watermark=false／allowReject=true。關閉 browser context 後重新進入，同樣回填名單與日期選項，無發起。
+- 實測修正舊 tooltip／按鈕／成功訊息，清楚表示暫存名單、期間與選項。
+- 合成截圖：`/tmp/esign009-draft-roundtrip.png`；臨時自動化腳本 `/tmp/esign009-draft-browser.cjs`。測試腳本只從環境取合成 session，不輸出 cookie。臨時 Jest spec、合成 org-chart.json、Next 生成 AGENTS 區塊均已移除，Next已停止；未新增專案框架或提交個資。
+
+## Ticket 02 — 後端依固定設定繪製浮水印
+
+程式、字型來源、TDD、實際渲染與下載一致性結果見 [浮水印驗證紀錄](implementation-notes-watermark.md)。保留 watermark 選擇，由後端在副本 hash 前加印；繁體字型為改名 OFL TrueType 子集，正式下載不重畫。已實際渲染八頁並解碼四種旋轉頁的 QR。ZIP 一致性待 Ticket 10 整合。
+
+## Ticket 05 — 單人外部催簽
+
+- 真API先提交batch/log後入列；目前沿用外部邀請queue與既有maintenance，不新增排程或環境變數。通知worker按kind分流，原邀請digest不旋轉；提醒token獨立雜湊/密文且綁原邀請世代，SMTP接受後清密文、保留OTP入口。
+- 明確未寄送最多三次；SMTP資料階段斷線等不確定結果及過期lease均標unknown，不自動再寄。pending/processing跨午夜阻擋新申請，delivered/unknown按實際派送台北曆日佔額度。
+- 新增notification欄位migration `1792454402000`，同步entity/schema、時間索引、唯一鍵及舊邀請寫入預設。已有reminder紀錄時拒絕down，避免抹掉憑證與稽核。
+- 單人通知正式元件透過API、同操作requestId與結果輪詢；原邀請狀態不會被催簽結果蓋掉。完整多選/全部及分頁歷史仍由ticket06交付。
+- 驗證：server 830 unit tests、schema 6 tests、reminder API/worker 8 e2e tests；server/client build與lint通過（server既有warning）。純資格測試覆蓋台北23:59:59/00:00及跨日in-flight；e2e覆蓋新舊邀請OTP、世代撤銷、SMTP unknown、有限重試、寄前停止、過期lease、並發受理與migration回退保護。
+
+### Ticket 05 整合與瀏覽器驗證
+
+- 已merge `9f22302`，保留ticket04管理備註/拒簽/歷程。合併後root build/lint、98 suites/833 tests及schema6 tests通過。
+- 真Chrome（台北時區）對真Nest/API+MySQL執行單人催簽→202受理→worker fake SMTP投遞→當日限制→reload仍已寄出，全部通過。截圖 `/tmp/esign009-reminder-browser.png`；臨時fixture及server已清除，沒有新增測試框架。
+- 發布順序：先通知migration，再以新worker取代所有舊邀請worker，最後開啟新催簽API；不能讓舊worker消費reminder。若需回退，先停新API受理與worker並保留通知資料，已有reminder時migration拒絕down；原邀請寫入可使用public UUID資料庫預設。
+
+
+## Ticket 06：批次催簽與分頁通知歷史
+
+- 多選去重、通知全部外部待簽者跨完整名單；跨文件整批拒絕，內部及已完成／已受限同文件人員留明確 skip，不建空批次。前端只計算外部合格人數，同次失敗重送保留 requestId。
+- GET 通知批次／逐人明細均 cursor/limit 分頁，含初次邀請、催簽、操作者、全批聚合狀態與安全嘗試歷程。管理名單補 latestInvitation/latestReminder、已寄出次數與 eligibility；不加入本人 DTO。
+- 真 MySQL 發現並預防的競態：已等待文件鎖的 worker 使用鎖定後 document 狀態，不能以 plain read 舊 snapshot 覆蓋。已明確失敗但排程重試者，跨午夜仍佔原明細，不能另排第二批；全批狀態為 queued，逐人保留 failed 與原因。
+- TDD：批次部分失敗／unknown聚合、跨午夜仍待重試兩個案例先失敗後通過。提醒 HTTP/worker suite 13 項通過，包括23人跨頁、初邀／催簽類型、selected混合去重、分頁不漏不重、併發去重、每日限制、重試同明細，以及初邀／催簽兩種真DB鎖等待後停止。
+- 真 Chrome 對 Next→Nest→MySQL/Redis，兩位多選202，接著all_pending再受理21位；worker fake SMTP完成，當日按鈕停用，通知歷史可切初邀、逐人20+3分頁，reload保留結果。瀏覽器時區為America/Los_Angeles，通知時間固定台北顯示。合成截圖 `/tmp/esign009-batch-browser.png`；臨時腳本 `/tmp/esign009-batch-browser.cjs`；fixture及Next已清除，無新增client測試框架。
+- 前端仍不支援內部催簽；沒有新增schema、環境變數、RBAC或自動催簽排程。完整驗證及合併commit記於本機ticket。
+## Ticket 07：本機背景 ZIP 匯出（2026-10-21）
+
+- 交付 T015–T017、T019、T021–T027；T018 的 archiver／stream port 已完成，S3 dependency／adapter 與 multipart 保留給 08，因此 T018 未整項勾選。風險驗證統一放在 `server/test/esign-export.e2e-spec.ts` 的 HTTP、真 queue worker 及 storage 公開邊界，取代預定內部 service／processor mock 測試。
+- 正式 UI：`/export-history` 預設使用後端的跨建立人查找、ZIP 歷史；建立人 `/forms/[id]/export` 也可申請 ZIP。歷史與下載不走 creator-only detail。mock Excel／其他歷史頁籤仍為舊原型，不宣稱已正式串接。
+- 新增 7 支匯出相關路由，固定快照／等待來源／安全檔名／SHA-256／ZIP64 STORE／全域 concurrency=1／五分鐘租約與 generation fencing／七天共享。`storeStream.expectedSize` 僅估計容量，禁止作 Content-Length。成果大小及 hash 來自實際串流，原生下載與 Next rewrite 保留 Range／If-Range。
+- e2e 三項完整情境通過：身分與 Origin、全拒409、並發重用、enqueue 故障補列、GET 唯讀、七天後410及清理、有效期內缺檔503、來源等待／失敗／修復同快照retry、篡改fail、stale worker不能發布、兩個 worker＋慢 storage。使用 2×64 份小合成副本驗證有界讀取；並非6000份容量測試。
+- 真 Chrome 瀏覽器使用非建立人員工 session，完成查找、申請、重整、原生ZIP下載並解壓核對內容；206／If-Range200／ETag／Cache-Control／nosniff 經 Next proxy 核對。測試程式與截圖在 `/tmp/esign009-zip-browser.cjs`、`/tmp/esign009-zip-browser.png`；未新增 client 測試框架。
+- 最終整合 01–05 後 root build/lint 通過，server 98 suites／836 tests，schema 6 tests。詳細本機 log：`/tmp/esign009-07-code-green.log`、`/tmp/esign009-07-browser.log`、`/tmp/esign009-07-final-unit.log`、`/tmp/esign009-07-final-schema.log`、`/tmp/esign009-07-final-root-build.log`、`/tmp/esign009-07-final-root-lint.log`。lint 0 error，既有 warnings 保留。
+- 08 交接：S3 ZIP尚未啟用，既有S3 PDF功能保留；需支援 multipart uploadId／abort／版本清理，並收窄 `isReferenced` 為 active generation，避免 failed staging 永久保護殘件。09 才實測6000份、大於4GiB與效能門檻，未把小量驗證視為容量達標。
+
+## Ticket 10：整合驗收
+
+跨故事真 PDF/ZIP、拒簽 maintenance／RR 競態修正、local ZIP 固定版本、完整回歸與41條FR對照見 [整合驗證紀錄](implementation-notes-integration.md)。Standards／Spec review 待整合後另記；部署 S3 容量維持 ticket11 ready-for-human、T028未完成。

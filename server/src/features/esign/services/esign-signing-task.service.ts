@@ -38,7 +38,7 @@ export class EsignSigningTaskService {
     private readonly records: SignatureRecordRepository,
   ) {}
 
-  async list(userId: number, status?: 'pending' | 'signed') {
+  async list(userId: number, status?: 'pending' | 'signed' | 'rejected') {
     const now = new Date();
     const manager = this.mysql.getManager();
     const signers = await this.signers.findAssignedToUser(userId, manager);
@@ -75,7 +75,8 @@ export class EsignSigningTaskService {
         throw new Error('unreachable');
       }
       this.access.assertInternalSigner(document, signer, userId);
-      this.validation.assertSignerCanReadSource(document, signer, new Date());
+      if (signer.status !== 'rejected')
+        this.validation.assertSignerCanReadSource(document, signer, new Date());
       await this.audit.append(
         {
           documentId: document.id,
@@ -136,6 +137,7 @@ export class EsignSigningTaskService {
     };
     return {
       signerPublicId: signer.publicId,
+      allowReject: document.allowReject,
       // 內部簽署人可看到簽署期間與發起人（外部簽署人的任務另由 external-access 裁切）
       document: this.mapper.documentListItem(
         document,

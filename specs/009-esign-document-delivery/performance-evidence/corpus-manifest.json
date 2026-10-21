@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "generator": "generate.cjs",
+  "generatorSha256": "dff53a80e9ef3119c3fd4fa0b60b6958542efad2e402c7575e8aa17fd9416458",
+  "dependencies": {
+    "node": "v26.4.0",
+    "pdfLib": "1.17.1",
+    "jpegEncoder": "sips-316"
+  },
+  "synthetic": true,
+  "files": [
+    {
+      "name": "fixture-01-text-vector.pdf",
+      "kind": "text-vector",
+      "pages": 12,
+      "bytes": 17287,
+      "sha256": "860a5c6329d022b27c6c3c89933ef315db8ec938c2d906c1c431f77ba748acf5",
+      "seed": 9000
+    },
+    {
+      "name": "fixture-02-text-vector.pdf",
+      "kind": "text-vector",
+      "pages": 15,
+      "bytes": 21598,
+      "sha256": "90f95f2de19dabb060c6e8bda3aea5c09a2703895124adc3b4ed04f13a58eed3",
+      "seed": 9001
+    },
+    {
+      "name": "fixture-03-text-vector.pdf",
+      "kind": "text-vector",
+      "pages": 18,
+      "bytes": 25789,
+      "sha256": "2386088ded222748a3124a23e436004d42ea22ec6c427e6c7bd3a2d5b6baae53",
+      "seed": 9002
+    },
+    {
+      "name": "fixture-04-text-vector.pdf",
+      "kind": "text-vector",
+      "pages": 21,
+      "bytes": 29969,
+      "sha256": "c5e4293bc7511217722a040ddc623d584f001955e67bc51b9742d2cfff410a1d",
+      "seed": 9003
+    },
+    {
+      "name": "fixture-05-text-vector.pdf",
+      "kind": "text-vector",
+      "pages": 24,
+      "bytes": 34169,
+      "sha256": "264d133b5bda1ff0293b8c679414968cfd6a0bae7d7db89296f2dce3c32b77bb",
+      "seed": 9004
+    },
+    {
+      "name": "fixture-06-text-vector.pdf",
+      "kind": "text-vector",
+      "pages": 27,
+      "bytes": 38367,
+      "sha256": "1a1b22bb10bb0de66775eea47804c1a8d3a6106e1ce213dde8be5a4d51f6b581",
+      "seed": 9005
+    },
+    {
+      "name": "fixture-07-jpeg-scan.pdf",
+      "kind": "jpeg-scan",
+      "pages": 2,
+      "bytes": 1802346,
+      "sha256": "213f45dbfa1a514d10f034f312e773caa251f7aae40531af89c062d4e60d8a60",
+      "seed": 9006
+    },
+    {
+      "name": "fixture-08-jpeg-scan.pdf",
+      "kind": "jpeg-scan",
+      "pages": 3,
+      "bytes": 1856505,
+      "sha256": "2ef4bdd237fe31f8ced659054dfe61b853cd2417b699c44a743b345ce165b830",
+      "seed": 9007
+    },
+    {
+      "name": "fixture-09-jpeg-scan.pdf",
+      "kind": "jpeg-scan",
+      "pages": 4,
+      "bytes": 1916300,
+      "sha256": "dd3e73cbd75e851926f6f99edf0badaccdfdd8ba586ec2ef643c84c9f26a5a4e",
+      "seed": 9008
+    },
+    {
+      "name": "fixture-10-jpeg-scan.pdf",
+      "kind": "jpeg-scan",
+      "pages": 2,
+      "bytes": 1964602,
+      "sha256": "39df2da9eba59b0d0b63da1d5b3d77e8a9c8a53878da3f44e7f23a5d122068d2",
+      "seed": 9009
+    },
+    {
+      "name": "fixture-11-jpeg-scan.pdf",
+      "kind": "jpeg-scan",
+      "pages": 3,
+      "bytes": 2039216,
+      "sha256": "438c0d37f91bd7b590cfcf8b70ca9c49d88a2239ffd31d8ee917be0268c7d5a1",
+      "seed": 9010
+    },
+    {
+      "name": "fixture-12-jpeg-scan.pdf",
+      "kind": "jpeg-scan",
+      "pages": 4,
+      "bytes": 2097983,
+      "sha256": "c526fd06aa1b847fe4cc0ff34daa634441a203b7731b09c7d2f87443b6c42333",
+      "seed": 9011
+    },
+    {
+      "name": "fixture-13-png-scan.pdf",
+      "kind": "png-scan",
+      "pages": 1,
+      "bytes": 1230357,
+      "sha256": "6c305e56f235cab491ef550c0ef9f30f5d88220f98f349b0f5845b3e3a0dfcbd",
+      "seed": 9012
+    },
+    {
+      "name": "fixture-14-png-scan.pdf",
+      "kind": "png-scan",
+      "pages": 2,
+      "bytes": 1278308,
+      "sha256": "6638ae6ecbcf738ef788756c309603d0c7eb42942e5e7384a60e3889a0ead501",
+      "seed": 9013
+    },
+    {
+      "name": "fixture-15-png-scan.pdf",
+      "kind": "png-scan",
+      "pages": 1,
+      "bytes": 1324275,
+      "sha256": "04fdaf90ed79bbf9c892c0c7ae919067f7ae91d2193fb4b8f3564f36d76f3f11",
+      "seed": 9014
+    },
+    {
+      "name": "fixture-16-png-scan.pdf",
+      "kind": "png-scan",
+      "pages": 2,
+      "bytes": 1373963,
+      "sha256": "620ec1bdd53d0f2b20c0b1d7c3529dbc7b03c456260ca40678b1c8d77033af40",
+      "seed": 9015
+    },
+    {
+      "name": "fixture-17-png-scan.pdf",
+      "kind": "png-scan",
+      "pages": 1,
+      "bytes": 1421652,
+      "sha256": "8bdc75bfa0b28270c5756b5e3ff3de315f79a3f78bb28a9ad11506966855ec4d",
+      "seed": 9016
+    },
+    {
+      "name": "fixture-18-png-scan.pdf",
+      "kind": "png-scan",
+      "pages": 2,
+      "bytes": 1473064,
+      "sha256": "a9b239319d16f68720958e196606139d811c73b21cdf94cc157f665465313beb",
+      "seed": 9017
+    },
+    {
+      "name": "fixture-19-mixed-report.pdf",
+      "kind": "mixed-report",
+      "pages": 4,
+      "bytes": 734788,
+      "sha256": "b1be968b2c0604a132d517302fbab473080a4b0a24e78159931d48c72d28639c",
+      "seed": 9018
+    },
+    {
+      "name": "fixture-20-mixed-report.pdf",
+      "kind": "mixed-report",
+      "pages": 5,
+      "bytes": 784302,
+      "sha256": "9d12ab53c0b30018f949219557205f23d217ae380f53c15b7f56d99494f77d32",
+      "seed": 9019
+    },
+    {
+      "name": "fixture-21-mixed-report.pdf",
+      "kind": "mixed-report",
+      "pages": 6,
+      "bytes": 818051,
+      "sha256": "c7e5957b8e183556a42db1dcd6ce8a61aa2b622c99b010b172aeafd019d15572",
+      "seed": 9020
+    },
+    {
+      "name": "fixture-22-mixed-report.pdf",
+      "kind": "mixed-report",
+      "pages": 7,
+      "bytes": 857060,
+      "sha256": "72ca014e2af06b4ba9a1a7420d569063ec9e96f7331e72f4ef86b9efcd3be462",
+      "seed": 9021
+    },
+    {
+      "name": "fixture-23-mixed-report.pdf",
+      "kind": "mixed-report",
+      "pages": 8,
+      "bytes": 890646,
+      "sha256": "c4c93e12b0841c3b37c19c8b007c3bc07d591f40269e7f9e3803271b6d117e08",
+      "seed": 9022
+    },
+    {
+      "name": "fixture-24-mixed-report.pdf",
+      "kind": "mixed-report",
+      "pages": 9,
+      "bytes": 945564,
+      "sha256": "e3eb77bb1fb21967d4803bb1972e0433917ee1a87787699bc493d2286ce36d94",
+      "seed": 9023
+    }
+  ],
+  "balanced6000": {
+    "repetitions": 250,
+    "totalBytes": 6244040250,
+    "gib": 5.815215641632676,
+    "averageBytes": 1040673.375
+  },
+  "limitations": [
+    "24 unique synthetic PDFs repeated 250 times; not 6000 unique real signed documents",
+    "Hardlinks and repeated content create warm filesystem-cache bias",
+    "Fixed metadata and PRNG; JPEG bytes reproducible only with recorded sips version",
+    "Many PDFs reuse embedded image across pages; page count does not imply independent image bytes"
+  ]
+}

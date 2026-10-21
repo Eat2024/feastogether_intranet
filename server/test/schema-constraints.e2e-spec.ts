@@ -56,7 +56,14 @@ describe('e-sign schema database constraints', () => {
         expect(Number(defaults[0]?.watermark_enabled)).toBe(0);
         expect(Number(defaults[0]?.allow_reject)).toBe(0);
         await ds.query(
-          `UPDATE esign_documents SET status='expired' WHERE id=1`,
+          `UPDATE esign_documents SET sign_start_at='2026-01-01' WHERE id=1`,
+        );
+        await expectRejected(
+          ds,
+          `UPDATE esign_documents SET status='active' WHERE id=1`,
+        );
+        await ds.query(
+          `UPDATE esign_documents SET status='expired',sign_end_at='2026-12-31' WHERE id=1`,
         );
         await expectRejected(
           ds,
@@ -210,11 +217,14 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_file_objects_owner',
           'chk_esign_file_objects_signature_field',
           'chk_esign_file_objects_source_owner',
+          'chk_esign_files_export_owner',
+          'chk_esign_notification_batches_kind',
           'chk_esign_notification_logs_channel',
           'chk_esign_notification_logs_result',
           'chk_esign_signers_completion',
           'chk_esign_signers_identity',
           'chk_esign_signers_status',
+          'chk_esign_signers_terminal_times',
         ]);
       } finally {
         await ds.destroy();

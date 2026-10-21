@@ -25,6 +25,11 @@ type SignerInputWithUser =
   | { type: 'user'; userId: number; user: User }
   | { type: 'email'; name: string; email: string };
 
+interface DraftSigningPeriod {
+  signStartAt: Date | null;
+  signEndAt: Date | null;
+}
+
 /** 草稿簽署人管理與 Email 正規化。 */
 @Injectable()
 export class EsignSignerService {
@@ -90,50 +95,98 @@ export class EsignSignerService {
         creatorUserId,
         manager,
       );
-      const parseDate = (
-        value: string | null | undefined,
-        previous: Date | null,
-      ) => {
-        if (value === undefined) return previous;
-        if (value === null) return null;
-        if (
-          typeof value !== 'string' ||
-          !isISO8601(value, { strict: true }) ||
-          !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
-          !Number.isFinite(new Date(value).getTime())
-        ) {
-          throw new AppException(...AppErrors.ESIGN_SIGNING_PERIOD_INVALID);
-        }
-        return new Date(value);
-      };
-      const start = parseDate(input.signStartAt, document.signStartAt ?? null);
-      const end = parseDate(input.signEndAt, document.signEndAt ?? null);
-      if (start && end && start >= end)
-        throw new AppException(...AppErrors.ESIGN_SIGNING_PERIOD_INVALID);
-      if (
-        (input.watermark !== undefined &&
-          typeof input.watermark !== 'boolean') ||
-        (input.allowReject !== undefined &&
-          typeof input.allowReject !== 'boolean')
-      ) {
-        throw new AppException(...AppErrors.ESIGN_DRAFT_OPTIONS_INVALID);
-      }
-      if (input.signers !== undefined) {
-        await this.updateSigners(
-          document,
-          creatorUserId,
-          input.signers,
-          manager,
-        );
-      }
-      document.signStartAt = start;
-      document.signEndAt = end;
-      if (input.watermark !== undefined)
-        document.watermarkEnabled = input.watermark;
-      if (input.allowReject !== undefined)
-        document.allowReject = input.allowReject;
+      const period = this.resolveDraftSigningPeriod(document, input);
+      this.validateDraftOptions(input);
+      await this.updateDraftSignersIfProvided(
+        document,
+        creatorUserId,
+        input,
+        manager,
+      );
+      this.applyDraftSettings(document, input, period);
       return this.documents.save(document, manager);
     });
+  }
+
+  /** 依省略保留、null 清空規則解析期間，並驗證開始時間早於結束時間。 */
+  private resolveDraftSigningPeriod(
+    document: EsignDocument,
+    input: DraftSettingsDto,
+  ): DraftSigningPeriod {
+    const signStartAt = this.parseDraftDate(
+      input.signStartAt,
+      document.signStartAt ?? null,
+    );
+    const signEndAt = this.parseDraftDate(
+      input.signEndAt,
+      document.signEndAt ?? null,
+    );
+    if (signStartAt && signEndAt && signStartAt >= signEndAt) {
+      throw new AppException(...AppErrors.ESIGN_SIGNING_PERIOD_INVALID);
+    }
+    return { signStartAt, signEndAt };
+  }
+
+  /** 解析單一草稿日期；未傳沿用舊值，null 清空，有值時必須包含時區。 */
+  private parseDraftDate(
+    value: string | null | undefined,
+    previous: Date | null,
+  ): Date | null {
+    if (value === undefined) return previous;
+    if (value === null) return null;
+    if (
+      typeof value !== 'string' ||
+      !isISO8601(value, { strict: true }) ||
+      !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+      !Number.isFinite(new Date(value).getTime())
+    ) {
+      throw new AppException(...AppErrors.ESIGN_SIGNING_PERIOD_INVALID);
+    }
+    return new Date(value);
+  }
+
+  /** 驗證可選的草稿布林設定，避免非 HTTP 呼叫端繞過 DTO 驗證。 */
+  private validateDraftOptions(input: DraftSettingsDto): void {
+    if (
+      (input.watermark !== undefined &&
+        typeof input.watermark !== 'boolean') ||
+      (input.allowReject !== undefined &&
+        typeof input.allowReject !== 'boolean')
+    ) {
+      throw new AppException(...AppErrors.ESIGN_DRAFT_OPTIONS_INVALID);
+    }
+  }
+
+  /** 有帶名單時才在目前交易內整批替換，省略時保留既有簽署人。 */
+  private async updateDraftSignersIfProvided(
+    document: EsignDocument,
+    creatorUserId: number,
+    input: DraftSettingsDto,
+    manager: EntityManager,
+  ): Promise<void> {
+    if (input.signers === undefined) return;
+    await this.updateSigners(
+      document,
+      creatorUserId,
+      input.signers,
+      manager,
+    );
+  }
+
+  /** 將已驗證的期間與有傳入的選項套用到草稿文件。 */
+  private applyDraftSettings(
+    document: EsignDocument,
+    input: DraftSettingsDto,
+    period: DraftSigningPeriod,
+  ): void {
+    document.signStartAt = period.signStartAt;
+    document.signEndAt = period.signEndAt;
+    if (input.watermark !== undefined) {
+      document.watermarkEnabled = input.watermark;
+    }
+    if (input.allowReject !== undefined) {
+      document.allowReject = input.allowReject;
+    }
   }
 
   /**

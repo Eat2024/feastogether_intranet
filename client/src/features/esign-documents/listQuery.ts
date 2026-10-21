@@ -26,6 +26,9 @@ export const DOCUMENT_STATUS_OPTIONS = DOCUMENT_STATUSES.map((s) => ({ value: s,
 /** ISO 時間轉成畫面日期 YYYY/MM/DD（本地時區） */
 export const formatDate = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD') : null);
 
+/** ISO 時間轉成畫面時間 YYYY/MM/DD HH:mm（本地時區） */
+export const formatDateTime = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD HH:mm') : null);
+
 /** 簽署期間文字；補簽過時加註原本的結束日，例如「2026/10/19 ～ 2026/10/31（補簽；原 2026/10/24）」 */
 export function periodText(
   doc: Pick<EsignDocumentListItem, 'signStartAt' | 'signEndAt' | 'originalSignEndAt' | 'isReopened'>,

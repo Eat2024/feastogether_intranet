@@ -26,6 +26,7 @@ import StaffTreePicker from "@/features/forms/editor/StaffTreePicker";
 import { WATERMARK_TEXT } from "@/features/forms/options";
 import type { OrgDept } from "@/features/forms/types";
 import { getErrorMessage } from "@/lib/apiError";
+import { dayBoundary } from "@/lib/dates";
 import { emailSignerId, isValidEmail, normalizeEmail } from "@/lib/email";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -39,7 +40,6 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import dayjs from "dayjs";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -137,12 +137,6 @@ function restoreSigners(saved: EsignSignerView[], staff: Map<string, Staff>) {
   }
   return { selected, emailSigners, missing };
 }
-
-/** YYYY/MM/DD → 當天開始（00:00）或結束（23:59:59.999）的 ISO 時間（本地時區） */
-const dayBoundary = (date: string, edge: "start" | "end") => {
-  const d = dayjs(date.replaceAll("/", "-"));
-  return (edge === "start" ? d.startOf("day") : d.endOf("day")).toISOString();
-};
 
 export default function DocumentSignersEditor({
   documentId,

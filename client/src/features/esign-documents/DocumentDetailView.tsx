@@ -37,6 +37,7 @@ import {
   signerHref,
   type SignerSortKey,
 } from './signerQuery';
+import ReopenDocumentButton from './ReopenDocumentButton';
 import StopDocumentButton from './StopDocumentButton';
 
 function Kpi({ label, value, color }: { label: string; value: number; color?: string }) {
@@ -127,6 +128,12 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
               variant="button"
               disabled={doc.status !== 'active' && doc.status !== 'expired'}
             />
+            {/* 已到期且仍有人未簽署才能補簽 */}
+            <ReopenDocumentButton
+              doc={doc}
+              variant="button"
+              disabled={doc.status !== 'expired' || counts.pending === 0}
+            />
           </>
         }
       />
@@ -134,7 +141,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
       {doc.status === 'expired' && (
         <Alert severity="info" variant="outlined">
           此文件已於 {doc.signEndAt ? dayjs(doc.signEndAt).format('YYYY/MM/DD HH:mm') : '—'} 到期，尚有{' '}
-          {counts.pending} 人未簽署，未簽署的人目前無法簽署。可設定補簽重新開放未簽署的人簽署（補簽功能尚未串接後端），或停止簽署。
+          {counts.pending} 人未簽署，未簽署的人目前無法簽署。可設定新的截止日重新開放補簽，或停止簽署。
         </Alert>
       )}
 

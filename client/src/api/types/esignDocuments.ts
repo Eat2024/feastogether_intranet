@@ -92,6 +92,12 @@ export interface EsignSignerView {
   verificationUrl: string | null;
 }
 
+/** 建立人檢視的簽署人：多了只給建立人看的管理備註 */
+export interface EsignManagedSignerView extends EsignSignerView {
+  /** 管理備註（最多 30 字）；沒有時為空字串，不提供給簽署人本人 */
+  note: string;
+}
+
 /** 共用欄位：屬於文件、不屬於特定簽署人 */
 export interface EsignFieldView extends EsignFieldPlacement {
   id: string;
@@ -107,7 +113,7 @@ export interface EsignDocumentDetail extends Omit<EsignDocumentListItem, 'signSt
   watermark: boolean;
   allowReject: boolean;
   stopReason: string | null;
-  signers: EsignSignerView[];
+  signers: EsignManagedSignerView[];
   fields: EsignFieldView[];
 }
 
@@ -141,6 +147,40 @@ export interface DraftSettingsBody {
   signEndAt?: string | null;
   watermark?: boolean;
   allowReject?: boolean;
+}
+
+/** POST esign/documents/:id/reopenings：已到期且仍有人未簽署時，設定新的截止時間重新開放補簽 */
+export interface ReopenDocumentBody {
+  id: string;
+  /** 畫面上看到的目前截止時間；與後端不一致（已被他人變更）時回 409 */
+  expectedSignEndAt: string;
+  /** 新的截止時間，須晚於現在與目前截止時間；補簽不修改原開始時間 */
+  signEndAt: string;
+  /** 去除首尾空白後 1～500 字 */
+  reason: string;
+}
+
+export interface ReopenDocumentResult {
+  documentId: string;
+  status: 'active';
+  originalSignEndAt: string;
+  signEndAt: string;
+  isReopened: true;
+  reopenedAt: string;
+  /** 重新開放的待簽署人數 */
+  pendingCount: number;
+}
+
+/** PATCH esign/documents/:id/signers/:signerPublicId/note：空字串表示清除備註 */
+export interface SaveSignerNoteBody {
+  id: string;
+  signerPublicId: string;
+  note: string;
+}
+
+export interface SignerNoteResult {
+  signerPublicId: string;
+  note: string;
 }
 
 /** GET esign/documents/:id/history 的一筆事件（依發生時間由舊到新） */

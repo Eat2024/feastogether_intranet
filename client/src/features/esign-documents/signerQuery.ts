@@ -47,7 +47,7 @@ export function countByStatus(signers: EsignSignerView[]): Record<SignerStatusTa
 }
 
 /** 套用狀態、搜尋（姓名、員編、Email、部門）、排序與分頁；未指定排序時維持後端順序 */
-export function querySigners(signers: EsignSignerView[], query: SignerQuery) {
+export function querySigners<T extends EsignSignerView>(signers: T[], query: SignerQuery) {
   const q = query.q.toLowerCase();
   let rows = signers.filter(
     (s) =>

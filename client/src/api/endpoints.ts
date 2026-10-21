@@ -11,6 +11,9 @@ export const endpoints = {
   ESIGN_SIGNER_COMPLETED_FILE: (id: string, signerPublicId: string) =>
     `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/completed-file`,
   ESIGN_DOCUMENT_STOPPAGES: (id: string) => `esign/documents/${encodeURIComponent(id)}/stoppages`,
+  ESIGN_DOCUMENT_REOPENINGS: (id: string) => `esign/documents/${encodeURIComponent(id)}/reopenings`,
+  ESIGN_SIGNER_NOTE: (id: string, signerPublicId: string) =>
+    `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/note`,
   ESIGN_DOCUMENT_SOURCE_FILE: (id: string) => `esign/documents/${encodeURIComponent(id)}/source-file`,
   // 本人的簽署任務（server/src/features/esign/controllers/signing-tasks.controller.ts）；id 為 signerPublicId
   ESIGN_SIGNING_TASKS: 'esign/signing-tasks',

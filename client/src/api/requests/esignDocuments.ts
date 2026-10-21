@@ -9,6 +9,10 @@ import type {
   EsignSignerCandidate,
   GetDocumentsParams,
   InitiateDocumentBody,
+  ReopenDocumentBody,
+  ReopenDocumentResult,
+  SaveSignerNoteBody,
+  SignerNoteResult,
   UpdateDocumentBody,
 } from '@/api/types';
 import { getBlob } from './blob';
@@ -160,3 +164,34 @@ export const getSignerCandidates = async (q: string): Promise<EsignSignerCandida
 /** 建立人讀取原始 PDF 的網址（pdf.js 直接讀取，同源請求會帶上 session cookie） */
 export const documentSourceFileUrl = (id: string) =>
   `${api.defaults.baseURL}/${endpoints.ESIGN_DOCUMENT_SOURCE_FILE(id)}`;
+
+/**
+ * @name 重新開放補簽
+ * @description 已到期且仍有人未簽署時，由建立人設定新的截止時間與原因；只延後截止時間，已完成的簽署不受影響
+ */
+export const reopenDocument = async ({
+  id,
+  expectedSignEndAt,
+  signEndAt,
+  reason,
+}: ReopenDocumentBody): Promise<ReopenDocumentResult> => {
+  const res = await api<ReopenDocumentResult>({
+    method: 'POST',
+    url: endpoints.ESIGN_DOCUMENT_REOPENINGS(id),
+    data: { expectedSignEndAt, signEndAt, reason },
+  });
+  return res.data;
+};
+
+/**
+ * @name 儲存簽署人管理備註
+ * @description 僅建立人；最多 30 字，空字串表示清除。不修改文件或簽署證據
+ */
+export const saveSignerNote = async ({ id, signerPublicId, note }: SaveSignerNoteBody): Promise<SignerNoteResult> => {
+  const res = await api<SignerNoteResult>({
+    method: 'PATCH',
+    url: endpoints.ESIGN_SIGNER_NOTE(id, signerPublicId),
+    data: { note },
+  });
+  return res.data;
+};

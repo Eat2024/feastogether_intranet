@@ -1,12 +1,12 @@
 # Feature Specification: 內部員工 Email 邀請與 OTP 簽署
 
-**Feature Branch**: 沿用目前工作分支，本次未建立或切換分支
+**Feature Branch**: `feat/010-internal-email-signing`（功能整合分支；未部署）
 
 **Feature Directory**: `specs/010-internal-email-signing`
 
 **Created**: 2026-10-21
 
-**Status**: Tasks Ready — grilling、plan、契約與任務拆分已完成，尚未實作
+**Status**: Backend Implemented — 已依八張 tickets 實作；完整驗證結果與交付限制見 [quickstart](quickstart.md)，票單合併／審查紀錄另見本機 tracker，不代表前端或部署完成。
 
 **Input**: 公司內部員工簽署也要走 Email；fgapi 已新增 org_chart 與 hr/staff_emails，本規格串接兩個 endpoint 以取得員工與 Email，將內部員工簽署串成與外部簽署相同的 Email 邀請、OTP 與簽署流程。
 
@@ -152,9 +152,9 @@
 
 ## 前端工程師 Agent 串接交接規格
 
-本節為前端後續工作的規格，非本次 client 修改授權。後端尚未實作的新契約不得當成已存在 API；後端交付時須核對契約與實作一致。
+本節為前端後續工作的規格，非本次 client 修改授權。後端契約已實作於功能分支；實際環境仍須確認版本與 migration，不能把本機完成當成已部署。
 
-規劃文件：[plan](plan.md)、[tasks](tasks.md)、[員工解析與信箱契約](contracts/employee-email-api.md)、[Email 簽署與通知契約](contracts/signing-notifications-api.md)、[前端 Agent 交接](contracts/frontend-handoff.md)。新增路徑與既有路徑的修改行為均明確標記為尚未實作。
+規劃與交付文件：[plan](plan.md)、[tasks](tasks.md)、[員工解析與信箱契約](contracts/employee-email-api.md)、[Email 簽署與通知契約](contracts/signing-notifications-api.md)、[前端 Agent 交接](contracts/frontend-handoff.md)。新增及變更路徑均以實際後端行為更新，前端未修改。
 
 | 串接階段 | 前端後續應遵守的行為 | 後端契約交付要求 |
 | --- | --- | --- |

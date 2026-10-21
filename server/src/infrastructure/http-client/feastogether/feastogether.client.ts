@@ -180,7 +180,9 @@ export class FeastogetherClient {
           metadata: {
             method,
             path: safePath,
-            upstreamCode: payload.code,
+            ...(safePath !== '/api/v1/hr/staff_lookup'
+              ? { upstreamCode: payload.code }
+              : {}),
             ...(!omitBody && requestBody !== undefined
               ? { requestBody: maskSensitive(requestBody) }
               : {}),

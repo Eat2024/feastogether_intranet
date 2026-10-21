@@ -1,4 +1,5 @@
 import { EsignReopeningService } from '../services/esign-reopening.service';
+import { EsignEmployeeEmailService } from '../services/esign-employee-email.service';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyCookie from '@fastify/cookie';
 import { Reflector } from '@nestjs/core';
@@ -62,6 +63,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
           EsignInitiationService,
           EsignStoppageService,
           EsignCompletionAccessService,
+          EsignEmployeeEmailService,
         ].map((provide) => ({ provide, useValue: {} })),
       ],
     }).compile();

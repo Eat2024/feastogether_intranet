@@ -2,7 +2,18 @@ import { SignerNoteDto } from '../dto/signer-note.dto';
 import { DraftSaveDto, DraftSettingsDto } from '../dto/draft-settings.dto';
 import { ReopenDocumentDto, type ReopeningInput } from '../dto/reopening.dto';
 import { EsignReopeningService } from '../services/esign-reopening.service';
-import { ApiBody, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiOperation,
+  ApiResponse,
+  ApiOkResponse,
+  ApiCookieAuth,
+} from '@nestjs/swagger';
+import {
+  EmployeeEmailCheckDto,
+  type EmployeeEmailCheckInput,
+} from '../dto/employee-email-check.dto';
+import { EsignEmployeeEmailService } from '../services/esign-employee-email.service';
 import {
   Body,
   Controller,
@@ -60,6 +71,7 @@ export class DocumentsController {
     private readonly completions: EsignCompletionAccessService,
     private readonly config: ConfigService,
     private readonly reopenings: EsignReopeningService,
+    private readonly employeeEmails: EsignEmployeeEmailService,
   ) {}
 
   @ApiOperation({
@@ -186,6 +198,77 @@ export class DocumentsController {
     const documentId = this.id(id);
     await this.fieldService.replace(documentId, userId, body.fields);
     return (await this.queries.creatorDetail(documentId, userId)).fields;
+  }
+
+  @UseGuards(OriginGuard)
+  @Post(':documentId/employee-email-checks')
+  @HttpCode(HttpStatus.OK)
+  @Header('Cache-Control', 'private, no-store')
+  @ApiCookieAuth()
+  @ApiOperation({
+    summary: '檢查草稿所選員工的收件信箱',
+    description:
+      '僅草稿建立人可查詢；只回逐人遮罩結果，不保存信箱、不寄送通知。',
+  })
+  @ApiBody({ type: EmployeeEmailCheckDto })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      required: ['success', 'data', 'timestamp'],
+      properties: {
+        success: { type: 'boolean', enum: [true] },
+        timestamp: { type: 'string', format: 'date-time' },
+        data: {
+          type: 'object',
+          required: ['items'],
+          properties: {
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['userId', 'status', 'maskedEmail'],
+                properties: {
+                  userId: { type: 'string' },
+                  status: { type: 'string', enum: ['ready', 'unavailable'] },
+                  maskedEmail: { type: 'string', nullable: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: '需有效員工 session' })
+  @ApiResponse({ status: 403, description: 'Origin 驗證失敗' })
+  @ApiResponse({ status: 404, description: '文件不存在或非建立人' })
+  @ApiResponse({ status: 409, description: '文件不是草稿' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE：輸入或帳號無效；不可用帳號列於 error.details.userIds',
+  })
+  @ApiResponse({
+    status: 502,
+    description:
+      'ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE：來源不可用或回應格式錯誤',
+  })
+  employeeEmailChecks(
+    @Param('documentId') id: string,
+    @CurrentUserId() userId: number,
+    @Body(
+      new ValidationPipe({
+        expectedType: EmployeeEmailCheckDto,
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        exceptionFactory: () =>
+          new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE),
+      }),
+    )
+    body: EmployeeEmailCheckInput,
+  ) {
+    return this.employeeEmails.checkDraft(this.id(id), userId, body.userIds);
   }
 
   // 發起簽署

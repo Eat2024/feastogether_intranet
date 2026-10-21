@@ -1,6 +1,7 @@
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { StaffLookupDto } from '../types/staff-lookup.dto';
+import { parseStaffEmails } from '../types/staff-emails.parser';
 import { Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -28,6 +29,33 @@ const PATHS = {
 @Injectable()
 export class FeastogetherHrService {
   constructor(private readonly client: FeastogetherClient) {}
+
+  /** 依完整員編核對信箱，來源錯誤不得視為員工 session 失效。 */
+  async getStaffEmails(
+    empids: readonly string[],
+  ): Promise<Map<string, string | null>> {
+    try {
+      if (
+        empids.length < 1 ||
+        empids.length > 100 ||
+        empids.some(
+          (id) => typeof id !== 'string' || !/^[A-Za-z0-9]{1,20}$/.test(id),
+        )
+      ) {
+        throw new Error('員編查詢格式錯誤');
+      }
+      const payload = await this.client.post<unknown>(
+        '/api/v1/hr/staff_emails',
+        { person_empids: [...new Set(empids)] },
+        { timeoutMs: 10_000 },
+      );
+      return parseStaffEmails(payload, empids);
+    } catch {
+      throw new AppException(
+        ...AppErrors.ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE,
+      );
+    }
+  }
 
   /** 依員編片段查詢員工。 */
   async lookupStaff(empId: string): Promise<StaffLookupDto[]> {

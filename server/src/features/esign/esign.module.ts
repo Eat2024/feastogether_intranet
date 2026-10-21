@@ -41,8 +41,10 @@ import { EsignCompletionAccessService } from './services/esign-completion-access
 import { EsignVerificationService } from './services/esign-verification.service';
 
 import { EsignRejectionService } from './services/esign-rejection.service';
+import { EsignEmployeeEmailService } from './services/esign-employee-email.service';
 
 const esignServices = [
+  EsignEmployeeEmailService,
   EsignExportService,
   EsignReminderService,
   EsignRejectionService,

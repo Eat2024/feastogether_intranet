@@ -1,5 +1,5 @@
 import { HttpService } from '@nestjs/axios';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { of, from, throwError } from 'rxjs';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
@@ -12,6 +12,7 @@ import { NotificationRepository } from '#app/features/esign/repositories/notific
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
+import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
 import type { Job } from 'bullmq';
 import { apiData } from './api-response.helper';
 import {
@@ -31,6 +32,7 @@ describe('Spec010 內部發起與邀請', () => {
     apiData<{
       status: string;
       signers: Array<{
+        publicId: string;
         email: string | null;
         invitationDelivery: string | null;
         type: string;
@@ -46,6 +48,7 @@ describe('Spec010 內部發起與邀請', () => {
       type: 'user',
       userId: String(u.id),
     })),
+    duration = 86400000,
   ) =>
     request(ctx.server)
       .post(`/api/esign/documents/${documentId}/initiations`)
@@ -64,8 +67,10 @@ describe('Spec010 內部發起與邀請', () => {
             sortOrder: 0,
           },
         ],
-        signStartAt: new Date(Date.now() + 3600000).toISOString(),
-        signEndAt: new Date(Date.now() + 86400000).toISOString(),
+        signStartAt: new Date(
+          Date.now() + Math.min(3600000, duration / 2),
+        ).toISOString(),
+        signEndAt: new Date(Date.now() + duration).toISOString(),
         watermark: false,
         allowReject: true,
       });
@@ -119,6 +124,248 @@ describe('Spec010 內部發起與邀請', () => {
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
   });
+  afterEach(() => jest.useRealTimers());
+  function atDeadline(end: Date) {
+    jest.useFakeTimers({
+      now: end,
+      doNotFake: [
+        'hrtime',
+        'nextTick',
+        'performance',
+        'queueMicrotask',
+        'setImmediate',
+        'clearImmediate',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
+  }
+  const invitations = async () =>
+    apiData<Array<{ signerPublicId: string; invitationUrl: string }>>(
+      await request(ctx.server)
+        .get(`/api/esign/documents/${documentId}/reopening-invitations`)
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+  const reopen = (end: Date) =>
+    request(ctx.server)
+      .post(`/api/esign/documents/${documentId}/reopenings`)
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .send({
+        expectedSignEndAt: end.toISOString(),
+        signEndAt: new Date(end.getTime() + 86400000).toISOString(),
+        reason: '合成補簽',
+      });
+  const notificationLogs = async () =>
+    ctx.app
+      .get(MysqlService)
+      .getManager()
+      .query<
+        Array<{ id: number; batch_id: number }>
+      >('SELECT l.id,l.batch_id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? ORDER BY l.id', [documentId]);
+  function invitationWorker(
+    send: (input: { invitationToken: string }) => Promise<void>,
+  ) {
+    return new ExternalInvitationProcessor(
+      ctx.app.get(MysqlService),
+      ctx.app.get(NotificationRepository),
+      ctx.app.get(SignerRepository),
+      ctx.app.get(EsignTokenService),
+      ctx.app.get(EsignAuditService),
+      { send },
+    );
+  }
+  const deliver = (worker: ExternalInvitationProcessor, id: number) =>
+    worker.process({ data: { notificationLogId: id } } as Job<{
+      notificationLogId: number;
+    }>);
+  it.each([false, true])(
+    '補簽混合共用信箱逐人寄送，新世代狀態與清單一致（到期落盤=%s）',
+    async (persistExpired) => {
+      const initiated = apiData<{ signEndAt: string }>(
+        await initiate(
+          [
+            ...users.map((u) => ({ type: 'user', userId: String(u.id) })),
+            { type: 'email', name: '合成外部', email: 'shared@example.test' },
+          ],
+          60000,
+        ).expect(201),
+      );
+      const oldLogs = await notificationLogs();
+      const end = new Date(initiated.signEndAt);
+      atDeadline(end);
+      if (persistExpired)
+        await ctx.app
+          .get(EsignExpiryService)
+          .expireByDeadline(Number(documentId));
+      http.post.mockClear();
+      await reopen(end).expect(201);
+      expect(http.post).not.toHaveBeenCalled();
+      expect((await detail()).signers.map((s) => s.invitationDelivery)).toEqual(
+        ['pending', 'pending', 'pending'],
+      );
+      expect(await invitations()).toHaveLength(3);
+      const sent: string[] = [];
+      const worker = invitationWorker((input) => {
+        sent.push(input.invitationToken);
+        return Promise.resolve();
+      });
+      for (const log of oldLogs) await deliver(worker, log.id);
+      expect(sent).toHaveLength(0);
+      for (const log of (await notificationLogs()).filter(
+        (row) => !oldLogs.some((old) => old.id === row.id),
+      ))
+        await deliver(worker, log.id);
+      expect(new Set(sent).size).toBe(3);
+      expect((await detail()).signers.map((s) => s.invitationDelivery)).toEqual(
+        ['delivered', 'delivered', 'delivered'],
+      );
+      expect(await invitations()).toEqual([]);
+      await reopen(end).expect(409);
+    },
+  );
+  it.each([false, true])(
+    '真正補簽交易隔離在途舊邀請結果（SMTP失敗=%s）',
+    async (failure) => {
+      const initiated = apiData<{ signEndAt: string }>(
+        await initiate(undefined, 60000).expect(201),
+      );
+      const [oldLog] = await notificationLogs();
+      let rotated: Awaited<ReturnType<typeof invitations>> = [];
+      const worker = invitationWorker(async () => {
+        atDeadline(new Date(initiated.signEndAt));
+        await reopen(new Date(initiated.signEndAt)).expect(201);
+        rotated = await invitations();
+        if (failure) throw new Error('合成SMTP失敗');
+      });
+      await deliver(worker, oldLog.id);
+      expect(rotated).toHaveLength(2);
+      expect(await invitations()).toEqual(rotated);
+      expect((await detail()).signers.map((s) => s.invitationDelivery)).toEqual(
+        ['pending', 'pending'],
+      );
+      const batches = apiData<{ items: Array<{ batchId: string }> }>(
+        await request(ctx.server)
+          .get(
+            `/api/esign/documents/${documentId}/notification-batches?kind=invitation`,
+          )
+          .set('Cookie', cookie)
+          .expect(200),
+      );
+      expect(batches.items).toHaveLength(2);
+    },
+  );
+  it.each(['email', 'invitation_token_sha256'])(
+    '任一待簽者缺少%s，補簽409且不留下部分變更',
+    async (column) => {
+      const initiated = apiData<{ signEndAt: string }>(
+        await initiate(undefined, 60000).expect(201),
+      );
+      await ctx.app
+        .get(MysqlService)
+        .getManager()
+        .query(
+          `UPDATE esign_signers SET ${column}=NULL WHERE document_id=? AND user_id=?`,
+          [documentId, users[1].id],
+        );
+      atDeadline(new Date(initiated.signEndAt));
+      const before = await detail();
+      const logsBefore = await notificationLogs();
+      const failed = await reopen(new Date(initiated.signEndAt)).expect(409);
+      expect(failed.body).toMatchObject({
+        error: {
+          code: 'ESIGN_REOPEN_RECIPIENT_UNAVAILABLE',
+          details: { signerPublicIds: [before.signers[1].publicId] },
+        },
+      });
+      expect(await detail()).toEqual(before);
+      expect(await notificationLogs()).toEqual(logsBefore);
+    },
+  );
+  it('補簽SMTP失敗保留active與可重試通知；缺密文正常省略，損壞密文503', async () => {
+    const initiated = apiData<{ signEndAt: string }>(
+      await initiate(undefined, 60000).expect(201),
+    );
+    atDeadline(new Date(initiated.signEndAt));
+    await reopen(new Date(initiated.signEndAt)).expect(201);
+    const logs = await notificationLogs();
+    const failedWorker = invitationWorker(() =>
+      Promise.reject(new Error('合成寄送失敗')),
+    );
+    await deliver(failedWorker, logs.at(-1)!.id);
+    expect((await detail()).status).toBe('active');
+    expect((await detail()).signers.map((s) => s.invitationDelivery)).toEqual([
+      'pending',
+      'failed',
+    ]);
+    expect(await invitations()).toHaveLength(2);
+    await ctx.app
+      .get(MysqlService)
+      .getManager()
+      .query(
+        'UPDATE esign_signers SET invitation_token_ciphertext=NULL WHERE document_id=? AND user_id=?',
+        [documentId, users[0].id],
+      );
+    expect(await invitations()).toHaveLength(1);
+    await ctx.app
+      .get(MysqlService)
+      .getManager()
+      .query(
+        "UPDATE esign_signers SET invitation_token_ciphertext='corrupt' WHERE document_id=? AND user_id=?",
+        [documentId, users[1].id],
+      );
+    await request(ctx.server)
+      .get(`/api/esign/documents/${documentId}/reopening-invitations`)
+      .set('Cookie', cookie)
+      .expect(503);
+  });
+  it.each([false, true])(
+    '補簽作廢在途催簽，舊結果與重複工作不改寫通知（SMTP失敗=%s）',
+    async (failure) => {
+      const initiated = apiData<{ signStartAt: string; signEndAt: string }>(
+        await initiate(undefined, 60000).expect(201),
+      );
+      atDeadline(new Date(Date.parse(initiated.signStartAt) + 1));
+      const batch = apiData<{ batchId: string }>(
+        await request(ctx.server)
+          .post(`/api/esign/documents/${documentId}/notification-batches`)
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .send({ requestId: randomUUID(), selection: 'all_pending' })
+          .expect(202),
+      );
+      const batchDetail = async () =>
+        apiData(
+          await request(ctx.server)
+            .get(
+              `/api/esign/documents/${documentId}/notification-batches/${batch.batchId}`,
+            )
+            .set('Cookie', cookie)
+            .expect(200),
+        );
+      const logs = await notificationLogs();
+      let retired: unknown;
+      const sent: string[] = [];
+      const worker = invitationWorker(async (input) => {
+        sent.push(input.invitationToken);
+        jest.setSystemTime(new Date(initiated.signEndAt));
+        await reopen(new Date(initiated.signEndAt)).expect(201);
+        retired = await batchDetail();
+        if (failure) throw new Error('合成催簽失敗');
+      });
+      await deliver(worker, logs.at(-1)!.id);
+      expect(await batchDetail()).toEqual(retired);
+      await deliver(worker, logs.at(-1)!.id);
+      expect(await batchDetail()).toEqual(retired);
+      expect(sent).toHaveLength(1);
+      expect((await detail()).signers.map((s) => s.invitationDelivery)).toEqual(
+        ['pending', 'pending'],
+      );
+    },
+  );
   it('未來開始也逐人建立邀請，共用地址及內外部相同地址不合併', async () => {
     await initiate([
       ...users.map((u) => ({ type: 'user', userId: String(u.id) })),

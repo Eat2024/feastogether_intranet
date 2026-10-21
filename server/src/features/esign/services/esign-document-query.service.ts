@@ -219,9 +219,7 @@ export class EsignDocumentQueryService {
       signers: signers.map((signer) => ({
         ...this.mapper.signer(
           signer,
-          !summary.isReopened
-            ? (deliveryBySigner.get(signer.id) ?? null)
-            : null,
+          deliveryBySigner.get(signer.id) ?? null,
           codeBySigner.get(signer.id),
         ),
         ...this.reminderSummary(
@@ -250,7 +248,7 @@ export class EsignDocumentQueryService {
       return signers
         .filter(
           (signer) =>
-            signer.status === 'pending' && signer.signerType === 'email',
+            signer.status === 'pending' && !!signer.invitationTokenCiphertext,
         )
         .map((signer) => {
           try {

@@ -65,9 +65,9 @@ export class EsignExpiryService {
       return false;
     for (const signer of signers) {
       if (signer.status === 'pending') {
-        signer.invitationTokenSha256 = null;
+        // 保留既有世代與期限供補簽驗證；到期狀態／期限已阻擋待簽授權。
+        // 不保留可重建邀請的密文，也不回填歷史上缺漏的世代。
         signer.invitationTokenCiphertext = null;
-        signer.invitationExpiresAt = null;
       }
     }
     await this.signers.saveMany(signers, manager);

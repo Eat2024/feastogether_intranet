@@ -280,7 +280,10 @@ describe('內外部催簽 API', () => {
         reason: '新輪次催簽',
       })
       .expect(201);
-    expect((await result(doc, batch)).items[0].status).toBe('pending');
+    expect((await result(doc, batch)).items[0]).toMatchObject({
+      status: 'failed',
+      reasonCode: 'INVITATION_SUPERSEDED',
+    });
     const mailer = ctx.app.get<FakeInvitationMailSender>(
       INVITATION_MAIL_SENDER,
     );
@@ -288,8 +291,8 @@ describe('內外部催簽 API', () => {
     await worker().process(job);
     expect(mailer.deliveries.length).toBe(sent);
     expect((await result(doc, batch)).items[0]).toMatchObject({
-      status: 'skipped',
-      reasonCode: 'INVITATION_GENERATION_CHANGED',
+      status: 'failed',
+      reasonCode: 'INVITATION_SUPERSEDED',
     });
     const next = await queueOne(doc);
     await worker().process(next.job);

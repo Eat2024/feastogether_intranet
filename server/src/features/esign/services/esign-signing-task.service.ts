@@ -1,22 +1,15 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
-import {
-  PRIVATE_FILE_STORAGE,
-  type PrivateFileStorage,
-} from '#app/infrastructure/file-storage/private-file-storage.port';
-import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { DocumentRepository } from '../repositories/document.repository';
-import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { EsignAuditService } from './esign-audit.service';
 import { EsignConsentService } from './esign-consent.service';
-import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignViewMapper } from './esign-view.mapper';
-import { PdfValidationService } from './pdf-validation.service';
 
 @Injectable()
 export class EsignSigningTaskService {
@@ -25,15 +18,9 @@ export class EsignSigningTaskService {
     private readonly documents: DocumentRepository,
     private readonly signers: SignerRepository,
     private readonly fields: DocumentFieldRepository,
-    private readonly files: FileObjectRepository,
     private readonly access: EsignAccessPolicyService,
-    private readonly validation: EsignDocumentValidationService,
     private readonly consent: EsignConsentService,
     private readonly mapper: EsignViewMapper,
-    private readonly pdf: PdfValidationService,
-    private readonly audit: EsignAuditService,
-    @Inject(PRIVATE_FILE_STORAGE)
-    private readonly storage: PrivateFileStorage,
     private readonly users: UserRepository,
     private readonly records: SignatureRecordRepository,
   ) {}
@@ -75,23 +62,14 @@ export class EsignSigningTaskService {
         throw new Error('unreachable');
       }
       this.access.assertInternalSigner(document, signer, userId);
-      if (signer.status !== 'rejected')
-        this.validation.assertSignerCanReadSource(document, signer, new Date());
-      await this.audit.append(
-        {
-          documentId: document.id,
-          signerId: signer.id,
-          actorUserId: userId,
-          eventType: 'document.opened',
-          occurredAt: new Date(),
-        },
-        manager,
-      );
-      return this.toTask(document, signer, manager);
+      throw new AppException(...AppErrors.ESIGN_EMAIL_OTP_REQUIRED);
     });
   }
 
-  async source(signerPublicId: string, userId: number) {
+  async source(
+    signerPublicId: string,
+    userId: number,
+  ): Promise<{ bytes: Buffer; fileName: string } | null> {
     const manager = this.mysql.getManager();
     const signer = await this.signers.findByPublicId(signerPublicId, manager);
     const document = signer
@@ -102,17 +80,7 @@ export class EsignSigningTaskService {
       throw new Error('unreachable');
     }
     this.access.assertInternalSigner(document, signer, userId);
-    this.validation.assertSignerCanReadSource(document, signer, new Date());
-    const source = await this.files.findDocumentFile(
-      document.id,
-      'source_pdf',
-      manager,
-    );
-    if (!source) return null;
-    const bytes = await readPrivateFile(this.storage, source);
-    const metadata = await this.pdf.validatePersistedPdf(bytes);
-    this.validation.assertSourceIntegrity(document, source, metadata.sha256);
-    return { bytes, fileName: source.originalFileName ?? 'document.pdf' };
+    throw new AppException(...AppErrors.ESIGN_EMAIL_OTP_REQUIRED);
   }
 
   private async toTask(

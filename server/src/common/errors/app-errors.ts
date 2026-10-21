@@ -256,6 +256,11 @@ export const AppErrors = {
     '外部簽署存取已失效',
     HttpStatus.UNAUTHORIZED,
   ],
+  ESIGN_EMAIL_OTP_REQUIRED: [
+    AppErrorCode.ESIGN_EMAIL_OTP_REQUIRED,
+    '請從邀請信開啟文件並完成驗證碼驗證',
+    HttpStatus.FORBIDDEN,
+  ],
   ESIGN_FIELD_DOCUMENT_MISMATCH: [
     AppErrorCode.INVALID_REQUEST,
     '簽署欄位與文件不相符',

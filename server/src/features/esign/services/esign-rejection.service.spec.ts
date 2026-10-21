@@ -26,6 +26,7 @@ function fixture() {
     documentId: 4,
     signerType: 'user',
     invitationTokenSha256: 'a'.repeat(64),
+    email: 'employee@example.test',
     userId: 20,
     status: 'pending',
     invitationExpiresAt: new Date(Date.now() + 60000),
@@ -78,11 +79,43 @@ function fixture() {
   return { service, document, signer, events };
 }
 describe('本人拒簽', () => {
+  it.each(['pending', 'rejected'])(
+    '一般登入不可提交或重送 %s 拒簽',
+    async (status) => {
+      const { service, signer } = fixture();
+      Object.assign(signer, {
+        status,
+        rejectRequestId: requestId,
+        rejectReason: '',
+      });
+      await expect(
+        service.reject(
+          signer.publicId,
+          { kind: 'internal', userId: 20 },
+          { requestId },
+        ),
+      ).rejects.toMatchObject({
+        status: 403,
+        code: 'ESIGN_EMAIL_OTP_REQUIRED',
+      });
+      await expect(
+        service.reject(
+          signer.publicId,
+          { kind: 'internal', userId: 99 },
+          { requestId },
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+    },
+  );
   it('拒簽完成本人流程，同次重送保留首次證據，不同原因衝突', async () => {
     const { service, signer } = fixture();
     const first = await service.reject(
       signer.publicId,
-      { kind: 'internal', userId: 20 },
+      {
+        kind: 'external',
+        signerId: 8,
+        invitationGenerationSha256: 'a'.repeat(64),
+      },
       { requestId, reason: ' 不同意 ' },
     );
     expect(first).toMatchObject({
@@ -93,14 +126,22 @@ describe('本人拒簽', () => {
     expect(
       await service.reject(
         signer.publicId,
-        { kind: 'internal', userId: 20 },
+        {
+          kind: 'external',
+          signerId: 8,
+          invitationGenerationSha256: 'a'.repeat(64),
+        },
         { requestId, reason: '不同意' },
       ),
     ).toEqual({ ...first, repeated: true });
     await expect(
       service.reject(
         signer.publicId,
-        { kind: 'internal', userId: 20 },
+        {
+          kind: 'external',
+          signerId: 8,
+          invitationGenerationSha256: 'a'.repeat(64),
+        },
         { requestId, reason: '改寫' },
       ),
     ).rejects.toThrow();
@@ -175,7 +216,11 @@ describe('本人拒簽', () => {
     await expect(
       service.reject(
         signer.publicId,
-        { kind: 'internal', userId: caseName === 'wrong-user' ? 99 : 20 },
+        {
+          kind: 'external',
+          signerId: caseName === 'wrong-user' ? 99 : 8,
+          invitationGenerationSha256: 'a'.repeat(64),
+        },
         { requestId },
       ),
     ).rejects.toThrow();

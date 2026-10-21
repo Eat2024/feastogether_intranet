@@ -18,6 +18,7 @@ describe('EsignSigningService', () => {
       publicId: signerPublicId,
       documentId: 4,
       signerType: 'email',
+      email: 'employee@example.test',
       invitationTokenSha256: 'a'.repeat(64),
       userId: 20,
       status: repeated ? 'signed' : 'pending',
@@ -98,6 +99,14 @@ describe('EsignSigningService', () => {
     ).rejects.toMatchObject({ code: 'ESIGN_EXTERNAL_UNAUTHORIZED' });
   });
 
+  it('即使存在寬等簽章結果，過期邀請世代仍不能讀取', async () => {
+    const { service, signer } = setup({ signerId: 8, signedAtUtc: signedAt });
+    signer.invitationTokenSha256 = 'b'.repeat(64);
+    await expect(
+      service.sign(signerPublicId, externalPrincipal, submission, {}),
+    ).rejects.toMatchObject({ code: 'ESIGN_EXTERNAL_UNAUTHORIZED' });
+  });
+
   const submission = {
     requestId,
     consentVersion: 'esign-consent-v1',
@@ -105,7 +114,7 @@ describe('EsignSigningService', () => {
     signatures: [],
   };
 
-  it('同一內部 request 在文件結案後仍回既有結果且不重存 PNG', async () => {
+  it('同一內部 request 在文件結案後仍須 OTP，不洩漏既有結果', async () => {
     const { service, access, storage } = setup({
       signerId: 8,
       signedAtUtc: signedAt,
@@ -117,12 +126,7 @@ describe('EsignSigningService', () => {
         submission,
         {},
       ),
-    ).resolves.toMatchObject({
-      signerPublicId,
-      signedAt,
-      documentStatus: 'completed',
-      repeated: true,
-    });
+    ).rejects.toMatchObject({ status: 403, code: 'ESIGN_EMAIL_OTP_REQUIRED' });
     expect(access.assertInternalSigner).toHaveBeenCalled();
     expect(storage.store).not.toHaveBeenCalled();
   });
@@ -188,7 +192,7 @@ describe('EsignSigningService', () => {
       signedAtUtc: signedAt,
       verificationCode,
     });
-    const principal = { kind: 'internal' as const, userId: 20 };
+    const principal = externalPrincipal;
     const first = await service.sign(signerPublicId, principal, submission, {});
     const second = await service.sign(
       signerPublicId,
@@ -207,12 +211,7 @@ describe('EsignSigningService', () => {
   it('Spec 04 上線前的簽署紀錄沒有代碼時，驗證網址為 null', async () => {
     const { service } = setup({ signerId: 8, signedAtUtc: signedAt });
     await expect(
-      service.sign(
-        signerPublicId,
-        { kind: 'internal', userId: 20 },
-        submission,
-        {},
-      ),
+      service.sign(signerPublicId, externalPrincipal, submission, {}),
     ).resolves.toMatchObject({ verificationUrl: null });
   });
 
@@ -238,12 +237,7 @@ describe('EsignSigningService', () => {
       { id: 11, documentId: 4, fieldType: 'signature' },
     ]);
     await expect(
-      service.sign(
-        signerPublicId,
-        { kind: 'internal', userId: 20 },
-        submission,
-        {},
-      ),
+      service.sign(signerPublicId, externalPrincipal, submission, {}),
     ).rejects.toThrow('請完成所有必要簽名欄位');
     expect(storage.store).not.toHaveBeenCalled();
   });

@@ -1,6 +1,6 @@
 # Contract：Email 簽署與通知
 
-狀態：以下路徑已存在，**支援內部員工的擴充尚未實作**。外部名稱沿用，代表 Email 受限通道，不把 user signer 改成 email signer。JSON envelope 同 [員工契約](employee-email-api.md)；HTML 表單及 PDF 不包 JSON。
+狀態：以下路徑已存在；Ticket 04 已實作內部員工 Email OTP、簽署／拒簽、公開資料裁切及舊個人入口封閉。副本與通知的完整驗收另依 Tickets 05～07，尚未宣告完成。外部名稱沿用，代表 Email 受限通道，不把 user signer 改成 email signer。JSON envelope 同 [員工契約](employee-email-api.md)；HTML 表單及 PDF 不包 JSON。
 
 ## 邀請及 OTP（無須員工登入）
 

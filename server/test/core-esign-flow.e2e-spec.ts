@@ -45,6 +45,7 @@ import {
 import {
   clearOtpResendLimits,
   openExternalSession as openExternalSessionWithOtp,
+  openInternalEmailSession,
   otpMails,
   requestOtp,
   submitOtp,
@@ -2216,10 +2217,6 @@ describe('核心電子簽 US1', () => {
       'SELECT id FROM users WHERE empid=?',
       [signerEmpid],
     );
-    const [pendingUser] = await db.query<Array<{ id: number }>>(
-      'SELECT id FROM users WHERE empid=?',
-      [creatorEmpid],
-    );
     const end = new Date(Date.now() + 60_000);
     const active = apiData<DocumentDetail>(
       await request(ctx.server)
@@ -2229,7 +2226,11 @@ describe('核心電子簽 US1', () => {
         .send({
           signers: [
             { type: 'user', userId: String(signedUser.id) },
-            { type: 'user', userId: String(pendingUser.id) },
+            {
+              type: 'email',
+              name: '第二待簽者',
+              email: 'expiry-second@example.test',
+            },
             { type: 'email', name: '外部待簽', email: 'expiry@example.test' },
           ],
           fields: [
@@ -2250,14 +2251,17 @@ describe('核心電子簽 US1', () => {
         })
         .expect(201),
     );
-    const task = apiData<SigningTask>(
-      await request(ctx.server)
-        .post(`/api/esign/signing-tasks/${active.signers[0].publicId}`)
-        .set('Cookie', signerCookie)
-        .set('Origin', 'http://localhost:3000')
-        .expect(201),
+    const signedAccess = await openInternalEmailSession(
+      ctx,
+      active.signers[0].publicId,
     );
+    const pendingAccess = await openInternalEmailSession(
+      ctx,
+      active.signers[1].publicId,
+    );
+    const task = await openTask(signedAccess);
     const submission = {
+      signerPublicId: task.signerPublicId,
       requestId: randomUUID(),
       consentVersion: task.consent.version,
       accepted: true,
@@ -2268,10 +2272,8 @@ describe('核心電子簽 US1', () => {
     };
     const signed = apiData<{ verificationUrl: string }>(
       await request(ctx.server)
-        .post(
-          `/api/esign/signing-tasks/${active.signers[0].publicId}/signatures`,
-        )
-        .set('Cookie', signerCookie)
+        .post('/api/external-signing-task/signatures')
+        .set('Cookie', signedAccess)
         .set('Origin', 'http://localhost:3000')
         .send(submission)
         .expect(201),
@@ -2326,28 +2328,26 @@ describe('核心電子簽 US1', () => {
           .set('Cookie', creatorCookie)
           .expect(200),
       );
-      expect(pending.find((t) => t.document.id === id)?.document.status).toBe(
-        'expired',
-      );
+      expect(pending.find((t) => t.document.id === id)).toBeUndefined();
       expect(await esignRowCounts(db)).toEqual(beforeCounts);
       expect(
         await db.query('SELECT status FROM esign_documents WHERE id=?', [id]),
       ).toEqual([{ status: 'active' }]);
       await request(ctx.server)
-        .post(
-          `/api/esign/signing-tasks/${active.signers[1].publicId}/signatures`,
-        )
-        .set('Cookie', creatorCookie)
+        .post('/api/external-signing-task/signatures')
+        .set('Cookie', pendingAccess)
         .set('Origin', 'http://localhost:3000')
-        .send({ ...submission, requestId: randomUUID() })
-        .expect(409);
+        .send({
+          ...submission,
+          signerPublicId: active.signers[1].publicId,
+          requestId: randomUUID(),
+        })
+        .expect(401);
       expect(
         apiData<{ documentStatus: string }>(
           await request(ctx.server)
-            .post(
-              `/api/esign/signing-tasks/${active.signers[0].publicId}/signatures`,
-            )
-            .set('Cookie', signerCookie)
+            .post('/api/external-signing-task/signatures')
+            .set('Cookie', signedAccess)
             .set('Origin', 'http://localhost:3000')
             .send(submission)
             .expect(200),
@@ -2389,17 +2389,13 @@ describe('核心電子簽 US1', () => {
       expect(await snapshot()).toEqual(beforeSnapshot);
       expect(await evidence()).toEqual(beforeEvidence);
       await request(ctx.server)
-        .get(
-          `/api/esign/signing-tasks/${active.signers[0].publicId}/source-file`,
-        )
-        .set('Cookie', signerCookie)
+        .get('/api/external-signing-task/source-file')
+        .set('Cookie', signedAccess)
         .expect(200);
       await request(ctx.server)
-        .get(
-          `/api/esign/signing-tasks/${active.signers[1].publicId}/source-file`,
-        )
-        .set('Cookie', creatorCookie)
-        .expect(409);
+        .get('/api/external-signing-task/source-file')
+        .set('Cookie', pendingAccess)
+        .expect(401);
       expect(
         apiData<SignatureVerification>(
           await getSignatureVerification(
@@ -2434,10 +2430,8 @@ describe('核心電子簽 US1', () => {
         data: { documentId: Number(id), signerId: Number(owner.id) },
       } as Job<{ documentId: number; signerId: number }>);
       await request(ctx.server)
-        .get(
-          `/api/esign/signing-tasks/${active.signers[0].publicId}/completed-file`,
-        )
-        .set('Cookie', signerCookie)
+        .get('/api/external-signing-task/completed-file')
+        .set('Cookie', signedAccess)
         .expect(200);
       expect(
         apiData<{ status: string }>(
@@ -2453,10 +2447,8 @@ describe('核心電子簽 US1', () => {
     }
     const completedBefore = (
       await request(ctx.server)
-        .get(
-          `/api/esign/signing-tasks/${active.signers[0].publicId}/completed-file`,
-        )
-        .set('Cookie', signerCookie)
+        .get('/api/external-signing-task/completed-file')
+        .set('Cookie', signedAccess)
         .expect(200)
     ).body as Buffer;
     const reopen = (expectedSignEndAt: string, signEndAt: string) =>
@@ -2491,10 +2483,8 @@ describe('核心電子簽 US1', () => {
       expect(await evidence()).toEqual(beforeEvidence);
       const completedAfter = (
         await request(ctx.server)
-          .get(
-            `/api/esign/signing-tasks/${active.signers[0].publicId}/completed-file`,
-          )
-          .set('Cookie', signerCookie)
+          .get('/api/external-signing-task/completed-file')
+          .set('Cookie', signedAccess)
           .expect(200)
       ).body as Buffer;
       expect(completedAfter).toEqual(completedBefore);
@@ -2506,14 +2496,13 @@ describe('核心電子簽 US1', () => {
           ).expect(200),
         ).document.status,
       ).toBe('active');
-      const pendingTask = apiData<SigningTask>(
-        await request(ctx.server)
-          .post(`/api/esign/signing-tasks/${active.signers[1].publicId}`)
-          .set('Cookie', creatorCookie)
-          .set('Origin', 'http://localhost:3000')
-          .expect(201),
+      const reopenedPendingAccess = await openInternalEmailSession(
+        ctx,
+        active.signers[1].publicId,
       );
+      const pendingTask = await openTask(reopenedPendingAccess);
       const signatures = (task: SigningTask) => ({
+        signerPublicId: task.signerPublicId,
         requestId: randomUUID(),
         consentVersion: task.consent.version,
         accepted: true,
@@ -2523,10 +2512,8 @@ describe('核心電子簽 US1', () => {
         })),
       });
       await request(ctx.server)
-        .post(
-          `/api/esign/signing-tasks/${active.signers[1].publicId}/signatures`,
-        )
-        .set('Cookie', creatorCookie)
+        .post('/api/external-signing-task/signatures')
+        .set('Cookie', reopenedPendingAccess)
         .set('Origin', 'http://localhost:3000')
         .send(signatures(pendingTask))
         .expect(201);
@@ -2723,9 +2710,17 @@ describe('核心電子簽 US1', () => {
       signEndAt: expect.any(String),
     });
 
-    const signerPreview = await request(ctx.server)
+    await request(ctx.server)
       .get(`/api/esign/signing-tasks/${assigned[0].publicId}/source-file`)
       .set('Cookie', signerCookie)
+      .expect(403);
+    const emailCookie = await openInternalEmailSession(
+      ctx,
+      assigned[0].publicId,
+    );
+    const signerPreview = await request(ctx.server)
+      .get('/api/external-signing-task/source-file')
+      .set('Cookie', emailCookie)
       .expect(200)
       .expect('Content-Type', /application\/pdf/)
       .expect('Cache-Control', 'private, no-store');
@@ -2733,13 +2728,10 @@ describe('核心電子簽 US1', () => {
     expect(signerPreview.headers['content-security-policy']).toContain(
       "frame-ancestors 'self'",
     );
-    for (const origin of (process.env.AUTH_TRUSTED_ORIGINS ?? '')
-      .split(',')
-      .filter(Boolean)) {
-      expect(signerPreview.headers['content-security-policy']).toContain(
-        new URL(origin.trim()).origin,
-      );
-    }
+    // Email 受限通道只允許同源嵌入，不沿用員工管理入口的額外 origins。
+    expect(signerPreview.headers['content-security-policy']).toBe(
+      "frame-ancestors 'self';",
+    );
     await request(ctx.server)
       .get(`/api/esign/signing-tasks/${assigned[0].publicId}/source-file`)
       .set('Cookie', outsiderCookie)
@@ -2783,6 +2775,9 @@ describe('核心電子簽 US1', () => {
       'document.created',
       'signer.assigned',
       'document.initiated',
+      'external_otp.sent',
+      'external_otp.verified',
+      'external_invitation.opened',
     ]);
     expect(
       signerHistory.find((event) => event.type === 'signer.assigned'),
@@ -2792,23 +2787,24 @@ describe('核心電子簽 US1', () => {
       .set('Cookie', outsiderCookie)
       .expect(404);
 
-    // 內部簽署：簽署前無驗證網址，簽署後任務、重開與建立人詳情回同一網址
-    const taskPath = `/api/esign/signing-tasks/${assigned[0].publicId}`;
+    // 內部指派經 Email 簽署，員工列表與建立人詳情仍回同一驗證網址。
+    const taskPath = '/api/external-signing-task';
     const openTask = () =>
       request(ctx.server)
         .post(taskPath)
-        .set('Cookie', signerCookie)
+        .set('Cookie', emailCookie)
         .set('Origin', 'http://localhost:3000')
-        .expect(201);
+        .expect(200);
     const internalTask = apiData<SigningTask>(await openTask());
     expect(internalTask.signer.verificationUrl).toBeNull();
     const internalSigned = apiData<{ verificationUrl: string }>(
       await request(ctx.server)
         .post(`${taskPath}/signatures`)
-        .set('Cookie', signerCookie)
+        .set('Cookie', emailCookie)
         .set('Origin', 'http://localhost:3000')
         .send({
           requestId: randomUUID(),
+          signerPublicId: internalTask.signerPublicId,
           consentVersion: internalTask.consent.version,
           accepted: true,
           signatures: [
@@ -2829,9 +2825,11 @@ describe('核心電子簽 US1', () => {
         (task) => task.signerPublicId === assigned[0].publicId,
       )?.signer.verificationUrl,
     ).toBe(internalSigned.verificationUrl);
-    expect(apiData<SigningTask>(await openTask()).signer.verificationUrl).toBe(
-      internalSigned.verificationUrl,
-    );
+    // Email 任務沿用既有裁切，不額外載入驗證紀錄；重開呈現已簽狀態。
+    expect(apiData<SigningTask>(await openTask()).signer).toMatchObject({
+      status: 'signed',
+      verificationUrl: null,
+    });
     expect(
       apiData<DocumentDetail>(
         await request(ctx.server)
@@ -2847,7 +2845,7 @@ describe('核心電子簽 US1', () => {
           internalSigned.verificationUrl,
         ).expect(200),
       ).signature.authenticationMethod,
-    ).toBe('employee_session');
+    ).toBe('email_invitation');
   });
 
   it('10 人共用 3 欄位各產一份 PDF，先簽先下載、跨人拒絕、全 ready 才結案', async () => {
@@ -2908,6 +2906,10 @@ describe('核心電子簽 US1', () => {
       'SELECT id, public_id FROM esign_signers WHERE document_id = ? ORDER BY sort_order',
       [id],
     );
+    const emailCookies: string[] = [];
+    for (const signer of active.signers) {
+      emailCookies.push(await openInternalEmailSession(ctx, signer.publicId));
+    }
     const queue = ctx.app.get<Queue>(
       getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
     );
@@ -2925,13 +2927,14 @@ describe('核心電子簽 US1', () => {
       const publicId = active.signers[i].publicId;
       const task = apiData<SigningTask>(
         await request(ctx.server)
-          .post('/api/esign/signing-tasks/' + publicId)
-          .set('Cookie', cookies[i])
+          .post('/api/external-signing-task')
+          .set('Cookie', emailCookies[i])
           .set('Origin', 'http://localhost:3000')
-          .expect(201),
+          .expect(200),
       );
       taskIds[i] = task.fields.map((field) => field.id);
       const submission = {
+        signerPublicId: publicId,
         requestId: randomUUID(),
         consentVersion: task.consent.version,
         accepted: true,
@@ -2944,15 +2947,15 @@ describe('核心電子簽 US1', () => {
           })),
       };
       await request(ctx.server)
-        .post('/api/esign/signing-tasks/' + publicId + '/signatures')
-        .set('Cookie', cookies[i])
+        .post('/api/external-signing-task/signatures')
+        .set('Cookie', emailCookies[i])
         .set('Origin', 'http://localhost:3000')
         .send(submission)
         .expect(201);
       // 同 request 重送只回既有證據，不再保存 PNG。
       await request(ctx.server)
-        .post('/api/esign/signing-tasks/' + publicId + '/signatures')
-        .set('Cookie', cookies[i])
+        .post('/api/external-signing-task/signatures')
+        .set('Cookie', emailCookies[i])
         .set('Origin', 'http://localhost:3000')
         .send(submission)
         .expect(200);
@@ -2960,10 +2963,10 @@ describe('核心電子簽 US1', () => {
     try {
       const firstTask = apiData<SigningTask>(
         await request(ctx.server)
-          .post('/api/esign/signing-tasks/' + active.signers[0].publicId)
-          .set('Cookie', cookies[0])
+          .post('/api/external-signing-task')
+          .set('Cookie', emailCookies[0])
           .set('Origin', 'http://localhost:3000')
-          .expect(201),
+          .expect(200),
       );
       const firstField = firstTask.fields.find(
         (field) => field.type === 'signature',
@@ -2973,15 +2976,12 @@ describe('核心電子簽 US1', () => {
         [firstField.id],
       );
       const tampered = await request(ctx.server)
-        .post(
-          '/api/esign/signing-tasks/' +
-            active.signers[0].publicId +
-            '/signatures',
-        )
-        .set('Cookie', cookies[0])
+        .post('/api/external-signing-task/signatures')
+        .set('Cookie', emailCookies[0])
         .set('Origin', 'http://localhost:3000')
         .send({
           requestId: randomUUID(),
+          signerPublicId: firstTask.signerPublicId,
           consentVersion: firstTask.consent.version,
           accepted: true,
           signatures: firstTask.fields
@@ -3008,19 +3008,21 @@ describe('核心電子簽 US1', () => {
       const ownPath =
         '/api/esign/signing-tasks/' + owners[0].public_id + '/completed-file';
       await request(ctx.server)
+        .get('/api/external-signing-task/completed-file')
+        .set('Cookie', emailCookies[0])
+        .expect(200);
+      await request(ctx.server)
         .get(ownPath)
         .set('Cookie', cookies[0])
-        .expect(200);
+        .expect(403);
       await request(ctx.server)
         .get(ownPath)
         .set('Cookie', cookies[1])
         .expect(404);
       await request(ctx.server)
-        .get(
-          '/api/esign/signing-tasks/' + owners[1].public_id + '/completed-file',
-        )
-        .set('Cookie', cookies[1])
-        .expect(409);
+        .get('/api/external-signing-task/completed-file')
+        .set('Cookie', emailCookies[1])
+        .expect(401);
       for (let i = 1; i < 8; i += 1) {
         await sign(i);
         await process(i);
@@ -3519,6 +3521,7 @@ describe('核心電子簽 US1', () => {
           new Date(),
           new Date(Date.now() - 600_000),
           manager,
+          Number(oldLog.id) - 1,
         )
       ).map((row) => Number(row.id)),
     ).toContain(Number(oldLog.id));

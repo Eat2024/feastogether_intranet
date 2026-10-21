@@ -5,7 +5,7 @@ import { ExternalAccessCredentialService } from './external-access-credential.se
 import { ExternalAccessService } from './external-access.service';
 import { ExternalOtpService } from './external-otp.service';
 
-describe('ExternalAccessService', () => {
+describe.each(['user', 'email'])('%s Email 存取', (signerType) => {
   const manager = {} as never;
 
   function setup() {
@@ -13,7 +13,7 @@ describe('ExternalAccessService', () => {
       id: 3,
       publicId: 'c854d925-1d70-49dc-9c81-abf18409ae42',
       documentId: 4,
-      signerType: 'email',
+      signerType,
       invitationTokenSha256: 'a'.repeat(64),
       email: 'daming.wang@example.com',
       status: 'signed',
@@ -87,7 +87,9 @@ describe('ExternalAccessService', () => {
       { digest: jest.fn(() => 'a'.repeat(64)) } as never,
       access,
       {} as never,
-      { getActive: jest.fn(() => ({ version: 'esign-consent-v1' })) } as never,
+      {
+        getActive: jest.fn(() => ({ version: 'esign-consent-v1' })),
+      } as never,
       {
         documentSummary: jest.fn(() => ({ id: '4' })),
         signer: jest.fn(() => ({ publicId: signer.publicId })),

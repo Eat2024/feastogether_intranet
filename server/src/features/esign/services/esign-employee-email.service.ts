@@ -7,6 +7,7 @@ import { FeastogetherHrService } from '#app/infrastructure/http-client/feastoget
 import { DocumentRepository } from '../repositories/document.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
+import { EmployeeEmailCheckResultDto } from '../dto/employee-directory-response.dto';
 
 export interface EmployeeEmailIdentity {
   userId: number;
@@ -32,7 +33,7 @@ export class EsignEmployeeEmailService {
     documentId: number,
     creatorUserId: number,
     userIds: string[],
-  ) {
+  ): Promise<EmployeeEmailCheckResultDto> {
     const document = await this.documents.findById(
       documentId,
       this.mysql.getManager(),

@@ -15,6 +15,10 @@ import {
 } from '../dto/employee-email-check.dto';
 import { EsignEmployeeEmailService } from '../services/esign-employee-email.service';
 import {
+  EmployeeEmailCheckResponseDto,
+  EmployeeEmailCheckResultDto,
+} from '../dto/employee-directory-response.dto';
+import {
   Body,
   Controller,
   Delete,
@@ -211,34 +215,7 @@ export class DocumentsController {
       '僅草稿建立人可查詢；只回逐人遮罩結果，不保存信箱、不寄送通知。',
   })
   @ApiBody({ type: EmployeeEmailCheckDto })
-  @ApiOkResponse({
-    schema: {
-      type: 'object',
-      required: ['success', 'data', 'timestamp'],
-      properties: {
-        success: { type: 'boolean', enum: [true] },
-        timestamp: { type: 'string', format: 'date-time' },
-        data: {
-          type: 'object',
-          required: ['items'],
-          properties: {
-            items: {
-              type: 'array',
-              items: {
-                type: 'object',
-                required: ['userId', 'status', 'maskedEmail'],
-                properties: {
-                  userId: { type: 'string' },
-                  status: { type: 'string', enum: ['ready', 'unavailable'] },
-                  maskedEmail: { type: 'string', nullable: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  })
+  @ApiOkResponse({ type: EmployeeEmailCheckResponseDto })
   @ApiResponse({ status: 401, description: '需有效員工 session' })
   @ApiResponse({ status: 403, description: 'Origin 驗證失敗' })
   @ApiResponse({ status: 404, description: '文件不存在或非建立人' })
@@ -267,7 +244,7 @@ export class DocumentsController {
       }),
     )
     body: EmployeeEmailCheckInput,
-  ) {
+  ): Promise<EmployeeEmailCheckResultDto> {
     return this.employeeEmails.checkDraft(this.id(id), userId, body.userIds);
   }
 

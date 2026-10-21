@@ -186,6 +186,44 @@ describe('Spec010 草稿員工信箱檢查 API', () => {
         .post!;
     for (const status of ['200', '401', '403', '404', '409', '422', '502'])
       expect(operation.responses[status]).toBeDefined();
+    expect(operation.responses['200']).toMatchObject({
+      content: {
+        'application/json': {
+          schema: {
+            $ref: '#/components/schemas/EmployeeEmailCheckResponseDto',
+          },
+        },
+      },
+    });
+    expect(
+      api.components?.schemas?.EmployeeEmailCheckResponseDto,
+    ).toMatchObject({
+      required: ['success', 'timestamp', 'data'],
+      properties: {
+        success: { type: 'boolean', enum: [true] },
+        timestamp: { type: 'string', format: 'date-time' },
+        data: { $ref: '#/components/schemas/EmployeeEmailCheckResultDto' },
+      },
+    });
+    expect(api.components?.schemas?.EmployeeEmailCheckResultDto).toMatchObject({
+      required: ['items'],
+      properties: {
+        items: {
+          type: 'array',
+          items: {
+            $ref: '#/components/schemas/EmployeeEmailCheckItemDto',
+          },
+        },
+      },
+    });
+    expect(api.components?.schemas?.EmployeeEmailCheckItemDto).toMatchObject({
+      required: ['userId', 'status', 'maskedEmail'],
+      properties: {
+        userId: { type: 'string' },
+        status: { type: 'string', enum: ['ready', 'unavailable'] },
+        maskedEmail: { type: 'string', nullable: true },
+      },
+    });
   });
 
   it('非草稿回 409 且不查來源', async () => {

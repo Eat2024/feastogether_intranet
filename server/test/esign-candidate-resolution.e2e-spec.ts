@@ -385,17 +385,30 @@ describe('員工解析 HTTP', () => {
       content: {
         'application/json': {
           schema: {
-            required: ['success', 'data', 'timestamp'],
-            properties: {
-              data: {
-                $ref: '#/components/schemas/SignerCandidateResolutionsDto',
-              },
-            },
+            $ref: '#/components/schemas/SignerCandidateResolutionsResponseDto',
           },
         },
       },
     });
+    expect(
+      document.components?.schemas?.SignerCandidateResolutionsResponseDto,
+    ).toMatchObject({
+      required: ['success', 'timestamp', 'data'],
+      properties: {
+        success: { type: 'boolean', enum: [true] },
+        timestamp: { type: 'string', format: 'date-time' },
+        data: { $ref: '#/components/schemas/SignerCandidateResolutionsDto' },
+      },
+    });
     for (const code of ['400', '401', '403', '502'])
-      expect(responses).toHaveProperty(code);
+      expect(responses?.[code]).toMatchObject({
+        content: {
+          'application/json': {
+            schema: {
+              $ref: '#/components/schemas/EmployeeDirectoryErrorResponseDto',
+            },
+          },
+        },
+      });
   });
 });

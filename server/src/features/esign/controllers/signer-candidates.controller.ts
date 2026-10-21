@@ -1,12 +1,5 @@
 import { OrgDepartmentDto } from '#app/infrastructure/http-client/feastogether/types/org-chart.dto';
-import {
-  ApiOperation,
-  ApiOkResponse,
-  ApiResponse,
-  ApiExtraModels,
-  getSchemaPath,
-  ApiResponseOptions,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiOkResponse, ApiResponse } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -23,25 +16,11 @@ import {
   SignerCandidateResolutionsDto,
 } from '../dto/resolve-signer-candidates.dto';
 import { EsignSignerCandidateService } from '../services/esign-signer-candidate.service';
-
-const orgChartErrorResponse = {
-  schema: {
-    type: 'object',
-    required: ['success', 'error', 'timestamp'],
-    properties: {
-      success: { type: 'boolean', enum: [false] },
-      error: {
-        type: 'object',
-        required: ['code', 'message'],
-        properties: {
-          code: { type: 'string' },
-          message: { type: 'string' },
-        },
-      },
-      timestamp: { type: 'string', format: 'date-time' },
-    },
-  },
-} satisfies ApiResponseOptions;
+import {
+  EmployeeDirectoryErrorResponseDto,
+  SignerCandidateOrgChartResponseDto,
+  SignerCandidateResolutionsResponseDto,
+} from '../dto/employee-directory-response.dto';
 
 @Controller('esign/signer-candidates')
 export class SignerCandidatesController {
@@ -53,34 +32,20 @@ export class SignerCandidatesController {
     summary: '查詢正式員工組織架構',
     description: '需有效員工 session',
   })
-  @ApiExtraModels(OrgDepartmentDto)
-  @ApiOkResponse({
-    schema: {
-      type: 'object',
-      required: ['success', 'data', 'timestamp'],
-      properties: {
-        success: { type: 'boolean', enum: [true] },
-        data: {
-          type: 'array',
-          items: { $ref: getSchemaPath(OrgDepartmentDto) },
-        },
-        timestamp: { type: 'string', format: 'date-time' },
-      },
-    },
-  })
+  @ApiOkResponse({ type: SignerCandidateOrgChartResponseDto })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 401,
     description: '沿用員工 session 認證錯誤 envelope',
   })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 502,
     description:
       'ORG_CHART_UPSTREAM_UNAVAILABLE：組織架構來源暫時無法使用；沿用錯誤 envelope',
   })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 503,
     description:
       'ORG_CHART_UNAVAILABLE：快取或更新協調暫時無法使用；沿用錯誤 envelope',
@@ -98,35 +63,24 @@ export class SignerCandidatesController {
     description:
       '需有效員工 session 與 Origin 檢查；僅解析明確選取的完整員編，不回傳信箱。',
   })
-  @ApiExtraModels(SignerCandidateResolutionsDto)
-  @ApiOkResponse({
-    schema: {
-      type: 'object',
-      required: ['success', 'data', 'timestamp'],
-      properties: {
-        success: { type: 'boolean', enum: [true] },
-        data: { $ref: getSchemaPath(SignerCandidateResolutionsDto) },
-        timestamp: { type: 'string', format: 'date-time' },
-      },
-    },
-  })
+  @ApiOkResponse({ type: SignerCandidateResolutionsResponseDto })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 400,
     description: '請求格式錯誤',
   })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 401,
     description: '員工 session 無效',
   })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 403,
     description: 'Origin 檢查失敗',
   })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 502,
     description:
       'ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE：員工資格來源暫時無法使用',

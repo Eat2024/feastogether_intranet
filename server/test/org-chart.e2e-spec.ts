@@ -182,22 +182,42 @@ describe('組織樹 API', () => {
       content: {
         'application/json': {
           schema: {
-            type: 'object',
-            properties: {
-              data: {
-                type: 'array',
-                items: { $ref: '#/components/schemas/OrgDepartmentDto' },
-              },
-            },
+            $ref: '#/components/schemas/SignerCandidateOrgChartResponseDto',
           },
         },
       },
     });
+    expect(
+      document.components?.schemas?.SignerCandidateOrgChartResponseDto,
+    ).toMatchObject({
+      required: ['success', 'timestamp', 'data'],
+      properties: {
+        data: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/OrgDepartmentDto' },
+        },
+      },
+    });
+    expect(
+      document.components?.schemas?.EmployeeDirectoryErrorResponseDto,
+    ).toMatchObject({
+      required: ['success', 'error', 'timestamp'],
+      properties: {
+        success: { type: 'boolean', enum: [false] },
+        error: { $ref: '#/components/schemas/EmployeeDirectoryErrorDto' },
+        timestamp: { type: 'string', format: 'date-time' },
+      },
+    });
+    expect(
+      document.components?.schemas?.EmployeeDirectoryErrorDto,
+    ).toMatchObject({ required: ['code', 'message'] });
     for (const status of ['401', '502', '503'])
       expect(responses?.[status]).toMatchObject({
         content: {
           'application/json': {
-            schema: { required: ['success', 'error', 'timestamp'] },
+            schema: {
+              $ref: '#/components/schemas/EmployeeDirectoryErrorResponseDto',
+            },
           },
         },
       });

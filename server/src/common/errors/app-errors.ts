@@ -15,6 +15,11 @@ export function signAfterHint(startAt: Date): string {
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE: [
+    AppErrorCode.ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE,
+    '員工資格來源暫時無法使用，請稍後再試',
+    HttpStatus.BAD_GATEWAY,
+  ],
   ESIGN_REMINDER_REQUEST_CONFLICT: [
     AppErrorCode.ESIGN_REMINDER_REQUEST_CONFLICT,
     '同一催簽請求不得變更內容',

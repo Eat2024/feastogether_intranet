@@ -21,6 +21,3 @@ export class EmployeeEmailCheckDto {
   @Matches(/^[1-9][0-9]*$/, { each: true })
   userIds!: string[];
 }
-
-/** 使用明確的端點 ValidationPipe，維持 422 輸入錯誤契約。 */
-export type EmployeeEmailCheckInput = { userIds: string[] };

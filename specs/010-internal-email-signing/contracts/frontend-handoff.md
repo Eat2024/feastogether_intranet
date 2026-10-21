@@ -8,7 +8,7 @@
 
 1. 讀 `GET /api/esign/signer-candidates/org-chart` 顯示組織。後端已有兩小時共用快取，前端不加 refresh 參數，不載全公司信箱。
 2. 選到員工後呼叫 `POST /api/esign/signer-candidates/resolutions` 取得本機 userId；大量選取自動每批最多 100（6,000 人為 60 次解析請求）。以 employeeNo 精確對應，員編不能填入 userId；不同人同 email 不合併。GET candidates 已改為只查本機，不能再依賴 GET 建帳。
-3. 拿 userIds 呼叫該草稿 employee-email-checks，呈現 ready／unavailable 與遮罩信箱；不提供手填員工地址。上游失敗呈現暫時不可用，不當作無人。
+3. 拿 userIds 呼叫該草稿 employee-email-checks，呈現 ready／unavailable 與遮罩信箱；不提供手填員工地址。請求格式、數量或額外欄位錯誤回 400 `INVALID_REQUEST`；帳號不可用或 ID 超出安全整數範圍仍回 422。上游失敗呈現暫時不可用，不當作無人。
 4. 草稿仍傳 `{type:'user',userId}`，外部仍 `{type:'email',name,email}`。沒有信箱可暫存；既有 draftSave／draft-settings 各自回應形狀依契約處理。
 5. 發起仍送完整名單／欄位／期間／選項。後端必定重查地址，不能把預覽 ready 視為保證。422 details.userIds 對應已選名單提示移除或待來源修正；502 可重試，409 身分變更重新取得候選資料。
 6. 成功後顯示 active 與逐人寄送狀態；同信箱每人皆有自己的邀請紀錄。發起回應遺失先查文件，不直接重建或重複發起。

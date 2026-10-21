@@ -121,14 +121,24 @@ describe('Spec010 草稿員工信箱檢查 API', () => {
   });
 
   it.each([
+    {},
+    { userIds: '1' },
     { userIds: [] },
     { userIds: [1] },
     { userIds: ['01'] },
-    { userIds: ['9007199254740992'] },
     { userIds: Array(6001).fill('1') },
     { userIds: ['1'], email: 'override@example.test' },
   ])('拒絕非法請求或來源覆寫 %#', async (body) => {
-    await check(body).expect(422);
+    const response = await check(body).expect(400);
+    expect(response.body).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+    expect(http.post).not.toHaveBeenCalled();
+  });
+
+  it('ID 超出安全整數範圍仍由 service 拒絕，不查來源', async () => {
+    const response = await check({ userIds: ['9007199254740992'] }).expect(422);
+    expect(response.body).toMatchObject({
+      error: { code: 'ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE' },
+    });
     expect(http.post).not.toHaveBeenCalled();
   });
 
@@ -184,7 +194,16 @@ describe('Spec010 草稿員工信箱檢查 API', () => {
     const operation =
       api.paths['/api/esign/documents/{documentId}/employee-email-checks']
         .post!;
-    for (const status of ['200', '401', '403', '404', '409', '422', '502'])
+    for (const status of [
+      '200',
+      '400',
+      '401',
+      '403',
+      '404',
+      '409',
+      '422',
+      '502',
+    ])
       expect(operation.responses[status]).toBeDefined();
     expect(operation.responses['200']).toMatchObject({
       content: {

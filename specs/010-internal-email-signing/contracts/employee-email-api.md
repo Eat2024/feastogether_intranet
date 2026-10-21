@@ -43,7 +43,7 @@
 ```
 
 - 1–6,000 個正整數字串，必須可安全解析為本機 ID；去重後按輸入順序輸出。
-- 請求格式、數量、安全整數或額外欄位錯誤回 422 `ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE`；不接受手填 Email 或員編覆寫。
+- 請求格式、數量或額外欄位錯誤沿用全域 DTO 驗證，回 400 `INVALID_REQUEST`；不接受手填 Email 或員編覆寫。ID 超出安全整數範圍仍由 service 拒絕，回 422 `ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE`。
 - 僅該草稿建立人可呼叫；非建立人／不存在文件 404，非草稿 409。userId 不是有效帳號回 422 `ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE`，details.userIds 列出原請求中不可用 ID，不洩漏額外帳號資料。
 - 來源以完整員編分批查詢，最多 100／批，後端負責拆批。不得提供 employeeNo、email、上游 URL 作為可覆寫來源。
 - 查無、空白／不合法 email 為 unavailable；不推測是否離職。不同員工相同信箱皆 ready，逐人回傳、不警告。
@@ -97,7 +97,7 @@ type Initiation = {
 | code | HTTP | 用途 |
 | --- | --- | --- |
 | ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE | 502 | 員工資格來源不可用 |
-| ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE | 422 | 所選本機帳號不可用，details.userIds |
+| ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE | 422 | ID 超出安全整數範圍，或所選本機帳號不可用；後者帶 details.userIds |
 | ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE | 502 | 信箱來源不可用／結構錯誤 |
 | ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE | 422 | 發起名單有無有效信箱的人員，details.userIds |
 | ESIGN_EMPLOYEE_IDENTITY_CHANGED | 409 | 查信箱前後員工對應或有效性改變 |

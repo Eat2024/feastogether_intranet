@@ -9,10 +9,7 @@ import {
   ApiOkResponse,
   ApiCookieAuth,
 } from '@nestjs/swagger';
-import {
-  EmployeeEmailCheckDto,
-  type EmployeeEmailCheckInput,
-} from '../dto/employee-email-check.dto';
+import { EmployeeEmailCheckDto } from '../dto/employee-email-check.dto';
 import { EsignEmployeeEmailService } from '../services/esign-employee-email.service';
 import {
   EmployeeEmailCheckResponseDto,
@@ -216,6 +213,7 @@ export class DocumentsController {
   })
   @ApiBody({ type: EmployeeEmailCheckDto })
   @ApiOkResponse({ type: EmployeeEmailCheckResponseDto })
+  @ApiResponse({ status: 400, description: 'INVALID_REQUEST：請求格式錯誤' })
   @ApiResponse({ status: 401, description: '需有效員工 session' })
   @ApiResponse({ status: 403, description: 'Origin 驗證失敗' })
   @ApiResponse({ status: 404, description: '文件不存在或非建立人' })
@@ -223,7 +221,7 @@ export class DocumentsController {
   @ApiResponse({
     status: 422,
     description:
-      'ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE：輸入或帳號無效；不可用帳號列於 error.details.userIds',
+      'ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE：ID 超出安全整數範圍或帳號無效；不可用帳號列於 error.details.userIds',
   })
   @ApiResponse({
     status: 502,
@@ -233,17 +231,7 @@ export class DocumentsController {
   employeeEmailChecks(
     @Param('documentId') id: string,
     @CurrentUserId() userId: number,
-    @Body(
-      new ValidationPipe({
-        expectedType: EmployeeEmailCheckDto,
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        exceptionFactory: () =>
-          new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE),
-      }),
-    )
-    body: EmployeeEmailCheckInput,
+    @Body() body: EmployeeEmailCheckDto,
   ): Promise<EmployeeEmailCheckResultDto> {
     return this.employeeEmails.checkDraft(this.id(id), userId, body.userIds);
   }

@@ -22,7 +22,8 @@ const SORT_VALUE: Record<SignerSortKey, (s: EsignSignerView) => SortValue> = {
   name: (s) => s.name,
   dept: (s) => s.department,
   status: (s) => STATUS_ORDER[s.status],
-  time: (s) => s.signedAt,
+  // 簽署／拒絕時間
+  time: (s) => s.signedAt ?? s.rejectedAt,
 };
 
 export type SignerQuery = { status: SignerStatusTab; q: string; sort: SignerSort; page: number };

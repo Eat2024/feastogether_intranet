@@ -1,9 +1,11 @@
 import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
 import type {
+  EsignRejectionResult,
   EsignSignatureResult,
   EsignSigningTask,
   GetSigningTasksParams,
+  RejectSigningTaskBody,
   SubmitSignaturesBody,
 } from '@/api/types';
 import { getBlob } from './blob';
@@ -55,3 +57,22 @@ export const downloadMyCompletedFile = (signerPublicId: string): Promise<Blob> =
 /** 簽署人讀取原始 PDF 的網址（pdf.js 直接讀取，同源請求會帶上 session cookie）；只有簽署期間內或本人已簽署時可讀 */
 export const signingTaskSourceFileUrl = (signerPublicId: string) =>
   `${api.defaults.baseURL}/${endpoints.ESIGN_SIGNING_TASK_SOURCE_FILE(signerPublicId)}`;
+
+/**
+ * @name 拒絕簽署
+ * @description 本人待簽署、在簽署期間內，且建立人開放拒絕簽署時才能拒絕；同一個 requestId 重送時回傳第一次的結果
+ */
+export const rejectSigningTask = async ({
+  signerPublicId,
+  body,
+}: {
+  signerPublicId: string;
+  body: RejectSigningTaskBody;
+}): Promise<EsignRejectionResult> => {
+  const res = await api<EsignRejectionResult>({
+    method: 'POST',
+    url: endpoints.ESIGN_SIGNING_TASK_REJECTION(signerPublicId),
+    data: body,
+  });
+  return res.data;
+};

@@ -1,11 +1,10 @@
 'use client';
 
 // 我的電子簽（後端資料）的表格；欄位與 mock 版 MySignTable 相同。
-// 「已拒絕」分頁的欄位先保留，後端支援拒絕簽署前不會有資料。
 import type { EsignSigningTask } from '@/api/types';
 import SortableHeaderCell from '@/components/SortableHeaderCell';
 import TooltipIconButton from '@/components/TooltipIconButton';
-import { DOCUMENT_STATUS_META, formatDate } from '@/features/esign-documents/listQuery';
+import { DOCUMENT_STATUS_META, formatDate, formatDateTime } from '@/features/esign-documents/listQuery';
 import SignActionButton from '@/features/my-signature/SignActionButton';
 import { daysUntil } from '@/lib/dates';
 import { nextSortState } from '@/lib/tableSort';
@@ -23,7 +22,6 @@ import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
 import DownloadMyCopyButton from './DownloadMyCopyButton';
 import {
-  formatDateTime,
   signBlock,
   signingHref,
   SORT_KEYS_BY_TAB,
@@ -146,11 +144,27 @@ export default function SigningTasksTable({
         ),
       },
     ],
-    // TODO: 後端支援拒絕簽署後補上資料（拒絕時間、拒絕原因）與排序
     rejected: [
       ...common,
-      { header: '拒絕時間', nowrap: true, cell: () => '—' },
-      { header: '拒絕原因', cell: () => '—' },
+      {
+        header: '拒絕時間',
+        sortKey: 'rejectedAt',
+        nowrap: true,
+        cell: ({ signer }) => formatDateTime(signer.rejectedAt) ?? '—',
+      },
+      {
+        header: '拒絕原因',
+        sortKey: 'rejectReason',
+        // 完整顯示、自動換行；保留最小寬度避免被擠成過窄的一欄
+        cell: ({ signer }) =>
+          signer.rejectReason ? (
+            <Typography variant="content" sx={{ minWidth: 240, overflowWrap: 'anywhere' }}>
+              {signer.rejectReason}
+            </Typography>
+          ) : (
+            '—'
+          ),
+      },
       initiator,
       {
         header: '操作',
@@ -174,7 +188,7 @@ export default function SigningTasksTable({
         <TableHead>
           <TableRow>
             {columns.map((col) =>
-              // 只有此分頁允許的欄位可排序（已拒絕分頁沒有可排序的欄位）
+              // 只有此分頁允許的欄位可排序
               col.sortKey && SORT_KEYS_BY_TAB[tab].includes(col.sortKey) ? (
                 <SortableHeaderCell
                   key={col.header}

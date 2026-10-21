@@ -11,8 +11,10 @@ export interface EsignConsent {
 /** GET esign/signing-tasks 的一筆資料：指派給目前員工、已發起的文件 */
 export interface EsignSigningTask {
   signerPublicId: string;
+  /** 建立人發起時是否開放拒絕簽署 */
+  allowReject: boolean;
   document: EsignDocumentListItem;
-  /** 本人的簽署紀錄（後端目前沒有拒絕簽署，status 只有 pending、signed） */
+  /** 本人的簽署紀錄 */
   signer: EsignSignerView;
   /** 文件共用欄位：每位簽署人都簽同一組位置 */
   fields: EsignFieldView[];
@@ -23,7 +25,7 @@ export interface EsignSigningTask {
 
 /** GET esign/signing-tasks 的查詢參數 */
 export interface GetSigningTasksParams {
-  status?: 'pending' | 'signed';
+  status?: 'pending' | 'signed' | 'rejected';
 }
 
 /** POST esign/signing-tasks/:signerPublicId/signatures */
@@ -43,4 +45,20 @@ export interface EsignSignatureResult {
   documentStatus: Exclude<EsignDocumentListItem['status'], 'draft'>;
   completion: EsignSignerView['completion'];
   verificationUrl: string | null;
+}
+
+/** POST esign/signing-tasks/:signerPublicId/rejection */
+export interface RejectSigningTaskBody {
+  /** UUID v4；同一次拒絕重試時沿用，後端依此判斷重複送出 */
+  requestId: string;
+  /** 拒絕原因（選填）；去除首尾空白後最多 200 字 */
+  reason?: string;
+}
+
+/** 拒絕簽署的結果 */
+export interface EsignRejectionResult {
+  signerPublicId: string;
+  status: 'rejected';
+  rejectedAt: string;
+  reason: string;
 }

@@ -8,6 +8,7 @@ export const metadata: Metadata = { title: '我的電子簽' };
 
 const FLASH_MESSAGES = {
   signed: '已完成簽署',
+  rejected: '已拒絕簽署',
 };
 
 // 列表資料改由後端 GET /api/esign/signing-tasks 取得（SigningTasksListView，瀏覽器端呼叫）

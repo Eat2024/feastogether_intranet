@@ -1,7 +1,7 @@
 'use client';
 
 // 檢視頁（後端文件）的簽署人清單：本頁資料已在外層篩選、排序、分頁。
-// 欄位與 mock 版相同；後端尚未串接的資料（拒絕原因、通知次數）與操作（通知）保留位置並標示「後端未支援」。
+// 欄位與 mock 版相同；後端尚未串接的資料（通知次數）與操作（通知）保留位置並標示「後端未支援」。
 // 備註呼叫 PATCH /api/esign/documents/:id/signers/:signerPublicId/note 儲存。
 // 外部簽署人的邀請信寄送結果顯示在「通知紀錄」，個人副本產製狀態顯示在操作欄的匯出按鈕。
 import { queryKeys } from '@/api/query-keys';
@@ -63,7 +63,7 @@ const COLUMNS: { key?: SignerSortKey; label: string; unsupported?: { chip: strin
   { key: 'dept', label: '部門' },
   { key: 'status', label: '狀態' },
   { key: 'time', label: '簽署／拒絕時間' },
-  { label: '拒絕原因', unsupported: { chip: '未支援', hint: `${UNSUPPORTED}，目前沒有資料` } },
+  { label: '拒絕原因' },
   {
     label: '通知紀錄',
     unsupported: { chip: '部分支援', hint: `通知次數與時間${UNSUPPORTED}，目前只顯示外部簽署人的邀請信寄送結果` },
@@ -238,10 +238,17 @@ export default function DocumentSignerTable({
                     <TableCell>
                       <Chip size="small" variant="soft" label={status.label} color={status.color} />
                     </TableCell>
-                    {/* 後端目前只有簽署時間（沒有拒簽流程） */}
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTime(s.signedAt)}</TableCell>
+                    {/* 已簽署顯示簽署時間、已拒絕顯示拒絕時間 */}
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTime(s.signedAt ?? s.rejectedAt)}</TableCell>
+                    {/* 拒絕原因為選填，沒填時顯示「—」；完整顯示並自動換行 */}
                     <TableCell>
-                      <NoData />
+                      {s.rejectReason ? (
+                        <Typography variant="content" sx={{ minWidth: 200, overflowWrap: 'anywhere' }}>
+                          {s.rejectReason}
+                        </Typography>
+                      ) : (
+                        <NoData />
+                      )}
                     </TableCell>
                     {/* 通知次數後端尚未支援；外部簽署人顯示邀請信寄送結果 */}
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>

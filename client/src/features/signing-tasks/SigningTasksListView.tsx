@@ -20,7 +20,7 @@ import { parseSigningSort, parseSigningTab, SIGNING_TABS, signingHref, sortTasks
 const EMPTY_TEXT: Record<SigningTab, string> = {
   pending: '目前沒有待簽署的文件。',
   signed: '目前沒有已簽署的文件。',
-  rejected: '後端尚未支援拒絕簽署，目前沒有已拒絕的文件。',
+  rejected: '目前沒有已拒絕的文件。',
 };
 
 export default function SigningTasksListView() {
@@ -61,8 +61,7 @@ export default function SigningTasksListView() {
         value={tab}
         tabs={SIGNING_TABS.map((t) => ({
           value: t.key,
-          // 後端尚未支援的分頁標示「尚未支援」，不顯示筆數
-          label: t.unsupported ? `${t.label}（尚未支援）` : data ? `${t.label}（${byTab[t.key].length}）` : t.label,
+          label: data ? `${t.label}（${byTab[t.key].length}）` : t.label,
           href: `?tab=${t.key}`,
         }))}
       />

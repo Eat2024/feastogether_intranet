@@ -2,14 +2,23 @@ import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
 import type {
   CreateDocumentBody,
+  CreateNotificationBatchBody,
+  DraftSettingsBody,
   EsignDocumentDetail,
   EsignDocumentListItem,
   EsignHistoryItem,
+  EsignNotificationBatch,
+  EsignNotificationBatchList,
   EsignSignerCandidate,
-  EsignSignerInput,
-  EsignSignerView,
   GetDocumentsParams,
   InitiateDocumentBody,
+  NotificationListParams,
+  NotificationPageParams,
+  ReopenDocumentBody,
+  ReopenDocumentResult,
+  ReopeningInvitation,
+  SaveSignerNoteBody,
+  SignerNoteResult,
   UpdateDocumentBody,
 } from '@/api/types';
 import { getBlob } from './blob';
@@ -79,20 +88,20 @@ export const getDocumentHistory = async (id: string): Promise<EsignHistoryItem[]
 };
 
 /**
- * @name 暫存草稿簽署名單
- * @description 整批取代草稿的簽署人（至少 1 位），不儲存簽署期間與可選功能；回傳儲存後的簽署人
+ * @name 暫存草稿設定
+ * @description 在同一交易保存簽署人名單、簽署期間與可選功能，不發起、不寄送邀請；回傳儲存後的文件詳情
  */
-export const saveDraftSigners = async ({
+export const saveDraftSettings = async ({
   id,
-  signers,
+  body,
 }: {
   id: string;
-  signers: EsignSignerInput[];
-}): Promise<EsignSignerView[]> => {
-  const res = await api<EsignSignerView[]>({
-    method: 'PUT',
-    url: endpoints.ESIGN_DOCUMENT_DRAFT_SAVE(id),
-    data: { signers },
+  body: DraftSettingsBody;
+}): Promise<EsignDocumentDetail> => {
+  const res = await api<EsignDocumentDetail>({
+    method: 'PATCH',
+    url: endpoints.ESIGN_DOCUMENT_DRAFT_SETTINGS(id),
+    data: body,
   });
   return res.data;
 };
@@ -161,3 +170,95 @@ export const getSignerCandidates = async (q: string): Promise<EsignSignerCandida
 /** 建立人讀取原始 PDF 的網址（pdf.js 直接讀取，同源請求會帶上 session cookie） */
 export const documentSourceFileUrl = (id: string) =>
   `${api.defaults.baseURL}/${endpoints.ESIGN_DOCUMENT_SOURCE_FILE(id)}`;
+
+/**
+ * @name 重新開放補簽
+ * @description 已到期且仍有人未簽署時，由建立人設定新的截止時間與原因；只延後截止時間，已完成的簽署不受影響
+ */
+export const reopenDocument = async ({
+  id,
+  expectedSignEndAt,
+  signEndAt,
+  reason,
+}: ReopenDocumentBody): Promise<ReopenDocumentResult> => {
+  const res = await api<ReopenDocumentResult>({
+    method: 'POST',
+    url: endpoints.ESIGN_DOCUMENT_REOPENINGS(id),
+    data: { expectedSignEndAt, signEndAt, reason },
+  });
+  return res.data;
+};
+
+/**
+ * @name 儲存簽署人管理備註
+ * @description 僅建立人；最多 30 字，空字串表示清除。不修改文件或簽署證據
+ */
+export const saveSignerNote = async ({ id, signerPublicId, note }: SaveSignerNoteBody): Promise<SignerNoteResult> => {
+  const res = await api<SignerNoteResult>({
+    method: 'PATCH',
+    url: endpoints.ESIGN_SIGNER_NOTE(id, signerPublicId),
+    data: { note },
+  });
+  return res.data;
+};
+
+/**
+ * @name 取得補簽的外部邀請連結
+ * @description 僅建立人；文件補簽中時回傳外部待簽署人的新邀請連結，不寄信、不更換憑證。連結即憑證，勿記錄或外流
+ */
+export const getReopeningInvitations = async (id: string): Promise<ReopeningInvitation[]> => {
+  const res = await api<ReopeningInvitation[]>({ method: 'GET', url: endpoints.ESIGN_REOPENING_INVITATIONS(id) });
+  return res.data;
+};
+
+/**
+ * @name 建立外部催簽批次
+ * @description 僅建立人；後端先受理再背景寄送，回傳受理結果而非已送達。沒有任何人可催簽時回錯誤並附逐人原因
+ */
+export const createNotificationBatch = async ({
+  id,
+  body,
+}: {
+  id: string;
+  body: CreateNotificationBatchBody;
+}): Promise<EsignNotificationBatch> => {
+  const res = await api<EsignNotificationBatch>({
+    method: 'POST',
+    url: endpoints.ESIGN_NOTIFICATION_BATCHES(id),
+    data: body,
+  });
+  return res.data;
+};
+
+/**
+ * @name 查詢通知批次
+ * @description 依時間由新到舊，以 cursor 分頁；可篩選初次邀請或催簽
+ */
+export const getNotificationBatches = async (
+  id: string,
+  params: NotificationListParams = {},
+): Promise<EsignNotificationBatchList> => {
+  const res = await api<EsignNotificationBatchList>({
+    method: 'GET',
+    url: endpoints.ESIGN_NOTIFICATION_BATCHES(id),
+    params,
+  });
+  return res.data;
+};
+
+/**
+ * @name 查詢通知批次的逐人結果
+ * @description 以 cursor 分頁；不回傳郵件憑證
+ */
+export const getNotificationBatch = async (
+  id: string,
+  batchId: string,
+  params: NotificationPageParams = {},
+): Promise<EsignNotificationBatch> => {
+  const res = await api<EsignNotificationBatch>({
+    method: 'GET',
+    url: endpoints.ESIGN_NOTIFICATION_BATCH(id, batchId),
+    params,
+  });
+  return res.data;
+};

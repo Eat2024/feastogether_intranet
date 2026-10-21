@@ -37,6 +37,9 @@ import {
   signerHref,
   type SignerSortKey,
 } from './signerQuery';
+import NotificationHistory from './NotificationHistory';
+import ReopenDocumentButton from './ReopenDocumentButton';
+import ReopeningInvitationsButton from './ReopeningInvitationsButton';
 import StopDocumentButton from './StopDocumentButton';
 
 function Kpi({ label, value, color }: { label: string; value: number; color?: string }) {
@@ -93,6 +96,9 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
   const query = useMemo(() => parseSignerQuery(params), [params]);
   const statusMeta = DOCUMENT_STATUS_META[doc.status];
   const counts = countByStatus(doc.signers);
+  // 整份文件目前可催簽的簽署人（批次通知用）；補簽中仍未簽署的外部簽署人（補簽連結用）
+  const eligibleIds = doc.signers.filter((s) => s.reminderEligibility.eligible).map((s) => s.publicId);
+  const pendingExternal = doc.signers.filter((s) => s.type === 'email' && s.status === 'pending');
   const { items, page, pageCount, total } = querySigners(doc.signers, query);
   const percent = counts.all ? Math.round((counts.signed / counts.all) * 100) : 0;
 
@@ -127,6 +133,16 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
               variant="button"
               disabled={doc.status !== 'active' && doc.status !== 'expired'}
             />
+            {/* 已到期且仍有人未簽署才能補簽 */}
+            <ReopenDocumentButton
+              doc={doc}
+              variant="button"
+              disabled={doc.status !== 'expired' || counts.pending === 0}
+            />
+            {/* 補簽中且仍有外部簽署人未簽署時，可取得新的邀請連結轉交 */}
+            {doc.isReopened && doc.status === 'active' && pendingExternal.length > 0 && (
+              <ReopeningInvitationsButton documentId={doc.id} signers={pendingExternal} />
+            )}
           </>
         }
       />
@@ -134,7 +150,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
       {doc.status === 'expired' && (
         <Alert severity="info" variant="outlined">
           此文件已於 {doc.signEndAt ? dayjs(doc.signEndAt).format('YYYY/MM/DD HH:mm') : '—'} 到期，尚有{' '}
-          {counts.pending} 人未簽署，未簽署的人目前無法簽署。可設定補簽重新開放未簽署的人簽署（補簽功能尚未串接後端），或停止簽署。
+          {counts.pending} 人未簽署，未簽署的人目前無法簽署。可設定新的截止日重新開放補簽，或停止簽署。
         </Alert>
       )}
 
@@ -186,7 +202,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
           documentId={doc.id}
           fileNamePrefix={`${doc.docNumber}_${doc.title}`}
           canNotify={doc.status === 'active'}
-          pendingTotal={counts.pending}
+          eligibleIds={eligibleIds}
           rows={items}
           sort={query.sort}
           sortHrefs={sortHrefs}
@@ -195,6 +211,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
         <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => signerHref(doc.id, query, { page: p }))} />
       </Stack>
 
+      <NotificationHistory documentId={doc.id} />
       <DocumentHistory documentId={doc.id} />
     </>
   );

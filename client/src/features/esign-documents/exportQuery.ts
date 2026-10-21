@@ -18,8 +18,6 @@ type FieldDef = {
   label: string;
   /** Excel 欄寬（字元數） */
   width: number;
-  /** 後端沒有這項資料：選項標示「未支援」，匯出為空白 */
-  unsupported?: boolean;
   value: (s: EsignSignerView) => string;
 };
 
@@ -33,14 +31,13 @@ export const FIELDS = [
   { key: 'email', label: 'Email', width: 28, value: (s) => s.email ?? '' },
   { key: 'status', label: '狀態', width: 10, value: (s) => STATUS_LABEL[s.status] },
   { key: 'signedAt', label: '簽署時間', width: 18, value: (s) => formatTime(s.signedAt) },
-  // TODO: 後端提供拒簽流程後串接
-  { key: 'rejectedAt', label: '拒絕時間', width: 18, unsupported: true, value: () => '' },
-  { key: 'rejectReason', label: '拒絕原因', width: 40, unsupported: true, value: () => '' },
+  { key: 'rejectedAt', label: '拒絕時間', width: 18, value: (s) => formatTime(s.rejectedAt) },
+  { key: 'rejectReason', label: '拒絕原因', width: 40, value: (s) => s.rejectReason ?? '' },
 ] as const satisfies readonly FieldDef[];
 
 export type FieldKey = (typeof FIELDS)[number]['key'];
-/** 預設勾選：mock 版的預設欄位，扣除後端沒有資料的拒絕時間、拒絕原因 */
-export const DEFAULT_FIELDS: FieldKey[] = ['name', 'employeeNo', 'dept', 'status', 'signedAt'];
+/** 預設勾選：與 mock 版相同 */
+export const DEFAULT_FIELDS: FieldKey[] = ['name', 'employeeNo', 'dept', 'status', 'signedAt', 'rejectedAt', 'rejectReason'];
 
 export type ExportQuery = {
   /** 空陣列表示全部狀態 */

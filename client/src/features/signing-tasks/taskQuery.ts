@@ -1,31 +1,25 @@
 // 我的電子簽（後端資料）的分頁、可否簽署、排序與網址規則。
 // 後端 GET /api/esign/signing-tasks 不分頁、不排序，這些都在前端依網址參數處理。
 import type { EsignSigningTask } from '@/api/types';
-import { DOCUMENT_STATUSES, formatDate } from '@/features/esign-documents/listQuery';
+import { DOCUMENT_STATUSES, formatDate, formatDateTime } from '@/features/esign-documents/listQuery';
 import { parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
-import dayjs from 'dayjs';
 
 export type SigningTab = 'pending' | 'signed' | 'rejected';
 
-/** unsupported：後端尚未支援，分頁保留但標示，且不會有資料 */
-export const SIGNING_TABS: { key: SigningTab; label: string; unsupported?: boolean }[] = [
+export const SIGNING_TABS: { key: SigningTab; label: string }[] = [
   { key: 'pending', label: '待簽署' },
   { key: 'signed', label: '已簽署' },
-  // TODO: 後端支援拒絕簽署後，依簽署人的拒絕紀錄列出
-  { key: 'rejected', label: '已拒絕', unsupported: true },
+  { key: 'rejected', label: '已拒絕' },
 ];
 
 export function parseSigningTab(value: string | null): SigningTab {
   return SIGNING_TABS.some((t) => t.key === value) ? (value as SigningTab) : 'pending';
 }
 
-/** ISO 時間轉成畫面時間 YYYY/MM/DD HH:mm（本地時區） */
-export const formatDateTime = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD HH:mm') : null);
-
 /**
  * 依分頁整理任務並排出預設順序：
  * 待簽署為本人未簽、文件簽署中或已到期（已到期仍列出，顯示已逾期、等待補簽），依結束時間由近到遠；
- * 已停止、已完成的文件不再列為待簽署。已簽署依簽署時間由新到舊。
+ * 已停止、已完成的文件不再列為待簽署。已簽署、已拒絕依簽署／拒絕時間由新到舊。
  */
 export function splitTasks(tasks: EsignSigningTask[]): Record<SigningTab, EsignSigningTask[]> {
   return {
@@ -35,8 +29,9 @@ export function splitTasks(tasks: EsignSigningTask[]): Record<SigningTab, EsignS
     signed: tasks
       .filter((t) => t.signer.status === 'signed')
       .sort((a, b) => (b.signer.signedAt ?? '').localeCompare(a.signer.signedAt ?? '')),
-    // 後端尚未支援拒絕簽署
-    rejected: [],
+    rejected: tasks
+      .filter((t) => t.signer.status === 'rejected')
+      .sort((a, b) => (b.signer.rejectedAt ?? '').localeCompare(a.signer.rejectedAt ?? '')),
   };
 }
 
@@ -47,6 +42,7 @@ export function splitTasks(tasks: EsignSigningTask[]): Record<SigningTab, EsignS
 export function signBlock(task: EsignSigningTask, now: Date): string | null {
   const { document: doc, signer } = task;
   if (signer.status === 'signed') return `你已於 ${formatDateTime(signer.signedAt) ?? '—'} 完成簽署。`;
+  if (signer.status === 'rejected') return `你已於 ${formatDateTime(signer.rejectedAt) ?? '—'} 拒絕簽署。`;
   if (doc.status === 'stopped') return '此文件已停止簽署，無法再簽署。';
   const expired = doc.status === 'expired' || (doc.signEndAt !== null && now >= new Date(doc.signEndAt));
   if (expired) {
@@ -63,15 +59,23 @@ export function signBlock(task: EsignSigningTask, now: Date): string | null {
 
 // ── 排序 ──────────────────────────────────────────────
 
-export type SigningSortKey = 'name' | 'docNumber' | 'startAt' | 'endAt' | 'signedAt' | 'status' | 'initiator';
+export type SigningSortKey =
+  | 'name'
+  | 'docNumber'
+  | 'startAt'
+  | 'endAt'
+  | 'signedAt'
+  | 'status'
+  | 'rejectedAt'
+  | 'rejectReason'
+  | 'initiator';
 export type SigningSort = Sort<SigningSortKey>;
 
 /** 各分頁可排序的欄位（切換分頁時排序會清除） */
 export const SORT_KEYS_BY_TAB: Record<SigningTab, readonly SigningSortKey[]> = {
   pending: ['name', 'docNumber', 'startAt', 'endAt', 'initiator'],
   signed: ['name', 'docNumber', 'signedAt', 'status', 'initiator'],
-  // 後端尚未支援拒絕簽署，沒有資料可排序
-  rejected: [],
+  rejected: ['name', 'docNumber', 'rejectedAt', 'rejectReason', 'initiator'],
 };
 
 /** 各欄的排序值；null 表示沒有值，不論升冪或降冪都排在最後（ISO 時間可直接以字串比較） */
@@ -83,6 +87,9 @@ const SORT_VALUE: Record<SigningSortKey, (t: EsignSigningTask) => SortValue> = {
   endAt: ({ document }) => document.signEndAt ?? '￿',
   signedAt: ({ signer }) => signer.signedAt,
   status: ({ document }) => DOCUMENT_STATUSES.indexOf(document.status),
+  rejectedAt: ({ signer }) => signer.rejectedAt,
+  // 未填原因視為沒有值，排在最後
+  rejectReason: ({ signer }) => signer.rejectReason || null,
   initiator: ({ document }) =>
     document.createdBy ? `${document.createdBy.name}\u0000${document.createdBy.employeeNo}` : null,
 };
@@ -110,6 +117,6 @@ export function signingHref(tab: SigningTab, sort: SigningSort, page = 1) {
   return `/my-signature?${qs}`;
 }
 
-/** 簽署頁返回時停在這份文件所屬的分頁（後端尚未支援拒絕簽署，不會停在已拒絕） */
+/** 簽署頁返回時停在這份文件所屬的分頁 */
 export const backHref = (task: EsignSigningTask) =>
-  task.signer.status === 'signed' ? '/my-signature?tab=signed' : '/my-signature';
+  task.signer.status === 'pending' ? '/my-signature' : `/my-signature?tab=${task.signer.status}`;

@@ -5,12 +5,29 @@ export const endpoints = {
   // 電子簽文件（server/src/features/esign/controllers/documents.controller.ts）
   ESIGN_DOCUMENTS: 'esign/documents',
   ESIGN_DOCUMENT: (id: string) => `esign/documents/${encodeURIComponent(id)}`,
-  ESIGN_DOCUMENT_DRAFT_SAVE: (id: string) => `esign/documents/${encodeURIComponent(id)}/draftSave`,
+  ESIGN_DOCUMENT_DRAFT_SETTINGS: (id: string) => `esign/documents/${encodeURIComponent(id)}/draft-settings`,
   ESIGN_DOCUMENT_INITIATIONS: (id: string) => `esign/documents/${encodeURIComponent(id)}/initiations`,
   ESIGN_DOCUMENT_HISTORY: (id: string) => `esign/documents/${encodeURIComponent(id)}/history`,
   ESIGN_SIGNER_COMPLETED_FILE: (id: string, signerPublicId: string) =>
     `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/completed-file`,
   ESIGN_DOCUMENT_STOPPAGES: (id: string) => `esign/documents/${encodeURIComponent(id)}/stoppages`,
+  ESIGN_DOCUMENT_REOPENINGS: (id: string) => `esign/documents/${encodeURIComponent(id)}/reopenings`,
+  ESIGN_REOPENING_INVITATIONS: (id: string) => `esign/documents/${encodeURIComponent(id)}/reopening-invitations`,
+  // 已簽署副本 ZIP 匯出（server/src/features/esign/controllers/exports.controller.ts）
+  ESIGN_EXPORTS: 'esign/exports',
+  ESIGN_DOCUMENT_EXPORTS: (id: string) => `esign/documents/${encodeURIComponent(id)}/exports`,
+  ESIGN_DOCUMENT_EXPORT: (id: string, exportId: string) =>
+    `esign/documents/${encodeURIComponent(id)}/exports/${encodeURIComponent(exportId)}`,
+  ESIGN_DOCUMENT_EXPORT_RETRIES: (id: string, exportId: string) =>
+    `esign/documents/${encodeURIComponent(id)}/exports/${encodeURIComponent(exportId)}/retries`,
+  ESIGN_DOCUMENT_EXPORT_FILE: (id: string, exportId: string, fileId: string) =>
+    `esign/documents/${encodeURIComponent(id)}/exports/${encodeURIComponent(exportId)}/files/${encodeURIComponent(fileId)}`,
+  // 外部催簽批次（server/src/features/esign/controllers/notification-batches.controller.ts）
+  ESIGN_NOTIFICATION_BATCHES: (id: string) => `esign/documents/${encodeURIComponent(id)}/notification-batches`,
+  ESIGN_NOTIFICATION_BATCH: (id: string, batchId: string) =>
+    `esign/documents/${encodeURIComponent(id)}/notification-batches/${encodeURIComponent(batchId)}`,
+  ESIGN_SIGNER_NOTE: (id: string, signerPublicId: string) =>
+    `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/note`,
   ESIGN_DOCUMENT_SOURCE_FILE: (id: string) => `esign/documents/${encodeURIComponent(id)}/source-file`,
   // 本人的簽署任務（server/src/features/esign/controllers/signing-tasks.controller.ts）；id 為 signerPublicId
   ESIGN_SIGNING_TASKS: 'esign/signing-tasks',
@@ -18,6 +35,7 @@ export const endpoints = {
   ESIGN_SIGNING_TASK_SOURCE_FILE: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/source-file`,
   ESIGN_SIGNING_TASK_SIGNATURES: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/signatures`,
   ESIGN_SIGNING_TASK_COMPLETED_FILE: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/completed-file`,
+  ESIGN_SIGNING_TASK_REJECTION: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/rejection`,
   // 內部簽署人候選（server/src/features/esign/controllers/signer-candidates.controller.ts）
   ESIGN_SIGNER_CANDIDATES: 'esign/signer-candidates',
   // 外部簽署人（server/src/features/esign/controllers/external-signature.controller.ts）：以外部存取 cookie 驗證，

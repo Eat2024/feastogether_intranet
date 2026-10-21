@@ -17,3 +17,14 @@
 - [ ] 文件信箱檢查僅限草稿建立人，接受 1–6,000 個有效 userId 字串；未授權先拒絕，狀態／輸入／來源錯誤依契約回 404／409／422／502。
 - [ ] 成功只回 userId、ready／unavailable、maskedEmail（不可用時 null），使用 private,no-store；不修改帳號、草稿、快照，不發邀請。
 - [ ] 覆蓋前導零、亂序、缺漏、非法地址、重複／額外資料、批次邊界、逾時與授權的 unit／HTTP 測試通過；相關錯誤契約與 Swagger 一致。
+
+## 實作與驗證紀錄（2026-10-21）
+
+- 在 `feat/010-ticket-02` 獨立 worktree 依已核准的 parser／來源／service／HTTP seams 進行 red → green；先確認不存在的 parser、來源方法及 HTTP 路徑失敗，再加入實作；另以失敗測試鎖住嚴格 envelope、日誌遮蔽及四批併發收束。
+- 實作 commit：`3b79d93`；整合分支 `38aec7b` 已於 `7978635` 合併入本票，保留 Ticket 01 與本票的錯誤碼、測試清單及契約。
+- 合併後 server build 通過；全套 unit **104 suites／896 tests 通過**；server lint:check **0 errors／197 warnings**（既有警告，未新增抑制規則）。
+- 合併後隔離 MySQL／Redis HTTP **3 suites／38 tests 通過**：員工解析 18、組織快取 8、員工信箱檢查 12。已加入預設 e2e 清單，不依賴額外 testRegex 才能執行。
+- 信箱來源單元驗證含完整字串員編、前導零、亂序、稀疏、空白／非法地址、重複／請求外資料、成功 envelope、401／403／連線失敗映射與兩條日誌路徑遮蔽；10 秒 timeout 透過既有 Axios 傳輸設定驗證。
+- 服務容量測試涵蓋 1、100、101、6,000 人，逐人結果完整，每批最多 100、同次最多 4 批；來源失敗停止派新批並等待已派請求完成。不新增重試、快取、queue、設定、依賴或 migration。
+- HTTP 驗證真實 session／OriginGuard／DB／Controller／Service，只替換外部 HTTP 傳輸；草稿建立人、非建立人、非草稿、無效帳號、格式錯誤、no-store、遮罩及重查不快取均通過。測試使用合成資料，未呼叫真實 HR、未寄信。
+- 與後續發起整合的公開服務：`resolveUsers(userIds, manager?)` 回傳 userId／完整 empid；`lookupEmails(identities)` 回傳同序 email 或 null。交易內重新核對與固定收件地址屬 Ticket 03；本票仍為 claimed，待 merger 驗證及合併後結案。

@@ -13,7 +13,6 @@ import { useEffect } from "react";
 import SignatureQr from "./SignatureQr";
 
 type DocumentViewerProps = {
-  form: Pick<EFormDoc, "id" | "name" | "docNumber" | "upload">;
   /** 系統簽署確認頁顯示的文件資訊 */
   docInfo: Pick<EFormDoc, "name" | "docNumber">;
   /** 原始 PDF 的同源網址；沒有原始檔（舊資料）時為 null，顯示示意版面 */
@@ -32,8 +31,6 @@ type DocumentViewerProps = {
   onPageChange: (page: number) => void;
   /** 提供時簽名欄位可點擊（進行簽名）；未提供為唯讀 */
   onSignField?: (field: UploadField) => void;
-  /** 已讀取的原始 PDF；未提供時讀取 `/files/forms/{id}` */
-  pdf?: PDFDocumentProxy;
 };
 
 /** 頁面縮圖：需簽名的頁面標示「需簽名」，該頁都簽完改為「已簽名」 */
@@ -170,7 +167,6 @@ function ConfirmPageContent({
   signer,
   pages,
 }: {
-  form: DocumentViewerProps["form"];
   docInfo: DocumentViewerProps["docInfo"];
   signer: DocumentViewerProps["signer"];
   pages: number;
@@ -349,7 +345,6 @@ export default function DocumentViewer({
   activePage,
   onPageChange,
   onSignField,
-  pdf,
 }: DocumentViewerProps) {
   const pages = Array.from({ length: layout.pageCount }, (_, i) => i + 1);
   const pageLabel = (p: number) =>
@@ -361,10 +356,6 @@ export default function DocumentViewer({
   ];
   const pageFields = layout.fields.filter((f) => f.page === activePage);
   // 有原始檔時顯示實際內容（系統簽署確認頁除外）；沒有時（舊資料）顯示示意版面
-  const { doc: storedDoc } = usePdfDocument(
-    !pdf && form.upload?.fileId ? `/files/forms/${form.id}` : null,
-  );
-  const doc = pdf ?? storedDoc;
   const { doc: loaded } = usePdfDocument(pdfDoc === undefined ? pdfUrl : null);
   const doc = pdfDoc ?? loaded;
   const { thumbs, pageImage, requestPage } = usePdfRenders(doc);

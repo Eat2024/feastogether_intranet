@@ -83,7 +83,8 @@ export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: 
       >
         <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2, minWidth: 0 }}>
           <DocumentViewer
-            form={toViewerForm(task)}
+            docInfo={toViewerForm(task)}
+            pdfUrl={null}
             // 員工編號只用於系統簽署確認頁，外部文件沒有確認頁
             signer={{ name: task.signer.name, employeeNo: '' }}
             layout={layout}
@@ -92,7 +93,7 @@ export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: 
             activePage={activePage}
             onPageChange={setActivePage}
             onSignField={busy ? undefined : openPad}
-            pdf={pdf}
+            pdfDoc={pdf}
           />
         </Paper>
 

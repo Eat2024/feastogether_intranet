@@ -26,6 +26,25 @@ const optionsFor = (database: string) =>
 describe('e-sign schema migrations', () => {
   jest.setTimeout(60_000);
 
+  it('內部邀請 migration 前置 schema 不符時，任何 DDL 前拒絕', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = await new DataSource(optionsFor(database)).initialize();
+      try {
+        await ds.runMigrations();
+        await ds.undoLastMigration();
+        await ds.query(
+          'ALTER TABLE esign_signers RENAME INDEX uq_esign_signers_document_email TO unexpected_email_index',
+        );
+        await expect(ds.runMigrations()).rejects.toThrow();
+        expect(
+          await hasColumn(ds, database, 'esign_signers', 'external_email'),
+        ).toBe(false);
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
+
   it('既有單人完成文件只轉換 owner metadata，不改原檔、完成檔摘要或簽署 payload', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const ds = new DataSource(optionsFor(database));

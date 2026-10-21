@@ -19,6 +19,11 @@ import { EsignSignerService } from './esign-signer.service';
 import { EsignFieldService } from './esign-field.service';
 import type { SignerInputDto } from '../dto/signer.dto';
 import type { FieldPlacementDto } from '../dto/field.dto';
+import {
+  EsignEmployeeEmailService,
+  type EmployeeEmailResult,
+} from './esign-employee-email.service';
+import { EsignDocumentValidationService } from './esign-document-validation.service';
 
 export interface InitiateDocumentInput {
   signers: SignerInputDto[];
@@ -53,22 +58,59 @@ export class EsignInitiationService {
     private readonly jobs: EsignJobProducerService,
     private readonly signerService: EsignSignerService,
     private readonly fieldService: EsignFieldService,
+    private readonly employeeEmails: EsignEmployeeEmailService,
+    private readonly validation: EsignDocumentValidationService,
   ) {}
 
   async initiate(input: InitiateDocumentInput) {
     this.validateSigningPeriod(input);
+    const emails = await this.prepareEmployeeEmails(input);
     const result = await this.mysql.transaction(async (manager) => {
       const document = await this.access.checkAndLockDraftDoc(
         input.documentId,
         input.creatorUserId,
         manager,
       );
+      if (emails.length) {
+        try {
+          const current = await this.employeeEmails.resolveUsers(
+            emails.map((item) => String(item.userId)),
+            manager,
+          );
+          const original = new Map(
+            emails.map((item) => [item.userId, item.empid]),
+          );
+          if (current.some((item) => original.get(item.userId) !== item.empid))
+            throw new AppException(
+              ...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED,
+            );
+        } catch (error) {
+          if (
+            error instanceof AppException &&
+            error.code === 'ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE'
+          )
+            throw new AppException(
+              ...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED,
+            );
+          throw error;
+        }
+      }
       const signers = await this.signerService.updateSigners(
         document,
         input.creatorUserId,
         input.signers,
         manager,
       );
+      const emailByUser = new Map(emails.map((item) => [item.userId, item]));
+      for (const signer of signers) {
+        if (signer.signerType !== 'user') continue;
+        const fixed = signer.userId
+          ? emailByUser.get(signer.userId)
+          : undefined;
+        if (!fixed || fixed.empid !== signer.empidSnapshot)
+          throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED);
+        signer.email = fixed.email!;
+      }
       const { fields, sourceMetadata } = await this.fieldService.buildFields(
         document,
         input.creatorUserId,
@@ -122,6 +164,31 @@ export class EsignInitiationService {
     // 通知工作須在交易提交後才入列。
     await this.jobs.enqueueInvitations(result.notificationLogIds);
     return result.document;
+  }
+
+  private async prepareEmployeeEmails(
+    input: InitiateDocumentInput,
+  ): Promise<EmployeeEmailResult[]> {
+    const document = await this.documents.findById(
+      input.documentId,
+      this.mysql.getManager(),
+    );
+    this.access.checkEsignCreator(document, input.creatorUserId);
+    this.validation.checkStillDraft(document);
+    const userIds = input.signers
+      .filter((signer) => signer.type === 'user')
+      .map((signer) => signer.userId!);
+    if (!userIds.length) return [];
+    const identities = await this.employeeEmails.resolveUsers(userIds);
+    const emails = await this.employeeEmails.lookupEmails(identities);
+    const unavailable = emails
+      .filter((item) => !item.email)
+      .map((item) => String(item.userId));
+    if (unavailable.length)
+      throw new AppException(...AppErrors.ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE, {
+        userIds: unavailable,
+      });
+    return emails;
   }
 
   private validateSigningPeriod(input: InitiateDocumentInput): void {
@@ -220,9 +287,7 @@ export class EsignInitiationService {
     signers: EsignSigner[],
     manager: EntityManager,
   ): Promise<EsignSigner[]> {
-    const externalSigners = signers.filter(
-      (signer) => signer.signerType === 'email',
-    );
+    const externalSigners = signers;
     for (const signer of externalSigners) {
       const token = this.tokens.createInvitationToken();
       signer.invitationTokenSha256 = token.digest;
@@ -284,6 +349,7 @@ export class EsignInitiationService {
               channel: 'email',
               result: 'pending',
               attemptCount: 0,
+              invitationGenerationSha256: signer.invitationTokenSha256,
               nextAttemptAt: initiatedAt,
             },
             manager,

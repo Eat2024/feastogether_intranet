@@ -60,7 +60,12 @@ export class EsignDocumentQueryService {
         ? 'RECIPIENT_UNAVAILABLE'
         : null);
     const latest = logs.find((l) => l.batch?.kind === 'reminder');
-    const invitation = logs.find((l) => l.batch?.kind === 'invitation');
+    const invitation = logs.find(
+      (l) =>
+        l.batch?.kind === 'invitation' &&
+        !!l.invitationGenerationSha256 &&
+        l.invitationGenerationSha256 === signer.invitationTokenSha256,
+    );
     const midnight = new Date(now.getTime() + 8 * 60 * 60_000);
     midnight.setUTCHours(24, 0, 0, 0);
     return {
@@ -174,8 +179,16 @@ export class EsignDocumentQueryService {
       records.map((record) => [record.signerId, record.verificationCode]),
     );
     const deliveryBySigner = new Map<number, EsignInvitationDelivery>();
+    const generationBySigner = new Map(
+      signers.map((signer) => [signer.id, signer.invitationTokenSha256]),
+    );
     for (const log of logs) {
       if (log.batch?.kind === 'reminder') continue;
+      if (
+        !log.invitationGenerationSha256 ||
+        log.invitationGenerationSha256 !== generationBySigner.get(log.signerId)
+      )
+        continue;
       if (!deliveryBySigner.has(log.signerId)) {
         const result =
           log.result === 'delivered'
@@ -206,7 +219,7 @@ export class EsignDocumentQueryService {
       signers: signers.map((signer) => ({
         ...this.mapper.signer(
           signer,
-          signer.signerType === 'email' && !summary.isReopened
+          !summary.isReopened
             ? (deliveryBySigner.get(signer.id) ?? null)
             : null,
           codeBySigner.get(signer.id),

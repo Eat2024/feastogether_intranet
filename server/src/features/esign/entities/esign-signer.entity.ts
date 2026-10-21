@@ -22,14 +22,18 @@ import { EsignDocument } from './esign-document.entity';
 )
 @Check(
   'chk_esign_signers_identity',
-  "(`signer_type` = 'user' AND `user_id` IS NOT NULL AND `email` IS NULL AND `empid_snapshot` IS NOT NULL AND `invitation_token_sha256` IS NULL AND `invitation_token_ciphertext` IS NULL AND `invitation_expires_at` IS NULL) OR (`signer_type` = 'email' AND `user_id` IS NULL AND `email` IS NOT NULL AND `empid_snapshot` IS NULL)",
+  "(`signer_type` = 'user' AND `user_id` IS NOT NULL AND `empid_snapshot` IS NOT NULL) OR (`signer_type` = 'email' AND `user_id` IS NULL AND `email` IS NOT NULL AND `empid_snapshot` IS NULL)",
 )
 @Index('uq_esign_signers_document_user', ['documentId', 'userId'], {
   unique: true,
 })
-@Index('uq_esign_signers_document_email', ['documentId', 'email'], {
-  unique: true,
-})
+@Index(
+  'uq_esign_signers_document_external_email',
+  ['documentId', 'externalEmail'],
+  {
+    unique: true,
+  },
+)
 @Index('uq_esign_signers_public_id', ['publicId'], { unique: true })
 @Index('uq_esign_signers_invitation_token_sha256', ['invitationTokenSha256'], {
   unique: true,
@@ -112,9 +116,24 @@ export class EsignSigner extends UserAuditableEntity {
     type: 'varchar',
     length: 255,
     nullable: true,
-    comment: '正規化外部 Email',
+    comment: '固定通知 Email',
   })
   email?: string;
+
+  @Column({
+    name: 'external_email',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    asExpression:
+      "CASE WHEN `signer_type` = 'email' THEN `email` ELSE NULL END",
+    generatedType: 'STORED',
+    insert: false,
+    update: false,
+    select: false,
+    comment: '外部地址唯一性衍生欄位',
+  })
+  externalEmail?: string;
 
   @Column({
     name: 'empid_snapshot',

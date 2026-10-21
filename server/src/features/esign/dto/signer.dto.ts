@@ -9,9 +9,21 @@ import {
   Matches,
   ValidateIf,
   ValidateNested,
+  ValidateBy,
 } from 'class-validator';
 
 export class SignerInputDto {
+  @ValidateBy({
+    name: 'signerIdentityFields',
+    validator: {
+      validate: (_value, args) => {
+        const input = args?.object as SignerInputDto;
+        return input.type === 'user'
+          ? input.email === undefined && input.name === undefined
+          : input.userId === undefined;
+      },
+    },
+  })
   @IsIn(['user', 'email'])
   type!: 'user' | 'email';
 

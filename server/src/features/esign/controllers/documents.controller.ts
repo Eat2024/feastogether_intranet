@@ -276,7 +276,20 @@ export class DocumentsController {
   @ApiOperation({
     summary: '發起文件簽署',
     description:
-      '在同一交易儲存簽署人、欄位、期間與選項，驗證共用欄位後將草稿轉為簽署中；外部邀請於交易提交後入列。',
+      '在交易外批次核對員工信箱；同一交易再次驗證帳號並固定地址、儲存名單、欄位與期間。內外部逐人建立邀請，提交後入列；缺信箱 422、來源失敗 502、員工身分異動 409，整份保持草稿。',
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      'ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE，details.userIds 列出無有效信箱的所選帳號',
+  })
+  @ApiResponse({
+    status: 502,
+    description: 'ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE',
+  })
+  @ApiResponse({
+    status: 409,
+    description: '非草稿或 ESIGN_EMPLOYEE_IDENTITY_CHANGED',
   })
   @Post(':documentId/initiations')
   async initiate(

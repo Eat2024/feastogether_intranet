@@ -225,6 +225,8 @@ export class EsignSignerService {
     // 先完成整份名單的格式驗證與去重，再進行資料庫查詢。
     return inputs.map<ValidatedSignerInput>((input) => {
       if (input.type === 'user') {
+        if (input.email !== undefined || input.name !== undefined)
+          throw new AppException(...AppErrors.ESIGN_EXTERNAL_SIGNER_INVALID);
         const userId = Number(input.userId);
         if (
           !Number.isSafeInteger(userId) ||

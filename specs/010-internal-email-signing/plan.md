@@ -1,16 +1,16 @@
 # Implementation Plan: 內部員工 Email 邀請與 OTP 簽署
 
-**Branch**: `dev`（未切換分支） | **Date**: 2026-10-21 | **Spec**: [spec.md](spec.md)
+**Branch**: `feat/010-internal-email-signing` | **Date**: 2026-10-21 | **Spec**: [spec.md](spec.md)
 
 **Input**: `specs/010-internal-email-signing/spec.md`，含已確認的 grilling 決策。
 
-**Status**: Phase 0／1 規劃完成，後續已依使用者要求產生 [tasks.md](tasks.md)。尚未實作，未修改應用程式或執行 migration。
+**Status**: 規劃已由八張 tickets 實作；migration 僅在隔離測試庫驗證，未部署。任務對照見 [tasks.md](tasks.md)，實際品質門檻見 [quickstart.md](quickstart.md)。
 
 ## Summary
 
 沿用組織樹與 Redis 7,200 秒快取，提供已選員工的身分解析與信箱檢查；發起時重新查詢 fgapi `staff_emails` 並固定收件地址。內部指派保留 `signerType=user`，經既有 Email 邀請、OTP、受限存取完成簽署／拒簽與本人副本下載。人工催簽及補簽通知支援混合名單。
 
-後續實作僅 server 及必要 schema migration；client 透過 [前端交接](contracts/frontend-handoff.md) 移交。不建立第二套簽署 API 或登入。
+實作僅 server 及必要 schema migration；client 透過 [前端交接](contracts/frontend-handoff.md) 移交。不建立第二套簽署 API 或登入。
 
 ## Technical Context
 
@@ -32,7 +32,7 @@
 | II. Server 權威 | 後端查 userId→員編→email，交易內重驗身分映射；地址在 snapshot/hash 前固定，不重算歷史證據。通過。 |
 | III. 最小權限 | 1.4.0 外部限定與需求衝突；已依使用者明確的內部 Email＋OTP 決策修訂 1.5.0。仍一人一文件、不得授予一般 session。公開 task 裁切內部資料。修訂後通過。 |
 | IV. 邊界／REST | 身分解析用 POST；candidate GET 改唯讀，不隱性建帳。來源在 infrastructure、業務在 esign、Controller 只負責 HTTP。通過。 |
-| V. 驗證 | 計畫涵蓋 migration、來源、交易、OTP／跨人／重放、worker、外部回歸。此次只檢查文件，未宣稱功能驗證通過。通過。 |
+| V. 驗證 | 計畫涵蓋 migration、來源、交易、OTP／跨人／重放、worker、外部回歸；後續實作已執行 unit、schema、HTTP／security與容量，結果及未驗證代理界線見quickstart。通過。 |
 
 憲章修訂依本次需求及 Q4／Q6 的既有核准，不增加一般登入或管理授權。實作交付仍須重新執行品質門檻。
 
@@ -138,6 +138,6 @@ server/test/
 
 - 此次不修改 client；舊前端須接 POST 才能首次解析未建帳員工，個人操作須轉 Email OTP；不得宣稱畫面已完成。
 - staff_lookup 只接受 5–8 碼英數片段；超出此長度且本機沒有帳號者無法解析，不以 org cache 作為建帳資格。
-- 6,000 人來源耗時須量測，確認實際請求及代理期限；不在量測前新增背景發起流程或環境變數。
+- 6,000 人已以真實 HTTP／MySQL／Redis 與合成來源量測，詳見 quickstart；未量測真實 HR、Next rewrite 或反向代理期限。60 批、4 併發、10 秒單批逾時可能累計約 150 秒來源等待，另加 DB／入列，不宣稱 SLA，不新增背景發起流程或環境變數。冷匯入帳號目前逐人查詢，不能以本機帳號命中容量推論冷匯入速度。
 - 既有 DELETE session 路徑不在 cookie Path 下，瀏覽器可能不帶 credential。本次不依賴該操作授權或宣稱完整登出，8 小時到期維持；完整登出修正不擴入本次。
-- setup-plan 回傳 BRANCH=010-internal-email-signing 是 feature pointer 的邏輯值；實際 Git 分支仍為 dev。
+- setup-plan 時的邏輯 feature pointer 與原 dev 基準保留於歷史紀錄；使用者授權實作後改用功能整合分支，未更新 dev 部署。

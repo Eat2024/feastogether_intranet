@@ -86,7 +86,41 @@ describe('HttpAccessLogInterceptor', () => {
     expect(getWrittenEntry(accessLogger).requestBody).toBeUndefined();
   });
   it.each([
+    '/api/esign/signer-candidates/resolutions',
+    '/api/esign/documents/9/employee-email-checks',
+    '/api/external-signing-task',
+    '/api/external-signing-task/completed-file',
+    '/api/external-signature-otps',
+  ])('Email 流程錯誤路徑不將個資 query 或 body 寫入日誌：%s', async (path) => {
+    const { interceptor, accessLogger } = makeInterceptor();
+    const err = new Error('合成錯誤');
+    await expect(
+      lastValueFrom(
+        interceptor.intercept(
+          makeContext(
+            baseReq({
+              url: `${path}?email=private@example.test`,
+              query: { email: 'private@example.test' },
+              body: {
+                employeeNos: ['private123'],
+                token: 'private-token',
+                code: '123456',
+              },
+            }),
+          ),
+          { handle: () => throwError(() => err) },
+        ),
+      ),
+    ).rejects.toBe(err);
+    const entry = getWrittenEntry(accessLogger);
+    expect(entry.url).toBe(path);
+    expect(entry.query).toBeUndefined();
+    expect(entry.requestBody).toBeUndefined();
+  });
+  it.each([
     '/api/esign/documents/9/initiations',
+    '/api/esign/signer-candidates/resolutions',
+    '/api/esign/documents/9/employee-email-checks',
     '/esign/documents/9/initiations',
     '/api/esign/documents',
     '/api/esign/documents/9/draftSave',

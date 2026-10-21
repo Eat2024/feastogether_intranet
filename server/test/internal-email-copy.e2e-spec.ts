@@ -201,6 +201,57 @@ describe('Spec010 內部員工本人副本 HTTP／真實 PDF worker', () => {
       data: { documentId: Number(f.document.id), signerId: f.signers[0].id },
     } as Job<{ documentId: number; signerId: number }>);
   }
+  it('補簽只輪替待簽者；已簽者原邀請重新 OTP 取得相同 PDF 與不可變證據', async () => {
+    const f = await fixture();
+    const signed = await sign(f);
+    await finish(f);
+    const original = await get('/completed-file', f.cookie).expect(200);
+    const evidence = apiData<SignatureVerification>(
+      await getSignatureVerification(ctx.server, signed.verificationUrl).expect(
+        200,
+      ),
+    );
+    const pendingCookie = await openExternalSession(ctx, f.signers[1].token);
+    const end = new Date(Date.now() - 1000);
+    await ctx.app
+      .get(MysqlService)
+      .getManager()
+      .query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
+        end,
+        f.document.id,
+      ]);
+    await ctx.app
+      .get(EsignExpiryService)
+      .expireByDeadline(Number(f.document.id));
+    await request(ctx.server)
+      .post(`/api/esign/documents/${f.document.id}/reopenings`)
+      .set('Cookie', creatorCookie)
+      .set('Origin', origin)
+      .send({
+        expectedSignEndAt: end.toISOString(),
+        signEndAt: new Date(Date.now() + 86400000).toISOString(),
+        reason: '合成補簽副本驗收',
+      })
+      .expect(201);
+    await get('', pendingCookie).expect(401);
+    await requestOtp(ctx, f.signers[1].token).expect(401);
+    const renewed = await openExternalSession(ctx, f.signers[0].token);
+    expect((await get('/completed-file', renewed).expect(200)).body).toEqual(
+      original.body,
+    );
+    const after = apiData<SignatureVerification>(
+      await getSignatureVerification(ctx.server, signed.verificationUrl).expect(
+        200,
+      ),
+    );
+    expect(after.signature).toEqual(evidence.signature);
+    expect(after.document.signedSourceSha256).toBe(
+      evidence.document.signedSourceSha256,
+    );
+    expect(after.document.completedPdfSha256).toBe(
+      evidence.document.completedPdfSha256,
+    );
+  });
   it('內部員工同次 OTP 存取可輪詢 pending→ready，取得與建立人完全相同的真實 PDF', async () => {
     const f = await fixture();
     await get('/completed-file', f.cookie).expect(401);

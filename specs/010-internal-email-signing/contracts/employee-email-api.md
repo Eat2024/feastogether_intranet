@@ -1,6 +1,6 @@
 # Contract：員工解析、信箱檢查與發起
 
-狀態：Tickets 01–03 已實作並驗證候選搜尋唯讀、員工解析、信箱檢查及發起／邀請寄送。內部 OTP 簽署仍待 Ticket 04，不代表前端已交付。路徑包含 `/api` prefix。管理 API 使用既有員工 session；寫入及 POST 檢查套 OriginGuard。JSON 成功 envelope `{success:true,data,timestamp}`；錯誤 `{success:false,error:{code,message,details?},timestamp}`。ID 均以字串傳遞。
+狀態：後端已實作候選搜尋唯讀、員工解析、信箱檢查、發起／邀請及內部 OTP 簽署；整體驗證紀錄見 [quickstart](../quickstart.md)。不代表前端已交付或已部署。路徑包含 `/api` prefix。管理 API 使用既有員工 session；寫入及 POST 檢查套 OriginGuard。JSON 成功 envelope `{success:true,data,timestamp}`；錯誤 `{success:false,error:{code,message,details?},timestamp}`。ID 均以字串傳遞。
 
 ## 組織樹（已存在，沿用）
 
@@ -34,7 +34,7 @@
 
 ## 所選員工信箱檢查
 
-Ticket 02 已實作此端點與信箱來源核對；發起流程的固定信箱及通知由後續票單實作，不因本端點完成而視為已完成。
+此端點已實作；預覽不固定地址，實際發起仍會重查來源，不能以前次預覽代替發起驗證。
 
 **新增** `POST /api/esign/documents/:documentId/employee-email-checks` → 200。
 
@@ -92,7 +92,7 @@ type Initiation = {
 
 上游缺人是合法稀疏結果；空白／無效 email 對應 unavailable。欄位型別錯誤、重複或額外員編、失敗 envelope 為 502。失敗日誌只含端點、狀態、耗時、錯誤類型與彙總數，禁止 request/response body 與員工資料。
 
-## 新增錯誤碼（規劃）
+## 新增錯誤碼（已實作）
 
 | code | HTTP | 用途 |
 | --- | --- | --- |

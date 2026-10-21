@@ -33,10 +33,10 @@
 
 ## Notes
 
-- 已完成規格檢核與 Phase 0／1 plan，產出 research、data-model、contracts、quickstart，並完成 tasks.md 的44項任務拆分；全部任務尚未執行，未修改執行程式。
+- 已完成規格檢核與 Phase 0／1 plan；後續依使用者授權完成八張票單的後端實作與44項任務驗證對照，實測見 quickstart。此處16個規格品質標記保持原判定，不將其當成執行測試結果。
 - 使用者明確指定兩個 fgapi endpoint，因此保留其已核對契約作為依賴；不將 skill 的「無 API 細節」要求解讀為刪除使用者需求。
 - Constitution 已依使用者本次需求及 grilling 決策同步為 1.5.0，內部 Email 邀請的文字衝突已解除；仍要求 OTP 且不得授予一般員工登入。此清單不代表功能已實作或已完成測試。
 - 2026-10-21 grilling 決策已由使用者確認並寫入 Clarifications：缺信箱阻擋整份發起、地址固定、同信箱逐人照寄、僅後端與前端交接規格、納入人工催簽及補簽、不保留舊文件免 OTP 分支。
-- 已新增前端工程師 Agent 交接文件與具體 API contract，標明規劃中的新增／變更；後端實作時須再核對 Swagger 與契約一致，未宣稱前端已完成。
+- 前端工程師 Agent 交接文件與三份 API contract 已核對實際後端方法、路徑、資料、錯誤與限制；未修改 client 或宣稱前端完成。
 - 本次驗收改為後端 API／整合測試與交接文件；畫面端到端驗收由前端後續執行。既有證據不改寫、不自行刪除資料。
 - `.specify/extensions.yml` 不存在，無 before_specify 或 after_specify hooks 可執行。

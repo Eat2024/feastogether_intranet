@@ -2,6 +2,8 @@
 
 2026-10-21。依本機 intranet／fgapi 原始碼與測試研究，未呼叫真實名冊、未寄信。依 speckit-plan 分別研究身分／模型與簽署／通知，所有設計未知已收斂如下。
 
+以下為規劃時的決策紀錄；使用者後續已授權 implement-spec，後端已依八張票單實作，實測與限制見 [quickstart](quickstart.md)。第 7 節的「只 plan」描述保留原決策時間，不代表目前尚未實作。
+
 ## 1. 組織快取與員工解析
 
 **Decision**: 保留 org-chart Redis 7,200 秒 TTL；新增 POST resolutions 承接選取員工的建帳，GET candidates 改唯讀。

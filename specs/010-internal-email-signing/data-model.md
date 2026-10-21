@@ -1,6 +1,6 @@
 # Data Model：內部 Email 簽署
 
-狀態：設計，尚未執行任何 schema 或資料修改。
+狀態：已實作於既有表，entity／migration／schema.sql 同步；隔離 MySQL 已驗證 up→down→up 與不相容資料拒絕 rollback。未對開發／部署環境執行 migration，未回填歷史資料。
 
 ## EsignSigner（既有 esign_signers）
 
@@ -45,6 +45,7 @@ down 在執行任何 DDL 前確認：無 user email／邀請資料、無違反�
 
 - invitation、reminder kinds 沿用；每筆 log 依 signerId，非 email。filterType 的既有儲存字串可保留相容，新語意於 Swagger 說明，不因 external 字樣排除 user。
 - 初次／補簽新 log 記錄既有 invitationGenerationSha256。worker claim、結果回寫及密文清除必須核對 log 世代與當前 signer 世代，不重用舊 log 發新 token。未 claim 的舊 log 不再寄；已在途的舊信可能送達，但其連結必須失效，舊結果不得覆寫新通知或新 signer 世代。
+- 舊通知 log 缺少 generation 時 fail-closed，不自動補寄或回填。到期落盤保留原 digest／期限供補簽檢查，只清除待簽邀請密文；狀態與截止時間仍禁止舊邀請授權。
 - 補簽原子更新文件期限、pending 邀請、舊通知結果及新通知；signed／rejected 指派與世代不變。不修改原 signing payload。
 - 郵件結果沿用 pending／processing／delivered／failed／skipped／unknown。SMTP 接受不等於收件人已閱讀。
 

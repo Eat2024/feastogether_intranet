@@ -1,4 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import type { EntityManager } from 'typeorm';
+import type { EsignDocument } from '../entities/esign-document.entity';
+import type { EsignSigner } from '../entities/esign-signer.entity';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
@@ -28,74 +31,33 @@ export class EsignRejectionService {
     principal: SigningPrincipal,
     input: RejectionDto,
   ) {
-    if (input.reason !== undefined && typeof input.reason !== 'string')
-      throw new AppException(...AppErrors.ESIGN_REJECTION_REASON_INVALID);
-    const reason = input.reason?.trim() ?? '';
-    if (Array.from(reason).length > 200)
-      throw new AppException(...AppErrors.ESIGN_REJECTION_REASON_INVALID);
+    const reason = this.normalizeReason(input.reason);
     // 先取得不變的歸屬；交易內第一個讀取必須是文件鎖，避免 RR 舊快照漏看其他人的終態。
     const candidate = await this.signers.findByPublicId(
       publicId,
       this.mysql.getManager(),
     );
     const result = await this.mysql.transaction(async (manager) => {
-      const document = candidate
-        ? await this.documents.findByIdForUpdate(candidate.documentId, manager)
-        : null;
-      const signer = document
-        ? await this.signers.findByPublicIdForUpdate(publicId, manager)
-        : null;
-      if (!document || !signer)
-        throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
-      if (principal.kind === 'internal')
-        this.access.assertInternalSigner(document, signer, principal.userId);
-      else {
-        if (signer.id !== principal.signerId)
-          throw new AppException(...AppErrors.ESIGN_EXTERNAL_SIGNER_MISMATCH);
-        this.access.assertExternalAccess({ document, signer }, new Date());
-      }
-      let repeated = false;
-      if (
+      const { document, signer } = await this.lockSigningContext(
+        publicId,
+        candidate?.documentId,
+        manager,
+      );
+      this.assertSignerAccess(document, signer, principal);
+      const repeated =
         signer.status === 'rejected' &&
         signer.rejectRequestId === input.requestId &&
-        signer.rejectReason === reason
-      )
-        repeated = true;
-      else {
-        if (signer.status !== 'pending')
-          throw new AppException(...AppErrors.ESIGN_REJECTION_CONFLICT);
-        this.validation.assertActiveSigningWindow(document, new Date());
-        if (!document.allowReject)
-          throw new AppException(...AppErrors.ESIGN_REJECTION_NOT_ALLOWED);
-        const now = new Date();
-        signer.status = 'rejected';
-        signer.rejectedAt = now;
-        signer.rejectReason = reason;
-        signer.rejectRequestId = input.requestId;
-        signer.invitationTokenCiphertext = null;
-        signer.invitationExpiresAt = null;
-        await this.signers.save(signer, manager);
-        await this.audit.append(
-          {
-            documentId: document.id,
-            signerId: signer.id,
-            actorUserId:
-              principal.kind === 'internal' ? principal.userId : undefined,
-            eventType: 'signer.rejected',
-            occurredAt: now,
-            requestId: input.requestId,
-            metadata: { reason },
-          },
+        signer.rejectReason === reason;
+      if (!repeated) {
+        this.assertRejectionAllowed(document, signer);
+        await this.saveRejection(
+          signer,
+          principal,
+          input.requestId,
+          reason,
           manager,
         );
-        const counts = await this.signers.completionCounts(
-          document.id,
-          manager,
-        );
-        if (counts.total > 0 && counts.pending === 0) {
-          document.status = 'finalizing';
-          await this.documents.save(document, manager);
-        }
+        await this.markDocumentFinalizing(document, manager);
       }
       return {
         signerPublicId: publicId,
@@ -112,5 +74,97 @@ export class EsignRejectionService {
       await this.jobs.enqueueFinalization(result.documentId, result.signerId);
     const { documentId: _documentId, signerId: _signerId, ...view } = result;
     return view;
+  }
+
+  private normalizeReason(reason: RejectionDto['reason']): string {
+    if (reason !== undefined && typeof reason !== 'string')
+      throw new AppException(...AppErrors.ESIGN_REJECTION_REASON_INVALID);
+    const normalized = reason?.trim() ?? '';
+    if (Array.from(normalized).length > 200)
+      throw new AppException(...AppErrors.ESIGN_REJECTION_REASON_INVALID);
+    return normalized;
+  }
+
+  private async lockSigningContext(
+    publicId: string,
+    documentId: number | undefined,
+    manager: EntityManager,
+  ) {
+    const document =
+      documentId !== undefined
+        ? await this.documents.findByIdForUpdate(documentId, manager)
+        : null;
+    const signer = document
+      ? await this.signers.findByPublicIdForUpdate(publicId, manager)
+      : null;
+    if (!document || !signer)
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    return { document, signer };
+  }
+
+  private assertSignerAccess(
+    document: EsignDocument,
+    signer: EsignSigner,
+    principal: SigningPrincipal,
+  ): void {
+    if (principal.kind === 'internal') {
+      this.access.assertInternalSigner(document, signer, principal.userId);
+      return;
+    }
+    if (signer.id !== principal.signerId)
+      throw new AppException(...AppErrors.ESIGN_EXTERNAL_SIGNER_MISMATCH);
+    this.access.assertExternalAccess({ document, signer }, new Date());
+  }
+
+  private assertRejectionAllowed(
+    document: EsignDocument,
+    signer: EsignSigner,
+  ): void {
+    if (signer.status !== 'pending')
+      throw new AppException(...AppErrors.ESIGN_REJECTION_CONFLICT);
+    this.validation.assertActiveSigningWindow(document, new Date());
+    if (!document.allowReject)
+      throw new AppException(...AppErrors.ESIGN_REJECTION_NOT_ALLOWED);
+  }
+
+  private async saveRejection(
+    signer: EsignSigner,
+    principal: SigningPrincipal,
+    requestId: string,
+    reason: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    const now = new Date();
+    signer.status = 'rejected';
+    signer.rejectedAt = now;
+    signer.rejectReason = reason;
+    signer.rejectRequestId = requestId;
+    signer.invitationTokenCiphertext = null;
+    signer.invitationExpiresAt = null;
+    await this.signers.save(signer, manager);
+    await this.audit.append(
+      {
+        documentId: signer.documentId,
+        signerId: signer.id,
+        actorUserId:
+          principal.kind === 'internal' ? principal.userId : undefined,
+        eventType: 'signer.rejected',
+        occurredAt: now,
+        requestId,
+        metadata: { reason },
+      },
+      manager,
+    );
+  }
+
+  private async markDocumentFinalizing(
+    document: EsignDocument,
+    manager: EntityManager,
+  ): Promise<void> {
+    const counts = await this.signers.completionCounts(document.id, manager);
+    if (counts.total > 0 && counts.pending === 0) {
+      document.status = 'finalizing';
+      await this.documents.save(document, manager);
+    }
   }
 }

@@ -114,3 +114,10 @@ HTTP 測試直接從 Set-Cookie 捕捉 HttpOnly credential，勿把 token／OTP 
 - 舊指派缺固定Email／邀請、舊notification log缺generation均fail-closed；不回填、不補寄或改寫歷史證據。無UAT／PRD，未執行真實HR／SMTP或部署驗收。
 - 既有DELETE session不在credential cookie Path下，本次不宣稱完整登出已修；8小時憑證及逐指派／世代驗證維持。
 - 任務44／44已依實際檔案與測試核對，詳見tasks末尾；規格品質checklist16個標記保持原值。票單結案仍依合併結果，主協調者另執行整合分支獨立code-review。
+
+### 最終雙軸審查與整合收尾
+
+- 以 `615ade2` 為比較基準、`a05a221` 為受審整合版本完成獨立雙軸審查：Standards 無硬性違規，僅一項低風險私有命名建議；Spec 無發現問題。
+- 修正 commit `1552b51` 將發起服務中已涵蓋內外部人員的私有 invitation 方法／變數移除 external 限定名稱；未改公開 API、通知種類、資料或執行行為。修正分支驗證：相關 unit 4／4、build 與 lint 通過；合併者確認差異僅為私有命名，`git diff --check` 通過。
+- 八張 tickets 均已 resolved，44 項 tasks 均完成勾選。原八個實作 worktrees 已在乾淨來源及整合祖先檢查後清理，分支保留；最終 review-fix worktree 由主協調者於整合確認後清理。
+- 本節僅追加最終審查與整合紀錄，不改寫前述測試量測；前端、真實 HR／SMTP、實際代理時限與部署仍維持上述未驗證界線。

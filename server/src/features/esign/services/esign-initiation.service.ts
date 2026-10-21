@@ -131,7 +131,7 @@ export class EsignInitiationService {
         sourceMetadata,
       );
       const initiatedAt = new Date();
-      const externalSigners = await this.createExternalInvitationTokens(
+      const invitationSigners = await this.createInvitationTokens(
         input,
         signers,
         manager,
@@ -146,7 +146,7 @@ export class EsignInitiationService {
       const notificationLogIds = await this.createInvitationNotifications(
         input,
         document.id,
-        externalSigners,
+        invitationSigners,
         initiatedAt,
         manager,
       );
@@ -282,23 +282,23 @@ export class EsignInitiationService {
     return { payload, payloadSha256, consentVersion: activeConsent.version };
   }
 
-  private async createExternalInvitationTokens(
+  private async createInvitationTokens(
     input: InitiateDocumentInput,
     signers: EsignSigner[],
     manager: EntityManager,
   ): Promise<EsignSigner[]> {
-    const externalSigners = signers;
-    for (const signer of externalSigners) {
+    const invitationSigners = signers;
+    for (const signer of invitationSigners) {
       const token = this.tokens.createInvitationToken();
       signer.invitationTokenSha256 = token.digest;
       signer.invitationTokenCiphertext = token.ciphertext;
       signer.invitationExpiresAt = input.signEndAt;
       signer.updatedByUserId = input.creatorUserId;
     }
-    if (externalSigners.length > 0) {
-      await this.signers.saveMany(externalSigners, manager);
+    if (invitationSigners.length > 0) {
+      await this.signers.saveMany(invitationSigners, manager);
     }
-    return externalSigners;
+    return invitationSigners;
   }
 
   private async activateDocument(
@@ -322,18 +322,18 @@ export class EsignInitiationService {
   private async createInvitationNotifications(
     input: InitiateDocumentInput,
     documentId: number,
-    externalSigners: EsignSigner[],
+    invitationSigners: EsignSigner[],
     initiatedAt: Date,
     manager: EntityManager,
   ): Promise<number[]> {
     const notificationLogIds: number[] = [];
-    if (externalSigners.length > 0) {
+    if (invitationSigners.length > 0) {
       const batch = await this.notifications.saveBatch(
         this.notifications.createBatch(
           {
             documentId: documentId,
             filterType: 'external_invitation',
-            targetCount: externalSigners.length,
+            targetCount: invitationSigners.length,
             notifiedByUserId: input.creatorUserId,
           },
           manager,
@@ -341,7 +341,7 @@ export class EsignInitiationService {
         manager,
       );
       const logs = await this.notifications.saveLogs(
-        externalSigners.map((signer) =>
+        invitationSigners.map((signer) =>
           this.notifications.createLog(
             {
               batchId: batch.id,

@@ -290,3 +290,35 @@ export interface EsignSignerCandidate {
   department: string | null;
   title: string | null;
 }
+
+/** GET esign/signer-candidates/org-chart 的一位員工（格式沿用饗賓人 API） */
+export interface EsignOrgEmployee {
+  /** 員工編號 */
+  person_empid: string;
+  person_name: string | null;
+  title: string | null;
+}
+
+/** GET esign/signer-candidates/org-chart 的一個部門（正式員工組織架構，格式沿用饗賓人 API） */
+export interface EsignOrgDepartment {
+  department_ch_id: string;
+  department_name: string;
+  department_parent_guid: string | null;
+  startdate: string | null;
+  /** 後端只回傳未停用的部門 */
+  stopdate: null;
+  children: EsignOrgDepartment[];
+  employees: EsignOrgEmployee[];
+}
+
+/** POST esign/signer-candidates/resolutions 的一筆結果 */
+export interface EsignSignerResolution {
+  employeeNo: string;
+  /** resolved 時為後端 userId，發起簽署時使用 */
+  userId: string | null;
+  name: string | null;
+  department: string | null;
+  title: string | null;
+  /** unavailable：查無此人，或不是試用／正式員工 */
+  status: 'resolved' | 'unavailable';
+}

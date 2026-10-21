@@ -3,11 +3,13 @@
 // 設定簽署（後端文件）：選擇簽署人、簽署期間與可選功能，以 POST /api/esign/documents/:id/initiations 一次發起；
 // 暫存以 PATCH .../draft-settings 保存同樣的設定，再次進入時帶回。
 // 第一步放的欄位是所有簽署人共用的位置，後端會替每位簽署人各產生一份個人副本。
-import { useGetDocumentQuery } from "@/api/queries";
+// 同仁從後端的正式員工組織架構（GET /api/esign/signer-candidates/org-chart）選取，
+// 送出前以 POST .../resolutions 將員編換成後端 userId（本機沒有帳號時後端會自動建立）。
+import { useGetDocumentQuery, useGetSignerOrgChartQuery } from "@/api/queries";
 import { queryKeys } from "@/api/query-keys";
 import {
-  getSignerCandidates,
   initiateDocument,
+  resolveSignerCandidates,
   saveDraftSettings,
 } from "@/api/requests";
 import type {
@@ -23,6 +25,7 @@ import EmailSignerInput, {
   type EmailSigner,
 } from "@/features/forms/editor/EmailSignerInput";
 import StaffTreePicker from "@/features/forms/editor/StaffTreePicker";
+import { toOrgTree } from "@/features/forms/orgChartTree";
 import { WATERMARK_TEXT } from "@/features/forms/options";
 import type { OrgDept } from "@/features/forms/types";
 import { getErrorMessage } from "@/lib/apiError";
@@ -82,22 +85,36 @@ type PickedSigner = { key: string; label: string } & (
   | { type: "email"; name: string; email: string }
 );
 
-/** 以完整員編查出後端 userId；查無或不唯一時回報是哪一位 */
+// 後端限制（server/src/features/esign/dto/resolve-signer-candidates.dto.ts）：一次最多解析 100 個員編
+const RESOLVE_BATCH = 100;
+
+/** 以完整員編換成後端 userId（分批送出）；有人無法指定為簽署人時列出是哪幾位 */
 async function resolveUserIds(
   signers: PickedSigner[],
 ): Promise<Map<string, string>> {
   const users = signers.filter((s) => s.type === "user");
-  const results = await Promise.all(
-    users.map(async (s) => {
-      const match = (await getSignerCandidates(s.employeeNo)).find(
-        (c) => c.employeeNo === s.employeeNo,
-      );
-      if (!match)
-        throw new Error(`找不到 ${s.label} 的員工帳號，無法指定為簽署人`);
-      return [s.key, match.id] as const;
-    }),
+  const employeeNos = [...new Set(users.map((s) => s.employeeNo))];
+  const userIdByEmployeeNo = new Map<string, string>();
+  for (let i = 0; i < employeeNos.length; i += RESOLVE_BATCH) {
+    const items = await resolveSignerCandidates(
+      employeeNos.slice(i, i + RESOLVE_BATCH),
+    );
+    for (const item of items) {
+      if (item.status === "resolved" && item.userId)
+        userIdByEmployeeNo.set(item.employeeNo, item.userId);
+    }
+  }
+  const missing = users.filter((s) => !userIdByEmployeeNo.has(s.employeeNo));
+  if (missing.length) {
+    throw new Error(
+      `以下同仁無法指定為簽署人（不是試用或正式員工，或人事資料查無此人）：${missing
+        .map((s) => s.label)
+        .join("、")}`,
+    );
+  }
+  return new Map(
+    users.map((s) => [s.key, userIdByEmployeeNo.get(s.employeeNo)!]),
   );
-  return new Map(results);
 }
 
 /** 依選取順序轉成後端的簽署人格式（內部員工以員編查出 userId） */
@@ -140,10 +157,8 @@ function restoreSigners(saved: EsignSignerView[], staff: Map<string, Staff>) {
 
 export default function DocumentSignersEditor({
   documentId,
-  org,
 }: {
   documentId: string;
-  org: OrgDept[];
 }) {
   const {
     data: doc,
@@ -153,8 +168,13 @@ export default function DocumentSignersEditor({
     refetch,
     isFetching,
   } = useGetDocumentQuery(documentId);
+  const orgChart = useGetSignerOrgChartQuery();
+  const org = useMemo(
+    () => (orgChart.data ? toOrgTree(orgChart.data) : null),
+    [orgChart.data],
+  );
 
-  if (isPending) {
+  if (isPending || orgChart.isPending) {
     return (
       <Box
         sx={{
@@ -166,7 +186,7 @@ export default function DocumentSignersEditor({
         }}
       >
         <CircularProgress size={20} />
-        <Typography variant="description">載入文件中…</Typography>
+        <Typography variant="description">載入文件與組織架構中…</Typography>
       </Box>
     );
   }
@@ -193,6 +213,25 @@ export default function DocumentSignersEditor({
     return (
       <Alert severity="info" action={<Button href="/forms">返回列表</Button>}>
         「{doc.title}」已發起簽署，無法再修改簽署設定。
+      </Alert>
+    );
+  }
+  if (orgChart.isError || !org) {
+    return (
+      <Alert
+        severity="error"
+        action={
+          <Button
+            color="inherit"
+            size="small"
+            onClick={() => orgChart.refetch()}
+            loading={orgChart.isFetching}
+          >
+            重新載入
+          </Button>
+        }
+      >
+        無法取得組織架構，暫時無法選擇簽署人：{getErrorMessage(orgChart.error)}
       </Alert>
     );
   }

@@ -38,6 +38,8 @@ export const endpoints = {
   ESIGN_SIGNING_TASK_REJECTION: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/rejection`,
   // 內部簽署人候選（server/src/features/esign/controllers/signer-candidates.controller.ts）
   ESIGN_SIGNER_CANDIDATES: 'esign/signer-candidates',
+  ESIGN_SIGNER_ORG_CHART: 'esign/signer-candidates/org-chart',
+  ESIGN_SIGNER_RESOLUTIONS: 'esign/signer-candidates/resolutions',
   // 外部簽署人（server/src/features/esign/controllers/external-signature.controller.ts）：以外部存取 cookie 驗證，
   // cookie 的 path 為 /api/external-signing-task，只有這組路徑會帶上
   EXTERNAL_SIGNING_TASK: 'external-signing-task',

@@ -5,28 +5,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CURRENT_USER_ID, FALLBACK_USER_ID, MOCK_EMPLOYEES } from './mock';
+import { toOrgTree, type RawOrgDept } from './orgChartTree';
 import type { OrgDept, StaffMember } from './types';
 
 const ORG_CHART_PATH = path.join(process.cwd(), 'data', 'org-chart.json');
-
-type RawEmployee = { person_empid: string; person_name: string; title: string };
-type RawDept = {
-  department_ch_id: string;
-  department_name: string;
-  stopdate: string | null;
-  children: RawDept[];
-  employees: RawEmployee[];
-};
-
-/** 轉換為畫面用的部門樹：略過已停用的部門，以及底下完全沒有員工的部門 */
-function toOrgDept(raw: RawDept, today: string): OrgDept | null {
-  if (raw.stopdate && raw.stopdate <= today) return null;
-  const children = raw.children.map((c) => toOrgDept(c, today)).filter((c): c is OrgDept => c !== null);
-  const employees = raw.employees.map((e) => ({ id: e.person_empid, name: e.person_name, title: e.title }));
-  const total = employees.length + children.reduce((sum, c) => sum + c.total, 0);
-  if (total === 0) return null;
-  return { id: raw.department_ch_id, name: raw.department_name, children, employees, total };
-}
 
 // 僅在沒有組織架構檔時使用
 const TEST_DEPT: OrgDept = {
@@ -39,9 +21,7 @@ const TEST_DEPT: OrgDept = {
 
 function loadOrgChart(): OrgDept[] {
   if (!fs.existsSync(ORG_CHART_PATH)) return [TEST_DEPT];
-  const raw = JSON.parse(fs.readFileSync(ORG_CHART_PATH, 'utf-8')) as RawDept[];
-  const today = new Date().toISOString().slice(0, 10);
-  return raw.map((d) => toOrgDept(d, today)).filter((d): d is OrgDept => d !== null);
+  return toOrgTree(JSON.parse(fs.readFileSync(ORG_CHART_PATH, 'utf-8')) as RawOrgDept[]);
 }
 
 // 快取在 globalThis：只在伺服器啟動後第一次使用時讀檔

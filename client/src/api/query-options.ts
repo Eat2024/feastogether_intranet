@@ -37,6 +37,11 @@ export const queryOptions: Record<
     staleTime: 0,
     gcTime: minutes(5),
   },
+  // 組織架構後端已快取 2 小時；同一次操作中切換頁面不需重新讀取
+  useGetSignerOrgChartQuery: {
+    staleTime: minutes(10),
+    gcTime: minutes(10),
+  },
   // 邀請連結即憑證：不保留在快取中，每次開啟都重新取得
   useGetReopeningInvitationsQuery: {
     staleTime: 0,

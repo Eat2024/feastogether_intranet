@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 內部員工透過 Email＋OTP 簽署或拒簽。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** 010 — US4 的補簽部分、FR-005、FR-014～017。對應 T034、T036～T038，以及 T004 的 ESIGN_REOPEN_RECIPIENT_UNAVAILABLE。T034 的已簽原邀請實際副本下載與 T039 跨流程驗收由 08 在 05 完成後執行；本票先驗世代、證據與存取政策不變。
 

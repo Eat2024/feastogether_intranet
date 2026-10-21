@@ -205,6 +205,11 @@ export const AppErrors = {
     '文件狀態已變更，請重新確認',
     HttpStatus.CONFLICT,
   ],
+  ESIGN_REOPEN_RECIPIENT_UNAVAILABLE: [
+    AppErrorCode.ESIGN_REOPEN_RECIPIENT_UNAVAILABLE,
+    '待簽者缺少有效固定信箱或原邀請，無法補簽',
+    HttpStatus.CONFLICT,
+  ],
   ESIGN_DOCUMENT_NOT_REOPENABLE: [
     AppErrorCode.ESIGN_DOCUMENT_NOT_REOPENABLE,
     '只有仍有未簽署者的已到期文件可以補簽',

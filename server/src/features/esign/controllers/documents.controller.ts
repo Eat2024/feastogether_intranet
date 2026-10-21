@@ -315,7 +315,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '重新開放已到期文件補簽',
     description:
-      '僅建立人可設定新期限及原因；舊期限不符回 409，保留原簽署證據。',
+      '僅建立人可設定新期限及原因；舊期限不符或任一待簽者缺固定信箱／原邀請回 409。成功後自動寄送內外部待簽者的新邀請，保留已簽及已拒證據。',
   })
   @ApiBody({ type: ReopenDocumentDto })
   @Post(':documentId/reopenings')
@@ -338,8 +338,9 @@ export class DocumentsController {
   }
 
   @ApiOperation({
-    summary: '取得補簽外部邀請',
-    description: '僅建立人主動讀取目前補簽輪的邀請，不寄信、不輪替憑證。',
+    summary: '取得仍可取用的補簽邀請',
+    description:
+      '僅建立人讀取內外部待簽者尚存密文的邀請，不寄信、不輪替憑證。成功寄送後省略該項，全數送達回空陣列；請以通知紀錄確認進度。',
   })
   @Get(':documentId/reopening-invitations')
   @Header('Cache-Control', 'private, no-store')

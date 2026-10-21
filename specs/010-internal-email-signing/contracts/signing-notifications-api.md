@@ -85,6 +85,8 @@ selection=selected 時名單非空最多 6,000；selection=all_pending 不提供
 
 ## 補簽（新增自動寄送行為）
 
+實作狀態（Ticket 07）：已完成內外部待簽者補簽自動通知、原子性驗證及通知世代隔離。到期落盤僅清除待簽者邀請密文，保留既有 digest／期限供補簽核對；到期狀態與期限仍阻擋舊邀請授權，不補登歷史缺漏資料。
+
 `POST /api/esign/documents/:id/reopenings`，建立人 session＋OriginGuard，201。
 
 ```ts

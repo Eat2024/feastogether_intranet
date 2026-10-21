@@ -78,6 +78,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
         id,
         manager,
       );
+      if (log?.errorCode === 'INVITATION_SUPERSEDED') return null;
       if (log?.batch?.kind === 'reminder') return { reminder: true } as const;
       const stale =
         log?.result === 'processing' &&
@@ -215,7 +216,12 @@ export class ExternalInvitationProcessor extends WorkerHost {
         id,
         manager,
       );
-      if (!log || log.batch?.kind !== 'reminder') return null;
+      if (
+        !log ||
+        log.batch?.kind !== 'reminder' ||
+        log.errorCode === 'INVITATION_SUPERSEDED'
+      )
+        return null;
       if (log.result === 'processing') {
         if (
           log.processingStartedAt &&

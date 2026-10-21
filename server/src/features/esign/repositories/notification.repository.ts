@@ -165,18 +165,19 @@ export class NotificationRepository {
     return manager.save(log);
   }
 
-  findInvitationsByDocumentForUpdate(
-    documentId: number,
-    manager: EntityManager,
-  ) {
-    return manager
-      .createQueryBuilder(EsignNotificationLog, 'log')
-      .innerJoin('log.signer', 'signer')
-      .innerJoin('log.batch', 'batch', "batch.kind = 'invitation'")
-      .where('signer.document_id = :documentId', { documentId })
-      .orderBy('log.id', 'ASC')
-      .setLock('pessimistic_write')
-      .getMany();
+  findByDocumentForUpdate(documentId: number, manager: EntityManager) {
+    return (
+      manager
+        .createQueryBuilder(EsignNotificationLog, 'log')
+        // 只鎖通知列，不讓 JOIN 預先鎖 signer；包含催簽的舊世代。
+        .where(
+          'log.batch_id IN (SELECT id FROM esign_notification_batches WHERE document_id = :documentId)',
+          { documentId },
+        )
+        .orderBy('log.id', 'ASC')
+        .setLock('pessimistic_write')
+        .getMany()
+    );
   }
 
   findEligibleInvitationLogIds(

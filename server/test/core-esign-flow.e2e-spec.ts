@@ -2217,6 +2217,10 @@ describe('核心電子簽 US1', () => {
       'SELECT id FROM users WHERE empid=?',
       [signerEmpid],
     );
+    const [pendingUser] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM users WHERE empid=?',
+      [outsiderEmpid],
+    );
     const end = new Date(Date.now() + 60_000);
     const active = apiData<DocumentDetail>(
       await request(ctx.server)
@@ -2227,9 +2231,8 @@ describe('核心電子簽 US1', () => {
           signers: [
             { type: 'user', userId: String(signedUser.id) },
             {
-              type: 'email',
-              name: '第二待簽者',
-              email: 'expiry-second@example.test',
+              type: 'user',
+              userId: String(pendingUser.id),
             },
             { type: 'email', name: '外部待簽', email: 'expiry@example.test' },
           ],
@@ -2405,12 +2408,16 @@ describe('核心電子簽 US1', () => {
         ).document.status,
       ).toBe('expired');
       const [external] = await db.query<
-        Array<{ invitation_token_sha256: string | null }>
+        Array<{
+          invitation_token_sha256: string | null;
+          invitation_token_ciphertext: string | null;
+        }>
       >(
-        "SELECT invitation_token_sha256 FROM esign_signers WHERE document_id=? AND signer_type='email'",
+        "SELECT invitation_token_sha256,invitation_token_ciphertext FROM esign_signers WHERE document_id=? AND signer_type='email'",
         [id],
       );
-      expect(external.invitation_token_sha256).toBeNull();
+      expect(external.invitation_token_sha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(external.invitation_token_ciphertext).toBeNull();
     } finally {
       jest.useRealTimers();
     }
@@ -3505,10 +3512,10 @@ describe('核心電子簽 US1', () => {
       );
     const beforeSnapshot: unknown = await snapshot();
     const notificationCounts = () =>
-      db.query(
+      db.query<Array<{ logs: string; batches: string }>>(
         'SELECT (SELECT COUNT(*) FROM esign_notification_logs) AS logs, (SELECT COUNT(*) FROM esign_notification_batches) AS batches',
       );
-    const notificationsBefore: unknown = await notificationCounts();
+    const [notificationsBefore] = await notificationCounts();
     const notifications = ctx.app.get(NotificationRepository);
     const manager = ctx.app.get(MysqlService).getManager();
     const [oldLog] = await db.query<Array<{ id: number }>>(
@@ -3653,7 +3660,13 @@ describe('核心電子簽 US1', () => {
         data: { notificationLogId: Number(oldLog.id) },
       } as Job<{ notificationLogId: number }>);
 
-      expect(await notificationCounts()).toEqual(notificationsBefore);
+      const [notificationsAfter] = await notificationCounts();
+      expect(Number(notificationsAfter.logs)).toBe(
+        Number(notificationsBefore.logs) + 2,
+      );
+      expect(Number(notificationsAfter.batches)).toBe(
+        Number(notificationsBefore.batches) + 1,
+      );
       await requestOtp(ctx, oldToken).expect(401);
       await request(ctx.server)
         .post('/api/external-signing-task')
@@ -3670,7 +3683,7 @@ describe('核心電子簽 US1', () => {
       );
       expect(
         detail.signers.find((s) => s.type === 'email')?.invitationDelivery,
-      ).toBeNull();
+      ).toBe('pending');
 
       const invitations = await request(ctx.server)
         .get(`/api/esign/documents/${id}/reopening-invitations`)
@@ -3680,7 +3693,7 @@ describe('核心電子簽 US1', () => {
         .expect('Referrer-Policy', 'no-referrer');
       expect(
         apiData<Array<{ invitationUrl: string }>>(invitations),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
       expect(
         apiData(
           await request(ctx.server)

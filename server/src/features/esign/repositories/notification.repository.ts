@@ -139,13 +139,16 @@ export class NotificationRepository {
       manager,
     );
     if (!document) return null;
+
     const log = await this.findLogByIdForUpdate(id, manager);
     if (!log) return null;
+
     const signer = await manager.findOne(EsignSigner, {
       where: { id: candidate.signerId },
       lock: { mode: 'pessimistic_write' },
     });
     if (!signer) return null;
+
     const documentWithCreator =
       (await manager.findOne(EsignDocument, {
         where: { id: document.id },

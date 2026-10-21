@@ -442,10 +442,10 @@ describe('Spec010 內部員工本人副本 HTTP／真實 PDF worker', () => {
     await ctx.app
       .get(MysqlService)
       .getManager()
-      .query(
-        'UPDATE esign_signers SET invitation_token_sha256=? WHERE id=?',
-        [randomBytes(32).toString('hex'), f.signers[0].id],
-      );
+      .query('UPDATE esign_signers SET invitation_token_sha256=? WHERE id=?', [
+        randomBytes(32).toString('hex'),
+        f.signers[0].id,
+      ]);
     for (const path of ['', '/source-file', '/completed-file'])
       await get(path, f.cookie).expect(401);
   });

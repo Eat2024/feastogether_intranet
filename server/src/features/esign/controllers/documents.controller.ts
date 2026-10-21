@@ -1,5 +1,5 @@
 import { SignerNoteDto } from '../dto/signer-note.dto';
-import { DraftSettingsDto } from '../dto/draft-settings.dto';
+import { DraftSaveDto, DraftSettingsDto } from '../dto/draft-settings.dto';
 import { ReopenDocumentDto, type ReopeningInput } from '../dto/reopening.dto';
 import { EsignReopeningService } from '../services/esign-reopening.service';
 import { ApiBody, ApiOperation } from '@nestjs/swagger';
@@ -31,7 +31,6 @@ import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { ReplaceFieldsDto } from '../dto/field.dto';
 import { ListDocumentsQueryDto } from '../dto/document-query.dto';
 import { InitiateDocumentDto } from '../dto/initiation.dto';
-import { ReplaceSignersDto } from '../dto/signer.dto';
 import {
   CreateDocumentDto,
   UpdateDocumentDto,
@@ -145,18 +144,18 @@ export class DocumentsController {
 
   @UseGuards(OriginGuard)
   @ApiOperation({
-    summary: '儲存草稿簽署人名單',
+    summary: '儲存草稿簽署人名單、期間與選項',
     description:
-      '整批取代草稿簽署人，保留共用欄位；此 API 不儲存 PDF、欄位位置或發起簽署。',
+      '相容既有回應形狀；可在同一交易整批取代簽署人並保存起迄時間、浮水印與允許拒簽。此 API 不儲存 PDF、欄位位置或發起簽署。',
   })
   @Put(':documentId/draftSave')
   async replaceSigners(
     @Param('documentId') id: string,
-    @Body() body: ReplaceSignersDto,
+    @Body() body: DraftSaveDto,
     @CurrentUserId() userId: number,
   ) {
     const documentId = this.id(id);
-    await this.signerService.draftSave(documentId, userId, body.signers);
+    await this.signerService.draftSave(documentId, userId, body);
     return (await this.queries.creatorDetail(documentId, userId)).signers;
   }
 

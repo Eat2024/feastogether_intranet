@@ -74,11 +74,9 @@ export class EsignSignerService {
   async draftSave(
     documentId: number,
     creatorUserId: number,
-    inputs: SignerInputDto[],
+    input: DraftSettingsDto,
   ) {
-    return this.saveDraftSettings(documentId, creatorUserId, {
-      signers: inputs,
-    });
+    return this.saveDraftSettings(documentId, creatorUserId, input);
   }
 
   async saveDraftSettings(

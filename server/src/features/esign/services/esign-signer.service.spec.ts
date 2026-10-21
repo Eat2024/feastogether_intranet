@@ -85,9 +85,11 @@ describe('EsignSignerService', () => {
     );
     const update = jest.spyOn(service, 'updateSigners');
     await expect(
-      service.draftSave(3, 7, [
-        { type: 'email', name: '測試', email: 'test@example.test' },
-      ]),
+      service.draftSave(3, 7, {
+        signers: [
+          { type: 'email', name: '測試', email: 'test@example.test' },
+        ],
+      }),
     ).rejects.toMatchObject({ status: owner !== 7 ? 404 : 409 });
     expect(update).not.toHaveBeenCalled();
   });
@@ -125,7 +127,7 @@ describe('EsignSignerService', () => {
     const inputs = [
       { type: 'email' as const, name: '測試', email: 'test@example.test' },
     ];
-    await service.draftSave(3, 7, inputs);
+    await service.draftSave(3, 7, { signers: inputs });
     expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(3, 7, manager);
     expect(events).toEqual(['lock', 'update']);
     expect(update).toHaveBeenCalledWith(document, 7, inputs, manager);

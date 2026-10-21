@@ -147,7 +147,7 @@ paths:
       - $ref: "#/components/parameters/DocumentId"
     put:
       operationId: replaceDraftSigners
-      summary: 取代草稿簽署人，僅 creator + draft；既有共用欄位保留，不因名單改變而複製或變更
+      summary: 保存草稿簽署人、起迄時間、浮水印與允許拒簽；僅 creator + draft
       requestBody:
         required: true
         content:
@@ -165,6 +165,20 @@ paths:
                     oneOf:
                       - $ref: "#/components/schemas/InternalSignerInput"
                       - $ref: "#/components/schemas/ExternalSignerInput"
+                signStartAt:
+                  description: 省略時保留，null 清空；有值時必須是含時區的 ISO 8601 日期時間
+                  type: [string, "null"]
+                  format: date-time
+                signEndAt:
+                  description: 省略時保留，null 清空；有值時必須晚於開始時間
+                  type: [string, "null"]
+                  format: date-time
+                watermark:
+                  description: 省略時保留既有設定
+                  type: boolean
+                allowReject:
+                  description: 省略時保留既有設定
+                  type: boolean
       responses:
         "200":
           description: 更新後的簽署人

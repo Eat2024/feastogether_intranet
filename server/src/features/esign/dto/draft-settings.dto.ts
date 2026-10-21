@@ -37,3 +37,12 @@ export class DraftSettingsDto {
   @IsBoolean()
   allowReject?: boolean;
 }
+
+/** 舊 draftSave 仍要求完整名單，但可一併保存其餘草稿設定。 */
+export class DraftSaveDto extends DraftSettingsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => SignerInputDto)
+  declare signers: SignerInputDto[];
+}

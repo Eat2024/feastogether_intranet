@@ -122,7 +122,7 @@ describe('Spec009 草稿完整設定 API', () => {
     expect(Number(batches[0].total)).toBe(0);
   });
 
-  it('省略保留、null 清空；舊名單 API 不清除期間或選項', async () => {
+  it('舊 draftSave API 同時保存名單、期間與選項，省略時保留既有值', async () => {
     await patch({ signEndAt: '2020-02-01T00:00:00+08:00' }).expect(200);
     const legacy = await request(ctx.server)
       .put(`/api/esign/documents/${id}/draftSave`)
@@ -132,19 +132,23 @@ describe('Spec009 草稿完整設定 API', () => {
         signers: [
           { type: 'email', name: '純外部', email: 'only@example.test' },
         ],
+        signStartAt: '2020-01-02T00:00:00+08:00',
+        signEndAt: '2020-02-02T00:00:00+08:00',
+        watermark: false,
+        allowReject: false,
       })
       .expect(200);
     expect(apiData<unknown[]>(legacy)).toHaveLength(1);
     expect(await read()).toMatchObject({
-      signStartAt: '2019-12-31T16:00:00.000Z',
-      signEndAt: '2020-01-31T16:00:00.000Z',
-      watermark: true,
-      allowReject: true,
+      signStartAt: '2020-01-01T16:00:00.000Z',
+      signEndAt: '2020-02-01T16:00:00.000Z',
+      watermark: false,
+      allowReject: false,
     });
     await patch({ signStartAt: null }).expect(200);
     expect(await read()).toMatchObject({
       signStartAt: null,
-      signEndAt: '2020-01-31T16:00:00.000Z',
+      signEndAt: '2020-02-01T16:00:00.000Z',
     });
   });
 

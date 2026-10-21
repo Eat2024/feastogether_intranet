@@ -25,6 +25,7 @@ function fixture() {
     publicId: 'c854d925-1d70-49dc-9c81-abf18409ae42',
     documentId: 4,
     signerType: 'user',
+    invitationTokenSha256: 'a'.repeat(64),
     userId: 20,
     status: 'pending',
     invitationExpiresAt: new Date(Date.now() + 60000),
@@ -110,22 +111,51 @@ describe('本人拒簽', () => {
     await expect(
       service.reject(
         signer.publicId,
-        { kind: 'external', signerId: 9 },
+        {
+          kind: 'external',
+          invitationGenerationSha256: 'a'.repeat(64),
+          signerId: 9,
+        },
         { requestId },
       ),
     ).rejects.toThrow();
     const first = await service.reject(
       signer.publicId,
-      { kind: 'external', signerId: 8 },
+      {
+        kind: 'external',
+        invitationGenerationSha256: 'a'.repeat(64),
+        signerId: 8,
+      },
       { requestId },
     );
     expect(
       await service.reject(
         signer.publicId,
-        { kind: 'external', signerId: 8 },
+        {
+          kind: 'external',
+          invitationGenerationSha256: 'a'.repeat(64),
+          signerId: 8,
+        },
         { requestId },
       ),
     ).toEqual({ ...first, repeated: true });
+  });
+  it('補簽換代後，交易內拒絕舊外部身分操作', async () => {
+    const { service, signer } = fixture();
+    signer.signerType = 'email';
+    signer.invitationTokenSha256 = 'b'.repeat(64);
+    await expect(
+      service.reject(
+        signer.publicId,
+        {
+          kind: 'external',
+          signerId: signer.id,
+          invitationGenerationSha256: 'a'.repeat(64),
+        },
+        { requestId },
+      ),
+    ).rejects.toMatchObject({ code: 'ESIGN_EXTERNAL_UNAUTHORIZED' });
+    expect(signer.status).toBe('pending');
   });
   it.each([
     'disabled',

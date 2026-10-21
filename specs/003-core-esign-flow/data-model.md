@@ -1,6 +1,6 @@
 # Data Model: 核心電子簽端到端流程
 
-> **Spec 007 更新（2026-10-19）**：以下到期永久停止與補簽範圍外的記載為舊版決策，現由 Spec 007 取代。到期改為 expired，不填停止原因；人工停止維持永久 stopped。原始期限在固定 payload，sign_end_at 為有效期限；已簽證據及個人副本保留。補簽 API 由下一個 ticket 交付；前端正式串接另行交付。
+> **Spec 007 更新（2026-10-19）**：以下到期永久停止與補簽範圍外的記載為舊版決策，現由 Spec 007 取代。到期改為 expired，不填停止原因；人工停止維持永久 stopped。原始期限在固定 payload，sign_end_at 為有效期限；已簽證據及個人副本保留。補簽 API 與建立人取得新邀請端點已由 Spec 007 交付，沿用原證據且不自動寄信；前端正式串接另行交付。
 
 ## Overview
 
@@ -284,3 +284,7 @@ Pending invitation 在有效期間可重開；signed/stopped/deadline 立即失�
 新增 incremental migration 同步 entities、兩份 schema SQL 與資料字典，不新增表、不修改已套用 migration。使用者確認舊資料皆為單人，不再以存在非草稿資料阻擋部署，不實作舊多人合簽相容。可將既有單人完成檔 metadata 對應唯一 record 並回填 ready；PDF bytes、hash、原 payload／snapshot 不重算。舊資料回放與 QR／receipt 相容不列入本次驗收。回滾僅於獨立測試 DB 驗證，不刪除新簽署證據以回復舊限制。
 
 Signer 不設每文件筆數限制，仍保留文件內 user/email 唯一鍵。完整名單與 snapshots 在 initiation 同一交易保存，可分批查詢及寫入，不能部分 active。簽署完成判斷與 ready 判斷使用聚合／EXISTS；維護掃描按穩定游標分批涵蓋全部符合資格的 signer。6,000 人與 6,001 人驗收不得因單批大小、名單頁數、SQL 參數或傳輸大小而靜默截斷。
+
+## Spec 007 補簽增量
+
+已到期或邏輯到期的 active 可由建立人以 expectedSignEndAt、新期限與原因重新開放。document → notification logs → signers 的鎖內比對防止跨輪重送，追加 document.reopened 稽核；原 payload/hash 與已簽副本不變。pending email signer 取得新密文、digest 與新期限，未 delivered 的舊通知退休為 INVITATION_SUPERSEDED，scanner/worker 不再使用。新一輪只由建立人主動取得邀請，無新通知批次。

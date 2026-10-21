@@ -113,6 +113,8 @@ export class EsignRejectionService {
     }
     if (signer.id !== principal.signerId)
       throw new AppException(...AppErrors.ESIGN_EXTERNAL_SIGNER_MISMATCH);
+    if (signer.invitationTokenSha256 !== principal.invitationGenerationSha256)
+      throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
     this.access.assertExternalAccess({ document, signer }, new Date());
   }
 

@@ -1,5 +1,7 @@
 # Ticket 10：跨故事整合驗證
 
+後續已依使用者要求納入 Spec007 補簽，更新範圍與驗證見 [補簽整合紀錄](reopening-integration.md)。以下保留 Ticket10 當時的交付紀錄。
+
 日期：2026-10-21（Asia/Taipei）。基線 `c1fe44b`，工作分支 `009/10-integration-delivery`，整合分支 `feature/009-esign-document-delivery`。本紀錄涵蓋本機驗證；Standards／Spec 最終 review 由整合分支另執行，ticket10 在該步完成前仍 claimed。部署 S3 容量門檻見 ticket11，T028 不勾選。
 
 ## 修正與紅綠驗證

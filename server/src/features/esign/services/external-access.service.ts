@@ -140,7 +140,10 @@ export class ExternalAccessService {
         return {
           verified: true,
           signerPublicId: signer.publicId,
-          credential: await this.credentials.issue(signer.id),
+          credential: await this.credentials.issue(
+            signer.id,
+            signer.invitationTokenSha256!,
+          ),
         };
       }
       const email = invitationEmail(signer);
@@ -232,10 +235,14 @@ export class ExternalAccessService {
    * 頁面所屬簽署人是否相符與存取檢查由簽署服務進行。
    */
   async signingPrincipal(credential: string): Promise<SigningPrincipal> {
-    const signerId = await this.credentials.signerId(credential);
-    if (signerId === null)
+    const session = await this.credentials.read(credential);
+    const signer = await this.findSigner(
+      { credential },
+      this.mysql.getManager(),
+    );
+    if (!session || !signer)
       throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
-    return { kind: 'external', signerId };
+    return { kind: 'external', ...session };
   }
 
   /** 結束外部存取：刪除存取憑證，之後以同一 cookie 存取一律 401 */
@@ -259,10 +266,10 @@ export class ExternalAccessService {
         ? await this.documents.findByIdForUpdate(signer.documentId, manager)
         : await this.documents.findById(signer.documentId, manager);
     if (signer && document && lock) {
-      const current = await this.findSigner(key, manager);
-      signer = current
-        ? await this.signers.findByIdForUpdate(current.id, manager)
-        : null;
+      // 文件鎖取得前可能已補簽；用鎖定讀取比對先前驗證的邀請世代。
+      const generation = signer.invitationTokenSha256;
+      signer = await this.signers.findByIdForUpdate(signer.id, manager);
+      if (signer?.invitationTokenSha256 !== generation) signer = null;
     }
     const access = { document, signer };
     this.access.assertExternalAccess(access, new Date());
@@ -300,8 +307,12 @@ export class ExternalAccessService {
         return null;
       return signer;
     }
-    const signerId = await this.credentials.signerId(key.credential);
-    return signerId === null ? null : this.signers.findById(signerId, manager);
+    const session = await this.credentials.read(key.credential);
+    if (!session) return null;
+    const signer = await this.signers.findById(session.signerId, manager);
+    return signer?.invitationTokenSha256 === session.invitationGenerationSha256
+      ? signer
+      : null;
   }
 }
 

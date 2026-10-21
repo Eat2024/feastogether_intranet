@@ -14,6 +14,7 @@ describe('ExternalAccessService', () => {
       publicId: 'c854d925-1d70-49dc-9c81-abf18409ae42',
       documentId: 4,
       signerType: 'email',
+      invitationTokenSha256: 'a'.repeat(64),
       email: 'daming.wang@example.com',
       status: 'signed',
       invitationExpiresAt: null as Date | null,
@@ -317,7 +318,11 @@ describe('ExternalAccessService', () => {
     const context = setup();
     await expect(
       context.service.signingPrincipal(await accessCredential(context)),
-    ).resolves.toEqual({ kind: 'external', signerId: context.signer.id });
+    ).resolves.toEqual({
+      kind: 'external',
+      invitationGenerationSha256: 'a'.repeat(64),
+      signerId: context.signer.id,
+    });
   });
 
   it('只持有邀請 token（未通過驗證碼）時，任務、原始檔、本人副本與送出簽名一律 401', async () => {

@@ -1,4 +1,5 @@
 import { todayInTaipei } from '#app/common/date-time.helper';
+import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
 import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
 import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
@@ -1863,9 +1864,10 @@ describe('核心電子簽 US1', () => {
     );
     const pendingAccess = await openExternalSession(pendingToken);
     const submission = signatureSubmission(await openTask(pendingAccess));
-    expect(await redis.get(accessKey(pendingAccess))).toBe(
-      String(pendingSigner.id),
-    );
+    expect(JSON.parse((await redis.get(accessKey(pendingAccess)))!)).toEqual({
+      signerId: Number(pendingSigner.id),
+      invitationGenerationSha256: tokenService.digest(pendingToken),
+    });
     const ttl = await redis.ttl(accessKey(pendingAccess));
     expect(ttl).toBeGreaterThan(28_790);
     expect(ttl).toBeLessThanOrEqual(28_800);
@@ -2437,16 +2439,165 @@ describe('核心電子簽 US1', () => {
       await worker.close();
       await queue.resume();
     }
-    expect(
-      apiData<{ status: string }>(
+    const completedBefore = (
+      await request(ctx.server)
+        .get(
+          `/api/esign/signing-tasks/${active.signers[0].publicId}/completed-file`,
+        )
+        .set('Cookie', signerCookie)
+        .expect(200)
+    ).body as Buffer;
+    const reopen = (expectedSignEndAt: string, signEndAt: string) =>
+      request(ctx.server)
+        .post(`/api/esign/documents/${id}/reopenings`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({ expectedSignEndAt, signEndAt, reason: '保留已簽證據補簽' });
+    const firstEnd = new Date(end.getTime() + 60_000);
+    await reopen(end.toISOString(), firstEnd.toISOString()).expect(201);
+    jest.useFakeTimers({
+      now: firstEnd,
+      doNotFake: [
+        'hrtime',
+        'nextTick',
+        'performance',
+        'queueMicrotask',
+        'setImmediate',
+        'clearImmediate',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
+    try {
+      await reopen(
+        firstEnd.toISOString(),
+        new Date(firstEnd.getTime() + 60_000).toISOString(),
+      ).expect(201);
+      expect(await snapshot()).toEqual(beforeSnapshot);
+      expect(await evidence()).toEqual(beforeEvidence);
+      const completedAfter = (
         await request(ctx.server)
-          .post(`/api/esign/documents/${id}/stoppages`)
+          .get(
+            `/api/esign/signing-tasks/${active.signers[0].publicId}/completed-file`,
+          )
+          .set('Cookie', signerCookie)
+          .expect(200)
+      ).body as Buffer;
+      expect(completedAfter).toEqual(completedBefore);
+      expect(
+        apiData<SignatureVerification>(
+          await getSignatureVerification(
+            ctx.server,
+            signed.verificationUrl,
+          ).expect(200),
+        ).document.status,
+      ).toBe('active');
+      const pendingTask = apiData<SigningTask>(
+        await request(ctx.server)
+          .post(`/api/esign/signing-tasks/${active.signers[1].publicId}`)
           .set('Cookie', creatorCookie)
           .set('Origin', 'http://localhost:3000')
-          .send({ reason: '不再需要補簽' })
           .expect(201),
-      ).status,
-    ).toBe('stopped');
+      );
+      const signatures = (task: SigningTask) => ({
+        requestId: randomUUID(),
+        consentVersion: task.consent.version,
+        accepted: true,
+        signatures: task.fields.map((field) => ({
+          fieldId: field.id,
+          pngDataUrl: PNG_DATA_URL,
+        })),
+      });
+      await request(ctx.server)
+        .post(
+          `/api/esign/signing-tasks/${active.signers[1].publicId}/signatures`,
+        )
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send(signatures(pendingTask))
+        .expect(201);
+      const [invitation] = apiData<Array<{ invitationUrl: string }>>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}/reopening-invitations`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+      const cookie = await openExternalSession(
+        invitation.invitationUrl.split('/').at(-1)!,
+      );
+      const externalTask = apiData<SigningTask>(
+        await request(ctx.server)
+          .post('/api/external-signing-task')
+          .set('Cookie', cookie)
+          .set('Origin', 'http://localhost:3000')
+          .expect(200),
+      );
+      expect(JSON.stringify(externalTask)).not.toMatch(
+        /保留已簽證據補簽|actorUserId|previousSignEndAt/,
+      );
+      const final = apiData<{
+        documentStatus: string;
+        verificationUrl: string;
+      }>(
+        await request(ctx.server)
+          .post('/api/external-signing-task/signatures')
+          .set('Cookie', cookie)
+          .set('Origin', 'http://localhost:3000')
+          .send({
+            ...signatures(externalTask),
+            signerPublicId: externalTask.signerPublicId,
+          })
+          .expect(201),
+      );
+      expect(final.documentStatus).toBe('finalizing');
+      expect(
+        apiData<SignatureVerification>(
+          await getSignatureVerification(
+            ctx.server,
+            final.verificationUrl,
+          ).expect(200),
+        ).document.status,
+      ).toBe('finalizing');
+      await request(ctx.server)
+        .post('/api/external-signing-task')
+        .set('Cookie', cookie)
+        .set('Origin', 'http://localhost:3000')
+        .expect(200);
+      await reopen(
+        new Date(firstEnd.getTime() + 60_000).toISOString(),
+        new Date(firstEnd.getTime() + 120_000).toISOString(),
+      ).expect(409);
+    } finally {
+      jest.useRealTimers();
+    }
+    await queue.pause();
+    const finalWorker = await NestFactory.createApplicationContext(
+      WorkerModule,
+      { logger: false },
+    );
+    try {
+      const owners = await db.query<Array<{ id: number }>>(
+        "SELECT id FROM esign_signers WHERE document_id=? AND status='signed'",
+        [id],
+      );
+      for (const owner of owners)
+        await finalWorker.get(DocumentFinalizationProcessor).process({
+          data: { documentId: Number(id), signerId: Number(owner.id) },
+        } as Job<{ documentId: number; signerId: number }>);
+      expect(
+        apiData<{ status: string }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}`)
+            .set('Cookie', creatorCookie)
+            .expect(200),
+        ).status,
+      ).toBe('completed');
+    } finally {
+      await finalWorker.close();
+      await queue.resume();
+    }
   });
 
   it('文件清單依角色與狀態過濾，內部 signer 歷程只含本人與文件狀態事件', async () => {
@@ -3227,6 +3378,389 @@ describe('核心電子簽 US1', () => {
       .expect('Content-Type', /application\/pdf/);
     return copy.body as Buffer;
   }
+
+  it('建立人可補簽邏輯到期文件，並發及跨輪重送只生效一次', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage([600, 800]);
+    const { id } = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .field('title', '補簽測試')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'reopen.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    );
+    documentIds.push(Number(id));
+    const [user] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM users WHERE empid=?',
+      [signerEmpid],
+    );
+    const end = new Date(Date.now() + 60_000);
+    apiData<DocumentDetail>(
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: [
+            { type: 'user', userId: String(user.id) },
+            { type: 'email', name: '外部待簽', email: 'reopen@example.test' },
+          ],
+          fields: [
+            {
+              type: 'signature',
+              page: 1,
+              xPercent: 10,
+              yPercent: 10,
+              widthPercent: 25,
+              heightPercent: 10,
+              sortOrder: 0,
+            },
+          ],
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: end.toISOString(),
+          watermark: false,
+          allowReject: false,
+        })
+        .expect(201),
+    );
+    const send = (body: object, cookie = creatorCookie) =>
+      request(ctx.server)
+        .post(`/api/esign/documents/${id}/reopenings`)
+        .set('Cookie', cookie)
+        .set('Origin', 'http://localhost:3000')
+        .send(body);
+    const input = {
+      expectedSignEndAt: end.toISOString(),
+      signEndAt: new Date(end.getTime() + 60_000).toISOString(),
+      reason: '  補簽第一輪  ',
+    };
+    const getInvitations = (cookie = creatorCookie) =>
+      request(ctx.server)
+        .get(`/api/esign/documents/${id}/reopening-invitations`)
+        .set('Cookie', cookie);
+    expect(apiData(await getInvitations().expect(200))).toEqual([]);
+    await request(ctx.server)
+      .get(`/api/esign/documents/${id}/reopening-invitations`)
+      .expect(401);
+    await getInvitations(outsiderCookie).expect(404);
+    await request(ctx.server)
+      .post(`/api/esign/documents/${id}/reopenings`)
+      .send(input)
+      .expect(401);
+    await request(ctx.server)
+      .post(`/api/esign/documents/${id}/reopenings`)
+      .set('Cookie', creatorCookie)
+      .set('Origin', 'https://untrusted.example')
+      .send(input)
+      .expect(403);
+    await send(input, outsiderCookie).expect(404);
+    expect(apiError(await send(input).expect(409)).code).toBe(
+      'ESIGN_DOCUMENT_NOT_REOPENABLE',
+    );
+    for (const invalid of [
+      { reason: ' ' },
+      { reason: '🙂'.repeat(501) },
+      { signEndAt: '2026-02-30T00:00:00Z' },
+      { signEndAt: '2026-10-19T00:00:00.0001Z' },
+      { signEndAt: '2026-10-19' },
+      { extra: true },
+    ]) {
+      expect(
+        apiError(await send({ ...input, ...invalid }).expect(400)).code,
+      ).toBe('ESIGN_REOPEN_INPUT_INVALID');
+    }
+    const [externalBefore] = await db.query<
+      Array<{ invitation_token_ciphertext: string }>
+    >(
+      "SELECT invitation_token_ciphertext FROM esign_signers WHERE document_id=? AND signer_type='email'",
+      [id],
+    );
+    const oldToken = tokenService.decrypt(
+      externalBefore.invitation_token_ciphertext,
+    );
+    const oldCookie = await openExternalSession(oldToken);
+    const snapshot = () =>
+      db.query(
+        'SELECT signing_payload_json, signing_payload_sha256, sign_start_at FROM esign_documents WHERE id=?',
+        [id],
+      );
+    const beforeSnapshot: unknown = await snapshot();
+    const notificationCounts = () =>
+      db.query(
+        'SELECT (SELECT COUNT(*) FROM esign_notification_logs) AS logs, (SELECT COUNT(*) FROM esign_notification_batches) AS batches',
+      );
+    const notificationsBefore: unknown = await notificationCounts();
+    const notifications = ctx.app.get(NotificationRepository);
+    const manager = ctx.app.get(MysqlService).getManager();
+    const [oldLog] = await db.query<Array<{ id: number }>>(
+      'SELECT l.id FROM esign_notification_logs l JOIN esign_signers s ON s.id=l.signer_id WHERE s.document_id=?',
+      [id],
+    );
+    expect(
+      (
+        await notifications.findEligibleInvitationLogIds(
+          new Date(),
+          new Date(Date.now() - 600_000),
+          manager,
+        )
+      ).map((row) => Number(row.id)),
+    ).toContain(Number(oldLog.id));
+    let finishMail!: () => void;
+    let mailStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      mailStarted = resolve;
+    });
+    const pendingMail = new Promise<void>((resolve) => {
+      finishMail = resolve;
+    });
+    const processor = new ExternalInvitationProcessor(
+      ctx.app.get(MysqlService),
+      notifications,
+      ctx.app.get(SignerRepository),
+      tokenService,
+      ctx.app.get(EsignAuditService),
+      {
+        send: async () => {
+          mailStarted();
+          await pendingMail;
+        },
+      },
+    );
+    const delivery = processor.process({
+      data: { notificationLogId: Number(oldLog.id) },
+    } as Job<{ notificationLogId: number }>);
+    await started;
+
+    jest.useFakeTimers({
+      now: end,
+      doNotFake: [
+        'hrtime',
+        'nextTick',
+        'performance',
+        'queueMicrotask',
+        'setImmediate',
+        'clearImmediate',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
+    try {
+      expect(
+        apiError(
+          await send({ ...input, signEndAt: end.toISOString() }).expect(400),
+        ).code,
+      ).toBe('ESIGN_REOPEN_INPUT_INVALID');
+      const countsBefore = await esignRowCounts(db);
+      const audit = ctx.app.get<EsignAuditService>(EsignAuditService);
+      const append = audit.append.bind(audit);
+      const fail = jest
+        .spyOn(audit, 'append')
+        .mockImplementation(async (event, manager) => {
+          if (event.eventType === 'document.reopened')
+            throw new Error('測試交易回滾');
+          return append(event, manager);
+        });
+      try {
+        await send(input).expect(500);
+      } finally {
+        fail.mockRestore();
+      }
+      expect(await esignRowCounts(db)).toEqual(countsBefore);
+      expect(await snapshot()).toEqual(beforeSnapshot);
+      const [afterFailure] = await db.query<
+        Array<{ status: string; invitation_token_ciphertext: string }>
+      >(
+        "SELECT d.status, s.invitation_token_ciphertext FROM esign_documents d JOIN esign_signers s ON s.document_id=d.id WHERE d.id=? AND s.signer_type='email'",
+        [id],
+      );
+      expect(afterFailure.status).toBe('active');
+      expect(afterFailure.invitation_token_ciphertext).toBe(
+        externalBefore.invitation_token_ciphertext,
+      );
+      const responses = await Promise.all([send(input), send(input)]);
+      expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+      expect(apiData(responses.find((r) => r.status === 201)!)).toMatchObject({
+        documentId: id,
+        status: 'active',
+        originalSignEndAt: end.toISOString(),
+        signEndAt: input.signEndAt,
+        isReopened: true,
+        pendingCount: 2,
+      });
+      expect(apiError(responses.find((r) => r.status === 409)!).code).toBe(
+        'ESIGN_REOPEN_STALE',
+      );
+      const history = apiData<Array<{ type: string; reason?: string }>>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}/history`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+      expect(
+        history.filter((e) => e.type === 'document.reopened'),
+      ).toHaveLength(1);
+      expect(history.at(-1)?.reason).toBe('補簽第一輪');
+      expect(await snapshot()).toEqual(beforeSnapshot);
+      const [retired] = await db.query<
+        Array<{
+          error_code: string;
+          processing_started_at: Date | null;
+          next_attempt_at: Date | null;
+        }>
+      >(
+        'SELECT l.error_code, l.processing_started_at, l.next_attempt_at FROM esign_notification_logs l JOIN esign_signers s ON s.id=l.signer_id WHERE s.document_id=?',
+        [id],
+      );
+      expect(retired).toEqual({
+        error_code: 'INVITATION_SUPERSEDED',
+        processing_started_at: null,
+        next_attempt_at: null,
+      });
+      finishMail();
+      await delivery;
+      expect(
+        (
+          await notifications.findEligibleInvitationLogIds(
+            new Date(),
+            new Date(Date.now() - 600_000),
+            manager,
+          )
+        ).map((row) => Number(row.id)),
+      ).not.toContain(Number(oldLog.id));
+      await processor.process({
+        data: { notificationLogId: Number(oldLog.id) },
+      } as Job<{ notificationLogId: number }>);
+
+      expect(await notificationCounts()).toEqual(notificationsBefore);
+      await requestOtp(ctx, oldToken).expect(401);
+      await request(ctx.server)
+        .post('/api/external-signing-task')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', oldCookie)
+        .expect(401);
+      const detail = apiData<{
+        signers: Array<{ type: string; invitationDelivery: unknown }>;
+      }>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+      expect(
+        detail.signers.find((s) => s.type === 'email')?.invitationDelivery,
+      ).toBeNull();
+
+      const invitations = await request(ctx.server)
+        .get(`/api/esign/documents/${id}/reopening-invitations`)
+        .set('Cookie', creatorCookie)
+        .expect(200)
+        .expect('Cache-Control', 'private, no-store')
+        .expect('Referrer-Policy', 'no-referrer');
+      expect(
+        apiData<Array<{ invitationUrl: string }>>(invitations),
+      ).toHaveLength(1);
+      expect(
+        apiData(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}/reopening-invitations`)
+            .set('Cookie', creatorCookie)
+            .expect(200),
+        ),
+      ).toEqual(apiData(invitations));
+      const signerHistory = apiData<Array<{ type: string }>>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}/history`)
+          .set('Cookie', signerCookie)
+          .expect(200),
+      );
+      expect(signerHistory.find((e) => e.type === 'document.reopened')).toEqual(
+        {
+          type: 'document.reopened',
+          occurredAt: end.toISOString(),
+          signEndAt: input.signEndAt,
+        },
+      );
+
+      const newToken = apiData<Array<{ invitationUrl: string }>>(invitations)[0]
+        .invitationUrl.split('/')
+        .at(-1)!;
+      await openExternalSession(newToken);
+      await db.query(
+        "UPDATE esign_signers SET invitation_token_ciphertext='corrupt' WHERE document_id=? AND signer_type='email'",
+        [id],
+      );
+      await getInvitations().expect(503);
+      // 第二輪將生成全新憑證，損毀的舊密文不能被 GET 修補。
+      jest.setSystemTime(new Date(input.signEndAt));
+      await send(input).expect(409);
+      expect(apiData(await getInvitations().expect(200))).toEqual([]);
+      const second = {
+        ...input,
+        expectedSignEndAt: input.signEndAt,
+        signEndAt: new Date(end.getTime() + 120_000).toISOString(),
+        reason: '🙂'.repeat(500),
+      };
+      const [secondResponse] = await Promise.all([
+        send(second),
+        ctx.app.get(EsignExpiryService).expireByDeadline(Number(id)),
+      ]);
+      expect(secondResponse.status).toBe(201);
+      expect(await snapshot()).toEqual(beforeSnapshot);
+      const secondHistory = apiData<Array<{ type: string; reason?: string }>>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}/history`)
+          .set('Cookie', creatorCookie)
+          .expect(200),
+      );
+      expect(
+        secondHistory.filter((e) => e.type === 'document.reopened'),
+      ).toHaveLength(2);
+      expect(secondHistory.at(-1)?.reason).toBe(second.reason);
+      await requestOtp(ctx, newToken).expect(401);
+      // 舊到期掃描與補簽交易不覆蓋新期限。
+      expect(
+        await ctx.app.get(EsignExpiryService).expireByDeadline(Number(id)),
+      ).toBe(false);
+      jest.setSystemTime(new Date(second.signEndAt));
+      const [stopped, racedReopen] = await Promise.all([
+        request(ctx.server)
+          .post(`/api/esign/documents/${id}/stoppages`)
+          .set('Cookie', creatorCookie)
+          .set('Origin', 'http://localhost:3000')
+          .send({ reason: '永久停止' }),
+        send({
+          ...second,
+          expectedSignEndAt: second.signEndAt,
+          signEndAt: new Date(end.getTime() + 180_000).toISOString(),
+        }),
+      ]);
+      expect(stopped.status).toBe(201);
+      expect([201, 409]).toContain(racedReopen.status);
+      await send({ ...second, expectedSignEndAt: second.signEndAt }).expect(
+        409,
+      );
+      expect(
+        apiData<{ status: string }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}`)
+            .set('Cookie', creatorCookie)
+            .expect(200),
+        ).status,
+      ).toBe('stopped');
+      expect(apiData(await getInvitations().expect(200))).toEqual([]);
+    } finally {
+      finishMail();
+      await delivery;
+      jest.useRealTimers();
+    }
+  });
 
   async function login(empid: string): Promise<string> {
     const launched = await request(ctx.server)

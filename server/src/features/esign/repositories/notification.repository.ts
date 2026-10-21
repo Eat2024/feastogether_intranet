@@ -165,6 +165,20 @@ export class NotificationRepository {
     return manager.save(log);
   }
 
+  findInvitationsByDocumentForUpdate(
+    documentId: number,
+    manager: EntityManager,
+  ) {
+    return manager
+      .createQueryBuilder(EsignNotificationLog, 'log')
+      .innerJoin('log.signer', 'signer')
+      .innerJoin('log.batch', 'batch', "batch.kind = 'invitation'")
+      .where('signer.document_id = :documentId', { documentId })
+      .orderBy('log.id', 'ASC')
+      .setLock('pessimistic_write')
+      .getMany();
+  }
+
   findEligibleInvitationLogIds(
     now: Date,
     staleBefore: Date,
@@ -189,6 +203,9 @@ export class NotificationRepository {
         )`,
         { now, staleBefore },
       )
+      .andWhere('(log.error_code IS NULL OR log.error_code <> :superseded)', {
+        superseded: 'INVITATION_SUPERSEDED',
+      })
       .andWhere('log.id > :afterId', { afterId })
       .orderBy('log.id', 'ASC')
       .limit(100)

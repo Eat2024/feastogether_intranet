@@ -26,29 +26,49 @@ describe('ExternalAccessCredentialService', () => {
   it('建立 32-byte base64url 隨機憑證，Redis 只以雜湊為 key 存簽署人 id，8 小時後失效', async () => {
     const { service, store, ttls } = setup();
 
-    const credential = await service.issue(7);
+    const credential = await service.issue(7, 'a'.repeat(64));
 
     expect(credential).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const key = `esign:external-access:${createHash('sha256').update(credential).digest('hex')}`;
-    expect([...store]).toEqual([[key, '7']]);
+    expect([...store]).toEqual([
+      [
+        key,
+        JSON.stringify({
+          signerId: 7,
+          invitationGenerationSha256: 'a'.repeat(64),
+        }),
+      ],
+    ]);
     expect(ttls.get(key)).toBe(8 * 60 * 60);
     expect(JSON.stringify([...store])).not.toContain(credential);
   });
 
   it('每次驗證成功產生不同憑證', async () => {
     const { service } = setup();
-    expect(await service.issue(7)).not.toBe(await service.issue(7));
+    expect(await service.issue(7, 'a'.repeat(64))).not.toBe(
+      await service.issue(7, 'a'.repeat(64)),
+    );
   });
 
   it('以憑證取回簽署人 id；不存在、已過期或已結束時回 null', async () => {
     const { service, store } = setup();
-    const credential = await service.issue(7);
+    const credential = await service.issue(7, 'a'.repeat(64));
 
-    await expect(service.signerId(credential)).resolves.toBe(7);
-    await expect(service.signerId('A'.repeat(43))).resolves.toBeNull();
+    await expect(service.read(credential)).resolves.toEqual({
+      signerId: 7,
+      invitationGenerationSha256: 'a'.repeat(64),
+    });
+    await expect(service.read('A'.repeat(43))).resolves.toBeNull();
 
     await service.revoke(credential);
     expect(store.size).toBe(0);
-    await expect(service.signerId(credential)).resolves.toBeNull();
+    await expect(service.read(credential)).resolves.toBeNull();
+  });
+  it('未綁定邀請世代的舊憑證不得恢復補簽資格', async () => {
+    const { service, store } = setup();
+    const credential = await service.issue(7, 'a'.repeat(64));
+    const key = [...store.keys()][0];
+    store.set(key, '7');
+    await expect(service.read(credential)).resolves.toBeNull();
   });
 });

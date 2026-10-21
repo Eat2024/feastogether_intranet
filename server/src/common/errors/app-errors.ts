@@ -165,6 +165,11 @@ export const AppErrors = {
     '文件名稱必須為 1 至 200 字',
     HttpStatus.BAD_REQUEST,
   ],
+  ESIGN_INVITATION_SERVICE_UNAVAILABLE: [
+    AppErrorCode.ESIGN_INVITATION_SERVICE_UNAVAILABLE,
+    '目前無法取得補簽邀請，請稍後再試',
+    HttpStatus.SERVICE_UNAVAILABLE,
+  ],
   ESIGN_REOPEN_INPUT_INVALID: [
     AppErrorCode.ESIGN_REOPEN_INPUT_INVALID,
     '請填寫有效的補簽期限與 1 至 500 字的補簽原因',

@@ -261,6 +261,74 @@ describe('外部催簽 API', () => {
         .expect(200),
     );
   }
+  it('補簽後舊排隊催簽略過，建立人可再主動寄送新輪次催簽', async () => {
+    const doc = await create();
+    const { batch, job } = await queueOne(doc);
+    const expiredAt = new Date(Date.now() - 1000).toISOString();
+    await db.query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
+      new Date(expiredAt),
+      doc.id,
+    ]);
+    await request(ctx.server)
+      .post(`/api/esign/documents/${doc.id}/reopenings`)
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .send({
+        expectedSignEndAt: expiredAt,
+        signEndAt: new Date(Date.now() + 172800000).toISOString(),
+        reason: '新輪次催簽',
+      })
+      .expect(201);
+    expect((await result(doc, batch)).items[0].status).toBe('pending');
+    const mailer = ctx.app.get<FakeInvitationMailSender>(
+      INVITATION_MAIL_SENDER,
+    );
+    const sent = mailer.deliveries.length;
+    await worker().process(job);
+    expect(mailer.deliveries.length).toBe(sent);
+    expect((await result(doc, batch)).items[0]).toMatchObject({
+      status: 'skipped',
+      reasonCode: 'INVITATION_GENERATION_CHANGED',
+    });
+    const next = await queueOne(doc);
+    await worker().process(next.job);
+    expect((await result(doc, next.batch)).items[0].status).toBe('delivered');
+    expect(mailer.deliveries.length).toBe(sent + 1);
+  });
+
+  it('補簽保留催簽的未知寄送結果，不覆寫為失敗或再次寄出', async () => {
+    const doc = await create();
+    const { batch, job } = await queueOne(doc);
+    await db.query(
+      "UPDATE esign_notification_logs SET result='unknown', error_code='DELIVERY_OUTCOME_UNKNOWN', completed_at=UTC_TIMESTAMP(6), reminder_token_ciphertext=NULL WHERE id=?",
+      [job.data.notificationLogId],
+    );
+    const before = await result(doc, batch);
+    const expiredAt = new Date(Date.now() - 1000).toISOString();
+    await db.query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
+      new Date(expiredAt),
+      doc.id,
+    ]);
+    await request(ctx.server)
+      .post(`/api/esign/documents/${doc.id}/reopenings`)
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .send({
+        expectedSignEndAt: expiredAt,
+        signEndAt: new Date(Date.now() + 172800000).toISOString(),
+        reason: '補簽保留通知證據',
+      })
+      .expect(201);
+    expect(await result(doc, batch)).toEqual(before);
+    const mailer = ctx.app.get<FakeInvitationMailSender>(
+      INVITATION_MAIL_SENDER,
+    );
+    const sent = mailer.deliveries.length;
+    await worker().process(job);
+    expect(mailer.deliveries.length).toBe(sent);
+    expect(await result(doc, batch)).toEqual(before);
+  });
+
   it('原邀請已寄並清除密文後仍能催簽，新舊信均需 OTP，世代變更使舊催簽失效', async () => {
     const doc = await create();
     const initial = await db.query<Array<{ id: number }>>(

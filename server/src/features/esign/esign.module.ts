@@ -2,6 +2,8 @@ import { ExportsController } from './controllers/exports.controller';
 import { EsignExportService } from './services/esign-export.service';
 import { NotificationBatchesController } from './controllers/notification-batches.controller';
 import { EsignReminderService } from './services/esign-reminder.service';
+import { EsignExpiryService } from './services/esign-expiry.service';
+import { EsignReopeningService } from './services/esign-reopening.service';
 import { RedisModule } from '#app/infrastructure/database/redis/redis.module';
 import { Module } from '@nestjs/common';
 import { FileStorageModule } from '#app/infrastructure/file-storage/file-storage.module';
@@ -44,6 +46,8 @@ const esignServices = [
   EsignExportService,
   EsignReminderService,
   EsignRejectionService,
+  EsignExpiryService,
+  EsignReopeningService,
   EsignAccessPolicyService,
   EsignAuditService,
   EsignConsentService,

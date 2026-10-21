@@ -30,6 +30,7 @@ describe('ExternalInvitationProcessor', () => {
       signerType: 'email',
       email: 'candidate@example.test',
       status: 'pending',
+      invitationTokenSha256: 'old-digest',
       invitationTokenCiphertext: 'encrypted-token' as string | null,
       invitationExpiresAt: document.signEndAt,
       document,
@@ -80,6 +81,40 @@ describe('ExternalInvitationProcessor', () => {
   const job = { data: { notificationLogId: 19 } } as Job<{
     notificationLogId: number;
   }>;
+
+  it.each(['pending', 'failed', 'processing'])(
+    '已退休的 %s 工作不能寄出新輪邀請',
+    async (result) => {
+      const { processor, log, mailer } = setup({ result });
+      log.errorCode = 'INVITATION_SUPERSEDED';
+      log.processingStartedAt = new Date(Date.now() - 600_000);
+      await processor.process(job);
+      expect(mailer.send).not.toHaveBeenCalled();
+      expect(log.errorCode).toBe('INVITATION_SUPERSEDED');
+    },
+  );
+
+  it.each([false, true])(
+    '舊寄信完成（失敗=%s）不可覆寫新輪資格',
+    async (failure) => {
+      const { processor, signer, log, mailer } = setup();
+      mailer.send.mockImplementation(async () => {
+        signer.invitationTokenSha256 = 'new-digest';
+        signer.invitationTokenCiphertext = 'new-ciphertext';
+        log.result = 'failed';
+        log.errorCode = 'INVITATION_SUPERSEDED';
+        log.processingStartedAt = null;
+        log.nextAttemptAt = null;
+        if (failure) throw new Error('傳送失敗');
+      });
+      await processor.process(job);
+      expect(signer.invitationTokenCiphertext).toBe('new-ciphertext');
+      expect(log.result).toBe('failed');
+      expect(log.errorCode).toBe('INVITATION_SUPERSEDED');
+      expect(log.processingStartedAt).toBeNull();
+      expect(log.nextAttemptAt).toBeNull();
+    },
+  );
 
   it('以 CAS claim 寄送，成功後 delivered、清密文並只追加去敏感 audit', async () => {
     const { processor, document, log, signer, mailer, audit } = setup();

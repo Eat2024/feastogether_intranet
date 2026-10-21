@@ -254,6 +254,89 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/StateConflict" }
 
+  /esign/documents/{documentId}/reopenings:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    post:
+      operationId: reopenDocument
+      summary: 建立人立即重新開放已到期文件補簽
+      description: 需要員工 session 與可信 Origin。比對目前期限防止重送；保留固定證據，只為未簽署外部簽署人輪替邀請，不新增寄信工作。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedSignEndAt, signEndAt, reason]
+              properties:
+                expectedSignEndAt: { type: string, format: date-time, description: 讀取的目前有效期限；必須帶明確時區且最多毫秒精度 }
+                signEndAt: { type: string, format: date-time, description: 嚴格晚於目前期限及鎖內現在時間；必須帶明確時區且最多毫秒精度 }
+                reason: { type: string, minLength: 1, maxLength: 500, description: trim 後 1–500 個 Unicode code points }
+      responses:
+        "201":
+          description: 補簽交易成功；不含邀請憑證
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBase"
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        additionalProperties: false
+                        required: [documentId, status, originalSignEndAt, signEndAt, isReopened, reopenedAt, pendingCount]
+                        properties:
+                          documentId: { type: string }
+                          status: { type: string, const: active }
+                          originalSignEndAt: { type: string, format: date-time }
+                          signEndAt: { type: string, format: date-time }
+                          isReopened: { type: boolean, const: true }
+                          reopenedAt: { type: string, format: date-time }
+                          pendingCount: { type: integer, minimum: 1 }
+        "400": { description: ESIGN_REOPEN_INPUT_INVALID，輸入或新期限不合法 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Origin 不被允許 }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: ESIGN_REOPEN_STALE（期限已變更）或 ESIGN_DOCUMENT_NOT_REOPENABLE（不可補簽）或 ESIGN_INTEGRITY_FAILED（固定證據損毀），前端重新讀取而不自動重送 }
+
+  /esign/documents/{documentId}/reopening-invitations:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    get:
+      operationId: getReopeningInvitations
+      summary: 建立人主動取得有效補簽外部邀請
+      description: 唯讀且可重讀；只回目前 active 補簽輪的 pending email signer。尚未補簽或已結束回空陣列。不得將此回應放入一般詳情、日誌或 analytics。
+      responses:
+        "200":
+          description: 目前有效邀請，沒有符合者為空陣列
+          headers:
+            Cache-Control: { schema: { type: string, const: "private, no-store" } }
+            Referrer-Policy: { schema: { type: string, const: "no-referrer" } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessBase"
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: false
+                          required: [signerPublicId, invitationUrl, expiresAt]
+                          properties:
+                            signerPublicId: { type: string, format: uuid }
+                            invitationUrl: { type: string, format: uri }
+                            expiresAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { description: 有效邀請密文缺漏、損毀或 digest 不符；不重建憑證 }
+
   /esign/documents/{documentId}/stoppages:
     parameters:
       - $ref: "#/components/parameters/DocumentId"
@@ -764,7 +847,7 @@ components:
         status: { type: string, enum: [pending, signed] }
         signedAt: { type: [string, "null"], format: date-time }
         completion: { $ref: "#/components/schemas/PersonalCompletion" }
-        invitationDelivery: { type: [string, "null"], enum: [pending, delivered, failed, null] }
+        invitationDelivery: { type: [string, "null"], enum: [pending, delivered, failed, null], description: 補簽輪為 null，不沿用初次邀請投遞結果 }
     FieldView:
       type: object
       additionalProperties: false
@@ -914,5 +997,8 @@ components:
                 properties:
                   type: { type: string }
                   occurredAt: { type: string, format: date-time }
-                  actor: { type: [string, "null"], description: 裁切後的「建立人／本人／系統」類別 }
-                  reason: { type: [string, "null"], description: 只對 creator 或符合規格的歷程關係揭露 }
+                  actorUserId: { type: string, description: 補簽事件僅建立人可見 }
+                  previousSignEndAt: { type: string, format: date-time, description: 補簽事件僅建立人可見 }
+                  signEndAt: { type: string, format: date-time, description: 補簽事件的新有效期限 }
+                  actor: { type: [string, "null"], description: 裁切後的「建立人／本人／系統」類別；簽署人所見補簽事件省略此欄位 }
+                  reason: { type: [string, "null"], description: 補簽原因只對 creator 揭露；簽署人補簽事件只含 type／occurredAt／signEndAt }

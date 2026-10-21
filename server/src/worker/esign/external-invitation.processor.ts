@@ -23,6 +23,18 @@ interface InvitationJobData {
   notificationLogId: number;
 }
 
+interface ClaimedInvitation {
+  signerId: number;
+  signerPublicId: string;
+  documentId: number;
+  recipientEmail: string;
+  documentTitle: string;
+  creatorName: string;
+  signEndAt: Date;
+  token: string;
+  claimedAt: Date;
+}
+
 @Processor(ESIGN_EXTERNAL_INVITATION_QUEUE)
 export class ExternalInvitationProcessor extends WorkerHost {
   constructor(
@@ -42,8 +54,25 @@ export class ExternalInvitationProcessor extends WorkerHost {
     if (job.opts?.deduplication) await job.removeDeduplicationKey();
     const id = job.data?.notificationLogId;
     if (!Number.isSafeInteger(id) || id < 1) return;
+    const claim = await this.claimInvitation(id);
+    if (!claim) return;
+    if ('reminder' in claim) return this.processReminder(id);
+
+    try {
+      await this.sendInvitation(claim);
+    } catch {
+      await this.finishFailed(id, claim.claimedAt);
+      return;
+    }
+
+    await this.finishDelivered(id, claim);
+  }
+
+  private async claimInvitation(
+    id: number,
+  ): Promise<ClaimedInvitation | { reminder: true } | null> {
     const now = new Date();
-    const claim = await this.mysql.transaction(async (manager) => {
+    return this.mysql.transaction(async (manager) => {
       const log = await this.notifications.findInvitationContextForUpdate(
         id,
         manager,
@@ -55,6 +84,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
         log.processingStartedAt.getTime() < now.getTime() - 5 * 60_000;
       const eligible =
         log &&
+        log.errorCode !== 'INVITATION_SUPERSEDED' &&
         ((['pending', 'failed'].includes(log.result) &&
           (!log.nextAttemptAt || log.nextAttemptAt <= now)) ||
           stale);
@@ -95,22 +125,22 @@ export class ExternalInvitationProcessor extends WorkerHost {
         claimedAt: now,
       };
     });
-    if (!claim) return;
-    if ('reminder' in claim) return this.processReminder(id);
+  }
 
-    try {
-      await this.mailer.send({
-        recipientEmail: claim.recipientEmail,
-        documentTitle: claim.documentTitle,
-        creatorName: claim.creatorName,
-        signEndAt: claim.signEndAt,
-        invitationToken: claim.token,
-      });
-    } catch {
-      await this.finishFailed(id, claim.claimedAt);
-      return;
-    }
+  private async sendInvitation(claim: ClaimedInvitation): Promise<void> {
+    await this.mailer.send({
+      recipientEmail: claim.recipientEmail,
+      documentTitle: claim.documentTitle,
+      creatorName: claim.creatorName,
+      signEndAt: claim.signEndAt,
+      invitationToken: claim.token,
+    });
+  }
 
+  private async finishDelivered(
+    id: number,
+    claim: ClaimedInvitation,
+  ): Promise<void> {
     await this.mysql.transaction(async (manager) => {
       const document = await this.notifications.lockDocument(
         claim.documentId,

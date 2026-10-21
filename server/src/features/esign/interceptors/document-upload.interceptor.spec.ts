@@ -1,3 +1,4 @@
+import { EsignReopeningService } from '../services/esign-reopening.service';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyCookie from '@fastify/cookie';
 import { Reflector } from '@nestjs/core';
@@ -48,6 +49,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
       providers: [
         { provide: EsignDraftService, useValue: drafts },
         { provide: EsignDocumentQueryService, useValue: queries },
+        { provide: EsignReopeningService, useValue: {} },
         {
           provide: ConfigService,
           useValue: new ConfigService({
@@ -263,7 +265,10 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
     expect(drafts.create).not.toHaveBeenCalled();
   });
   it('缺少登入 cookie 時先回 401，不進入 DTO 或業務寫入', async () => {
-    const response = await app.inject({ method: 'POST', url: '/api/esign/documents' });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/esign/documents',
+    });
     expect(response.statusCode).toBe(401);
     expect(verifySessionToken).not.toHaveBeenCalled();
     expect(drafts.create).not.toHaveBeenCalled();

@@ -15,7 +15,7 @@ import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
-import { apiData } from './api-response.helper';
+import { apiData, apiError } from './api-response.helper';
 import {
   closeSecurityE2eApp,
   createSecurityE2eApp,
@@ -43,7 +43,7 @@ interface Batch {
     reasonCode: string | null;
   }[];
 }
-describe('外部催簽 API', () => {
+describe('內外部催簽 API', () => {
   let ctx: SecurityE2eContext;
   let db: DataSource;
   let cookie: string;
@@ -460,34 +460,43 @@ describe('外部催簽 API', () => {
     });
     expect(mailer.deliveries.slice(before)).toEqual([]);
   });
-  it('並發申請只受理一批；跨文件識別整批拒絕，未登入與缺 Origin 不可催簽', async () => {
-    const doc = await create();
-    const other = await create();
-    const body = {
-      requestId: randomUUID(),
-      selection: 'selected',
-      signerPublicIds: [doc.signers[0].publicId],
-    };
-    await post(doc.id, {
-      ...body,
-      signerPublicIds: [doc.signers[0].publicId, other.signers[0].publicId],
-    }).expect(404);
-    const responses = await Promise.all([
-      post(doc.id, body),
-      post(doc.id, { ...body, requestId: randomUUID() }),
-    ]);
-    expect(responses.map((r) => r.status).sort()).toEqual([202, 409]);
-    await request(ctx.server)
-      .post(`/api/esign/documents/${doc.id}/notification-batches`)
-      .set('Origin', origin)
-      .send(body)
-      .expect(401);
-    await request(ctx.server)
-      .post(`/api/esign/documents/${doc.id}/notification-batches`)
-      .set('Cookie', cookie)
-      .send(body)
-      .expect(403);
-  });
+  it.each(['email', 'user'])(
+    '%s 並發申請只受理一批；跨文件識別整批拒絕，未登入與缺 Origin 不可催簽',
+    async (type) => {
+      const [user] = await db.query<Array<{ id: number }>>(
+        'SELECT id FROM users WHERE empid=?',
+        ['E2E00905'],
+      );
+      const doc = await create(
+        type === 'user' ? [{ type, userId: String(user.id) }] : undefined,
+      );
+      const other = await create();
+      const body = {
+        requestId: randomUUID(),
+        selection: 'selected',
+        signerPublicIds: [doc.signers[0].publicId],
+      };
+      await post(doc.id, {
+        ...body,
+        signerPublicIds: [doc.signers[0].publicId, other.signers[0].publicId],
+      }).expect(404);
+      const responses = await Promise.all([
+        post(doc.id, body),
+        post(doc.id, { ...body, requestId: randomUUID() }),
+      ]);
+      expect(responses.map((r) => r.status).sort()).toEqual([202, 409]);
+      await request(ctx.server)
+        .post(`/api/esign/documents/${doc.id}/notification-batches`)
+        .set('Origin', origin)
+        .send(body)
+        .expect(401);
+      await request(ctx.server)
+        .post(`/api/esign/documents/${doc.id}/notification-batches`)
+        .set('Cookie', cookie)
+        .send(body)
+        .expect(403);
+    },
+  );
 
   it('all_pending 包含跨頁全部外部名單；批次/明細分頁、類型篩選與敏感資料裁切', async () => {
     const doc = await create(
@@ -556,7 +565,88 @@ describe('外部催簽 API', () => {
     }).expect(409);
     expect((await read(base)).items).toHaveLength(2);
   });
-  it('selected 去重，混合內部保留未支援原因；跨批併發僅寄一次且可追查初邀/催簽摘要', async () => {
+  it('all_pending 包含內部且共用信箱仍各自受理', async () => {
+    const [user] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM users WHERE empid=?',
+      ['E2E00905'],
+    );
+    const doc = await create([
+      { type: 'user', userId: String(user.id) },
+      { type: 'email', name: '同信箱外部', email: 'e2e00905@example.test' },
+    ]);
+    const body = { requestId: randomUUID(), selection: 'all_pending' };
+    const batch = apiData<Batch>(await post(doc.id, body).expect(202));
+    expect(batch).toMatchObject({
+      selectedCount: 2,
+      queuedCount: 2,
+      notSentCount: 0,
+    });
+    expect(batch.items.map((item) => item.signerPublicId).sort()).toEqual(
+      doc.signers.map((item) => item.publicId).sort(),
+    );
+    expect(apiData<Batch>(await post(doc.id, body).expect(202))).toEqual(batch);
+    const rows = await db.query<Array<{ id: number }>>(
+      'SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.public_id=?',
+      [batch.batchId],
+    );
+    const mailer = ctx.app.get<FakeInvitationMailSender>(
+      INVITATION_MAIL_SENDER,
+    );
+    const before = mailer.deliveries.length;
+    for (const row of rows)
+      await worker().process({ data: { notificationLogId: row.id } } as Job<{
+        notificationLogId: number;
+      }>);
+    const sent = mailer.deliveries.slice(before);
+    expect(sent.map((mail) => mail.recipientEmail)).toEqual([
+      'e2e00905@example.test',
+      'e2e00905@example.test',
+    ]);
+    expect(new Set(sent.map((mail) => mail.invitationToken)).size).toBe(2);
+    const limited = await post(doc.id, {
+      requestId: randomUUID(),
+      selection: 'all_pending',
+    }).expect(409);
+    expect(apiError(limited).details).toEqual({
+      items: doc.signers.map((signer) => ({
+        signerPublicId: signer.publicId,
+        reasonCode: 'REMINDER_DAILY_LIMIT',
+      })),
+    });
+  });
+  it('歷史內部缺固定信箱或邀請時回逐人原因，不查 HR 補登或寄出', async () => {
+    const [user] = await db.query<Array<{ id: number }>>(
+      'SELECT id FROM users WHERE empid=?',
+      ['E2E00905'],
+    );
+    const doc = await create([{ type: 'user', userId: String(user.id) }]);
+    // 合成舊指派：缺少既有固定地址，不修改不可變快照。
+    await db.query('UPDATE esign_signers SET email=NULL WHERE document_id=?', [
+      doc.id,
+    ]);
+    const unavailable = await post(doc.id, {
+      requestId: randomUUID(),
+      selection: 'all_pending',
+    }).expect(409);
+    expect(apiError(unavailable).details).toEqual({
+      items: [
+        {
+          signerPublicId: doc.signers[0].publicId,
+          reasonCode: 'RECIPIENT_UNAVAILABLE',
+        },
+      ],
+    });
+    const batches = apiData<{ items: unknown[] }>(
+      await request(ctx.server)
+        .get(
+          `/api/esign/documents/${doc.id}/notification-batches?kind=reminder`,
+        )
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+    expect(batches.items).toEqual([]);
+  });
+  it('selected 去重，混合內部均受理；跨批併發僅寄一次且可追查初邀/催簽摘要', async () => {
     const [user] = await db.query<Array<{ id: number }>>(
       'SELECT id FROM users WHERE empid=?',
       ['E2E00905'],
@@ -579,12 +669,10 @@ describe('外部催簽 API', () => {
     );
     expect(batch).toMatchObject({
       selectedCount: 3,
-      queuedCount: 2,
-      notSentCount: 1,
+      queuedCount: 3,
+      notSentCount: 0,
     });
-    expect(batch.items.filter((item) => item.status === 'skipped')).toEqual([
-      expect.objectContaining({ reasonCode: 'INTERNAL_REMINDER_UNSUPPORTED' }),
-    ]);
+    expect(batch.items.filter((item) => item.status === 'skipped')).toEqual([]);
     const rows = await db.query<Array<{ id: number }>>(
       'SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? ORDER BY l.id',
       [doc.id],
@@ -597,7 +685,7 @@ describe('外部催簽 API', () => {
       await worker().process({ data: { notificationLogId: row.id } } as Job<{
         notificationLogId: number;
       }>);
-    expect(mailer.deliveries.slice(before)).toHaveLength(5);
+    expect(mailer.deliveries.slice(before)).toHaveLength(6);
     const detail = apiData<{
       signers: Array<{
         type: string;
@@ -612,7 +700,7 @@ describe('外部催簽 API', () => {
         .set('Cookie', cookie)
         .expect(200),
     );
-    for (const signer of detail.signers.filter((s) => s.type === 'email'))
+    for (const signer of detail.signers)
       expect(signer).toMatchObject({
         latestInvitation: { status: 'delivered' },
         latestReminder: { status: 'delivered' },
@@ -628,7 +716,7 @@ describe('外部催簽 API', () => {
       }),
     ]);
     expect(responses.map((r) => r.status)).toEqual([409, 409]);
-    expect(mailer.deliveries.slice(before)).toHaveLength(5);
+    expect(mailer.deliveries.slice(before)).toHaveLength(6);
   });
   it('明確失敗仍待重試時不能另建批次，原明細成功後只寄出一次', async () => {
     const doc = await create();

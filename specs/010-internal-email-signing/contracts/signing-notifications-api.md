@@ -67,6 +67,8 @@ fieldId 為正整數字串，pngDataUrl 沿用 image/png 前綴、400,000 字元
 
 ## 人工催簽（既有契約擴充對象）
 
+實作狀態（Ticket 06）：內外部混合催簽已實作並以 HTTP／worker 測試驗證；本段不代表其他段落已完成。資格檢查共用於建立人摘要、受理與 worker 寄出前，必須具有效固定信箱及邀請世代；不呼叫 HR 補登舊指派。
+
 `POST /api/esign/documents/:documentId/notification-batches`，建立人 session＋OriginGuard，202。
 
 ```json

@@ -24,8 +24,9 @@ import { EsignReminderService } from '../services/esign-reminder.service';
 export class NotificationBatchesController {
   constructor(private readonly reminders: EsignReminderService) {}
   @ApiOperation({
-    summary: '建立外部催簽批次',
-    description: '僅建立人；先持久保存再背景寄送，回傳受理狀態而非已送達。',
+    summary: '建立內外部催簽批次',
+    description:
+      '僅建立人；指定或全部待簽人員均使用發起時固定信箱，同信箱逐人寄送及計算額度。先持久保存再背景寄送，回傳受理狀態而非已送達。',
   })
   @Post()
   @HttpCode(202)

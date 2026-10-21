@@ -23,7 +23,6 @@ import {
   EsignEmployeeEmailService,
   type EmployeeEmailResult,
 } from './esign-employee-email.service';
-import { EsignDocumentValidationService } from './esign-document-validation.service';
 
 export interface InitiateDocumentInput {
   signers: SignerInputDto[];
@@ -59,7 +58,6 @@ export class EsignInitiationService {
     private readonly signerService: EsignSignerService,
     private readonly fieldService: EsignFieldService,
     private readonly employeeEmails: EsignEmployeeEmailService,
-    private readonly validation: EsignDocumentValidationService,
   ) {}
 
   async initiate(input: InitiateDocumentInput) {
@@ -173,8 +171,7 @@ export class EsignInitiationService {
       input.documentId,
       this.mysql.getManager(),
     );
-    this.access.checkEsignCreator(document, input.creatorUserId);
-    this.validation.checkStillDraft(document);
+    this.access.checkEsignDraftCreator(document, input.creatorUserId);
     const userIds = input.signers
       .filter((signer) => signer.type === 'user')
       .map((signer) => signer.userId!);

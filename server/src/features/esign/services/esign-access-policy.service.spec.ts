@@ -18,6 +18,33 @@ describe('EsignAccessPolicyService', () => {
       signEndAt: new Date('2026-10-14T00:00:00.000Z'),
     });
 
+  describe('checkEsignDraftCreator', () => {
+    it('本人草稿可通過，且不需要查詢或鎖定文件', () => {
+      const doc = Object.assign(document(), { status: 'draft' });
+      expect(() => policy.checkEsignDraftCreator(doc, 10)).not.toThrow();
+    });
+
+    it.each([
+      { name: '不存在', found: () => null, userId: 10 },
+      { name: '非建立人且非草稿', found: document, userId: 11 },
+      {
+        name: '已刪除',
+        found: () => Object.assign(document(), { deletedAt: now }),
+        userId: 10,
+      },
+    ])('$name 優先回 404，不洩漏文件狀態', ({ found, userId }) => {
+      expect(() => policy.checkEsignDraftCreator(found(), userId)).toThrow(
+        '找不到電子簽資源',
+      );
+    });
+
+    it('本人的非草稿文件回 409', () => {
+      expect(() => policy.checkEsignDraftCreator(document(), 10)).toThrow(
+        '文件已發起，無法修改草稿',
+      );
+    });
+  });
+
   describe('checkAndLockDraftDoc', () => {
     const manager = {} as never;
     const setup = (found: EsignDocument | null) => {

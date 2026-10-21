@@ -72,7 +72,7 @@ describe('EsignInitiationService', () => {
     };
     const access = {
       checkAndLockDraftDoc: jest.fn(async () => document),
-      checkEsignCreator: jest.fn(),
+      checkEsignDraftCreator: jest.fn(),
     };
     const pdf = {
       validatePersistedPdf: jest.fn(async () => ({
@@ -126,7 +126,6 @@ describe('EsignInitiationService', () => {
           { userId: 8, empid: 'E008', email: 'employee@example.test' },
         ]),
       } as never,
-      { checkStillDraft: jest.fn() } as never,
     );
     return {
       service,

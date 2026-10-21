@@ -6,7 +6,6 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
 import { DocumentRepository } from '../repositories/document.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EmployeeEmailCheckResultDto } from '../dto/employee-directory-response.dto';
 
 export interface EmployeeEmailIdentity {
@@ -25,7 +24,6 @@ export class EsignEmployeeEmailService {
     private readonly users: UserRepository,
     private readonly documents: DocumentRepository,
     private readonly access: EsignAccessPolicyService,
-    private readonly validation: EsignDocumentValidationService,
     private readonly hr: FeastogetherHrService,
   ) {}
 
@@ -38,8 +36,7 @@ export class EsignEmployeeEmailService {
       documentId,
       this.mysql.getManager(),
     );
-    this.access.checkEsignCreator(document, creatorUserId);
-    this.validation.checkStillDraft(document);
+    this.access.checkEsignDraftCreator(document, creatorUserId);
     const identities = await this.resolveUsers(userIds);
     const results = await this.lookupEmails(identities);
     return {

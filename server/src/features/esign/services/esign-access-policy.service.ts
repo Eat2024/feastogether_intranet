@@ -44,9 +44,17 @@ export class EsignAccessPolicyService {
       documentId,
       manager,
     );
+    this.checkEsignDraftCreator(document, userId);
+    return document;
+  }
+
+  /** 驗證已讀取的文件屬於建立人且仍為草稿，不查詢或取得鎖定。 */
+  checkEsignDraftCreator(
+    document: EsignDocument | null,
+    userId: number,
+  ): asserts document is EsignDocument {
     this.checkEsignCreator(document, userId);
     this.documents.checkStillDraft(document);
-    return document;
   }
 
   checkEsignCreator(

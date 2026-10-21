@@ -44,7 +44,6 @@ function fixture() {
     new UserRepository(),
     documents,
     new EsignAccessPolicyService(validation, documents),
-    validation,
     new FeastogetherHrService(client),
   );
   return { service, manager, http };

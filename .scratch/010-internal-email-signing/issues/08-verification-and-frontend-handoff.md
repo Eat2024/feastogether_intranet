@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 簽署後透過 OTP 取得個人副本；06 內外部簽署人混合催簽；07 重新開放簽署並寄送新邀請。
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 010 — SC-001～008、全部 FR 的交付核對，尤其 FR-015～018。對應 T018 的容量驗證、T039～T044，並完成 T034 延後至真實副本流程的回歸。T001～T017、T019～T038 已分配至 01～07；T004、T009、T018、T034 的分工依各票註記，未完成完整任務前不可將原 tasks 整項勾選。
 
@@ -31,3 +31,10 @@
 - 最終命令（皆帶 pnpm --config.verifyDepsBeforeRun=false -C server）：test --runInBand 104 suites/941；build通過；lint:check 0errors/205warnings（基準202、前票單增加3，本票修改檔無新warning）；test:schema 2/8；test:e2e 23/207；test:e2e:security 9/45；容量單跑1/7，全部通過。git diff --check通過。
 - 44項tasks按實際路徑／測試逐項對照，spec/plan/research/data-model/quickstart與三份契約更新；品質checklist16個標記未變。前端未改，沒有新增env/table/dependency/cron/fallback，沒有部署或真實HR/SMTP；代理期限、冷匯入速度及完整登出限制明列。
 - commit及merge紀錄由整合者追加；此紀錄不是部署完成宣告。
+
+## 整合驗收紀錄（2026-10-21）
+
+- 實作 commit `844d61d` 以 `--no-ff` 合入 `feat/010-internal-email-signing`，merge commit `39ff98b`，無衝突；01～07 均已整合且 resolved。
+- 合併者核對 44 項 tasks 與實際測試／路徑證據對照、三份契約及前端交接界線；容量記錄明確區分本機已建帳、合成來源、非峰值記憶體及未驗證代理時限，不把容量成功視為真實 HR／SMTP 或畫面驗收。
+- 整合分支 `pnpm --config.verifyDepsBeforeRun=false -C server test --runInBand 'http-access-log.interceptor.spec.ts|feastogether.client.spec.ts'`：2 suites／31 tests 通過；`test:e2e --testPathPatterns='internal-email-capacity|internal-email-copy'`：2 suites／15 tests 通過，包含真實 6,000 人發起／入列與補簽後原已簽副本不變。容量 fixture 清理僅限本次擁有資料及 jobs，共用 DB／Redis 完成後釋放。
+- 同一程式碼樹完整 unit 104／941、e2e 23／207、security 9／45、schema 2／8、build 與 lint 零 errors 證據如上，`git diff --check` 通過。十項驗收完成，改 resolved；主協調者仍須執行獨立雙軸 code-review，尚未清理 worktrees 或部署。

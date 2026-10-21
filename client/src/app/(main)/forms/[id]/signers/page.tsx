@@ -33,7 +33,8 @@ export default async function FormSignersPage({
       <>
         <BackToList />
         <StepFlow steps={stepsOf('upload')} activeIndex={1} />
-        <DocumentSignersEditor documentId={id} org={getOrgTree()} />
+        {/* 組織架構改由瀏覽器端向後端取得（正式員工資料） */}
+        <DocumentSignersEditor documentId={id} />
       </>
     );
   }

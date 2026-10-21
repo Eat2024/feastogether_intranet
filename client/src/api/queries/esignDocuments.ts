@@ -7,6 +7,7 @@ import {
   getNotificationBatch,
   getNotificationBatches,
   getReopeningInvitations,
+  getSignerOrgChart,
 } from '@/api/requests';
 import type { GetDocumentsParams, NotificationListParams, NotificationPageParams } from '@/api/types';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
@@ -107,6 +108,21 @@ export function useGetReopeningInvitationsQuery<
     queryFn: () => getReopeningInvitations(id!),
     enabled: id !== null,
     ...queryOptions.useGetReopeningInvitationsQuery,
+    ...options,
+  });
+}
+
+/** 選擇簽署人用的正式員工組織架構（原始格式，畫面使用前以 toOrgTree 轉換） */
+export function useGetSignerOrgChartQuery<
+  TData = Awaited<ReturnType<typeof getSignerOrgChart>>,
+  TError = AxiosError,
+>(
+  options?: Omit<UseQueryOptions<Awaited<ReturnType<typeof getSignerOrgChart>>, TError, TData>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: [queryKeys.ESIGN_SIGNER_ORG_CHART],
+    queryFn: getSignerOrgChart,
+    ...queryOptions.useGetSignerOrgChartQuery,
     ...options,
   });
 }

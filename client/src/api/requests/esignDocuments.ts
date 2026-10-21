@@ -9,7 +9,9 @@ import type {
   EsignHistoryItem,
   EsignNotificationBatch,
   EsignNotificationBatchList,
+  EsignOrgDepartment,
   EsignSignerCandidate,
+  EsignSignerResolution,
   GetDocumentsParams,
   InitiateDocumentBody,
   NotificationListParams,
@@ -160,11 +162,34 @@ export const downloadSignerCompletedFile = async ({
 
 /**
  * @name 查詢內部簽署人候選
- * @description 以關鍵字或完整八碼員編查詢；本地查無完整員編時，後端會向饗賓人 API 查詢並建立帳號
+ * @description 依關鍵字查詢本機已有帳號的員工，不向饗賓人 API 查詢、不建立帳號；
+ * 從組織架構選取的同仁請改用 resolveSignerCandidates
  */
 export const getSignerCandidates = async (q: string): Promise<EsignSignerCandidate[]> => {
   const res = await api<EsignSignerCandidate[]>({ method: 'GET', url: endpoints.ESIGN_SIGNER_CANDIDATES, params: { q } });
   return res.data;
+};
+
+/**
+ * @name 查詢正式員工組織架構
+ * @description 選擇簽署人用；後端快取 2 小時，來源暫時無法使用時回 502／503。含員工個資，勿寫入網址或紀錄
+ */
+export const getSignerOrgChart = async (): Promise<EsignOrgDepartment[]> => {
+  const res = await api<EsignOrgDepartment[]>({ method: 'GET', url: endpoints.ESIGN_SIGNER_ORG_CHART });
+  return res.data;
+};
+
+/**
+ * @name 解析選取的員工為簽署人
+ * @description 以完整員編（一次最多 100 個）換成後端 userId；本機沒有帳號時後端會向饗賓人 API 查詢並建立帳號
+ */
+export const resolveSignerCandidates = async (employeeNos: string[]): Promise<EsignSignerResolution[]> => {
+  const res = await api<{ items: EsignSignerResolution[] }>({
+    method: 'POST',
+    url: endpoints.ESIGN_SIGNER_RESOLUTIONS,
+    data: { employeeNos },
+  });
+  return res.data.items;
 };
 
 /** 建立人讀取原始 PDF 的網址（pdf.js 直接讀取，同源請求會帶上 session cookie） */

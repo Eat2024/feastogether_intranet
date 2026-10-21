@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 內部員工選取與帳號解析；02 員工 Email 批次查詢與發起前檢查。
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 010 — US1、US2 的邀請部分、FR-004～006、FR-014～017。對應 T003、T005、T006、T015～T017、T025、T026，以及 T009 的發起／交易測試與 T004 的發起錯誤；在 01／02 的基礎上完成 T001、T002 尚缺的 migration、mailer fixture。worker 世代基本保護由本票完成，補簽競態深化由 07 負責。
 
@@ -29,3 +29,11 @@
 - 驗證指令均由 worktree 使用 `pnpm --config.verifyDepsBeforeRun=false -C server`：`test --runInBand`（104 suites／896 tests）、`test:e2e`（20 suites／177 tests）、`test:e2e:security`（7 suites／34 tests）、`test:schema`（2 suites／8 tests）、`build` 通過；`lint:check` 0 errors（既有及 fixture warnings 保留）。
 - 歷史邊界：不回填舊通知。pre-010 初始邀請 log 若沒有 invitationGenerationSha256，無法證明與目前 token 同世代，worker／補償掃描 fail closed 不寄；既有已寄外部連結及 OTP 不因這項檢查失效。此限制不得以 null fallback 繞過，後續交付文件應明確列出。原始通知稽核資料保留。
 - 尚未實作內部 OTP 授權（04）、副本（05）、混合催簽（06）或補簽（07）；沒有修改 client、新增 table/dependency/env、連真實 HR／SMTP 或部署。驗收及合併紀錄由 merger 追加，再改 resolved。
+
+## 整合驗收紀錄（2026-10-21）
+
+- 實作 commit `d54623a` 以 `--no-ff` 合入 `feat/010-internal-email-signing`；merge commit `7fc8e54`，無衝突。
+- 合併者核對發起前無文件長交易、交易內身分重驗、固定地址後生成快照、通知世代及 worker claim／finish／fail 檢查；migration down 在任何 DDL 前拒絕不相容資料，未回填歷史記錄。
+- 整合分支重跑 `pnpm --config.verifyDepsBeforeRun=false -C server test:e2e --testRegex 'internal-email-initiation.e2e-spec.ts$'`：1 suite／12 tests 通過；接續 `pnpm --config.verifyDepsBeforeRun=false -C server test:schema`：2 suites／8 tests 通過。MySQL／Redis 序列使用，完成後釋放。
+- 同一程式碼樹完整 unit 104／896、e2e 20／177、security 7／34、build、lint 零 errors 的實作驗證證據保留如上；`git diff --check` 通過。本票八項驗收均完成，改 resolved，允許 04 與 06 依票單開始。
+- 保留已記錄限制：歷史無世代 initial invitation log 不自動補登或補寄；不代表內部 OTP、混合催簽、補簽或前端畫面已交付。

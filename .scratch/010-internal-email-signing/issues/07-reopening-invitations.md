@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 內部員工透過 Email＋OTP 簽署或拒簽。
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 010 — US4 的補簽部分、FR-005、FR-014～017。對應 T034、T036～T038，以及 T004 的 ESIGN_REOPEN_RECIPIENT_UNAVAILABLE。T034 的已簽原邀請實際副本下載與 T039 跨流程驗收由 08 在 05 完成後執行；本票先驗世代、證據與存取政策不變。
 
@@ -28,3 +28,10 @@
 - `pnpm --config.verifyDepsBeforeRun=false -C server test:e2e --testPathPatterns='internal-email-initiation|internal-email-copy|core-esign-flow.e2e-spec|esign-reminders'`：4 suites、71 tests 全過（21＋7＋25＋18），僅隔離 MySQL／Redis、合成 HR／郵件。
 - `pnpm --config.verifyDepsBeforeRun=false -C server lint:check`：0 errors、205 既有 warnings；server build 與 `git diff --check` 通過。
 - 同步補簽 Swagger／契約；不修改 client、migration、環境變數、依賴、排程，不使用真實 HR／郵件，不部署。全規格驗收仍由 08 統一執行。
+
+## 整合驗收紀錄（2026-10-21）
+
+- 實作 `a1270cc`、同步整合 `cf53d76` 及證據 `f890885` 以 `--no-ff` 合入功能整合分支，merge commit `f22af2b`，無衝突；保留 05 副本及 06 催簽驗收。
+- 合併者核對原地址／邀請前置、交易內通知與 pending 世代輪替、提交後入列、已簽／拒不輪替、作廢通知不再 claim／覆寫，以及到期僅保留不可授權的 digest／期限、清除密文；無歷史回填或免 OTP 例外。
+- 整合分支重新執行 `pnpm --config.verifyDepsBeforeRun=false -C server test:e2e --testPathPatterns='internal-email-initiation|internal-email-copy|core-esign-flow.e2e-spec|esign-reminders'`：4 suites／71 tests 通過（21＋7＋25＋18），`git diff --check` 通過；測試 DB／Redis 序列使用後釋放。
+- 同一程式碼樹 unit 104／933、build、lint 零 errors 證據如上；七項驗收完成，改 resolved。05、06、07 前置皆完成，可開始 08 全規格驗收與前端文件交接。

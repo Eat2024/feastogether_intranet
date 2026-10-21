@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 010 — US1、FR-002～004、FR-015～016。對應 T007、T010、T013、T014、T009 的預覽／批次核對測試，以及 T004 的信箱來源錯誤。T001、T002 的必要環境檢核及合成 HR fixture 在本票獨立完成或沿用已整合成果，不等待 01，也不重建測試框架。
 
@@ -28,3 +28,10 @@
 - 服務容量測試涵蓋 1、100、101、6,000 人，逐人結果完整，每批最多 100、同次最多 4 批；來源失敗停止派新批並等待已派請求完成。不新增重試、快取、queue、設定、依賴或 migration。
 - HTTP 驗證真實 session／OriginGuard／DB／Controller／Service，只替換外部 HTTP 傳輸；草稿建立人、非建立人、非草稿、無效帳號、格式錯誤、no-store、遮罩及重查不快取均通過。測試使用合成資料，未呼叫真實 HR、未寄信。
 - 與後續發起整合的公開服務：`resolveUsers(userIds, manager?)` 回傳 userId／完整 empid；`lookupEmails(identities)` 回傳同序 email 或 null。交易內重新核對與固定收件地址屬 Ticket 03；本票仍為 claimed，待 merger 驗證及合併後結案。
+
+## 整合驗收紀錄（2026-10-21）
+
+- 實作 `3b79d93`、整合同步 `7978635` 及證據 `0a83ca1`，以 `--no-ff` 合入 `feat/010-internal-email-signing`，merge commit：`5b65d50`，無衝突。
+- 合併者核對來源 envelope／parser、兩處敏感 body 遮蔽、既有 API Key 與 10 秒 timeout、四批併發停止與收束，以及文件權限先於來源查詢；確認未新增 Email cache、資料表、設定或前端修改。
+- 整合分支重新執行 `pnpm --config.verifyDepsBeforeRun=false -C server test:e2e --testRegex '(esign-candidate-resolution|org-chart|esign-employee-email-checks).e2e-spec.ts$'`：3 suites／38 tests 通過，包含 Ticket 01 回歸。測試 DB／Redis 序列使用並於完成後釋放。
+- 同一程式碼樹的 unit 104 suites／896 tests、build 及 lint:check（0 errors／197 既有 warnings）證據如上；`git diff --check` 通過。上述七項驗收均完成，改為 resolved，發起時固定地址與交易重驗仍由 Ticket 03 處理。

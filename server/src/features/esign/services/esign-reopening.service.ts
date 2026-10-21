@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { isEmail } from 'class-validator';
 import type { EntityManager } from 'typeorm';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import type { EsignSigner } from '../entities/esign-signer.entity';
@@ -15,6 +16,7 @@ import { EsignDocumentValidationService } from './esign-document-validation.serv
 import { EsignExpiryService } from './esign-expiry.service';
 import { EsignTokenService } from './esign-token.service';
 import { canonicalSha256, EsignAuditService } from './esign-audit.service';
+import { EsignJobProducerService } from './esign-job-producer.service';
 
 @Injectable()
 export class EsignReopeningService {
@@ -28,16 +30,17 @@ export class EsignReopeningService {
     private readonly expiry: EsignExpiryService,
     private readonly tokens: EsignTokenService,
     private readonly audit: EsignAuditService,
+    private readonly jobs: EsignJobProducerService,
   ) {}
 
-  reopen(documentId: number, userId: number, input: ReopenDocumentDto) {
-    return this.mysql.transaction(async (manager) => {
+  async reopen(documentId: number, userId: number, input: ReopenDocumentDto) {
+    const committed = await this.mysql.transaction(async (manager) => {
       const document = await this.documents.findByIdForUpdate(
         documentId,
         manager,
       );
       this.policy.checkEsignCreator(document, userId);
-      const logs = await this.notifications.findInvitationsByDocumentForUpdate(
+      const logs = await this.notifications.findByDocumentForUpdate(
         documentId,
         manager,
       );
@@ -53,8 +56,22 @@ export class EsignReopeningService {
         now,
       );
       const originalSignEndAt = this.validateOriginalPayload(document);
+      const unavailable = pending.filter(
+        (signer) =>
+          !signer.email ||
+          !isEmail(signer.email) ||
+          !signer.invitationTokenSha256 ||
+          !signer.invitationExpiresAt,
+      );
+      if (unavailable.length > 0)
+        throw new AppException(
+          ...AppErrors.ESIGN_REOPEN_RECIPIENT_UNAVAILABLE,
+          {
+            signerPublicIds: unavailable.map((signer) => signer.publicId),
+          },
+        );
       await this.expiry.expireLocked(document, signers, now, manager);
-      await this.supersedeNotifications(logs, now, manager);
+      await this.supersedeNotifications(logs, pending, now, manager);
       await this.rotatePendingInvitations(pending, next, manager);
       await this.saveReopenedDocument(
         document,
@@ -62,16 +79,51 @@ export class EsignReopeningService {
         { previous, next, reason, now },
         manager,
       );
+      const batch = await this.notifications.saveBatch(
+        this.notifications.createBatch(
+          {
+            documentId,
+            kind: 'invitation',
+            filterType: 'external_invitation',
+            targetCount: pending.length,
+            notifiedByUserId: userId,
+          },
+          manager,
+        ),
+        manager,
+      );
+      const newLogs = await this.notifications.saveLogs(
+        pending.map((signer) =>
+          this.notifications.createLog(
+            {
+              batchId: batch.id,
+              signerId: signer.id,
+              channel: 'email',
+              result: 'pending',
+              attemptCount: 0,
+              invitationGenerationSha256: signer.invitationTokenSha256,
+              nextAttemptAt: now,
+            },
+            manager,
+          ),
+        ),
+        manager,
+      );
       return {
-        documentId: String(documentId),
-        status: 'active',
-        originalSignEndAt,
-        signEndAt: next.toISOString(),
-        isReopened: true,
-        reopenedAt: now.toISOString(),
-        pendingCount: pending.length,
+        notificationLogIds: newLogs.map((log) => log.id),
+        result: {
+          documentId: String(documentId),
+          status: 'active',
+          originalSignEndAt,
+          signEndAt: next.toISOString(),
+          isReopened: true,
+          reopenedAt: now.toISOString(),
+          pendingCount: pending.length,
+        },
       };
     });
+    await this.jobs.enqueueInvitations(committed.notificationLogIds);
+    return committed.result;
   }
 
   private validateReopening(
@@ -137,18 +189,28 @@ export class EsignReopeningService {
 
   private async supersedeNotifications(
     logs: EsignNotificationLog[],
+    pending: EsignSigner[],
     now: Date,
     manager: EntityManager,
   ): Promise<void> {
-    for (const log of logs) {
-      if (log.result === 'delivered') continue;
+    const pendingIds = new Set(pending.map((signer) => signer.id));
+    const unfinished = logs.filter(
+      (log) =>
+        pendingIds.has(log.signerId) &&
+        (['pending', 'processing'].includes(log.result) ||
+          (log.result === 'failed' && log.nextAttemptAt != null)),
+    );
+    for (const log of unfinished) {
       log.result = 'failed';
       log.errorCode = 'INVITATION_SUPERSEDED';
       log.completedAt = now;
       log.processingStartedAt = null;
       log.nextAttemptAt = null;
+      log.leaseToken = null;
+      log.reminderTokenCiphertext = null;
     }
-    await this.notifications.saveLogs(logs, manager);
+    if (unfinished.length > 0)
+      await this.notifications.saveLogs(unfinished, manager);
   }
 
   private async rotatePendingInvitations(
@@ -157,7 +219,6 @@ export class EsignReopeningService {
     manager: EntityManager,
   ): Promise<void> {
     for (const signer of pending) {
-      if (signer.signerType !== 'email') continue;
       const invitation = this.tokens.createInvitationToken();
       signer.invitationTokenSha256 = invitation.digest;
       signer.invitationTokenCiphertext = invitation.ciphertext;

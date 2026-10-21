@@ -188,7 +188,12 @@ export class ExternalAccessService {
         signerPublicId: signer.publicId,
         allowReject: document.allowReject,
         document: this.mapper.documentSummary(document, counts),
-        signer: this.mapper.signer(signer, null),
+        signer: {
+          ...this.mapper.signer(signer, null),
+          employeeNo: null,
+          department: null,
+          title: null,
+        },
         fields: allFields.map((field) => this.mapper.field(field)),
         consent: this.consent.getActive(),
         ...counts,
@@ -316,7 +321,7 @@ export class ExternalAccessService {
   }
 }
 
-/** 外部存取檢查已確認為 email 簽署人，DB CHECK 保證有 email */
+/** Email 通道存取檢查已確認固定有效信箱，無須依業務簽署人類型分流。 */
 function invitationEmail(signer: { email?: string }): string {
   if (!signer.email) throw new Error('unreachable');
   return signer.email;

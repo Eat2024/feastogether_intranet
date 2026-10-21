@@ -19,7 +19,6 @@ import { DocumentFieldRepository } from '../repositories/document-field.reposito
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignAuditService } from './esign-audit.service';
-import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignFieldService } from './esign-field.service';
 import {
   type PdfUpload,
@@ -54,7 +53,6 @@ export class EsignDraftService {
     private readonly files: FileObjectRepository,
     private readonly fields: DocumentFieldRepository,
     private readonly access: EsignAccessPolicyService,
-    private readonly validation: EsignDocumentValidationService,
     private readonly pdf: PdfValidationService,
     private readonly audit: EsignAuditService,
     @Inject(PRIVATE_FILE_STORAGE)
@@ -362,8 +360,7 @@ export class EsignDraftService {
       documentId,
       this.mysql.getManager(),
     );
-    this.access.checkEsignCreator(document, userId);
-    this.validation.checkStillDraft(document);
+    this.access.checkEsignDraftCreator(document, userId);
     return document;
   }
 

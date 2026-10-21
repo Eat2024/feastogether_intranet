@@ -5,6 +5,20 @@ import {
 } from './feastogether.client';
 
 describe('FeastogetherClient logging', () => {
+  it('員工解析來源 success=false 不得經 code 欄位洩漏個資', async () => {
+    const { client, http, logger } = build();
+    http.get.mockReturnValue(
+      of({
+        data: { success: false, code: 'private@example.test', data: null },
+      }),
+    );
+    await expect(
+      client.get('/api/v1/hr/staff_lookup?person_empid=00123'),
+    ).rejects.toBeInstanceOf(FeastogetherApiError);
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(
+      'private@example.test',
+    );
+  });
   const build = () => {
     const http = { get: jest.fn(), post: jest.fn() };
     const config = {

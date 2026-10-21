@@ -59,6 +59,7 @@ export class ExternalSignatureController {
     private readonly config: ConfigService,
   ) {}
 
+  // 以 Email OTP 存取憑證拒絕本人簽署任務，內外部員工共用。
   @UseGuards(OriginGuard)
   @ApiOperation({ summary: '拒絕外部本人簽署任務' })
   @Post('external-signing-task/rejection')
@@ -76,6 +77,7 @@ export class ExternalSignatureController {
     return result;
   }
 
+  // 顯示 Email 邀請確認頁；此步驟不寄送 OTP 或建立 session。
   @ApiOperation({
     summary: '開啟外部簽署邀請確認頁',
     description:
@@ -95,9 +97,10 @@ export class ExternalSignatureController {
     this.sendInvitationPage(reply, HttpStatus.OK, invitationConfirmPage(token));
   }
 
+  // 驗證邀請並寄送 OTP 至固定收件信箱。
   @UseGuards(OriginGuard, AuthThrottlerGuard)
   @ApiOperation({
-    summary: '寄出外部簽署驗證碼',
+    summary: '寄出 Email 簽署驗證碼（內外部共用）',
     description:
       '以表單欄位 token 驗證邀請；有效（待簽者在簽署期間，或已簽者）時寄 6 位數驗證碼到邀請信箱（10 分鐘有效，舊驗證碼失效），回驗證碼輸入頁（顯示遮罩後的信箱、重新寄送按鈕倒數 60 秒），並記錄 external_otp.sent。距上次寄送未滿 60 秒或同一簽署人 1 小時內已寄滿 5 封時回 429 驗證碼輸入頁並顯示可再寄送的時間，不寄信、不覆寫現有驗證碼。有效邀請但簽署尚未開始回 409 尚未開始頁；token 格式錯誤（400）、邀請無效或過期（401）回相同的失效頁；以上都不寄信。寄信失敗回 503 可重試頁，不保留驗證碼、不計入冷卻與寄送次數。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由邀請確認頁與驗證碼輸入頁（重新寄送）的 HTML 表單送出，不是 Next.js 頁面直接呼叫。',
   })
@@ -130,9 +133,10 @@ export class ExternalSignatureController {
     );
   }
 
+  // 驗證 OTP、建立簽署存取 cookie，並導向簽署頁。
   @UseGuards(OriginGuard, AuthThrottlerGuard)
   @ApiOperation({
-    summary: '以驗證碼建立外部簽署存取 session',
+    summary: '以驗證碼建立 Email 簽署存取 session（內外部共用）',
     description:
       '以表單欄位 token＋code（6 位數驗證碼）驗證；邀請有效且驗證碼正確時產生隨機存取憑證（不是邀請 token，伺服器只存雜湊、8 小時失效），設為 HttpOnly session cookie（不設期限，關閉瀏覽器即失效，待簽者與已簽者相同）並以 303 導向外部簽署頁，記錄 external_otp.verified 與 external_invitation.opened。驗證碼錯誤回 401 錯誤頁並顯示剩餘次數（錯滿 5 次即失效）；驗證碼過期、已使用或已失效回 401 錯誤頁提示重新寄送。邀請無效或過期回 401 失效頁、token 或 code 格式錯誤回 400 失效頁、尚未開始回 409 尚未開始頁，都不比對驗證碼。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由驗證碼輸入頁的 HTML 表單送出，成功導向 /external-signatures/[signerPublicId]。',
   })
@@ -162,6 +166,7 @@ export class ExternalSignatureController {
     });
   }
 
+  // 撤銷請求攜帶的簽署存取憑證並清除 cookie。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '結束外部簽署存取',
@@ -182,11 +187,12 @@ export class ExternalSignatureController {
     clearExternalAccessCookie(reply);
   }
 
+  // 以 Email OTP 存取憑證開啟本人任務並記錄開啟事件。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '開啟外部簽署任務',
     description:
-      '以外部存取 cookie 驗證邀請，回傳任務並記錄開啟事件，不依賴員工登入；已簽者也可開啟，不比對簽署期限與文件狀態，依 signer.status 顯示完成頁。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSigning 每次進入頁面呼叫一次。',
+      '以 Email OTP 存取 cookie（內外部簽署人共用） 驗證邀請，回傳任務並記錄開啟事件，不依賴員工登入；已簽者也可開啟，不比對簽署期限與文件狀態，依 signer.status 顯示完成頁。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSigning 每次進入頁面呼叫一次。',
   })
   @Post('external-signing-task')
   @HttpCode(HttpStatus.OK)
@@ -194,6 +200,7 @@ export class ExternalSignatureController {
     return this.external.task(this.accessCredential(request), true);
   }
 
+  // 唯讀查詢本人簽署任務與副本狀態，不記錄開啟事件。
   @ApiOperation({
     summary: '查詢外部簽署任務（唯讀）',
     description:
@@ -205,10 +212,11 @@ export class ExternalSignatureController {
     return this.external.task(this.accessCredential(request), false);
   }
 
+  // 驗證 Email OTP 存取權限後回傳本人任務的原始 PDF。
   @ApiOperation({
     summary: '讀取外部簽署任務的原始 PDF',
     description:
-      '以外部存取 cookie 驗證後回傳原始 PDF；已簽者也可讀取。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSigning 用來計算頁數並預覽文件。',
+      '以 Email OTP 存取 cookie（內外部簽署人共用） 驗證後回傳原始 PDF；已簽者也可讀取。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSigning 用來計算頁數並預覽文件。',
   })
   @Get('external-signing-task/source-file')
   @Header('Cache-Control', 'private, no-store')
@@ -229,11 +237,12 @@ export class ExternalSignatureController {
       .send(file.bytes);
   }
 
+  // 以 Email OTP 存取憑證提交本人簽名與同意紀錄。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '送出外部簽署人簽名',
     description:
-      '以外部存取 cookie 驗證並提交同意紀錄與簽名，回傳簽署結果（含本人副本狀態 completion 與公開驗證網址 verificationUrl）。body 必須帶頁面所屬的 signerPublicId，與 cookie 對應的簽署人不符（同一瀏覽器後開啟的邀請覆蓋了 cookie）回 409 ESIGN_EXTERNAL_SIGNER_MISMATCH，不建立簽署。首次成功回 201；同一 requestId 重送回 200 與既有結果；已簽者以新的 requestId 再簽回 401。成功不重設 cookie，完成頁沿用同一存取憑證查詢與下載。\n\n前端串接參考：ExternalSignForm 送出簽名，帶上頁面所屬（與網址相同）的 signerPublicId，網路重試沿用同一個 requestId；成功後切換到完成頁。',
+      '以 Email OTP 存取 cookie（內外部簽署人共用） 驗證並提交同意紀錄與簽名，回傳簽署結果（含本人副本狀態 completion 與公開驗證網址 verificationUrl）。body 必須帶頁面所屬的 signerPublicId，與 cookie 對應的簽署人不符（同一瀏覽器後開啟的邀請覆蓋了 cookie）回 409 ESIGN_EXTERNAL_SIGNER_MISMATCH，不建立簽署。首次成功回 201；同一 requestId 重送回 200 與既有結果；已簽者以新的 requestId 再簽回 401。成功不重設 cookie，完成頁沿用同一存取憑證查詢與下載。\n\n前端串接參考：ExternalSignForm 送出簽名，帶上頁面所屬（與網址相同）的 signerPublicId，網路重試沿用同一個 requestId；成功後切換到完成頁。',
   })
   @Post('external-signing-task/signatures')
   async sign(
@@ -254,10 +263,11 @@ export class ExternalSignatureController {
     return toSignatureResultView(result);
   }
 
+  // 驗證 Email OTP 存取權限與檔案完整性後下載本人已簽副本。
   @ApiOperation({
     summary: '下載外部簽署人的本人副本',
     description:
-      '以外部存取 cookie 驗證後回傳本人的已簽署 PDF（附件），經與建立人下載相同的完整性檢查；不記錄稽核。尚未簽署或存取失效回 401；副本產生中或產製失敗回 409。\n\n前端串接參考：ExternalDone 的「下載已簽署文件」以一般連結直接下載。',
+      '以 Email OTP 存取 cookie（內外部簽署人共用） 驗證後回傳本人的已簽署 PDF（附件），經與建立人下載相同的完整性檢查；不記錄稽核。尚未簽署或存取失效回 401；副本產生中或產製失敗回 409。\n\n前端串接參考：ExternalDone 的「下載已簽署文件」以一般連結直接下載。',
   })
   @Get('external-signing-task/completed-file')
   @Header('Cache-Control', 'private, no-store')

@@ -36,6 +36,7 @@ describe('ExternalInvitationProcessor', () => {
       document,
     };
     const log = {
+      invitationGenerationSha256: 'old-digest',
       id: 19,
       result: options?.result ?? 'pending',
       attemptCount: 0,
@@ -253,6 +254,7 @@ describe('ExternalInvitationProcessor', () => {
       expect(sendMail).toHaveBeenCalledTimes(1);
       const { signer: _signer, ...columns } = log;
       expect(columns).toEqual({
+        invitationGenerationSha256: 'old-digest',
         id: 19,
         result: 'failed',
         attemptCount: 1,

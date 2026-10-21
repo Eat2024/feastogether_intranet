@@ -8,6 +8,7 @@ import { Public } from '#app/framework/decorators/public.decorator';
  */
 @Controller(API_PATH.HEALTH)
 export class HealthController {
+  // 回報服務程序是否存活，不檢查資料庫或 Redis。
   @Public()
   @Get()
   check(): { status: string } {

@@ -23,9 +23,12 @@ import { EsignReminderService } from '../services/esign-reminder.service';
 @Controller('esign/documents/:documentId/notification-batches')
 export class NotificationBatchesController {
   constructor(private readonly reminders: EsignReminderService) {}
+
+  // 建立內外部待簽者的催簽批次，交由背景工作寄送通知。
   @ApiOperation({
-    summary: '建立外部催簽批次',
-    description: '僅建立人；先持久保存再背景寄送，回傳受理狀態而非已送達。',
+    summary: '建立內外部催簽批次',
+    description:
+      '僅建立人；指定或全部待簽人員均使用發起時固定信箱，同信箱逐人寄送及計算額度。先持久保存再背景寄送，回傳受理狀態而非已送達。',
   })
   @Post()
   @HttpCode(202)
@@ -37,6 +40,8 @@ export class NotificationBatchesController {
   ) {
     return this.reminders.create(this.id(id), userId, body);
   }
+
+  // 供建立人分頁查詢文件的催簽批次。
   @ApiOperation({
     summary: '查詢催簽批次結果',
     description: '僅建立人可檢視逐人寄送結果；不回傳郵件憑證。',
@@ -50,6 +55,7 @@ export class NotificationBatchesController {
     return this.reminders.list(this.id(id), userId, page);
   }
 
+  // 供建立人查詢指定催簽批次的逐人寄送結果。
   @Get(':batchId')
   detail(
     @Param('documentId') id: string,
@@ -59,6 +65,7 @@ export class NotificationBatchesController {
   ) {
     return this.reminders.detail(this.id(id), userId, batchId, page);
   }
+
   private id(value: string) {
     const id = Number(value);
     if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(id))

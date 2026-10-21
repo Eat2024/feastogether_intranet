@@ -1,72 +1,52 @@
 import { OrgDepartmentDto } from '#app/infrastructure/http-client/feastogether/types/org-chart.dto';
+import { ApiOperation, ApiOkResponse, ApiResponse } from '@nestjs/swagger';
 import {
-  ApiOperation,
-  ApiOkResponse,
-  ApiResponse,
-  ApiExtraModels,
-  getSchemaPath,
-  ApiResponseOptions,
-} from '@nestjs/swagger';
-import { Controller, Get, Header, Query } from '@nestjs/common';
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { OriginGuard } from '#app/framework/guards/origin.guard';
+import {
+  ResolveSignerCandidatesDto,
+  SignerCandidateResolutionsDto,
+} from '../dto/resolve-signer-candidates.dto';
 import { EsignSignerCandidateService } from '../services/esign-signer-candidate.service';
-
-const orgChartErrorResponse = {
-  schema: {
-    type: 'object',
-    required: ['success', 'error', 'timestamp'],
-    properties: {
-      success: { type: 'boolean', enum: [false] },
-      error: {
-        type: 'object',
-        required: ['code', 'message'],
-        properties: {
-          code: { type: 'string' },
-          message: { type: 'string' },
-        },
-      },
-      timestamp: { type: 'string', format: 'date-time' },
-    },
-  },
-} satisfies ApiResponseOptions;
+import {
+  EmployeeDirectoryErrorResponseDto,
+  SignerCandidateOrgChartResponseDto,
+  SignerCandidateResolutionsResponseDto,
+} from '../dto/employee-directory-response.dto';
 
 @Controller('esign/signer-candidates')
 export class SignerCandidatesController {
   constructor(private readonly candidates: EsignSignerCandidateService) {}
 
+  // 取得正式員工組織樹，沿用兩小時共用快取。
   @Get('org-chart')
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({
     summary: '查詢正式員工組織架構',
     description: '需有效員工 session',
   })
-  @ApiExtraModels(OrgDepartmentDto)
-  @ApiOkResponse({
-    schema: {
-      type: 'object',
-      required: ['success', 'data', 'timestamp'],
-      properties: {
-        success: { type: 'boolean', enum: [true] },
-        data: {
-          type: 'array',
-          items: { $ref: getSchemaPath(OrgDepartmentDto) },
-        },
-        timestamp: { type: 'string', format: 'date-time' },
-      },
-    },
-  })
+  @ApiOkResponse({ type: SignerCandidateOrgChartResponseDto })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 401,
     description: '沿用員工 session 認證錯誤 envelope',
   })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 502,
     description:
       'ORG_CHART_UPSTREAM_UNAVAILABLE：組織架構來源暫時無法使用；沿用錯誤 envelope',
   })
   @ApiResponse({
-    ...orgChartErrorResponse,
+    type: EmployeeDirectoryErrorResponseDto,
     status: 503,
     description:
       'ORG_CHART_UNAVAILABLE：快取或更新協調暫時無法使用；沿用錯誤 envelope',
@@ -75,11 +55,49 @@ export class SignerCandidatesController {
     return this.candidates.getOrgChart();
   }
 
-  // 本地查無完整員編時，service 會改向饗賓人 API 查詢並建立帳號
+  // 將所選員編解析為本機簽署人，必要時建立員工帳號。
+  @Post('resolutions')
+  @HttpCode(200)
+  @UseGuards(OriginGuard)
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({
+    summary: '解析已選員工為本機簽署人',
+    description:
+      '需有效員工 session 與 Origin 檢查；僅解析明確選取的完整員編，不回傳信箱。',
+  })
+  @ApiOkResponse({ type: SignerCandidateResolutionsResponseDto })
+  @ApiResponse({
+    type: EmployeeDirectoryErrorResponseDto,
+    status: 400,
+    description: '請求格式錯誤',
+  })
+  @ApiResponse({
+    type: EmployeeDirectoryErrorResponseDto,
+    status: 401,
+    description: '員工 session 無效',
+  })
+  @ApiResponse({
+    type: EmployeeDirectoryErrorResponseDto,
+    status: 403,
+    description: 'Origin 檢查失敗',
+  })
+  @ApiResponse({
+    type: EmployeeDirectoryErrorResponseDto,
+    status: 502,
+    description:
+      'ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE：員工資格來源暫時無法使用',
+  })
+  resolve(
+    @Body() input: ResolveSignerCandidatesDto,
+  ): Promise<SignerCandidateResolutionsDto> {
+    return this.candidates.resolve(input.employeeNos);
+  }
+
+  // 搜尋本機有效員工，不呼叫上游或建立帳號。
   @ApiOperation({
     summary: '查詢可指定的內部簽署人',
     description:
-      '依 q 查詢本地員工；完整八碼員編在本地查無時，向饗賓人 API 查詢符合資格的員工並建立本地帳號。\n\n前端串接參考：/forms/[id]/signers 儲存或發起時，Server Action 以 listSignerCandidates(employeeNo) 將選取的員編轉為後端 userId；目前不是前端即時搜尋下拉選單。',
+      '依 q 查詢本機有效員工，不呼叫上游或建立帳號；未建帳的已選員工請使用 POST resolutions。',
   })
   @Get()
   async list(@Query('q') query?: string) {

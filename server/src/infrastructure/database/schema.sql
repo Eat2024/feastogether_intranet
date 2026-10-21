@@ -341,7 +341,8 @@ CREATE TABLE `esign_signers` (
   `document_id` bigint NOT NULL COMMENT '文件 ID',
   `signer_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '簽署人類型',
   `user_id` bigint DEFAULT NULL COMMENT '員工 ID',
-  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '正規化外部 Email',
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '固定通知 Email',
+  `external_email` varchar(255) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS (CASE WHEN `signer_type` = 'email' THEN `email` ELSE NULL END) STORED COMMENT '外部地址唯一性衍生欄位',
   `empid_snapshot` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '員編快照',
   `name_snapshot` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '姓名快照',
   `department_snapshot` varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '部門快照',
@@ -369,7 +370,7 @@ CREATE TABLE `esign_signers` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_signers_public_id` (`public_id`),
   UNIQUE KEY `uq_esign_signers_document_user` (`document_id`,`user_id`),
-  UNIQUE KEY `uq_esign_signers_document_email` (`document_id`,`email`),
+  UNIQUE KEY `uq_esign_signers_document_external_email` (`document_id`,`external_email`),
   UNIQUE KEY `uq_esign_signers_invitation_token_sha256` (`invitation_token_sha256`),
   KEY `idx_esign_signers_user_status_document` (`user_id`,`status`,`document_id`),
   KEY `idx_esign_signers_document_status_sort_id` (`document_id`,`status`,`sort_order`,`id`),
@@ -390,7 +391,7 @@ CREATE TABLE `esign_signers` (
   CONSTRAINT `fk_esign_signers_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `chk_esign_signers_completion` CHECK ((`status` IN ('pending','rejected') AND `completion_status` IS NULL AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`status` = 'signed' AND `completion_status` IS NOT NULL AND ((`completion_status` IN ('pending','failed') AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'processing' AND `completion_lease_token` IS NOT NULL AND `completion_lease_expires_at` IS NOT NULL AND `completion_ready_at` IS NULL) OR (`completion_status` = 'ready' AND `completion_lease_token` IS NULL AND `completion_lease_expires_at` IS NULL AND `completion_ready_at` IS NOT NULL)))),
-  CONSTRAINT `chk_esign_signers_identity` CHECK ((((`signer_type` = _utf8mb4'user') and (`user_id` is not null) and (`email` is null) and (`empid_snapshot` is not null) and (`invitation_token_sha256` is null) and (`invitation_token_ciphertext` is null) and (`invitation_expires_at` is null)) or ((`signer_type` = _utf8mb4'email') and (`user_id` is null) and (`email` is not null) and (`empid_snapshot` is null)))),
+  CONSTRAINT `chk_esign_signers_identity` CHECK ((((`signer_type` = _utf8mb4'user') and (`user_id` is not null) and (`empid_snapshot` is not null)) or ((`signer_type` = _utf8mb4'email') and (`user_id` is null) and (`email` is not null) and (`empid_snapshot` is null)))),
   CONSTRAINT `chk_esign_signers_terminal_times` CHECK ((`signed_at` IS NULL OR `rejected_at` IS NULL) AND (`status` <> 'rejected' OR (`rejected_at` IS NOT NULL AND `reject_request_id` IS NOT NULL AND `reject_reason` IS NOT NULL))),
   CONSTRAINT `chk_esign_signers_status` CHECK (`status` IN ('pending','signed','rejected'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件簽署人';

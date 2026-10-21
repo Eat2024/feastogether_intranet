@@ -41,13 +41,13 @@ describe('EsignDraftService', () => {
     };
     const access = {
       checkEsignCreator: jest.fn(),
+      checkEsignDraftCreator: jest.fn(),
       checkAndLockDraftDoc: jest.fn(async () => document),
     };
     const fields = {
       deleteDraftFields: jest.fn(),
       save: jest.fn(async (values: object[]) => values),
     };
-    const validation = { checkStillDraft: jest.fn() };
     const pdf = {
       validateUpload: jest.fn(async () => stored),
       validatePersistedPdf: jest.fn(async () => ({ ...stored, pageCount: 2 })),
@@ -68,7 +68,6 @@ describe('EsignDraftService', () => {
       files as never,
       fields as never,
       access as never,
-      validation as never,
       pdf as never,
       audit as never,
       storage as never,
@@ -80,7 +79,6 @@ describe('EsignDraftService', () => {
       pdf,
       documents,
       access,
-      validation,
       storage,
       files,
       fields,
@@ -284,7 +282,7 @@ describe('EsignDraftService', () => {
 
   it('換 PDF 前的權限檢查失敗時，不上傳也不開啟交易', async () => {
     const { service, access, storage, mysql } = setup();
-    access.checkEsignCreator.mockImplementationOnce(() => {
+    access.checkEsignDraftCreator.mockImplementationOnce(() => {
       throw new Error('找不到電子簽資源');
     });
 

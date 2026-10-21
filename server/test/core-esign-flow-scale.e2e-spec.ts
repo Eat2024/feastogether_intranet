@@ -50,6 +50,7 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
       builder.overrideProvider(FeastogetherHrService).useValue({
+        getStaffEmails: syntheticStaffEmails,
         lookupEligibleStaff: jest.fn(async (empid: string) => ({
           person_empid: empid,
           person_name: '規模測試員工',
@@ -146,6 +147,14 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       await db.query('DELETE FROM esign_document_fields WHERE document_id=?', [
         documentId,
       ]);
+      await db.query(
+        'DELETE FROM esign_notification_logs WHERE batch_id IN (SELECT id FROM esign_notification_batches WHERE document_id=?)',
+        [documentId],
+      );
+      await db.query(
+        'DELETE FROM esign_notification_batches WHERE document_id=?',
+        [documentId],
+      );
       await db.query('DELETE FROM esign_signers WHERE document_id=?', [
         documentId,
       ]);
@@ -246,9 +255,14 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       .expect(201);
     metrics.initiationMs = performance.now() - initiationStart;
     const signers = await db.query<
-      Array<{ id: number; public_id: string; user_id: number }>
+      Array<{
+        id: number;
+        public_id: string;
+        user_id: number;
+        invitation_token_sha256: string;
+      }>
     >(
-      'SELECT id, public_id, user_id FROM esign_signers WHERE document_id=? ORDER BY sort_order',
+      'SELECT id, public_id, user_id, invitation_token_sha256 FROM esign_signers WHERE document_id=? ORDER BY sort_order',
       [documentId],
     );
     const savedFields = await db.query<
@@ -271,7 +285,11 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       const signer = signers[i];
       await signing.sign(
         signer.public_id,
-        { kind: 'internal', userId: Number(signer.user_id) },
+        {
+          kind: 'external',
+          signerId: Number(signer.id),
+          invitationGenerationSha256: signer.invitation_token_sha256,
+        },
         {
           requestId: randomUUID(),
           consentVersion: consent.version,
@@ -396,3 +414,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
+import { syntheticStaffEmails } from './synthetic-staff-emails.helper';

@@ -11,10 +11,17 @@ import { NotificationRepository } from '../repositories/notification.repository'
 import { AuditEventRepository } from '../repositories/audit-event.repository';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
+import { EsignNotificationBatch } from '../entities/esign-notification-batch.entity';
+import { EsignNotificationLog } from '../entities/esign-notification-log.entity';
+import { EsignJobProducerService } from './esign-job-producer.service';
 
 // 僅替換 DB 邊界；服務、授權、憑證與稽核皆使用真正實作。
 describe('EsignReopeningService', () => {
   function setup() {
+    const queued: unknown[] = [];
+    const persisted: unknown[] = [];
+    let committed = false;
+    const oldLogs: EsignNotificationLog[] = [];
     const end = new Date(Date.now() - 1_000);
     const next = new Date(Date.now() + 60_000);
     const payload = {
@@ -36,30 +43,49 @@ describe('EsignReopeningService', () => {
       documentId: 1,
       status: 'pending',
       signerType: 'email',
+      publicId: 'synthetic-signer',
+      email: 'employee@example.test',
+      invitationTokenSha256: 'a'.repeat(64),
+      invitationExpiresAt: end,
     });
+    const selectedSigners = [signer];
     const query = {
       innerJoin: () => query,
       where: () => query,
       orderBy: () => query,
       setLock: () => query,
-      getMany: () => Promise.resolve([]),
+      getMany: () => Promise.resolve(oldLogs),
     };
     const manager = {
       findOne: (entity: unknown) =>
         Promise.resolve(entity === EsignDocument ? document : null),
       find: (entity: unknown) =>
-        Promise.resolve(entity === EsignSigner ? [signer] : []),
-      save: (value: unknown) => Promise.resolve(value),
+        Promise.resolve(entity === EsignSigner ? selectedSigners : []),
+      save: (value: unknown) => {
+        persisted.push(value);
+        return Promise.resolve(value);
+      },
+      create: (entity: new () => object, fields: object) =>
+        Object.assign(new entity(), { id: persisted.length + 10 }, fields),
       insert: () => Promise.resolve({}),
       createQueryBuilder: () => query,
     };
     const mysql = {
-      transaction: <T>(fn: (manager: never) => Promise<T>) =>
-        fn(manager as never),
+      transaction: async <T>(fn: (manager: never) => Promise<T>) => {
+        const result = await fn(manager as never);
+        committed = true;
+        return result;
+      },
     };
     const documents = new DocumentRepository();
     const signers = new SignerRepository();
     const audit = new EsignAuditService(new AuditEventRepository());
+    const expiry = new EsignExpiryService(
+      mysql as never,
+      documents,
+      signers,
+      audit,
+    );
     const service = new EsignReopeningService(
       mysql as never,
       documents,
@@ -70,7 +96,7 @@ describe('EsignReopeningService', () => {
         documents,
       ),
       new EsignDocumentValidationService(),
-      new EsignExpiryService(mysql as never, documents, signers, audit),
+      expiry,
       new EsignTokenService(
         new ConfigService({
           ESIGN_INVITATION_ENCRYPTION_KEY_B64: Buffer.alloc(32, 1).toString(
@@ -80,11 +106,24 @@ describe('EsignReopeningService', () => {
         }),
       ),
       audit,
+      new EsignJobProducerService(
+        {
+          addBulk: (jobs: unknown[]) => {
+            expect(committed).toBe(true);
+            queued.push(...jobs);
+            return Promise.resolve([]);
+          },
+        } as never,
+        {} as never,
+        {} as never,
+      ),
     );
     return {
       service,
+      expiry,
       document,
       signer,
+      selectedSigners,
       input: {
         expectedSignEndAt: end.toISOString(),
         signEndAt: next.toISOString(),
@@ -92,6 +131,9 @@ describe('EsignReopeningService', () => {
       },
       end,
       next,
+      persisted,
+      queued,
+      oldLogs,
     };
   }
   it('已到期文件可重新開放，保存原始快照並回傳不含憑證的交易結果', async () => {
@@ -117,6 +159,97 @@ describe('EsignReopeningService', () => {
       });
     },
   );
+  it('任何待簽者缺固定信箱時拒絕整次補簽，不透露信箱', async () => {
+    const { service, signer, input } = setup();
+    signer.email = null;
+    await expect(service.reopen(1, 2, input)).rejects.toMatchObject({
+      code: 'ESIGN_REOPEN_RECIPIENT_UNAVAILABLE',
+      response: { details: { signerPublicIds: ['synthetic-signer'] } },
+    });
+  });
+  it('內部待簽者補簽亦輪替邀請世代並保留固定信箱', async () => {
+    const { service, signer, input, next } = setup();
+    signer.signerType = 'user';
+    await service.reopen(1, 2, input);
+    expect(signer.invitationTokenSha256).not.toBe('a'.repeat(64));
+    expect(signer.email).toBe('employee@example.test');
+    expect(signer.invitationExpiresAt).toEqual(next);
+  });
+  it('補簽提交後會建立可追蹤的逐人邀請並入列', async () => {
+    const { service, input, persisted, queued } = setup();
+    await service.reopen(1, 2, input);
+    expect(
+      persisted.flat().filter((row) => row instanceof EsignNotificationBatch),
+    ).toHaveLength(1);
+    expect(
+      persisted.flat().filter((row) => row instanceof EsignNotificationLog),
+    ).toHaveLength(1);
+    expect(queued).toHaveLength(1);
+  });
+  it('到期掃描落盤後仍可用既有固定身分補簽，不回填缺少的邀請', async () => {
+    const { service, expiry, document, input } = setup();
+    document.status = 'active';
+    expect(await expiry.expireByDeadline(1)).toBe(true);
+    await expect(service.reopen(1, 2, input)).resolves.toMatchObject({
+      status: 'active',
+    });
+  });
+  it('只作廢待簽者未完成的通知，保留已簽者與已送達通知', async () => {
+    const { service, input, oldLogs } = setup();
+    oldLogs.push(
+      Object.assign(new EsignNotificationLog(), {
+        signerId: 1,
+        result: 'processing',
+        leaseToken: 'old-lease',
+        reminderTokenCiphertext: 'old-secret',
+      }),
+      Object.assign(new EsignNotificationLog(), {
+        signerId: 2,
+        result: 'processing',
+      }),
+      Object.assign(new EsignNotificationLog(), {
+        signerId: 1,
+        result: 'delivered',
+      }),
+    );
+    await service.reopen(1, 2, input);
+    expect(oldLogs[0]).toMatchObject({
+      result: 'failed',
+      errorCode: 'INVITATION_SUPERSEDED',
+      leaseToken: null,
+      reminderTokenCiphertext: null,
+    });
+    expect(oldLogs[1].result).toBe('processing');
+    expect(oldLogs[2].result).toBe('delivered');
+  });
+  it('已簽與已拒者不輪替、不補寄且不更改既有快照', async () => {
+    const { service, input, selectedSigners, queued, document } = setup();
+    const frozen = ['signed', 'rejected'].map((status, i) =>
+      Object.freeze(
+        Object.assign(new EsignSigner(), {
+          id: i + 2,
+          documentId: 1,
+          status,
+          signerType: 'user',
+          email: 'prior@example.test',
+          invitationTokenSha256: 'b'.repeat(64),
+          invitationExpiresAt: new Date(0),
+        }),
+      ),
+    );
+    selectedSigners.push(...frozen);
+    const payload = document.signingPayloadJson;
+    const hash = document.signingPayloadSha256;
+    const result = await service.reopen(1, 2, input);
+    expect(result.pendingCount).toBe(1);
+    expect(queued).toHaveLength(1);
+    expect(document.signingPayloadJson).toBe(payload);
+    expect(document.signingPayloadSha256).toBe(hash);
+    expect(frozen.map((s) => s.invitationTokenSha256)).toEqual([
+      'b'.repeat(64),
+      'b'.repeat(64),
+    ]);
+  });
   it('不存在未簽者時不可補簽', async () => {
     const { service, signer, input } = setup();
     signer.status = 'signed';

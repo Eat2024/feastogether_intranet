@@ -33,6 +33,7 @@ interface ClaimedInvitation {
   signEndAt: Date;
   token: string;
   claimedAt: Date;
+  generation: string;
 }
 
 @Processor(ESIGN_EXTERNAL_INVITATION_QUEUE)
@@ -61,7 +62,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
     try {
       await this.sendInvitation(claim);
     } catch {
-      await this.finishFailed(id, claim.claimedAt);
+      await this.finishFailed(id, claim);
       return;
     }
 
@@ -77,6 +78,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
         id,
         manager,
       );
+      if (log?.errorCode === 'INVITATION_SUPERSEDED') return null;
       if (log?.batch?.kind === 'reminder') return { reminder: true } as const;
       const stale =
         log?.result === 'processing' &&
@@ -96,8 +98,10 @@ export class ExternalInvitationProcessor extends WorkerHost {
         !signer ||
         !document ||
         !creator ||
-        signer.signerType !== 'email' ||
+        !['user', 'email'].includes(signer.signerType) ||
         !signer.email ||
+        !signer.invitationTokenSha256 ||
+        log.invitationGenerationSha256 !== signer.invitationTokenSha256 ||
         !signer.invitationTokenCiphertext ||
         !signer.invitationExpiresAt ||
         signer.status !== 'pending' ||
@@ -123,6 +127,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
         signEndAt: document.signEndAt,
         token: this.tokens.decrypt(signer.invitationTokenCiphertext),
         claimedAt: now,
+        generation: signer.invitationTokenSha256,
       };
     });
   }
@@ -150,6 +155,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
       if (
         !log ||
         log.result !== 'processing' ||
+        log.invitationGenerationSha256 !== claim.generation ||
         log.processingStartedAt?.getTime() !== claim.claimedAt.getTime()
       ) {
         return;
@@ -158,7 +164,12 @@ export class ExternalInvitationProcessor extends WorkerHost {
         claim.signerPublicId,
         manager,
       );
-      if (!signer || signer.id !== claim.signerId) return;
+      if (
+        !signer ||
+        signer.id !== claim.signerId ||
+        signer.invitationTokenSha256 !== claim.generation
+      )
+        return;
       const completedAt = new Date();
       if (
         document?.status !== 'active' ||
@@ -205,7 +216,12 @@ export class ExternalInvitationProcessor extends WorkerHost {
         id,
         manager,
       );
-      if (!log || log.batch?.kind !== 'reminder') return null;
+      if (
+        !log ||
+        log.batch?.kind !== 'reminder' ||
+        log.errorCode === 'INVITATION_SUPERSEDED'
+      )
+        return null;
       if (log.result === 'processing') {
         if (
           log.processingStartedAt &&
@@ -359,13 +375,21 @@ export class ExternalInvitationProcessor extends WorkerHost {
     ].slice(-10);
   }
 
-  private async finishFailed(id: number, claimedAt: Date): Promise<void> {
+  private async finishFailed(
+    id: number,
+    claim: ClaimedInvitation,
+  ): Promise<void> {
     await this.mysql.transaction(async (manager) => {
-      const log = await this.notifications.findLogByIdForUpdate(id, manager);
+      const log = await this.notifications.findInvitationContextForUpdate(
+        id,
+        manager,
+      );
       if (
         !log ||
         log.result !== 'processing' ||
-        log.processingStartedAt?.getTime() !== claimedAt.getTime()
+        log.processingStartedAt?.getTime() !== claim.claimedAt.getTime() ||
+        log.invitationGenerationSha256 !== claim.generation ||
+        log.signer?.invitationTokenSha256 !== claim.generation
       ) {
         return;
       }

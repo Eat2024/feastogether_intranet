@@ -1,18 +1,3 @@
-<!--
-Sync Impact Report（審查用，commit 前由審查者確認後移除）
-- Version change: 1.3.0 → 1.4.0（MINOR：Principle III 的外部 Email 簽署邀請例外擴充
-  「簽署完成後讀取本人結果與下載本人副本」的範圍；未移除或重新定義任何原則）
-- Modified principles: III. 最小權限與資料最小化（外部簽署邀請例外）
-- Added sections: 無
-- Removed sections: 無
-- 修訂原因: 專案負責人於 2026-10-20 決定，簽署合約雙方都須能留存已簽署文件；外部簽署人
-  簽署後須能以原邀請下載本人副本，且不設下載期限以避免爭議（Spec 008）。
-- 影響: Spec 003 US3 驗收 6、FR-016、FR-026 與 contracts/external-invitation.md、
-  Spec 004 相容更新中「外部簽完邀請失效」的記載，須標示由 Spec 008 取代。
-- 遷移: 無資料遷移；已簽署 email 簽署人原本就保留邀請 digest。
-- Templates: plan/spec/tasks templates 在執行時讀取 constitution，無需修改。
-- Follow-up TODOs: 外部下載存取不設期限且不可撤銷，正式上線前由法務確認。
--->
 # 饗賓內部電子簽署系統 Constitution
 
 ## Core Principles
@@ -44,16 +29,18 @@ Sync Impact Report（審查用，commit 前由審查者確認後移除）
 - API 回應與 Client props MUST 只包含完成當前操作必要的資料。
 - JWT、access token、session token、cookie、OTP、簽名圖、文件內容與未遮罩個資
   MUST NOT 進入 URL、log、錯誤訊息或非必要的 Client payload。
-- 唯一 URL 憑證例外是 feature spec 明確要求的外部 Email 簽署邀請。該邀請 MUST
+- 唯一 URL 憑證例外是 feature spec 明確要求的內部或外部 Email 簽署邀請。該邀請 MUST
   使用不可預測且不含身分或文件內容的 opaque credential，MUST 綁定單一簽署人與
   單一文件；用於簽署時 MUST 具有期限且可撤銷，並在簽署完成、文件停止或期限到達後
   不得再授權簽署。邀請原值 MUST NOT 寫入 access log、application log、analytics、
   錯誤訊息或 Referrer。
-- 簽署完成後，外部簽署邀請 MAY 依 feature spec 繼續授權該簽署人讀取本人簽署結果與
+- 邀請連結本身 MUST NOT 視為已完成信箱驗證；MUST 依 feature spec 通過寄往該指派
+  固定信箱的 OTP 才建立受限存取。一般員工 session MUST NOT 替代此簽署／拒簽驗證。
+- 簽署完成後，Email 簽署邀請 MAY 依 feature spec 繼續授權該簽署人讀取本人簽署結果與
   下載本人個人副本，以保障簽署雙方留存已簽署文件：此存取 MUST 唯讀、MUST NOT 授權
   再次簽署或存取其他簽署人資料；不設期限，且不因文件停止、到期或完成而撤銷，只在
   文件刪除時失效。
-- 外部簽署邀請例外 MUST NOT 擴張為一般登入、內部員工 session、跨文件授權或可解碼
+- Email 簽署邀請例外 MUST NOT 擴張為一般登入、內部員工 session、跨文件授權或可解碼
   的身分 token；Server MUST 在每次授權時重新驗證邀請狀態與文件狀態。
 - 第二個明確例外是 feature spec 要求的公開簽章驗證，供公司內部稽核查驗已簽署文件：
   - 驗證網址 MAY 包含 Server 簽發、可證明來源且不含個資的驗證識別；該識別 MUST NOT
@@ -130,4 +117,4 @@ Sync Impact Report（審查用，commit 前由審查者確認後移除）
   進入實作或交付。
 - Sync Impact Report 是修訂審查資料，commit 前 MUST 由審查者確認並移除。
 
-**Version**: 1.4.0 | **Ratified**: 2026-10-12 | **Last Amended**: 2026-10-20
+**Version**: 1.5.0 | **Ratified**: 2026-10-12 | **Last Amended**: 2026-10-21

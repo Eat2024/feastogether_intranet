@@ -7,6 +7,9 @@ import {
 } from '#app/infrastructure/mail/invitation-mail-sender.port';
 import type { SecurityE2eContext } from './security-e2e.helper';
 import { randomClientIp } from './signature-verification.helper';
+import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
+import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 
 /**
  * 外部簽署人開啟文件的兩個表單端點都依 client IP 限流，計數存 Redis 且跨測試回合存活；
@@ -70,4 +73,19 @@ export async function openExternalSession(
   const cookie = Array.isArray(raw) ? (raw[0] as unknown) : raw;
   if (typeof cookie !== 'string') throw new Error('缺少外部存取 cookie');
   return cookie;
+}
+
+/** 合成內部指派 fixture：在寄送 worker 清除密文前模擬開啟邀請信，仍走真實 OTP HTTP。 */
+export async function openInternalEmailSession(
+  ctx: SecurityE2eContext,
+  signerPublicId: string,
+): Promise<string> {
+  const signer = await ctx.app
+    .get(SignerRepository)
+    .findByPublicId(signerPublicId, ctx.app.get(MysqlService).getManager());
+  if (!signer?.invitationTokenCiphertext) throw new Error('合成邀請缺少密文');
+  return openExternalSession(
+    ctx,
+    ctx.app.get(EsignTokenService).decrypt(signer.invitationTokenCiphertext),
+  );
 }

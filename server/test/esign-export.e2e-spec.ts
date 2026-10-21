@@ -40,6 +40,7 @@ describe('Spec009 匯出 API', () => {
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
       builder.overrideProvider(FeastogetherHrService).useValue({
+        getStaffEmails: syntheticStaffEmails,
         lookupEligibleStaff: (empid: string) =>
           Promise.resolve({
             person_empid: empid,
@@ -824,3 +825,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
+import { syntheticStaffEmails } from './synthetic-staff-emails.helper';

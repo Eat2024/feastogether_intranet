@@ -1,6 +1,7 @@
 import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import { Injectable } from '@nestjs/common';
+import { isEmail } from 'class-validator';
 import { AppException } from '#app/common/errors/app.exception';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
@@ -43,9 +44,17 @@ export class EsignAccessPolicyService {
       documentId,
       manager,
     );
+    this.checkEsignDraftCreator(document, userId);
+    return document;
+  }
+
+  /** 驗證已讀取的文件屬於建立人且仍為草稿，不查詢或取得鎖定。 */
+  checkEsignDraftCreator(
+    document: EsignDocument | null,
+    userId: number,
+  ): asserts document is EsignDocument {
     this.checkEsignCreator(document, userId);
     this.documents.checkStillDraft(document);
-    return document;
   }
 
   checkEsignCreator(
@@ -99,7 +108,7 @@ export class EsignAccessPolicyService {
 
   /**
    * 外部存取（寄送與驗證驗證碼、開啟任務、讀原始 PDF、下載本人副本、重送同一次簽名）。
-   * 呼叫端以邀請 token 或存取憑證找出簽署人；共同條件：email 簽署人、屬於該文件、簽署人與文件未刪除。
+   * 呼叫端以邀請 token 或存取憑證找出簽署人；共同條件：固定有效信箱及邀請世代、屬於該文件、簽署人與文件未刪除。
    * 已簽／已拒者不比對期限、文件狀態與簽署期間；待簽者須在邀請期限與有效簽署期間內。
    * 已拒者僅可讀結果／重送同一次拒簽；來源與副本端點另行拒絕。
    * 待簽者在簽署開始前回 409 告知開始時間；其餘失敗一律回通用 401，不區分原因。
@@ -112,7 +121,11 @@ export class EsignAccessPolicyService {
     const valid =
       signer !== null &&
       document !== null &&
-      signer.signerType === 'email' &&
+      ['user', 'email'].includes(signer.signerType) &&
+      typeof signer.email === 'string' &&
+      isEmail(signer.email) &&
+      typeof signer.invitationTokenSha256 === 'string' &&
+      /^[a-f0-9]{64}$/.test(signer.invitationTokenSha256) &&
       signer.documentId === document.id &&
       !signer.deletedAt &&
       !document.deletedAt;

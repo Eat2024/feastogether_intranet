@@ -43,7 +43,12 @@ export class EsignCompletionAccessService {
     return this.personalCopy(document, signer);
   }
 
-  async signerFile(signerPublicId: string, userId: number) {
+  async signerFile(
+    signerPublicId: string,
+    userId: number,
+  ): Promise<
+    Awaited<ReturnType<EsignCompletionAccessService['personalCopy']>>
+  > {
     const manager = this.mysql.getManager();
     const signer = await this.signers.findByPublicId(signerPublicId, manager);
     const document = signer
@@ -51,7 +56,7 @@ export class EsignCompletionAccessService {
       : null;
     if (!signer || !document) throw this.notFound();
     this.access.assertInternalSigner(document, signer, userId);
-    return this.personalCopy(document, signer);
+    throw new AppException(...AppErrors.ESIGN_EMAIL_OTP_REQUIRED);
   }
 
   /**

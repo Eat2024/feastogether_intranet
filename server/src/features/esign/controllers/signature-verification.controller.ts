@@ -12,6 +12,7 @@ import { EsignVerificationService } from '../services/esign-verification.service
 export class SignatureVerificationController {
   constructor(private readonly verification: EsignVerificationService) {}
 
+  // 以公開驗證代碼查詢單一簽章與文件完整性，不需員工登入。
   @UseGuards(AuthThrottlerGuard)
   @ApiOperation({
     summary: '以驗證代碼查詢單一簽章的驗證結果',

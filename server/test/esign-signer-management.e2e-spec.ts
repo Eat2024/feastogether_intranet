@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
 import { apiData } from './api-response.helper';
+import { openInternalEmailSession } from './external-session.helper';
 import {
   createSecurityE2eApp,
   closeSecurityE2eApp,
@@ -52,6 +53,7 @@ describe('Spec009 管理備註與歷程 API', () => {
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
       builder.overrideProvider(FeastogetherHrService).useValue({
+        getStaffEmails: syntheticStaffEmails,
         lookupEligibleStaff: (empid: string) =>
           Promise.resolve({
             person_empid: empid,
@@ -253,21 +255,32 @@ describe('Spec009 管理備註與歷程 API', () => {
       .set('Origin', origin)
       .send({ note: '僅管理可見' })
       .expect(200);
+    const emailCookie = await openInternalEmailSession(ctx, signer.publicId);
+    await request(ctx.server)
+      .post(`/api/esign/signing-tasks/${signer.publicId}`)
+      .set('Cookie', other)
+      .set('Origin', origin)
+      .send({})
+      .expect(403);
     const task = apiData<{ signer: Record<string, unknown> }>(
       await request(ctx.server)
-        .post(`/api/esign/signing-tasks/${signer.publicId}`)
-        .set('Cookie', other)
+        .post('/api/external-signing-task')
+        .set('Cookie', emailCookie)
         .set('Origin', origin)
         .send({})
-        .expect(201),
+        .expect(200),
     );
     expect(task.signer).not.toHaveProperty('note');
     const result = apiData<{ rejectedAt: string }>(
       await request(ctx.server)
-        .post(`/api/esign/signing-tasks/${signer.publicId}/rejection`)
-        .set('Cookie', other)
+        .post('/api/external-signing-task/rejection')
+        .set('Cookie', emailCookie)
         .set('Origin', origin)
-        .send({ requestId: randomUUID(), reason: '不接受' })
+        .send({
+          signerPublicId: signer.publicId,
+          requestId: randomUUID(),
+          reason: '不接受',
+        })
         .expect(201),
     );
     const current = apiData<{
@@ -349,3 +362,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
+import { syntheticStaffEmails } from './synthetic-staff-emails.helper';

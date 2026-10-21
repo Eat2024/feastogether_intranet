@@ -133,19 +133,22 @@ export class NotificationRepository {
       relations: { signer: true },
     });
     if (!candidate?.signer) return null;
-    // 明確依 document → signer → log 鎖定，避免 joined lock 讓 MySQL 自選鎖序。
+    // 明確依 document → log → signer 鎖定，避免 joined lock 讓 MySQL 自選鎖序。
     const document = await this.lockDocument(
       candidate.signer.documentId,
       manager,
     );
     if (!document) return null;
+
+    const log = await this.findLogByIdForUpdate(id, manager);
+    if (!log) return null;
+
     const signer = await manager.findOne(EsignSigner, {
       where: { id: candidate.signerId },
       lock: { mode: 'pessimistic_write' },
     });
     if (!signer) return null;
-    const log = await this.findLogByIdForUpdate(id, manager);
-    if (!log) return null;
+
     const documentWithCreator =
       (await manager.findOne(EsignDocument, {
         where: { id: document.id },
@@ -165,18 +168,19 @@ export class NotificationRepository {
     return manager.save(log);
   }
 
-  findInvitationsByDocumentForUpdate(
-    documentId: number,
-    manager: EntityManager,
-  ) {
-    return manager
-      .createQueryBuilder(EsignNotificationLog, 'log')
-      .innerJoin('log.signer', 'signer')
-      .innerJoin('log.batch', 'batch', "batch.kind = 'invitation'")
-      .where('signer.document_id = :documentId', { documentId })
-      .orderBy('log.id', 'ASC')
-      .setLock('pessimistic_write')
-      .getMany();
+  findByDocumentForUpdate(documentId: number, manager: EntityManager) {
+    return (
+      manager
+        .createQueryBuilder(EsignNotificationLog, 'log')
+        // 只鎖通知列，不讓 JOIN 預先鎖 signer；包含催簽的舊世代。
+        .where(
+          'log.batch_id IN (SELECT id FROM esign_notification_batches WHERE document_id = :documentId)',
+          { documentId },
+        )
+        .orderBy('log.id', 'ASC')
+        .setLock('pessimistic_write')
+        .getMany()
+    );
   }
 
   findEligibleInvitationLogIds(
@@ -199,6 +203,7 @@ export class NotificationRepository {
         OR (batch.kind = 'invitation' AND
           ((log.result IN ('pending','failed') AND (log.next_attempt_at IS NULL OR log.next_attempt_at <= :now)) OR (log.result = 'processing' AND log.processing_started_at < :staleBefore))
           AND signer.status = 'pending' AND document.status = 'active'
+          AND log.invitation_generation_sha256 = signer.invitation_token_sha256
           AND signer.invitation_token_ciphertext IS NOT NULL AND signer.invitation_expires_at > :now AND document.sign_end_at > :now)
         )`,
         { now, staleBefore },

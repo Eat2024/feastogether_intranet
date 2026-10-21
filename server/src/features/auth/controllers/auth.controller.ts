@@ -53,6 +53,7 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
+  // 以員工編號與密碼驗證身分並建立登入 session。
   @Public()
   @UseGuards(OriginGuard, AuthThrottlerGuard)
   @Post('login')
@@ -71,6 +72,7 @@ export class AuthController {
     return session;
   }
 
+  // 驗證主平台 JWT 並建立一次性 WebView 啟動網址。
   @Public()
   @Post(configPath.AUTH_WEBVIEW_LAUNCHES)
   @Header('Cache-Control', 'no-store')
@@ -109,6 +111,7 @@ export class AuthController {
     return { origins: this.trustedOrigins() };
   }
 
+  // 回傳 WebView 自動提交頁，不在 GET 階段消耗啟動碼。
   @Public()
   @Get(configPath.AUTH_WEBVIEW)
   @ApiOperation({ summary: '取得唯讀 WebView 自動提交頁' })
@@ -133,6 +136,7 @@ export class AuthController {
       .send(this.renderWebviewBridge(code, nonce));
   }
 
+  // 消耗一次性 WebView 啟動碼並建立員工 session。
   @Public()
   @Post(configPath.AUTH_SESSION)
   @ApiBody({ type: WebviewSessionDto })
@@ -172,6 +176,7 @@ export class AuthController {
     }
   }
 
+  // 取得目前登入員工的 session 資訊。
   @Get(configPath.AUTH_SESSION)
   @Header('Cache-Control', 'no-store')
   @ApiCookieAuth('sessionCookie')
@@ -183,6 +188,7 @@ export class AuthController {
     );
   }
 
+  // 撤銷目前員工 session 並清除登入 cookie。
   @Public()
   @UseGuards(OriginGuard)
   @Delete(configPath.AUTH_SESSION)

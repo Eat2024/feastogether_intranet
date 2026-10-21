@@ -3,7 +3,7 @@ import {
   taipeiDispatchDate,
 } from './esign-reminder-policy';
 
-describe('外部催簽資格', () => {
+describe('內外部催簽資格', () => {
   const document = {
     status: 'active',
     signStartAt: new Date('2026-10-20T00:00:00Z'),
@@ -11,9 +11,34 @@ describe('外部催簽資格', () => {
   };
   const signer = {
     signerType: 'email',
+    email: 'fixed@example.test',
+    invitationTokenSha256: 'a'.repeat(64),
     status: 'pending',
     invitationExpiresAt: document.signEndAt,
   };
+  it.each([null, '', 'invalid-address'])(
+    '固定信箱 %s 不可用時不得催簽',
+    (email) => {
+      expect(
+        reminderEligibility(
+          document,
+          { ...signer, signerType: 'user', email },
+          [],
+          new Date('2026-10-20T12:00:00Z'),
+        ),
+      ).toBe('RECIPIENT_UNAVAILABLE');
+    },
+  );
+  it('缺邀請世代的歷史員工不可催簽', () => {
+    expect(
+      reminderEligibility(
+        document,
+        { ...signer, signerType: 'user', invitationTokenSha256: null },
+        [],
+        new Date('2026-10-20T12:00:00Z'),
+      ),
+    ).toBe('RECIPIENT_UNAVAILABLE');
+  });
   it('台北午夜重置，跨日排隊仍阻擋；初邀不佔額度', () => {
     const before = new Date('2026-10-20T15:59:59Z');
     const after = new Date('2026-10-20T16:00:00Z');
@@ -78,7 +103,7 @@ describe('外部催簽資格', () => {
       ),
     ).toBeNull();
   });
-  it('未知結果佔當日，拒簽、內部、期間外皆不可催簽', () => {
+  it('未知結果佔當日，內部可催簽，拒簽與期間外不可催簽', () => {
     const now = new Date('2026-10-20T12:00:00Z');
     expect(
       reminderEligibility(
@@ -96,7 +121,7 @@ describe('外部催簽資格', () => {
     ).toBe('REMINDER_DAILY_LIMIT');
     expect(
       reminderEligibility(document, { ...signer, signerType: 'user' }, [], now),
-    ).toBe('INTERNAL_REMINDER_UNSUPPORTED');
+    ).toBeNull();
     expect(
       reminderEligibility(document, { ...signer, status: 'rejected' }, [], now),
     ).toBe('SIGNER_ALREADY_COMPLETED');

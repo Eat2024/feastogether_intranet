@@ -39,6 +39,7 @@ export class OauthController {
     private readonly config: ConfigService,
   ) {}
 
+  // 建立統一登入交易並回傳授權網址。
   @Public()
   @UseGuards(OriginGuard, AuthThrottlerGuard)
   @Post(configPath.AUTH_OAUTH_START)
@@ -58,6 +59,7 @@ export class OauthController {
     return { authorizationUrl };
   }
 
+  // 驗證統一登入回呼並設定本系統登入 cookie。
   @Public()
   @UseGuards(OriginGuard, AuthThrottlerGuard)
   @Post(configPath.AUTH_OAUTH_CALLBACK)

@@ -10,6 +10,41 @@ const optionsFor = (database: string) =>
 describe('e-sign schema database constraints', () => {
   jest.setTimeout(60_000);
 
+  it('內部員工可固定共用 Email 與邀請，外部同地址仍唯一', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = await new DataSource(optionsFor(database)).initialize();
+      try {
+        await ds.runMigrations();
+        await ds.query(
+          "INSERT INTO users (empid,name) VALUES ('SHARED01','合成甲'),('SHARED02','合成乙')",
+        );
+        await ds.query(
+          "INSERT INTO esign_documents (doc_number,title,created_by_user_id) VALUES ('00000000-0000-4000-8000-000000000010','共用信箱',1)",
+        );
+        await ds.query(
+          "INSERT INTO esign_signers (public_id,document_id,signer_type,user_id,empid_snapshot,name_snapshot,email,invitation_token_sha256) VALUES ('00000000-0000-4000-8000-000000000011',1,'user',1,'SHARED01','合成甲','shared@example.test',?),('00000000-0000-4000-8000-000000000012',1,'user',2,'SHARED02','合成乙','shared@example.test',?)",
+          ['a'.repeat(64), 'b'.repeat(64)],
+        );
+        await ds.query(
+          "INSERT INTO esign_signers (public_id,document_id,signer_type,name_snapshot,email) VALUES ('00000000-0000-4000-8000-000000000013',1,'email','外部','shared@example.test')",
+        );
+        await expectRejected(
+          ds,
+          "INSERT INTO esign_signers (public_id,document_id,signer_type,name_snapshot,email) VALUES ('00000000-0000-4000-8000-000000000014',1,'email','重複','SHARED@EXAMPLE.TEST')",
+        );
+        const before: unknown = await ds.query(
+          'SELECT * FROM esign_signers ORDER BY id',
+        );
+        await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
+        expect(
+          await ds.query('SELECT * FROM esign_signers ORDER BY id'),
+        ).toEqual(before);
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
+
   it('由 MySQL 保證 FK、必要結構 CHECK、unique 與 defaults', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const ds = new DataSource(optionsFor(database));

@@ -10,11 +10,23 @@
 
 **執行約定:** 前置 resolved 後執行，沿用現有 Email 通道與 cookie，不建立第二套登入。僅後端及契約，不修改 client、不部署；驗收並整合後才 resolved，追加驗證與 commit 紀錄。
 
-- [ ] user 與 email 指派都可使用既有 Email 通道，但必須具固定有效 email、正確文件關聯及邀請世代；保留內部 userId／類型／員工快照，不轉成外部人員。
-- [ ] 單純 GET 邀請不寄碼、不授予存取、不回文件內容；主動開啟才寄 OTP，開始前不寄碼，來源地址固定為發起時信箱。
-- [ ] OTP 為 6 位、10 分鐘、一次性、錯 5 次失效；所有寄碼入口共用 60 秒冷卻及每小時 5 封限制，新碼使舊碼失效，並發只成功消耗一次，寄信失敗不建立存取。
-- [ ] 驗證後使用獨立 credential 與瀏覽器 session cookie，期限 8 小時；只授權一人一文件，不建立員工 session、不接受邀請原值冒充 credential，同 Email 不同 signer 仍互相隔離。
-- [ ] 簽署／拒簽與寬等重送均拒絕 internal principal；舊個人 open、source、sign、reject、completed-file 本人回 403 ESIGN_EMAIL_OTP_REQUIRED，他人 404、未登入 401，保留列表 metadata 與建立人管理權限。
-- [ ] 驗證頁面 signer 與 cookie 身分，錯位回 409；保留同意版本、期限、狀態、拒簽規則與證據，新增證據使用 email_invitation，不改歷史 employee_session 證據。
-- [ ] 公開 task 的員編、部門、職稱為 null，不洩漏 userId、建立人或管理備註；驗證前只回遮罩地址，沿用既有表單、cookie 與 API 契約。
-- [ ] 邀請→OTP→簽署／拒簽 HTTP 測試通過，覆蓋重放、錯人／跨文件、Origin、過期、停止、刪除、舊入口與直接 service 繞過；不保留舊文件免 OTP 分支。
+- [x] user 與 email 指派都可使用既有 Email 通道，但必須具固定有效 email、正確文件關聯及邀請世代；保留內部 userId／類型／員工快照，不轉成外部人員。
+- [x] 單純 GET 邀請不寄碼、不授予存取、不回文件內容；主動開啟才寄 OTP，開始前不寄碼，來源地址固定為發起時信箱。
+- [x] OTP 為 6 位、10 分鐘、一次性、錯 5 次失效；所有寄碼入口共用 60 秒冷卻及每小時 5 封限制，新碼使舊碼失效，並發只成功消耗一次，寄信失敗不建立存取。
+- [x] 驗證後使用獨立 credential 與瀏覽器 session cookie，期限 8 小時；只授權一人一文件，不建立員工 session、不接受邀請原值冒充 credential，同 Email 不同 signer 仍互相隔離。
+- [x] 簽署／拒簽與寬等重送均拒絕 internal principal；舊個人 open、source、sign、reject、completed-file 本人回 403 ESIGN_EMAIL_OTP_REQUIRED，他人 404、未登入 401，保留列表 metadata 與建立人管理權限。
+- [x] 驗證頁面 signer 與 cookie 身分，錯位回 409；保留同意版本、期限、狀態、拒簽規則與證據，新增證據使用 email_invitation，不改歷史 employee_session 證據。
+- [x] 公開 task 的員編、部門、職稱為 null，不洩漏 userId、建立人或管理備註；驗證前只回遮罩地址，沿用既有表單、cookie 與 API 契約。
+- [x] 邀請→OTP→簽署／拒簽 HTTP 測試通過，覆蓋重放、錯人／跨文件、Origin、過期、停止、刪除、舊入口與直接 service 繞過；不保留舊文件免 OTP 分支。
+
+## 實作與驗證紀錄（2026-10-21）
+
+- 狀態維持 claimed，等待 merger 合併整合分支後改為 resolved；實作 commit：`2ae6395`，已合併整合分支 `2e1f934`（含 Ticket 06）。
+- TDD：內部 user 存取政策、一般登入簽署重放、一般登入拒簽及副本入口測試先紅後綠；以相同 ExternalAccess 測試驗證 user／email，未建立第二套驗證。新簽章只寫入 email_invitation，舊證據保留。
+- 新增 HTTP 驗收涵蓋邀請 GET 唯讀、OTP 重放／錯五次／並發／同信箱隔離、獨立 session cookie、Origin、錯位、簽署重送、拒簽、公開裁切，以及舊五入口本人 403／他人 404／匿名 401。直接 service 的 internal principal 亦拒絕。
+- 既有 core、拒簽、管理歷程、delivery-security 及容量 fixture 成功路徑改經 Email 通道；保留舊入口拒絕案例，不刪除或跳過安全驗收。core 過期案例的待簽者暫用外部指派，已簽內部副本仍驗證；內部補簽由 Ticket 07 完成。
+- `pnpm --config.verifyDepsBeforeRun=false -C server test --runInBand`：104 suites／927 tests 通過。
+- `pnpm --config.verifyDepsBeforeRun=false -C server test:e2e`：21 suites／183 tests 通過（一般測試規模，非宣稱 6,000 人容量驗收）。
+- `pnpm --config.verifyDepsBeforeRun=false -C server test:e2e:security`：8 suites／37 tests 通過。
+- `pnpm --config.verifyDepsBeforeRun=false -C server build` 通過；`lint:check` 0 errors／205 warnings（既有測試型別與 async 類警告）。
+- 契約及 Swagger 已同步舊入口限制與 Email 共用通道。無 client、migration、依賴、環境設定或部署變更；HTTP 上游及信件均使用合成資料與 fake sender。

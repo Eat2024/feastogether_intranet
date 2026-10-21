@@ -14,6 +14,7 @@ import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 type SignProgressPanelProps = {
@@ -28,6 +29,8 @@ type SignProgressPanelProps = {
   onConfirm: () => void;
   /** 提供時顯示「拒絕簽署」 */
   onReject?: () => void;
+  /** 沒有 onReject 時，提供此說明則仍顯示停用的「拒絕簽署」並標示原因（例如後端尚未支援） */
+  rejectUnavailable?: string;
   /**
    * 手機寬度固定在畫面底部，只顯示簽名進度、同意勾選與確認簽署；
    * 呼叫端須為頁面內容保留底部空間，避免遮住文件。
@@ -45,6 +48,7 @@ export default function SignProgressPanel({
   onFieldClick,
   onConfirm,
   onReject,
+  rejectUnavailable,
   fixedOnMobile = false,
 }: SignProgressPanelProps) {
   const fields = signFields(layout);
@@ -164,6 +168,16 @@ export default function SignProgressPanel({
             <Button size="large" variant="outlined" color="error" fullWidth disabled={busy} onClick={onReject}>
               拒絕簽署
             </Button>
+          )}
+          {!onReject && rejectUnavailable && (
+            <Tooltip title={rejectUnavailable}>
+              {/* 停用的按鈕不會觸發滑鼠事件，外包 span 讓 Tooltip 仍可顯示 */}
+              <span>
+                <Button size="large" variant="outlined" color="error" fullWidth disabled>
+                  拒絕簽署（尚未支援）
+                </Button>
+              </span>
+            </Tooltip>
           )}
         </Stack>
       </Stack>

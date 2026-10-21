@@ -1,6 +1,6 @@
 # Contract：員工解析、信箱檢查與發起
 
-狀態：Spec 010 設計契約，**新增／修改行為尚未實作**。路徑包含 `/api` prefix。管理 API 使用既有員工 session；寫入及 POST 檢查套 OriginGuard。JSON 成功 envelope `{success:true,data,timestamp}`；錯誤 `{success:false,error:{code,message,details?},timestamp}`。ID 均以字串傳遞。
+狀態：Ticket 01 已實作候選搜尋唯讀與員工解析；信箱檢查及發起擴充仍待後續 tickets。路徑包含 `/api` prefix。管理 API 使用既有員工 session；寫入及 POST 檢查套 OriginGuard。JSON 成功 envelope `{success:true,data,timestamp}`；錯誤 `{success:false,error:{code,message,details?},timestamp}`。ID 均以字串傳遞。
 
 ## 組織樹（已存在，沿用）
 

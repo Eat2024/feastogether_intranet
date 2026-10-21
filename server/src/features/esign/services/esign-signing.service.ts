@@ -108,18 +108,22 @@ export class EsignSigningService {
     const document = signer
       ? await this.documents.findById(signer.documentId, manager)
       : null;
+    // 一般登入不能提交或讀取寬等結果；先確認本人，避免洩漏他人指派。
+    if (principal.kind === 'internal') {
+      if (!signer || !document)
+        throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+      this.access.assertInternalSigner(document, signer, principal.userId);
+      throw new AppException(...AppErrors.ESIGN_EMAIL_OTP_REQUIRED);
+    }
+    if (signer?.invitationTokenSha256 !== principal.invitationGenerationSha256)
+      throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
     const authenticationEventId = `${principal.kind}:${signerPublicId}:${submission.requestId}`;
     const repeated = await this.records.findByAuthenticationEventId(
       authenticationEventId,
       manager,
     );
     if (repeated && signer && repeated.signerId === signer.id && document) {
-      if (principal.kind === 'internal') {
-        this.access.assertInternalSigner(document, signer, principal.userId);
-      } else {
-        // 已簽者重送同一次簽名：只需外部存取，拿回既有結果（新簽名仍經 assertPrincipal 限待簽者）
-        this.access.assertExternalAccess({ document, signer }, new Date());
-      }
+      this.access.assertExternalAccess({ document, signer }, new Date());
       return {
         signerPublicId,
         signedAt: repeated.signedAtUtc,
@@ -188,18 +192,15 @@ export class EsignSigningService {
           lockedSigner &&
           repeated.signerId === lockedSigner.id
         ) {
-          if (principal.kind === 'internal') {
-            this.access.assertInternalSigner(
-              lockedDocument,
-              lockedSigner,
-              principal.userId,
-            );
-          } else {
-            this.access.assertExternalAccess(
-              { document: lockedDocument, signer: lockedSigner },
-              new Date(),
-            );
-          }
+          if (
+            lockedSigner.invitationTokenSha256 !==
+            principal.invitationGenerationSha256
+          )
+            throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
+          this.access.assertExternalAccess(
+            { document: lockedDocument, signer: lockedSigner },
+            new Date(),
+          );
           return {
             signerPublicId,
             signedAt: repeated.signedAtUtc,
@@ -271,10 +272,7 @@ export class EsignSigningService {
             documentSha256: persistedPdf.sha256,
             signingPayloadSha256: payloadHash,
             consentVersion: submission.consentVersion,
-            authenticationMethod:
-              principal.kind === 'internal'
-                ? 'employee_session'
-                : 'email_invitation',
+            authenticationMethod: 'email_invitation',
             authenticationEventId,
             sourceIp: request.sourceIp?.slice(0, 45),
             userAgent: request.userAgent?.slice(0, 500),
@@ -311,8 +309,6 @@ export class EsignSigningService {
         const auditBase = {
           documentId: lockedDocument.id,
           signerId: lockedSigner.id,
-          actorUserId:
-            principal.kind === 'internal' ? principal.userId : undefined,
           occurredAt: signedAt,
           requestId: submission.requestId,
         };
@@ -387,7 +383,7 @@ export class EsignSigningService {
     }
     if (principal.kind === 'internal') {
       this.access.assertInternalSigner(document, signer, principal.userId);
-      this.validation.assertActiveSigningWindow(document, now);
+      throw new AppException(...AppErrors.ESIGN_EMAIL_OTP_REQUIRED);
     } else {
       if (signer.invitationTokenSha256 !== principal.invitationGenerationSha256)
         throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);

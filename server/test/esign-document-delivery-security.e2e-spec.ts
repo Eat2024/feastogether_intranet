@@ -221,24 +221,28 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       .set('Cookie', cookie)
       .set('Origin', origin)
       .send({ note: value });
+  const internalCookies = new Map<string, string>();
   async function signInternal(publicId: string) {
+    const emailCookie = await external(publicId);
+    internalCookies.set(publicId, emailCookie);
     const task = apiData<{
       consent: { version: string };
       fields: Array<{ id: string; type: string }>;
     }>(
       await request(ctx.server)
-        .post(`/api/esign/signing-tasks/${publicId}`)
-        .set('Cookie', cookie)
+        .post('/api/external-signing-task')
+        .set('Cookie', emailCookie)
         .set('Origin', origin)
-        .expect(201),
+        .expect(200),
     );
     return apiData<{ verificationUrl: string }>(
       await request(ctx.server)
-        .post(`/api/esign/signing-tasks/${publicId}/signatures`)
-        .set('Cookie', cookie)
+        .post('/api/external-signing-task/signatures')
+        .set('Cookie', emailCookie)
         .set('Origin', origin)
         .send({
           requestId: randomUUID(),
+          signerPublicId: publicId,
           consentVersion: task.consent.version,
           accepted: true,
           signatures: task.fields
@@ -355,8 +359,8 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       expect((await read(doc.id)).status).toBe('active');
       const personal = bytes(
         await request(ctx.server)
-          .get(`/api/esign/signing-tasks/${internal.publicId}/completed-file`)
-          .set('Cookie', cookie)
+          .get('/api/external-signing-task/completed-file')
+          .set('Cookie', internalCookies.get(internal.publicId)!)
           .buffer(true)
           .parse(binary)
           .expect(200),
@@ -428,8 +432,8 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       expect(
         bytes(
           await request(ctx.server)
-            .get(`/api/esign/signing-tasks/${internal.publicId}/completed-file`)
-            .set('Cookie', cookie)
+            .get('/api/external-signing-task/completed-file')
+            .set('Cookie', internalCookies.get(internal.publicId)!)
             .buffer(true)
             .parse(binary)
             .expect(200),

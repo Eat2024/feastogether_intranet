@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 發起文件並寄送內部員工邀請。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** 010 — US2、FR-007～012、FR-015～017。對應 T019～T024、T027、T028，以及 T004 的 ESIGN_EMAIL_OTP_REQUIRED。T025、T026 已由 03 完成；本票不重做邀請 worker。
 

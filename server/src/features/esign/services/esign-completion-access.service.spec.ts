@@ -80,9 +80,10 @@ describe('EsignCompletionAccessService 個人下載', () => {
       expect((await f.service.creatorFile(4, 'person-a', 7))?.bytes).toEqual(
         f.bytes,
       );
-      expect((await f.service.signerFile('person-a', 20))?.bytes).toEqual(
-        f.bytes,
-      );
+      await expect(f.service.signerFile('person-a', 20)).rejects.toMatchObject({
+        status: 403,
+        code: 'ESIGN_EMAIL_OTP_REQUIRED',
+      });
       expect(f.files.findCompletedFile).toHaveBeenCalledWith(
         21,
         expect.anything(),
@@ -111,7 +112,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
     async (status) => {
       const f = await setup();
       f.signer.completionStatus = status;
-      await expect(f.service.signerFile('person-a', 20)).resolves.toBeNull();
+      await expect(f.service.creatorFile(4, 'person-a', 7)).resolves.toBeNull();
       expect(f.files.findCompletedFile).not.toHaveBeenCalled();
       expect(f.files.findDocumentFile).not.toHaveBeenCalled();
     },
@@ -165,7 +166,9 @@ describe('EsignCompletionAccessService 個人下載', () => {
       if (change === 'hash') f.file.sha256 = '0'.repeat(64);
       if (change === 'size') f.file.fileSize += 1;
       if (change === 'evidence') f.record.signingPayloadSha256 = '0'.repeat(64);
-      await expect(f.service.signerFile('person-a', 20)).rejects.toMatchObject({
+      await expect(
+        f.service.creatorFile(4, 'person-a', 7),
+      ).rejects.toMatchObject({
         status: 409,
       });
     },

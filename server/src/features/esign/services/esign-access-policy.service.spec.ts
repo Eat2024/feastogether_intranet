@@ -102,6 +102,8 @@ describe('EsignAccessPolicyService', () => {
     const doc = document();
     const signer = Object.assign(new EsignSigner(), {
       signerType: 'email',
+      email: 'recipient@example.test',
+      invitationTokenSha256: 'a'.repeat(64),
       documentId: 1,
       status: 'pending',
       invitationExpiresAt: new Date('2026-10-14T00:00:00.000Z'),
@@ -116,9 +118,37 @@ describe('EsignAccessPolicyService', () => {
   });
 
   describe('assertExternalAccess', () => {
+    it.each(['pending', 'signed', 'rejected'])(
+      '內部 %s 指派須有固定有效信箱及邀請世代',
+      (status) => {
+        const signer = Object.assign(new EsignSigner(), {
+          signerType: 'user',
+          userId: 20,
+          documentId: 1,
+          status,
+          email: 'employee@example.test',
+          invitationTokenSha256: 'a'.repeat(64),
+          invitationExpiresAt: new Date('2026-10-14T00:00:00.000Z'),
+        });
+        expect(() =>
+          policy.assertExternalAccess({ document: document(), signer }, now),
+        ).not.toThrow();
+        signer.email = 'invalid';
+        expect(() =>
+          policy.assertExternalAccess({ document: document(), signer }, now),
+        ).toThrow('外部簽署存取已失效');
+        signer.email = 'employee@example.test';
+        signer.invitationTokenSha256 = null;
+        expect(() =>
+          policy.assertExternalAccess({ document: document(), signer }, now),
+        ).toThrow('外部簽署存取已失效');
+      },
+    );
     const emailSigner = (status: 'pending' | 'signed') =>
       Object.assign(new EsignSigner(), {
         signerType: 'email',
+        email: 'recipient@example.test',
+        invitationTokenSha256: 'a'.repeat(64),
         documentId: 1,
         status,
         // 簽署成功時期限清為 null（esign-signing.service 的簽署寫入）
@@ -186,9 +216,10 @@ describe('EsignAccessPolicyService', () => {
 
     it.each([
       {
-        name: '非 email 簽署人',
+        name: '缺固定 email 的內部簽署人',
         tamper: (signer: EsignSigner) => {
           signer.signerType = 'user';
+          signer.email = undefined;
         },
       },
       {
@@ -244,6 +275,8 @@ describe('EsignAccessPolicyService', () => {
     const pendingSigner = () =>
       Object.assign(new EsignSigner(), {
         signerType: 'email',
+        email: 'recipient@example.test',
+        invitationTokenSha256: 'a'.repeat(64),
         documentId: 1,
         status: 'pending',
         invitationExpiresAt: new Date('2026-10-20T00:00:00.000Z'),

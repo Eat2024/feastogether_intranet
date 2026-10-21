@@ -5,7 +5,7 @@ export const endpoints = {
   // 電子簽文件（server/src/features/esign/controllers/documents.controller.ts）
   ESIGN_DOCUMENTS: 'esign/documents',
   ESIGN_DOCUMENT: (id: string) => `esign/documents/${encodeURIComponent(id)}`,
-  ESIGN_DOCUMENT_DRAFT_SAVE: (id: string) => `esign/documents/${encodeURIComponent(id)}/draftSave`,
+  ESIGN_DOCUMENT_DRAFT_SETTINGS: (id: string) => `esign/documents/${encodeURIComponent(id)}/draft-settings`,
   ESIGN_DOCUMENT_INITIATIONS: (id: string) => `esign/documents/${encodeURIComponent(id)}/initiations`,
   ESIGN_DOCUMENT_HISTORY: (id: string) => `esign/documents/${encodeURIComponent(id)}/history`,
   ESIGN_SIGNER_COMPLETED_FILE: (id: string, signerPublicId: string) =>

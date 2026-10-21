@@ -1,48 +1,66 @@
-'use client';
+"use client";
 
-// 設定簽署（後端文件）：選擇簽署人與簽署期間，以 POST /api/esign/documents/:id/initiations 一次發起。
+// 設定簽署（後端文件）：選擇簽署人、簽署期間與可選功能，以 POST /api/esign/documents/:id/initiations 一次發起；
+// 暫存以 PATCH .../draft-settings 保存同樣的設定，再次進入時帶回。
 // 第一步放的欄位是所有簽署人共用的位置，後端會替每位簽署人各產生一份個人副本。
-import { useGetDocumentQuery } from '@/api/queries';
-import { queryKeys } from '@/api/query-keys';
-import { getSignerCandidates, initiateDocument, saveDraftSigners } from '@/api/requests';
-import type { EsignDocumentDetail, EsignSignerInput, EsignSignerView, InitiateDocumentBody } from '@/api/types';
-import PageHeader from '@/components/PageHeader';
-import DeadlineRangePicker from '@/features/forms/editor/DeadlineRangePicker';
-import EmailSignerInput, { type EmailSigner } from '@/features/forms/editor/EmailSignerInput';
-import StaffTreePicker from '@/features/forms/editor/StaffTreePicker';
-import { WATERMARK_TEXT } from '@/features/forms/options';
-import type { OrgDept } from '@/features/forms/types';
-import { getErrorMessage } from '@/lib/apiError';
-import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
-import CircularProgress from '@mui/material/CircularProgress';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Paper from '@mui/material/Paper';
-import Stack from '@mui/material/Stack';
-import Tooltip from '@mui/material/Tooltip';
-import Typography from '@mui/material/Typography';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
-import dayjs from 'dayjs';
-import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useGetDocumentQuery } from "@/api/queries";
+import { queryKeys } from "@/api/query-keys";
+import {
+  getSignerCandidates,
+  initiateDocument,
+  saveDraftSettings,
+} from "@/api/requests";
+import type {
+  EsignDocumentDetail,
+  EsignSignerInput,
+  EsignSignerView,
+  InitiateDocumentBody,
+} from "@/api/types";
+import PageHeader from "@/components/PageHeader";
+import { formatDate } from "@/features/esign-documents/listQuery";
+import DeadlineRangePicker from "@/features/forms/editor/DeadlineRangePicker";
+import EmailSignerInput, {
+  type EmailSigner,
+} from "@/features/forms/editor/EmailSignerInput";
+import StaffTreePicker from "@/features/forms/editor/StaffTreePicker";
+import { WATERMARK_TEXT } from "@/features/forms/options";
+import type { OrgDept } from "@/features/forms/types";
+import { getErrorMessage } from "@/lib/apiError";
+import { emailSignerId, isValidEmail, normalizeEmail } from "@/lib/email";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import CircularProgress from "@mui/material/CircularProgress";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import dayjs from "dayjs";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 
-const DEADLINE_REQUIRED = '請選擇簽署期間的開始日與結束日';
+const DEADLINE_REQUIRED = "請選擇簽署期間的開始日與結束日";
 
-// 浮水印與拒絕簽署後端尚未提供，發起時一律送 false；選項先顯示為停用
-const OPTION_ITEMS: { key: 'watermark' | 'allowReject'; label: string; description: string }[] = [
+// 可選功能會連同草稿保存，發起後固定在簽署證據內
+const OPTION_ITEMS: {
+  key: "watermark" | "allowReject";
+  label: string;
+  description: string;
+}[] = [
   {
-    key: 'watermark',
-    label: '匯出文件加上浮水印',
+    key: "watermark",
+    label: "匯出文件加上浮水印",
     description: `下載或匯出的已簽署文件（PDF）每一頁都會加上「${WATERMARK_TEXT}」浮水印。`,
   },
   {
-    key: 'allowReject',
-    label: '開放拒絕簽署',
-    description: '簽署人可以選擇拒絕簽署並填寫原因；取消勾選後，簽署人只能簽署。',
+    key: "allowReject",
+    label: "開放拒絕簽署",
+    description:
+      "簽署人可以選擇拒絕簽署並填寫原因；取消勾選後，簽署人只能簽署。",
   },
 ];
 
@@ -51,22 +69,31 @@ type Staff = { name: string; employeeNo: string };
 /** 組織架構攤平成 員工 id → 姓名、員編 */
 function staffIndex(depts: OrgDept[], into = new Map<string, Staff>()) {
   for (const d of depts) {
-    for (const e of d.employees) into.set(e.id, { name: e.name, employeeNo: e.employeeNo ?? e.id });
+    for (const e of d.employees)
+      into.set(e.id, { name: e.name, employeeNo: e.employeeNo ?? e.id });
     staffIndex(d.children, into);
   }
   return into;
 }
 
 /** 簽署人（選擇順序：組織架構同仁在前、Email 在後） */
-type PickedSigner = { key: string; label: string } & ({ type: 'user'; employeeNo: string } | { type: 'email'; name: string; email: string });
+type PickedSigner = { key: string; label: string } & (
+  | { type: "user"; employeeNo: string }
+  | { type: "email"; name: string; email: string }
+);
 
 /** 以完整員編查出後端 userId；查無或不唯一時回報是哪一位 */
-async function resolveUserIds(signers: PickedSigner[]): Promise<Map<string, string>> {
-  const users = signers.filter((s) => s.type === 'user');
+async function resolveUserIds(
+  signers: PickedSigner[],
+): Promise<Map<string, string>> {
+  const users = signers.filter((s) => s.type === "user");
   const results = await Promise.all(
     users.map(async (s) => {
-      const match = (await getSignerCandidates(s.employeeNo)).find((c) => c.employeeNo === s.employeeNo);
-      if (!match) throw new Error(`找不到 ${s.label} 的員工帳號，無法指定為簽署人`);
+      const match = (await getSignerCandidates(s.employeeNo)).find(
+        (c) => c.employeeNo === s.employeeNo,
+      );
+      if (!match)
+        throw new Error(`找不到 ${s.label} 的員工帳號，無法指定為簽署人`);
       return [s.key, match.id] as const;
     }),
   );
@@ -74,10 +101,14 @@ async function resolveUserIds(signers: PickedSigner[]): Promise<Map<string, stri
 }
 
 /** 依選取順序轉成後端的簽署人格式（內部員工以員編查出 userId） */
-async function toSignerInputs(signers: PickedSigner[]): Promise<EsignSignerInput[]> {
+async function toSignerInputs(
+  signers: PickedSigner[],
+): Promise<EsignSignerInput[]> {
   const userIds = await resolveUserIds(signers);
   return signers.map((s) =>
-    s.type === 'user' ? { type: 'user', userId: userIds.get(s.key)! } : { type: 'email', name: s.name, email: s.email },
+    s.type === "user"
+      ? { type: "user", userId: userIds.get(s.key)! }
+      : { type: "email", name: s.name, email: s.email },
   );
 }
 
@@ -86,13 +117,18 @@ async function toSignerInputs(signers: PickedSigner[]): Promise<EsignSignerInput
  * 外部簽署人的姓名與 Email 相同時表示當初未填姓名
  */
 function restoreSigners(saved: EsignSignerView[], staff: Map<string, Staff>) {
-  const idByEmployeeNo = new Map([...staff].map(([id, s]) => [s.employeeNo, id]));
+  const idByEmployeeNo = new Map(
+    [...staff].map(([id, s]) => [s.employeeNo, id]),
+  );
   const selected = new Set<string>();
   const emailSigners: EmailSigner[] = [];
   const missing: EsignSignerView[] = [];
   for (const s of saved) {
-    if (s.type === 'email' && s.email) {
-      emailSigners.push({ email: s.email, name: s.name === s.email ? '' : s.name });
+    if (s.type === "email" && s.email) {
+      emailSigners.push({
+        email: s.email,
+        name: s.name === s.email ? "" : s.name,
+      });
     } else {
       const id = s.employeeNo ? idByEmployeeNo.get(s.employeeNo) : undefined;
       if (id) selected.add(id);
@@ -103,17 +139,38 @@ function restoreSigners(saved: EsignSignerView[], staff: Map<string, Staff>) {
 }
 
 /** YYYY/MM/DD → 當天開始（00:00）或結束（23:59:59.999）的 ISO 時間（本地時區） */
-const dayBoundary = (date: string, edge: 'start' | 'end') => {
-  const d = dayjs(date.replaceAll('/', '-'));
-  return (edge === 'start' ? d.startOf('day') : d.endOf('day')).toISOString();
+const dayBoundary = (date: string, edge: "start" | "end") => {
+  const d = dayjs(date.replaceAll("/", "-"));
+  return (edge === "start" ? d.startOf("day") : d.endOf("day")).toISOString();
 };
 
-export default function DocumentSignersEditor({ documentId, org }: { documentId: string; org: OrgDept[] }) {
-  const { data: doc, isPending, isError, error, refetch, isFetching } = useGetDocumentQuery(documentId);
+export default function DocumentSignersEditor({
+  documentId,
+  org,
+}: {
+  documentId: string;
+  org: OrgDept[];
+}) {
+  const {
+    data: doc,
+    isPending,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useGetDocumentQuery(documentId);
 
   if (isPending) {
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 8 }}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 1.5,
+          py: 8,
+        }}
+      >
         <CircularProgress size={20} />
         <Typography variant="description">載入文件中…</Typography>
       </Box>
@@ -124,7 +181,12 @@ export default function DocumentSignersEditor({ documentId, org }: { documentId:
       <Alert
         severity="error"
         action={
-          <Button color="inherit" size="small" onClick={() => refetch()} loading={isFetching}>
+          <Button
+            color="inherit"
+            size="small"
+            onClick={() => refetch()}
+            loading={isFetching}
+          >
             重新載入
           </Button>
         }
@@ -133,7 +195,7 @@ export default function DocumentSignersEditor({ documentId, org }: { documentId:
       </Alert>
     );
   }
-  if (doc.status !== 'draft') {
+  if (doc.status !== "draft") {
     return (
       <Alert severity="info" action={<Button href="/forms">返回列表</Button>}>
         「{doc.title}」已發起簽署，無法再修改簽署設定。
@@ -150,94 +212,155 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
   // 進入頁面時帶回草稿已暫存的簽署名單
   const [restored] = useState(() => restoreSigners(doc.signers, staff));
   const [selected, setSelected] = useState<Set<string>>(restored.selected);
-  const [emailSigners, setEmailSigners] = useState<EmailSigner[]>(restored.emailSigners);
-  const [deadline, setDeadline] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
+  const [emailSigners, setEmailSigners] = useState<EmailSigner[]>(
+    restored.emailSigners,
+  );
+  // 帶回草稿已暫存的簽署期間與可選功能
+  const [deadline, setDeadline] = useState<{
+    start: string | null;
+    end: string | null;
+  }>({
+    start: formatDate(doc.signStartAt),
+    end: formatDate(doc.signEndAt),
+  });
+  const [options, setOptions] = useState({
+    watermark: doc.watermark,
+    allowReject: doc.allowReject,
+  });
   const [signerError, setSignerError] = useState<string>();
   const [deadlineError, setDeadlineError] = useState<string>();
   const [submitError, setSubmitError] = useState<string>();
 
-  const fields = useMemo(() => [...doc.fields].sort((a, b) => a.sortOrder - b.sortOrder), [doc.fields]);
+  const fields = useMemo(
+    () => [...doc.fields].sort((a, b) => a.sortOrder - b.sortOrder),
+    [doc.fields],
+  );
 
   const signers: PickedSigner[] = useMemo(() => {
     const users = [...selected].flatMap((id): PickedSigner[] => {
       const s = staff.get(id);
-      return s ? [{ key: `user:${id}`, label: `${s.name}（${s.employeeNo}）`, type: 'user', employeeNo: s.employeeNo }] : [];
+      return s
+        ? [
+            {
+              key: `user:${id}`,
+              label: `${s.name}（${s.employeeNo}）`,
+              type: "user",
+              employeeNo: s.employeeNo,
+            },
+          ]
+        : [];
     });
     const emails = emailSigners.map((e): PickedSigner => {
       const email = normalizeEmail(e.email);
       const name = e.name.trim();
       // 後端要求姓名必填；未填時以 Email 代替
-      return { key: emailSignerId(email), label: name ? `${name}（${email}）` : email, type: 'email', name: name || email, email };
+      return {
+        key: emailSignerId(email),
+        label: name ? `${name}（${email}）` : email,
+        type: "email",
+        name: name || email,
+        email,
+      };
     });
     return [...users, ...emails];
   }, [selected, emailSigners, staff]);
 
   // 後端要求至少一個共用簽名欄位
-  const hasSignatureField = fields.some((f) => f.type === 'signature');
+  const hasSignatureField = fields.some((f) => f.type === "signature");
 
   const initiate = useMutation({
     mutationFn: async (): Promise<number> => {
       const body: InitiateDocumentBody = {
         signers: await toSignerInputs(signers),
         // 共用欄位：所有簽署人簽同一組位置，照草稿原樣送出
-        fields: fields.map(({ type, page, xPercent, yPercent, widthPercent, heightPercent, sortOrder }) => ({
-          type,
-          page,
-          xPercent,
-          yPercent,
-          widthPercent,
-          heightPercent,
-          sortOrder,
-        })),
-        signStartAt: dayBoundary(deadline.start!, 'start'),
-        signEndAt: dayBoundary(deadline.end!, 'end'),
-        watermark: false,
-        allowReject: false,
+        fields: fields.map(
+          ({
+            type,
+            page,
+            xPercent,
+            yPercent,
+            widthPercent,
+            heightPercent,
+            sortOrder,
+          }) => ({
+            type,
+            page,
+            xPercent,
+            yPercent,
+            widthPercent,
+            heightPercent,
+            sortOrder,
+          }),
+        ),
+        signStartAt: dayBoundary(deadline.start!, "start"),
+        signEndAt: dayBoundary(deadline.end!, "end"),
+        ...options,
       };
       await initiateDocument({ id: doc.id, body });
       return signers.length;
     },
     meta: { suppressGlobalErrorToast: true },
     onSuccess: (count) => {
-      void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
-      void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id] });
+      void queryClient.invalidateQueries({
+        queryKey: [queryKeys.ESIGN_DOCUMENTS],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id],
+      });
       router.push(`/forms?flash=published&count=${count}`);
     },
     // 查無員工帳號時是自訂的 Error，其餘為後端回應
     onError: (err) =>
       setSubmitError(
-        !axios.isAxiosError(err) && err instanceof Error ? err.message : getErrorMessage(err, '發起簽署失敗，請稍後再試'),
+        !axios.isAxiosError(err) && err instanceof Error
+          ? err.message
+          : getErrorMessage(err, "發起簽署失敗，請稍後再試"),
       ),
   });
 
-  // 暫存簽署名單（後端只儲存名單，簽署期間與可選功能於發起時設定）
+  // 暫存草稿設定：同一交易保存名單、期間與可選功能，不發起、不寄送邀請；期間可只選一端
   const save = useMutation({
-    mutationFn: async () => saveDraftSigners({ id: doc.id, signers: await toSignerInputs(signers) }),
+    mutationFn: async () =>
+      saveDraftSettings({
+        id: doc.id,
+        body: {
+          signers: await toSignerInputs(signers),
+          signStartAt: deadline.start
+            ? dayBoundary(deadline.start, "start")
+            : null,
+          signEndAt: deadline.end ? dayBoundary(deadline.end, "end") : null,
+          ...options,
+        },
+      }),
     meta: { suppressGlobalErrorToast: true },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id] });
-      router.push('/forms?flash=signersSaved');
+      void queryClient.invalidateQueries({
+        queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id],
+      });
+      router.push("/forms?flash=draftSaved");
     },
     onError: (err) =>
       setSubmitError(
-        !axios.isAxiosError(err) && err instanceof Error ? err.message : getErrorMessage(err, '儲存失敗，請稍後再試'),
+        !axios.isAxiosError(err) && err instanceof Error
+          ? err.message
+          : getErrorMessage(err, "儲存失敗，請稍後再試"),
       ),
   });
 
   /** 簽署人的共同檢查（暫存與發起都需要） */
   const validateSigners = () => {
     if (signers.length === 0) {
-      setSignerError('請至少選擇一位需簽署人員');
+      setSignerError("請至少選擇一位需簽署人員");
       return false;
     }
     if (emailSigners.some((e) => !isValidEmail(normalizeEmail(e.email)))) {
-      setSignerError('Email 格式不正確');
+      setSignerError("Email 格式不正確");
       return false;
     }
     return true;
   };
 
-  const saveSigners = () => {
+  const saveDraft = () => {
     setSubmitError(undefined);
     if (validateSigners()) save.mutate();
   };
@@ -254,13 +377,17 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
     if (ok) initiate.mutate();
   };
 
-  const busy = initiate.isPending || initiate.isSuccess || save.isPending || save.isSuccess;
+  const busy =
+    initiate.isPending ||
+    initiate.isSuccess ||
+    save.isPending ||
+    save.isSuccess;
 
   return (
     <Stack spacing={3}>
       <PageHeader
         title="設定簽署"
-        description={`「${doc.title}」${doc.docNumber ? `（${doc.docNumber}）` : ''}－ 為此文件指定需簽署的人員，並設定簽署期間。`}
+        description={`「${doc.title}」${doc.docNumber ? `（${doc.docNumber}）` : ""}－ 為此文件指定需簽署的人員，並設定簽署期間。`}
       />
       {!hasSignatureField && (
         <Alert severity="warning" variant="outlined">
@@ -269,9 +396,12 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
       )}
       {restored.missing.length > 0 && (
         <Alert severity="warning" variant="outlined">
-          先前儲存的簽署人中，有 {restored.missing.length} 位不在目前的組織架構，未帶入名單：
-          {restored.missing.map((s) => `${s.name}${s.employeeNo ? `（${s.employeeNo}）` : ''}`).join('、')}。
-          需要的話請改以 Email 加入；儲存或發起時不會包含他們。
+          先前儲存的簽署人中，有 {restored.missing.length}{" "}
+          位不在目前的組織架構，未帶入名單：
+          {restored.missing
+            .map((s) => `${s.name}${s.employeeNo ? `（${s.employeeNo}）` : ""}`)
+            .join("、")}
+          。 需要的話請改以 Email 加入；儲存或發起時不會包含他們。
         </Alert>
       )}
       <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
@@ -301,13 +431,12 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
             <Typography
               variant="secondary"
               component="div"
-              sx={{ mt: 1.5, ...(signerError && { color: 'error.dark' }) }}
+              sx={{ mt: 1.5, ...(signerError && { color: "error.dark" }) }}
             >
               {signerError ??
-                `共 ${signers.length} 位簽署人${emailSigners.length ? `（組織架構 ${selected.size} 位、Email ${emailSigners.length} 位）` : ''}`}
+                `共 ${signers.length} 位簽署人${emailSigners.length ? `（組織架構 ${selected.size} 位、Email ${emailSigners.length} 位）` : ""}`}
             </Typography>
           </Box>
-
 
           <Box>
             <Typography variant="subheading" component="div" sx={{ mb: 1 }}>
@@ -324,12 +453,12 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
             <Typography
               variant="label"
               component="div"
-              sx={{ mt: 1, ...(deadlineError && { color: 'error.dark' }) }}
+              sx={{ mt: 1, ...(deadlineError && { color: "error.dark" }) }}
             >
               {deadlineError ??
                 (deadline.start || deadline.end
-                  ? `已選擇：${deadline.start ?? '（請選擇開始日）'} ～ ${deadline.end ?? '（請選擇結束日）'}`
-                  : '請選擇開始日與結束日，簽署人需在此期間內完成簽署。')}
+                  ? `已選擇：${deadline.start ?? "（請選擇開始日）"} ～ ${deadline.end ?? "（請選擇結束日）"}`
+                  : "請選擇開始日與結束日，簽署人需在此期間內完成簽署。")}
             </Typography>
           </Box>
 
@@ -341,14 +470,25 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
               {OPTION_ITEMS.map((item) => (
                 <FormControlLabel
                   key={item.key}
-                  sx={{ alignItems: 'flex-start', mx: 0 }}
+                  sx={{ alignItems: "flex-start", mx: 0 }}
                   control={
-                    <Checkbox size="small" checked={false} disabled sx={{ mt: -0.5 }} />
+                    <Checkbox
+                      size="small"
+                      checked={options[item.key]}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setOptions((prev) => ({
+                          ...prev,
+                          [item.key]: e.target.checked,
+                        }))
+                      }
+                      sx={{ mt: -0.5 }}
+                    />
                   }
                   label={
                     <Box>
                       <Typography variant="content" component="div">
-                        {item.label}（尚未支援）
+                        {item.label}
                       </Typography>
                       <Typography variant="helper" component="div">
                         {item.description}
@@ -364,29 +504,40 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
 
       {submitError && <Alert severity="error">{submitError}</Alert>}
 
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-        <Button size="large" variant="outlined" href={`/forms/${doc.id}/edit`} disabled={busy}>
+      <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+        <Button
+          size="large"
+          variant="outlined"
+          href={`/forms/${doc.id}/edit`}
+          disabled={busy}
+        >
           上一步，回到上傳文件
         </Button>
-        {/* 後端草稿只儲存簽署名單；簽署期間與可選功能於發起時設定 */}
-        <Tooltip title="只會儲存簽署名單，簽署期間請在發起時設定">
+        {/* 暫存不會發起簽署或寄送邀請 */}
+        <Tooltip title="儲存簽署名單、期間與可選功能，不會發起或寄送邀請">
           <span>
             <Button
               size="large"
               variant="outlined"
-              onClick={saveSigners}
+              onClick={saveDraft}
               loading={save.isPending || save.isSuccess}
               disabled={busy && !save.isPending && !save.isSuccess}
             >
-              儲存簽署名單（暫不發起）
+              儲存設定（暫不發起）
             </Button>
           </span>
         </Tooltip>
-        <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
+        <Box sx={{ display: "flex", gap: 1, ml: "auto" }}>
           <Button size="large" variant="outlined" href="/forms" disabled={busy}>
             取消
           </Button>
-          <Button size="large" variant="contained" onClick={submit} loading={busy} disabled={!hasSignatureField}>
+          <Button
+            size="large"
+            variant="contained"
+            onClick={submit}
+            loading={busy}
+            disabled={!hasSignatureField}
+          >
             發起簽署，通知所有簽署人
           </Button>
         </Box>

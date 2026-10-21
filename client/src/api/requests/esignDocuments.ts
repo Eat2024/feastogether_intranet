@@ -2,12 +2,11 @@ import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
 import type {
   CreateDocumentBody,
+  DraftSettingsBody,
   EsignDocumentDetail,
   EsignDocumentListItem,
   EsignHistoryItem,
   EsignSignerCandidate,
-  EsignSignerInput,
-  EsignSignerView,
   GetDocumentsParams,
   InitiateDocumentBody,
   UpdateDocumentBody,
@@ -79,20 +78,20 @@ export const getDocumentHistory = async (id: string): Promise<EsignHistoryItem[]
 };
 
 /**
- * @name 暫存草稿簽署名單
- * @description 整批取代草稿的簽署人（至少 1 位），不儲存簽署期間與可選功能；回傳儲存後的簽署人
+ * @name 暫存草稿設定
+ * @description 在同一交易保存簽署人名單、簽署期間與可選功能，不發起、不寄送邀請；回傳儲存後的文件詳情
  */
-export const saveDraftSigners = async ({
+export const saveDraftSettings = async ({
   id,
-  signers,
+  body,
 }: {
   id: string;
-  signers: EsignSignerInput[];
-}): Promise<EsignSignerView[]> => {
-  const res = await api<EsignSignerView[]>({
-    method: 'PUT',
-    url: endpoints.ESIGN_DOCUMENT_DRAFT_SAVE(id),
-    data: { signers },
+  body: DraftSettingsBody;
+}): Promise<EsignDocumentDetail> => {
+  const res = await api<EsignDocumentDetail>({
+    method: 'PATCH',
+    url: endpoints.ESIGN_DOCUMENT_DRAFT_SETTINGS(id),
+    data: body,
   });
   return res.data;
 };

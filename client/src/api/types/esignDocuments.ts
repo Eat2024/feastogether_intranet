@@ -103,6 +103,9 @@ export interface EsignDocumentDetail extends Omit<EsignDocumentListItem, 'signSt
   sourceFile?: { fileName: string; size: number; pageCount: number; sha256: string };
   signStartAt: string | null;
   signEndAt: string | null;
+  /** 浮水印、允許拒簽：草稿為暫存的設定，發起後為發起時的設定 */
+  watermark: boolean;
+  allowReject: boolean;
   stopReason: string | null;
   signers: EsignSignerView[];
   fields: EsignFieldView[];
@@ -120,10 +123,24 @@ export interface InitiateDocumentBody {
   /** ISO 8601，開始時間必須早於結束時間 */
   signStartAt: string;
   signEndAt: string;
-  /** 浮水印：後端尚未提供，一律傳 false */
+  /** 下載／匯出的個人簽署副本（PDF）每一頁加上浮水印 */
   watermark: boolean;
-  /** 拒絕簽署：後端尚未提供，一律傳 false */
+  /** 簽署人可以拒絕簽署 */
   allowReject: boolean;
+}
+
+/**
+ * PATCH esign/documents/:id/draft-settings：暫存草稿設定，不發起、不寄送邀請。
+ * 各欄皆可省略（省略的保留原值）；期間傳 null 表示清空。
+ */
+export interface DraftSettingsBody {
+  /** 整批取代簽署人，至少 1 位 */
+  signers?: EsignSignerInput[];
+  /** ISO 8601（含時區） */
+  signStartAt?: string | null;
+  signEndAt?: string | null;
+  watermark?: boolean;
+  allowReject?: boolean;
 }
 
 /** GET esign/documents/:id/history 的一筆事件（依發生時間由舊到新） */
@@ -131,8 +148,12 @@ export interface EsignHistoryItem {
   /** 事件類型，例如 document.initiated、signature.completed、document.stopped_by_creator */
   type: string;
   occurredAt: string;
-  /** 建立人檢視時為「建立人」或「系統」 */
-  actor: string | null;
+  /** 操作者：簽署人、員工（建立人）或系統；同名簽署人以 signerPublicId 區分 */
+  actor: {
+    kind: 'signer' | 'employee' | 'system';
+    name: string;
+    signerPublicId?: string;
+  };
   /** 停止簽署等事件的原因 */
   reason: string | null;
 }

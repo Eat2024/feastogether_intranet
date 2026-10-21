@@ -27,19 +27,19 @@ export class EsignRejectionService {
   ) {}
 
   async reject(
-    publicId: string,
+    signerId: string,
     principal: SigningPrincipal,
     input: RejectionDto,
   ) {
     const reason = this.normalizeReason(input.reason);
     // 先取得不變的歸屬；交易內第一個讀取必須是文件鎖，避免 RR 舊快照漏看其他人的終態。
     const candidate = await this.signers.findByPublicId(
-      publicId,
+      signerId,
       this.mysql.getManager(),
     );
     const result = await this.mysql.transaction(async (manager) => {
       const { document, signer } = await this.lockSigningContext(
-        publicId,
+        signerId,
         candidate?.documentId,
         manager,
       );
@@ -60,7 +60,7 @@ export class EsignRejectionService {
         await this.markDocumentFinalizing(document, manager);
       }
       return {
-        signerPublicId: publicId,
+        signerPublicId: signerId,
         status: 'rejected' as const,
         rejectedAt: signer.rejectedAt!.toISOString(),
         reason: signer.rejectReason!,
@@ -86,7 +86,7 @@ export class EsignRejectionService {
   }
 
   private async lockSigningContext(
-    publicId: string,
+    signerId: string,
     documentId: number | undefined,
     manager: EntityManager,
   ) {
@@ -95,7 +95,7 @@ export class EsignRejectionService {
         ? await this.documents.findByIdForUpdate(documentId, manager)
         : null;
     const signer = document
-      ? await this.signers.findByPublicIdForUpdate(publicId, manager)
+      ? await this.signers.findByPublicIdForUpdate(signerId, manager)
       : null;
     if (!document || !signer)
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);

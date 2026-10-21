@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** 010 — US1、FR-002～004、FR-015～016。對應 T007、T010、T013、T014、T009 的預覽／批次核對測試，以及 T004 的信箱來源錯誤。T001、T002 的必要環境檢核及合成 HR fixture 在本票獨立完成或沿用已整合成果，不等待 01，也不重建測試框架。
 

@@ -34,6 +34,8 @@
 
 ## 所選員工信箱檢查
 
+Ticket 02 已實作此端點與信箱來源核對；發起流程的固定信箱及通知由後續票單實作，不因本端點完成而視為已完成。
+
 **新增** `POST /api/esign/documents/:documentId/employee-email-checks` → 200。
 
 ```json
@@ -41,6 +43,7 @@
 ```
 
 - 1–6,000 個正整數字串，必須可安全解析為本機 ID；去重後按輸入順序輸出。
+- 請求格式、數量、安全整數或額外欄位錯誤回 422 `ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE`；不接受手填 Email 或員編覆寫。
 - 僅該草稿建立人可呼叫；非建立人／不存在文件 404，非草稿 409。userId 不是有效帳號回 422 `ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE`，details.userIds 列出原請求中不可用 ID，不洩漏額外帳號資料。
 - 來源以完整員編分批查詢，最多 100／批，後端負責拆批。不得提供 employeeNo、email、上游 URL 作為可覆寫來源。
 - 查無、空白／不合法 email 為 unavailable；不推測是否離職。不同員工相同信箱皆 ready，逐人回傳、不警告。

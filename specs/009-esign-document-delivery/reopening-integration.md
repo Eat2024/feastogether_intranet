@@ -1,12 +1,12 @@
 # Spec007 補簽與 Spec009 整合
 
-2026-10-21：依使用者要求，將 `feature/007-reopen-signing`（`e0e7049`，包含拆分 private methods）合併至 `feature/009-esign-document-delivery`，一併交付 PR #17。原 Spec009 獨立交付時不含補簽的記錄是先前階段紀錄；本次整合範圍以本文件為準。
+2026-10-21：依使用者要求，將 `feature/007-reopen-signing`（`e0e7049`，包含拆分 private methods）合併至 `feature/009-esign-document-delivery`，一併交付 PR #17。PR 最終只交付後端；曾用於驗證的 client 串接已移除，正式畫面由獨立前端 PR 交付。
 
 ## API 與權責
 
 - `POST /api/esign/documents/:documentId/reopenings`：建立人提供 `expectedSignEndAt`、新 `signEndAt` 與必填原因；只開放已到期且仍有 pending 簽署人的文件。只改到期時間，保留開始時間、固定簽署證據與既有副本；每輪追加歷程。
 - `GET /api/esign/documents/:documentId/reopening-invitations`：建立人唯讀取得目前補簽輪的外部邀請。
-- 入口在 `documents.controller.ts`，交易主流程在 `EsignReopeningService.reopen()`。`/forms` 列表與文件詳情的補簽按鈕已串接正式 API；畫面只設定新截止日與原因，不提供修改開始時間。補簽不自動寄信。
+- 入口在 `documents.controller.ts`，交易主流程在 `EsignReopeningService.reopen()`。前端應只傳新截止日與原因，不提供修改開始時間；本 PR 不含 `/forms` 串接。補簽不自動寄信。
 - 已停止、已完成及 finalizing 不可補簽。拒簽者仍不納入 pending；「拒簽後改簽」尚未實作。
 
 ## 衝突處理與相容性
@@ -28,6 +28,6 @@
 - 完整 e2e：17 suites／135 tests，含補簽兩輪、並發／舊請求、交易回滾、已簽副本與證據保留、舊邀請／session 失效、新 OTP、補簽與催簽交互驗證。
 - schema：2 suites／6 tests。
 - server build、lint:check 通過；lint 0 errors（202 warnings）。
-- client lint、production build 通過。真 Chrome（America/Los_Angeles）驗證列表補簽：payload 僅包含 `expectedSignEndAt`、台北日界線的新 `signEndAt` 與 trim 後原因；成功後列表 query 重新讀取並顯示簽署中。
+- 正式 client 串接已移至獨立前端 PR；本分支保留 API、交易與 e2e 驗證，不以先前的瀏覽器原型驗證宣稱前端功能已交付。
 - 補簽保留 unknown 催簽結果的新增測試先重現結果被覆寫成 failed，限制停用對象為 invitation 後通過。
 - 原 Spec009 的 S3 部署容量驗收仍由 ticket11 承接，T028 未勾選；本次不宣稱完成該驗收。

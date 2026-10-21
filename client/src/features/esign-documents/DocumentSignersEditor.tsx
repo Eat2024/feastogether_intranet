@@ -4,7 +4,7 @@
 // 第一步放的欄位是所有簽署人共用的位置，後端會替每位簽署人各產生一份個人副本。
 import { useGetDocumentQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
-import { getSignerCandidates, initiateDocument, saveDraftSettings } from '@/api/requests';
+import { getSignerCandidates, initiateDocument, saveDraftSigners } from '@/api/requests';
 import type { EsignDocumentDetail, EsignSignerInput, EsignSignerView, InitiateDocumentBody } from '@/api/types';
 import PageHeader from '@/components/PageHeader';
 import DeadlineRangePicker from '@/features/forms/editor/DeadlineRangePicker';
@@ -26,13 +26,13 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { formatTaipeiDate, taipeiDayBoundary as dayBoundary } from '@/lib/dates';
+import dayjs from 'dayjs';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
 const DEADLINE_REQUIRED = '請選擇簽署期間的開始日與結束日';
 
-// 文件選項會連同草稿保存，發起後固定在簽署證據內。
+// 浮水印與拒絕簽署後端尚未提供，發起時一律送 false；選項先顯示為停用
 const OPTION_ITEMS: { key: 'watermark' | 'allowReject'; label: string; description: string }[] = [
   {
     key: 'watermark',
@@ -102,7 +102,11 @@ function restoreSigners(saved: EsignSignerView[], staff: Map<string, Staff>) {
   return { selected, emailSigners, missing };
 }
 
-const taipeiDay = (date: string | null) => date ? formatTaipeiDate(date) : null;
+/** YYYY/MM/DD → 當天開始（00:00）或結束（23:59:59.999）的 ISO 時間（本地時區） */
+const dayBoundary = (date: string, edge: 'start' | 'end') => {
+  const d = dayjs(date.replaceAll('/', '-'));
+  return (edge === 'start' ? d.startOf('day') : d.endOf('day')).toISOString();
+};
 
 export default function DocumentSignersEditor({ documentId, org }: { documentId: string; org: OrgDept[] }) {
   const { data: doc, isPending, isError, error, refetch, isFetching } = useGetDocumentQuery(documentId);
@@ -147,8 +151,7 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
   const [restored] = useState(() => restoreSigners(doc.signers, staff));
   const [selected, setSelected] = useState<Set<string>>(restored.selected);
   const [emailSigners, setEmailSigners] = useState<EmailSigner[]>(restored.emailSigners);
-  const [deadline, setDeadline] = useState<{ start: string | null; end: string | null }>({ start: taipeiDay(doc.signStartAt), end: taipeiDay(doc.signEndAt) });
-  const [options, setOptions] = useState({ watermark: doc.watermark, allowReject: doc.allowReject });
+  const [deadline, setDeadline] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
   const [signerError, setSignerError] = useState<string>();
   const [deadlineError, setDeadlineError] = useState<string>();
   const [submitError, setSubmitError] = useState<string>();
@@ -188,7 +191,8 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
         })),
         signStartAt: dayBoundary(deadline.start!, 'start'),
         signEndAt: dayBoundary(deadline.end!, 'end'),
-        ...options,
+        watermark: false,
+        allowReject: false,
       };
       await initiateDocument({ id: doc.id, body });
       return signers.length;
@@ -206,14 +210,9 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
       ),
   });
 
-  // 同一交易保存名單、期間與選項，不發起或寄送邀請。
+  // 暫存簽署名單（後端只儲存名單，簽署期間與可選功能於發起時設定）
   const save = useMutation({
-    mutationFn: async () => saveDraftSettings({ id: doc.id, body: {
-      signers: await toSignerInputs(signers),
-      signStartAt: deadline.start ? dayBoundary(deadline.start, 'start') : null,
-      signEndAt: deadline.end ? dayBoundary(deadline.end, 'end') : null,
-      ...options,
-    } }),
+    mutationFn: async () => saveDraftSigners({ id: doc.id, signers: await toSignerInputs(signers) }),
     meta: { suppressGlobalErrorToast: true },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id] });
@@ -322,10 +321,6 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
                 if (range.start && range.end) setDeadlineError(undefined);
               }}
             />
-            <Stack direction="row" spacing={1}>
-              <Button disabled={busy || !deadline.start} onClick={() => setDeadline((value) => ({ ...value, start: null }))}>清除開始日</Button>
-              <Button disabled={busy || !deadline.end} onClick={() => setDeadline((value) => ({ ...value, end: null }))}>清除結束日</Button>
-            </Stack>
             <Typography
               variant="label"
               component="div"
@@ -348,12 +343,12 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
                   key={item.key}
                   sx={{ alignItems: 'flex-start', mx: 0 }}
                   control={
-                    <Checkbox size="small" checked={options[item.key]} disabled={busy} onChange={(_, checked) => setOptions((current) => ({ ...current, [item.key]: checked }))} sx={{ mt: -0.5 }} />
+                    <Checkbox size="small" checked={false} disabled sx={{ mt: -0.5 }} />
                   }
                   label={
                     <Box>
                       <Typography variant="content" component="div">
-                        {item.label}
+                        {item.label}（尚未支援）
                       </Typography>
                       <Typography variant="helper" component="div">
                         {item.description}
@@ -373,8 +368,8 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
         <Button size="large" variant="outlined" href={`/forms/${doc.id}/edit`} disabled={busy}>
           上一步，回到上傳文件
         </Button>
-        {/* 暫存不會發起簽署或寄送邀請。 */}
-        <Tooltip title="儲存簽署名單、期間與可選功能，不會發起或寄送邀請">
+        {/* 後端草稿只儲存簽署名單；簽署期間與可選功能於發起時設定 */}
+        <Tooltip title="只會儲存簽署名單，簽署期間請在發起時設定">
           <span>
             <Button
               size="large"
@@ -383,7 +378,7 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
               loading={save.isPending || save.isSuccess}
               disabled={busy && !save.isPending && !save.isSuccess}
             >
-              儲存草稿設定（暫不發起）
+              儲存簽署名單（暫不發起）
             </Button>
           </span>
         </Tooltip>

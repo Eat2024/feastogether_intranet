@@ -1,5 +1,7 @@
 # Spec 009 實作紀錄
 
+> 最終交付邊界：本 PR 只包含 server、worker、migration 與後端契約。本文提到的 client／真 Chrome 結果是開發期原型驗證紀錄；相關 client 程式已自分支移除，正式 API 串接由獨立前端 PR 交付。
+
 ## Ticket 01：草稿完整設定
 
 - 基線：整合分支 `feature/009-esign-document-delivery`，commit `f28272b`；工作分支 `009/01-draft-settings` 由此建立，沒有覆寫根工作目錄變更。

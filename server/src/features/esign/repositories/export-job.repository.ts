@@ -7,20 +7,25 @@ import { EsignSignatureRecord } from '../entities/esign-signature-record.entity'
 
 @Injectable()
 export class ExportJobRepository {
-  find(publicId: string, documentId: number, m: EntityManager, lock = false) {
-    return m.findOne(EsignExportJob, {
+  find(
+    publicId: string,
+    documentId: number,
+    manager: EntityManager,
+    lock = false,
+  ) {
+    return manager.findOne(EsignExportJob, {
       where: { publicId, documentId },
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
-  byId(id: number, m: EntityManager, lock = false) {
-    return m.findOne(EsignExportJob, {
+  byId(id: number, manager: EntityManager, lock = false) {
+    return manager.findOne(EsignExportJob, {
       where: { id },
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
-  reusable(documentId: number, now: Date, m: EntityManager) {
-    return m
+  reusable(documentId: number, now: Date, manager: EntityManager) {
+    return manager
       .createQueryBuilder(EsignExportJob, 'job')
       .where('job.documentId = :documentId', { documentId })
       .andWhere(
@@ -37,9 +42,9 @@ export class ExportJobRepository {
       .addOrderBy('job.id', 'DESC')
       .getOne();
   }
-  records(documentId: number, m: EntityManager) {
+  records(documentId: number, manager: EntityManager) {
     return (
-      m
+      manager
         .createQueryBuilder(EsignSignatureRecord, 'record')
         .innerJoinAndSelect('record.signer', 'signer')
         // 匯出快照僅需識別與檔名；避免 6,000 份完整簽署證據/個資 entity 佔用 API 記憶體。
@@ -56,22 +61,22 @@ export class ExportJobRepository {
         .getMany()
     );
   }
-  files(jobId: number, m: EntityManager) {
-    return m.find(EsignFileObject, {
+  files(jobId: number, manager: EntityManager) {
+    return manager.find(EsignFileObject, {
       where: { exportJobId: jobId, filePurpose: 'signed_copies_zip' },
     });
   }
-  save(job: EsignExportJob, m: EntityManager) {
-    return m.save(job);
+  save(job: EsignExportJob, manager: EntityManager) {
+    return manager.save(job);
   }
-  create(fields: Partial<EsignExportJob>, m: EntityManager) {
-    return m.create(EsignExportJob, fields);
+  create(fields: Partial<EsignExportJob>, manager: EntityManager) {
+    return manager.create(EsignExportJob, fields);
   }
   documents(
     q: { cursor?: string; limit: number; status?: string; q?: string },
-    m: EntityManager,
+    manager: EntityManager,
   ) {
-    const query = m
+    const query = manager
       .createQueryBuilder(EsignDocument, 'document')
       .leftJoinAndSelect('document.createdByUser', 'creator')
       .where('document.deletedAt IS NULL');
@@ -85,17 +90,17 @@ export class ExportJobRepository {
       .take(q.limit + 1)
       .getMany();
   }
-  latest(documentId: number, m: EntityManager) {
-    return m.findOne(EsignExportJob, {
+  latest(documentId: number, manager: EntityManager) {
+    return manager.findOne(EsignExportJob, {
       where: { documentId, exportType: 'signed_copies_zip' },
       order: { id: 'DESC' },
     });
   }
   history(
     q: { documentId?: number; cursor?: string; limit: number },
-    m: EntityManager,
+    manager: EntityManager,
   ) {
-    const query = m
+    const query = manager
       .createQueryBuilder(EsignExportJob, 'job')
       .innerJoin(
         EsignDocument,
@@ -117,16 +122,16 @@ export class ExportJobRepository {
       .take(q.limit + 1)
       .getMany();
   }
-  signedCount(documentId: number, m: EntityManager) {
-    return m
+  signedCount(documentId: number, manager: EntityManager) {
+    return manager
       .createQueryBuilder(EsignSignatureRecord, 'record')
       .innerJoin('record.signer', 'signer')
       .where('signer.documentId=:documentId', { documentId })
       .andWhere("signer.status='signed' AND signer.deletedAt IS NULL")
       .getCount();
   }
-  maintenance(now: Date, m: EntityManager) {
-    return m
+  maintenance(now: Date, manager: EntityManager) {
+    return manager
       .createQueryBuilder(EsignExportJob, 'job')
       .where('job.snapshotJson IS NOT NULL')
       .andWhere(
@@ -137,20 +142,24 @@ export class ExportJobRepository {
       .take(50)
       .getMany();
   }
-  snapshotRecords(ids: number[], m: EntityManager) {
-    return m.find(EsignSignatureRecord, {
+  snapshotRecords(ids: number[], manager: EntityManager) {
+    return manager.find(EsignSignatureRecord, {
       where: { id: In(ids) },
       relations: { signer: true },
     });
   }
-  async isReferenced(objectKey: string, m: EntityManager, now = new Date()) {
+  async isReferenced(
+    objectKey: string,
+    manager: EntityManager,
+    now = new Date(),
+  ) {
     if (
-      await m.exists(EsignFileObject, {
+      await manager.exists(EsignFileObject, {
         where: { objectKey, archiveStatus: 'active' },
       })
     )
       return true;
-    return m
+    return manager
       .createQueryBuilder(EsignExportJob, 'job')
       .where(
         "JSON_UNQUOTE(JSON_EXTRACT(job.stagingJson, '$.objectKey')) = :objectKey",
@@ -164,14 +173,14 @@ export class ExportJobRepository {
       )
       .getExists();
   }
-  async archiveFile(id: number, m: EntityManager) {
-    const file = await m.findOneBy(EsignFileObject, { id });
+  async archiveFile(id: number, manager: EntityManager) {
+    const file = await manager.findOneBy(EsignFileObject, { id });
     if (file) {
       file.archiveStatus = 'expired';
-      await m.save(file);
+      await manager.save(file);
     }
   }
-  documentExists(id: number, m: EntityManager) {
-    return m.findOneBy(EsignDocument, { id, deletedAt: IsNull() });
+  documentExists(id: number, manager: EntityManager) {
+    return manager.findOneBy(EsignDocument, { id, deletedAt: IsNull() });
   }
 }

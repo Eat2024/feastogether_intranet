@@ -98,7 +98,27 @@ export class EsignCompletionAccessService {
       bytes.byteLength !== Number(file.fileSize)
     )
       throw this.integrity();
-    return { bytes, fileName: 'completed.pdf' };
+    return {
+      bytes,
+      fileName: this.completedPdfFileName(document, signer),
+    };
+  }
+
+  /** 個人副本檔名由文件編號、文件名稱與簽署人姓名組成。 */
+  private completedPdfFileName(
+    document: EsignDocument,
+    signer: EsignSigner,
+  ): string {
+    const sanitize = (value: string) =>
+      Array.from(value, (character) => {
+        const code = character.charCodeAt(0);
+        return code <= 31 || code === 127 || '<>:"/\\|?*'.includes(character)
+          ? '_'
+          : character;
+      })
+        .join('')
+        .trim();
+    return `${sanitize(document.docNumber)}_${sanitize(document.title)}_${sanitize(signer.nameSnapshot)}.pdf`;
   }
 
   private notFound() {

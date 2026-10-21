@@ -1,6 +1,6 @@
 # Ticket 10：跨故事整合驗證
 
-後續已依使用者要求納入 Spec007 補簽，更新範圍與驗證見 [補簽整合紀錄](reopening-integration.md)。以下保留 Ticket10 當時的交付紀錄。
+後續已依使用者要求納入 Spec007 補簽，更新範圍與驗證見 [補簽整合紀錄](reopening-integration.md)。PR 最終只交付後端；以下 Ticket10 的 client／Chrome 內容僅是開發期原型驗證紀錄，相關 client 程式已移除，不代表本 PR 已完成前端串接。
 
 日期：2026-10-21（Asia/Taipei）。基線 `c1fe44b`，工作分支 `009/10-integration-delivery`，整合分支 `feature/009-esign-document-delivery`。本紀錄涵蓋本機驗證；Standards／Spec 最終 review 由整合分支另執行，ticket10 在該步完成前仍 claimed。部署 S3 容量門檻見 ticket11，T028 不勾選。
 
@@ -84,8 +84,8 @@
 
 ## 發布、回退與未完成界線
 
-- Client：正式草稿設定、外部拒簽、管理備註／歷程／批次提醒及匯出頁已接 API；內部 `/my-signature/tasks` 提供正式拒簽入口，其他內部「我的簽署」與部分 forms 原型未整體遷移。
+- Client：本 PR 不修改 client，維持 `dev` 的 mock store 原型。草稿設定、拒簽、備註／歷程、催簽、補簽及 ZIP 匯出正式串接均由獨立前端 PR 交付。
 - Server：既有 worker 新增 export queue，並擴充 reminder／拒簽結案；既有 maintenance 負責補列／清理，沒有新排程或新環境變數。新增依賴與授權字型見 ticket02/07/08。
-- Migration：依序 `1792454400000`（草稿）、`1000`（拒簽）、`2000`（通知）、`3000`（匯出）、`4000`（備註）；全部修改既有表，schema.sql 同步。先備份、停止新寫入入口及舊 worker 消費，套用 migration，部署新 worker（含字型 assets），最後開新 API/client。禁止舊 invitation worker 消費 reminder；舊 finalizer 不理解 rejected。不是滾動混跑相容承諾。
+- Migration：依序 `1792454400000`（草稿）、`1000`（拒簽）、`2000`（通知）、`3000`（匯出）、`4000`（備註）；全部修改既有表，schema.sql 同步。先備份、停止新寫入入口及舊 worker 消費，套用 migration，再部署新 API 與 worker（含字型 assets）。禁止舊 invitation worker 消費 reminder；舊 finalizer 不理解 rejected。不是滾動混跑相容承諾。
 - 已跑 migration 升級／metadata no-drift／reapply 與單端草稿、拒簽、通知、匯出 down 保護；沒有在正式環境演練 rollout 或復原。若已有新證據，down 會拒絕破壞性回退；先停止新流量與 worker，使用相容修正版本向前處理，不能刪 rejected／提醒／快照資料硬降版。個人 PDF 與既有 manifest 永久保留。
-- 未發布遠端 PR、未部署、未寄實際郵件。未新增 role/permission、內部催簽、Spec007 補簽。Standards／Spec review 尚待整合後執行；部署 S3 容量驗收仍是公開未完成工作。
+- 未部署、未寄實際郵件。未新增 role/permission 或內部催簽；Spec007 補簽後端已合併。部署 S3 容量驗收仍是公開未完成工作。

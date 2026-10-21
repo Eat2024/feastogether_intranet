@@ -273,7 +273,10 @@ export class ExternalSignatureController {
       throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
     reply
       .type('application/pdf')
-      .header('Content-Disposition', 'attachment; filename="completed.pdf"')
+      .header(
+        'Content-Disposition',
+        `attachment; filename="completed.pdf"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      )
       .send(file.bytes);
   }
 

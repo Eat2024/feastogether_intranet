@@ -10,7 +10,7 @@ import { noteLength, SIGNER_NOTE_MAX } from './signerNote';
 /**
  * 簽署人表格的「備註」欄：直接顯示輸入框，點擊輸入框後才出現「儲存」「取消」。
  * Enter 儲存、Esc 取消；內容有修改但尚未儲存時，離開輸入框仍保留按鈕，避免誤以為已儲存。
- * 實際儲存方式由 onSave 決定（mock 版為 Server Action；正式文件呼叫管理備註 API）。
+ * 實際儲存方式由 onSave 決定（mock 版為 Server Action；後端文件尚未支援，暫存在頁面上）。
  */
 export default function SignerNoteCell({
   signerName,

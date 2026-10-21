@@ -1,4 +1,3 @@
-import ZipExportsView from "@/features/esign-documents/ZipExportsView";
 import LinkPagination from "@/components/LinkPagination";
 import LinkTabs from "@/components/LinkTabs";
 import PageHeader from "@/components/PageHeader";
@@ -46,8 +45,6 @@ export default async function ExportHistoryPage({
       description="查看所有人匯出的簽署紀錄與已簽署文件，並可重新下載。"
     />
   );
-  const params = await searchParams;
-  if (!params.tab || params.tab === 'zip') return <>{header}<ZipExportsView /></>;
   if (!isAdmin()) {
     return (
       <>
@@ -59,6 +56,7 @@ export default async function ExportHistoryPage({
     );
   }
 
+  const params = await searchParams;
   const tab = TABS.find((t) => t.value === params.tab) ?? TABS[0];
   const all = listExportRecords(tab.value);
   const { items: records, page, pageCount } = paginate(all, parsePage(params.page), PAGE_SIZE);

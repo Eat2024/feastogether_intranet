@@ -1,7 +1,7 @@
 // 匯出簽署紀錄（後端文件）的條件、欄位與資料整理；條件記在網址上（格式與 mock 版相同），預覽與 Excel 共用。
 // 後端沒有匯出 API，資料來自 GET /api/esign/documents/:id 的簽署人，在瀏覽器端產生 Excel。
 import type { EsignSignerStatus, EsignSignerView } from '@/api/types';
-import { formatTaipeiDateTime } from '@/lib/dates';
+import dayjs from 'dayjs';
 
 export const STATUS_OPTIONS = [
   { key: 'pending', label: '待簽署' },
@@ -11,7 +11,7 @@ export const STATUS_OPTIONS = [
 
 const STATUS_LABEL: Record<EsignSignerStatus, string> = { pending: '待簽署', signed: '已簽署', rejected: '已拒絕' };
 
-const formatTime = (iso: string | null) => (iso ? formatTaipeiDateTime(iso) : '');
+const formatTime = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD HH:mm') : '');
 
 type FieldDef = {
   key: string;
@@ -33,8 +33,9 @@ export const FIELDS = [
   { key: 'email', label: 'Email', width: 28, value: (s) => s.email ?? '' },
   { key: 'status', label: '狀態', width: 10, value: (s) => STATUS_LABEL[s.status] },
   { key: 'signedAt', label: '簽署時間', width: 18, value: (s) => formatTime(s.signedAt) },
-  { key: 'rejectedAt', label: '拒絕時間', width: 18, value: (s) => formatTime(s.rejectedAt) },
-  { key: 'rejectReason', label: '拒絕原因', width: 40, value: (s) => s.rejectReason ?? '' },
+  // TODO: 後端提供拒簽流程後串接
+  { key: 'rejectedAt', label: '拒絕時間', width: 18, unsupported: true, value: () => '' },
+  { key: 'rejectReason', label: '拒絕原因', width: 40, unsupported: true, value: () => '' },
 ] as const satisfies readonly FieldDef[];
 
 export type FieldKey = (typeof FIELDS)[number]['key'];

@@ -1,5 +1,7 @@
 # Ticket 08：S3 串流 ZIP
 
+> 最終 PR 僅交付後端 storage、worker 與下載 API；本文的真 Chrome 紀錄是開發期原型驗證，client 串接已移至獨立前端 PR。
+
 使用既有 private storage 與匯出 API／worker／正式畫面，不新增環境變數、migration、公開或 presigned URL。`@aws-sdk/lib-storage` 固定 3.1149.0，與現有 client-s3 版本相同，避免引入 peer 不相容。
 
 - partSize 至少 16 MiB、queueSize=2；依 metadata 預估放大 part，且實際流量超過 10,000 parts 時失敗，不發布半包。預估僅用於 part sizing，不能送作 ContentLength。串流計算實際 SHA-256／bytes，成功 complete 後回傳 VersionId。

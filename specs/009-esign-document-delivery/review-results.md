@@ -1,5 +1,7 @@
 # Spec009 最終雙軸審查與修正
 
+> 本文件保留整合期 review 歷程。最終 PR 已移除所有 client 差異，因此下列 client 問題與修正不屬於本次交付，也不代表正式前端已串接。
+
 審查固定範圍：`1c2e578...71ac3ee`。Standards 與 Spec 由獨立 reviewer 分別檢查；以下保留各軸原始結論，不合併評分。行號指原審查版本。單一 implementer 在 `009/review-fixes` 修正全部 4 項，沒有增加產品範圍。
 
 ## Standards

@@ -21,7 +21,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { formatTaipeiDateTime } from '@/lib/dates';
+import dayjs from 'dayjs';
 import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import DocumentHistory from './DocumentHistory';
@@ -38,7 +38,6 @@ import {
   type SignerSortKey,
 } from './signerQuery';
 import StopDocumentButton from './StopDocumentButton';
-import ReopenDocumentButton from './ReopenDocumentButton';
 
 function Kpi({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
@@ -128,25 +127,20 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
               variant="button"
               disabled={doc.status !== 'active' && doc.status !== 'expired'}
             />
-            <ReopenDocumentButton
-              doc={doc}
-              variant="button"
-              disabled={doc.status !== 'expired' || counts.pending === 0}
-            />
           </>
         }
       />
 
       {doc.status === 'expired' && (
         <Alert severity="info" variant="outlined">
-          此文件已於 {doc.signEndAt ? formatTaipeiDateTime(doc.signEndAt) : '—'} 到期，尚有{' '}
-          {counts.pending} 人未簽署，未簽署的人目前無法簽署。可設定新的截止時間重新開放補簽，或停止簽署。
+          此文件已於 {doc.signEndAt ? dayjs(doc.signEndAt).format('YYYY/MM/DD HH:mm') : '—'} 到期，尚有{' '}
+          {counts.pending} 人未簽署，未簽署的人目前無法簽署。可設定補簽重新開放未簽署的人簽署（補簽功能尚未串接後端），或停止簽署。
         </Alert>
       )}
 
       {doc.status === 'stopped' && (
         <Alert severity="error" variant="outlined">
-          此文件已於 {doc.stoppedAt ? formatTaipeiDateTime(doc.stoppedAt) : '—'} 停止簽署
+          此文件已於 {doc.stoppedAt ? dayjs(doc.stoppedAt).format('YYYY/MM/DD HH:mm') : '—'} 停止簽署
           {doc.stopReason && `，原因：${doc.stopReason}`}。尚未簽署的人已無法再簽署。
         </Alert>
       )}
@@ -192,7 +186,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
           documentId={doc.id}
           fileNamePrefix={`${doc.docNumber}_${doc.title}`}
           canNotify={doc.status === 'active'}
-          eligibleExternalIds={doc.signers.filter(s => s.type === 'email' && s.reminderEligibility?.eligible).map(s => s.publicId)}
+          pendingTotal={counts.pending}
           rows={items}
           sort={query.sort}
           sortHrefs={sortHrefs}

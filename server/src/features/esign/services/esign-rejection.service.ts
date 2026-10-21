@@ -43,7 +43,7 @@ export class EsignRejectionService {
         candidate?.documentId,
         manager,
       );
-      this.assertSignerAccess(document, signer, principal);
+      this.checkSignerIdentity(document, signer, principal);
       const repeated =
         signer.status === 'rejected' &&
         signer.rejectRequestId === input.requestId &&
@@ -102,7 +102,7 @@ export class EsignRejectionService {
     return { document, signer };
   }
 
-  private assertSignerAccess(
+  private checkSignerIdentity(
     document: EsignDocument,
     signer: EsignSigner,
     principal: SigningPrincipal,

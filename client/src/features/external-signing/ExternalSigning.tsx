@@ -3,9 +3,8 @@
 // 外部簽署頁：開啟任務 → 同意聲明 → 閱讀與簽名 → 送出 → 簽署完成（本人副本產生後可下載）。
 // 外部存取 cookie 的 path 只限 /api/external-signing-task，頁面請求不會帶上，資料一律由瀏覽器呼叫取得。
 import { useGetExternalSigningTaskQuery } from '@/api/queries';
-import { rejectExternalTask, externalSourceFileUrl, openExternalSigningTask } from '@/api/requests';
+import { externalSourceFileUrl, openExternalSigningTask } from '@/api/requests';
 import type { ExternalSignatureResult, ExternalSigningTask } from '@/api/types';
-import RejectDialog from '@/features/my-signature/sign/RejectDialog';
 import { ConfirmHeading } from '@/components/ConfirmDialog';
 import PageHeader from '@/components/PageHeader';
 import { usePdfDocument } from '@/features/forms/pdf/usePdf';
@@ -46,9 +45,6 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
     openTask();
   }, [openTask]);
 
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const rejectRequest = useRef<{ reason: string; requestId: string } | null>(null);
-  const rejection = useMutation({ mutationFn: rejectExternalTask, onSuccess: () => setRejectOpen(false) });
   const task = open.data;
   // 開始閱讀聲明時就先讀取原始 PDF（頁數與頁面內容）
   const pdf = usePdfDocument(task?.signer.status === 'pending' ? externalSourceFileUrl() : null);
@@ -71,10 +67,7 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
   if (open.error) return <OpenErrorNotice message={getErrorMessage(open.error, '無法開啟文件，請稍後再試')} />;
   if (!task) return <Loading label="開啟文件中…" />;
 
-  const rejectedAt = rejection.data?.rejectedAt ?? task.signer.rejectedAt;
-  const content = rejectedAt ? (
-    <Alert severity="info">已拒絕簽署 · {taipeiDate(rejectedAt)}<br />{rejection.data?.reason ?? task.signer.rejectReason ?? ''}</Alert>
-  ) : signedAt ? (
+  const content = signedAt ? (
     <>
       <SignSteps activeIndex={SIGN_STEPS.length} />
       <ExternalDone
@@ -111,12 +104,6 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
     <Stack spacing={{ xs: 2, sm: 3 }}>
       <PageHeader title={task.document.title} description={<SignerLine task={task} />} />
       {content}
-      {!signedAt && !rejectedAt && task.allowReject && <Button color="error" onClick={() => setRejectOpen(true)} disabled={rejection.isPending}>拒絕簽署</Button>}
-      <RejectDialog open={rejectOpen} docName={task.document.title} pending={rejection.isPending} onClose={() => setRejectOpen(false)} onConfirm={(rawReason) => {
-        const reason = rawReason.trim();
-        if (!rejectRequest.current || rejectRequest.current.reason !== reason) rejectRequest.current = { reason, requestId: crypto.randomUUID() };
-        rejection.mutate({ signerPublicId, ...rejectRequest.current });
-      }} />
     </Stack>
   );
 }

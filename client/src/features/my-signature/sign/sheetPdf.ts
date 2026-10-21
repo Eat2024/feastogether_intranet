@@ -1,10 +1,11 @@
 // 在瀏覽器端產生簽到表 PDF（示意用）：依公司簽到表版面繪製，每頁固定列數、每頁重複表頭，
 // 簽到格放手寫簽名，頁尾放文件資訊與頁碼（簽到表不放追蹤 QR code）。
+import { formOptions } from '@/features/forms/options';
 import { SHEET_ROWS_PER_PAGE, SHEET_SIGN_FIELD_ID, type SheetRow } from '@/features/forms/sheet/rules';
 import type { EFormDoc } from '@/features/forms/types';
 import { color } from '@/theme/tokens';
 import { PDFDocument } from 'pdf-lib';
-import { A4_PT, H, loadImage, W } from './pdfCanvas';
+import { A4_PT, drawWatermark, H, loadImage, W } from './pdfCanvas';
 
 const MARGIN_X = 90;
 const LINE = 2;
@@ -35,6 +36,7 @@ export async function buildSheetPdf(
   const sheet = form.sheet;
   if (!sheet) throw new Error('此文件不是簽到表');
   const font = getComputedStyle(document.body).fontFamily;
+  const { watermark } = formOptions(form);
   const fields = opts.attendance
     ? [...sheet.fields, { label: '出席人數', value: `應到 ${opts.attendance.expected} 人；實到 ${opts.attendance.actual} 人` }]
     : sheet.fields;
@@ -178,6 +180,8 @@ export async function buildSheetPdf(
     const footerY = H - FOOTER_H + 40;
     text(`${form.docNumber ?? ''}　${form.name}`, MARGIN_X, footerY + 30, 22, { fill: color.textSubtitle, maxW: tableW });
     text(`第 ${page + 1} / ${pageCount} 頁　此為系統產生之簽到表`, MARGIN_X, footerY + 70, 22, { fill: color.textPlaceholder });
+
+    if (watermark) drawWatermark(ctx, font);
 
     const png = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
     const image = await pdf.embedPng(await png.arrayBuffer());

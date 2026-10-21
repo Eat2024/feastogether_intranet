@@ -1,5 +1,5 @@
 import { queryKeys } from '@/api/query-keys';
-import { getInternalSigningTasks, getExternalSigningTask } from '@/api/requests';
+import { getExternalSigningTask } from '@/api/requests';
 import { seconds } from '@/lib/time';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
@@ -31,9 +31,4 @@ export function useGetExternalSigningTaskQuery<
     },
     ...options,
   });
-}
-
-/** 員工本人任務列表。 */
-export function useGetInternalSigningTasksQuery() {
-  return useQuery({ queryKey: [queryKeys.INTERNAL_SIGNING_TASKS], queryFn: getInternalSigningTasks });
 }

@@ -1231,7 +1231,10 @@ describe('核心電子簽 US1', () => {
       .set('Cookie', externalCookie)
       .expect(200)
       .expect('Content-Type', /application\/pdf/)
-      .expect('Content-Disposition', 'attachment; filename="completed.pdf"')
+      .expect(
+        'Content-Disposition',
+        /^attachment; filename="completed\.pdf"; filename\*=UTF-8''.+\.pdf$/,
+      )
       .expect('Cache-Control', 'private, no-store')
       .expect('X-Content-Type-Options', 'nosniff');
     expect(

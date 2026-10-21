@@ -19,12 +19,15 @@ describe('EsignCompletionAccessService 個人下載', () => {
       documentId: 4,
       userId: 20,
       signerType: 'user',
+      nameSnapshot: '王小明',
       status: 'signed',
       completionStatus: 'ready',
       signedAt: new Date('2026-10-16T00:00:00Z'),
     };
     const document = {
       id: 4,
+      docNumber: 'ESIGN-2026-001',
+      title: '員工保密協議',
       createdByUserId: 7,
       status,
       signingPayloadJson: payload,
@@ -134,6 +137,23 @@ describe('EsignCompletionAccessService 個人下載', () => {
     await expect(
       f.service.personalCopy(f.document as never, f.signer as never),
     ).resolves.toBeNull();
+  });
+
+  it('個人副本檔名包含文件編號、文件名稱與簽署人姓名', async () => {
+    const f = await setup();
+    await expect(
+      f.service.personalCopy(f.document as never, f.signer as never),
+    ).resolves.toMatchObject({
+      fileName: 'ESIGN-2026-001_員工保密協議_王小明.pdf',
+    });
+
+    f.document.title = '保密/協議';
+    f.signer.nameSnapshot = '王:小明';
+    await expect(
+      f.service.personalCopy(f.document as never, f.signer as never),
+    ).resolves.toMatchObject({
+      fileName: 'ESIGN-2026-001_保密_協議_王_小明.pdf',
+    });
   });
 
   it.each(['owner', 'record', 'hash', 'size', 'evidence'])(

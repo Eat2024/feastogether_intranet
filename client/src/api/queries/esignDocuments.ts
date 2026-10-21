@@ -1,8 +1,7 @@
-import { getNotificationBatch, getNotificationBatches } from '../requests/esignDocuments';
 import { queryKeys } from '@/api/query-keys';
 import { queryOptions } from '@/api/query-options';
 import { getDocument, getDocumentHistory, getDocuments } from '@/api/requests';
-import type { GetDocumentsParams, NotificationListParams, NotificationPageParams } from '@/api/types';
+import type { GetDocumentsParams } from '@/api/types';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 
@@ -34,12 +33,12 @@ export function useGetDocumentQuery<TData = Awaited<ReturnType<typeof getDocumen
 }
 
 /** 文件簽署歷程；id 為 null 時不查詢 */
-export function useGetDocumentHistoryQuery<TData = Awaited<ReturnType<typeof getDocumentHistory>>, TError = AxiosError>(
+export function useGetDocumentHistoryQuery<
+  TData = Awaited<ReturnType<typeof getDocumentHistory>>,
+  TError = AxiosError,
+>(
   id: string | null,
-  options?: Omit<
-    UseQueryOptions<Awaited<ReturnType<typeof getDocumentHistory>>, TError, TData>,
-    'queryKey' | 'queryFn'
-  >,
+  options?: Omit<UseQueryOptions<Awaited<ReturnType<typeof getDocumentHistory>>, TError, TData>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: [queryKeys.ESIGN_DOCUMENT_HISTORY, id],
@@ -47,25 +46,5 @@ export function useGetDocumentHistoryQuery<TData = Awaited<ReturnType<typeof get
     enabled: id !== null,
     ...queryOptions.useGetDocumentHistoryQuery,
     ...options,
-  });
-}
-
-export function useGetNotificationBatchQuery(id: string, batchId: string | null, params: NotificationPageParams = {}) {
-  return useQuery({
-    queryKey: [queryKeys.ESIGN_NOTIFICATION_BATCH, id, batchId, params],
-    queryFn: () => getNotificationBatch(id, batchId!, params),
-    enabled: batchId !== null,
-    ...queryOptions.useGetNotificationBatchQuery,
-    refetchInterval: (query) =>
-      query.state.data && !['queued', 'processing'].includes(query.state.data.status) ? false : 2000,
-  });
-}
-
-export function useGetNotificationBatchesQuery(id: string, params: NotificationListParams = {}) {
-  return useQuery({
-    queryKey: [queryKeys.ESIGN_NOTIFICATION_BATCHES, id, params],
-    queryFn: () => getNotificationBatches(id, params),
-    ...queryOptions.useGetNotificationBatchQuery,
-    refetchInterval: 5000,
   });
 }

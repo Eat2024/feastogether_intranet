@@ -62,7 +62,6 @@ export default function DocumentsListView() {
 
   return (
     <Stack spacing={2}>
-      <Box><Button href="/export-history">所有文件的已簽副本匯出與歷史</Button></Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, flex: 1, minWidth: 0 }}>
           <SearchField placeholder="搜尋文件名稱或建立人" width={260} />

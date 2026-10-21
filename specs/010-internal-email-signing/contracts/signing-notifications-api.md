@@ -49,9 +49,11 @@ type RejectionRequest = {
 
 fieldId 為正整數字串，pngDataUrl 沿用 image/png 前綴、400,000 字元上限與後端內容檢查；日期由 Server 寫入。簽署結果 data `{signerPublicId,signedAt,documentStatus,completion,verificationUrl}`；副本狀態沿用 pending／processing／ready／failed。拒簽回既有本人結果，不產製 PDF。
 
-一般失效 401 `ESIGN_EXTERNAL_UNAUTHORIZED`；頁面 signerPublicId 與 cookie 不同 409 `ESIGN_EXTERNAL_SIGNER_MISMATCH`；副本未就緒 409 `ESIGN_PERSONAL_COPY_NOT_READY`；尚未開始依現有 409 與 details.startAt。前端錯位時不可用 cookie 的另一個身分靜默替換原頁並提交。
+一般失效 401 `ESIGN_EXTERNAL_UNAUTHORIZED`；頁面 signerPublicId 與 cookie 不同 409 `ESIGN_EXTERNAL_SIGNER_MISMATCH`；副本未就緒沿用 409 `ESIGN_STATE_CONFLICT`（訊息「個人副本尚未產生」）；尚未開始依現有 409 與 details.startAt。前端錯位時不可用 cookie 的另一個身分靜默替換原頁並提交。
 
 已簽者不受簽署期限、停止、完成影響，可重新 OTP 下載；刪除後不可。已拒者可讀結果，不能讀 source／completed-file 或再次簽署。補簽只使待簽者舊邀請世代失效，不影響已簽者原邀請。
+
+Ticket 05 驗收：內部員工本人副本已以真實 HTTP／PDF worker 驗證 pending／processing／failed／ready、同次 cookie 下載、重新 OTP、停止／到期／完成及刪除後授權、跨人與邀請世代限制、PDF 完整性及建立人／本人 bytes 一致。沿用既有產物與證據，無新增下載期限或副本種類；前端輪詢、手機畫面與瀏覽器整合仍未實作。
 
 ## 舊內部個人入口（變更）
 

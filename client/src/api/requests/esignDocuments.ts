@@ -2,15 +2,21 @@ import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
 import type {
   CreateDocumentBody,
+  CreateNotificationBatchBody,
   DraftSettingsBody,
   EsignDocumentDetail,
   EsignDocumentListItem,
   EsignHistoryItem,
+  EsignNotificationBatch,
+  EsignNotificationBatchList,
   EsignSignerCandidate,
   GetDocumentsParams,
   InitiateDocumentBody,
+  NotificationListParams,
+  NotificationPageParams,
   ReopenDocumentBody,
   ReopenDocumentResult,
+  ReopeningInvitation,
   SaveSignerNoteBody,
   SignerNoteResult,
   UpdateDocumentBody,
@@ -192,6 +198,67 @@ export const saveSignerNote = async ({ id, signerPublicId, note }: SaveSignerNot
     method: 'PATCH',
     url: endpoints.ESIGN_SIGNER_NOTE(id, signerPublicId),
     data: { note },
+  });
+  return res.data;
+};
+
+/**
+ * @name 取得補簽的外部邀請連結
+ * @description 僅建立人；文件補簽中時回傳外部待簽署人的新邀請連結，不寄信、不更換憑證。連結即憑證，勿記錄或外流
+ */
+export const getReopeningInvitations = async (id: string): Promise<ReopeningInvitation[]> => {
+  const res = await api<ReopeningInvitation[]>({ method: 'GET', url: endpoints.ESIGN_REOPENING_INVITATIONS(id) });
+  return res.data;
+};
+
+/**
+ * @name 建立外部催簽批次
+ * @description 僅建立人；後端先受理再背景寄送，回傳受理結果而非已送達。沒有任何人可催簽時回錯誤並附逐人原因
+ */
+export const createNotificationBatch = async ({
+  id,
+  body,
+}: {
+  id: string;
+  body: CreateNotificationBatchBody;
+}): Promise<EsignNotificationBatch> => {
+  const res = await api<EsignNotificationBatch>({
+    method: 'POST',
+    url: endpoints.ESIGN_NOTIFICATION_BATCHES(id),
+    data: body,
+  });
+  return res.data;
+};
+
+/**
+ * @name 查詢通知批次
+ * @description 依時間由新到舊，以 cursor 分頁；可篩選初次邀請或催簽
+ */
+export const getNotificationBatches = async (
+  id: string,
+  params: NotificationListParams = {},
+): Promise<EsignNotificationBatchList> => {
+  const res = await api<EsignNotificationBatchList>({
+    method: 'GET',
+    url: endpoints.ESIGN_NOTIFICATION_BATCHES(id),
+    params,
+  });
+  return res.data;
+};
+
+/**
+ * @name 查詢通知批次的逐人結果
+ * @description 以 cursor 分頁；不回傳郵件憑證
+ */
+export const getNotificationBatch = async (
+  id: string,
+  batchId: string,
+  params: NotificationPageParams = {},
+): Promise<EsignNotificationBatch> => {
+  const res = await api<EsignNotificationBatch>({
+    method: 'GET',
+    url: endpoints.ESIGN_NOTIFICATION_BATCH(id, batchId),
+    params,
   });
   return res.data;
 };

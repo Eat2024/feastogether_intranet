@@ -37,7 +37,9 @@ import {
   signerHref,
   type SignerSortKey,
 } from './signerQuery';
+import NotificationHistory from './NotificationHistory';
 import ReopenDocumentButton from './ReopenDocumentButton';
+import ReopeningInvitationsButton from './ReopeningInvitationsButton';
 import StopDocumentButton from './StopDocumentButton';
 
 function Kpi({ label, value, color }: { label: string; value: number; color?: string }) {
@@ -94,6 +96,9 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
   const query = useMemo(() => parseSignerQuery(params), [params]);
   const statusMeta = DOCUMENT_STATUS_META[doc.status];
   const counts = countByStatus(doc.signers);
+  // 整份文件目前可催簽的簽署人（批次通知用）；補簽中仍未簽署的外部簽署人（補簽連結用）
+  const eligibleIds = doc.signers.filter((s) => s.reminderEligibility.eligible).map((s) => s.publicId);
+  const pendingExternal = doc.signers.filter((s) => s.type === 'email' && s.status === 'pending');
   const { items, page, pageCount, total } = querySigners(doc.signers, query);
   const percent = counts.all ? Math.round((counts.signed / counts.all) * 100) : 0;
 
@@ -134,6 +139,10 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
               variant="button"
               disabled={doc.status !== 'expired' || counts.pending === 0}
             />
+            {/* 補簽中且仍有外部簽署人未簽署時，可取得新的邀請連結轉交 */}
+            {doc.isReopened && doc.status === 'active' && pendingExternal.length > 0 && (
+              <ReopeningInvitationsButton documentId={doc.id} signers={pendingExternal} />
+            )}
           </>
         }
       />
@@ -193,7 +202,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
           documentId={doc.id}
           fileNamePrefix={`${doc.docNumber}_${doc.title}`}
           canNotify={doc.status === 'active'}
-          pendingTotal={counts.pending}
+          eligibleIds={eligibleIds}
           rows={items}
           sort={query.sort}
           sortHrefs={sortHrefs}
@@ -202,6 +211,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
         <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => signerHref(doc.id, query, { page: p }))} />
       </Stack>
 
+      <NotificationHistory documentId={doc.id} />
       <DocumentHistory documentId={doc.id} />
     </>
   );

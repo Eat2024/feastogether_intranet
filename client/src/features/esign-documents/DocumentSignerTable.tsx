@@ -1,7 +1,7 @@
 'use client';
 
 // 檢視頁（後端文件）的簽署人清單：本頁資料已在外層篩選、排序、分頁。
-// 欄位與 mock 版相同；後端尚未串接的資料（通知次數）與操作（通知）保留位置並標示「後端未支援」。
+// 欄位與 mock 版相同。催簽只支援外部簽署人（每人每日一次），內部員工的通知按鈕停用並說明原因。
 // 備註呼叫 PATCH /api/esign/documents/:id/signers/:signerPublicId/note 儲存。
 // 外部簽署人的邀請信寄送結果顯示在「通知紀錄」，個人副本產製狀態顯示在操作欄的匯出按鈕。
 import { queryKeys } from '@/api/query-keys';
@@ -31,10 +31,10 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import type { ReactNode } from 'react';
+import { useState } from 'react';
+import { notificationReason, notificationStatus, notificationTime } from './notificationLabels';
 import type { SignerSort, SignerSortKey } from './signerQuery';
-
-const UNSUPPORTED = '後端尚未支援';
+import { useNotify } from './useNotify';
 
 const STATUS_META: Record<EsignSignerStatus, { label: string; color: ChipProps['color'] }> = {
   pending: { label: '待簽署', color: 'warning' },
@@ -57,50 +57,21 @@ const COMPLETION_HINT: Record<NonNullable<EsignSignerView['completion']['status'
   failed: '個人副本產製失敗',
 };
 
-/** unsupported：後端沒有這項資料，表頭加上標示（chip 與說明可自訂） */
-const COLUMNS: { key?: SignerSortKey; label: string; unsupported?: { chip: string; hint: string } }[] = [
+const COLUMNS: { key?: SignerSortKey; label: string }[] = [
   { key: 'name', label: '簽署人' },
   { key: 'dept', label: '部門' },
   { key: 'status', label: '狀態' },
   { key: 'time', label: '簽署／拒絕時間' },
   { label: '拒絕原因' },
-  {
-    label: '通知紀錄',
-    unsupported: { chip: '部分支援', hint: `通知次數與時間${UNSUPPORTED}，目前只顯示外部簽署人的邀請信寄送結果` },
-  },
+  { label: '通知紀錄' },
   { label: '備註' },
   { label: '操作' },
 ];
 
 const formatTime = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD HH:mm') : '—');
 
-/** 表頭文字加上「未支援」等標示 */
-function UnsupportedLabel({ children, chip, hint }: { children: ReactNode; chip: string; hint: string }) {
-  return (
-    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, whiteSpace: 'nowrap' }}>
-      {children}
-      <Tooltip title={hint}>
-        <Chip size="small" variant="outlined" label={chip} sx={{ height: 20, fontSize: 11, color: 'text.secondary' }} />
-      </Tooltip>
-    </Box>
-  );
-}
-
-/** 後端未支援的儲存格 */
+/** 沒有資料的儲存格 */
 const NoData = () => <Typography sx={{ color: 'text.disabled' }}>—</Typography>;
-
-/** 停用並說明原因的按鈕（停用的按鈕不觸發滑鼠事件，外包 span 讓 Tooltip 仍可顯示） */
-function UnsupportedButton({ children, variant }: { children: ReactNode; variant: 'outlined' | 'contained' }) {
-  return (
-    <Tooltip title={UNSUPPORTED}>
-      <span>
-        <Button size="large" variant={variant} startIcon={<NotificationsActiveRoundedIcon />} disabled>
-          {children}
-        </Button>
-      </span>
-    </Tooltip>
-  );
-}
 
 export default function DocumentSignerTable({
   documentId,
@@ -109,7 +80,7 @@ export default function DocumentSignerTable({
   sort,
   sortHrefs,
   canNotify,
-  pendingTotal,
+  eligibleIds,
   emptyText,
 }: {
   documentId: string;
@@ -119,14 +90,22 @@ export default function DocumentSignerTable({
   sort: SignerSort;
   /** 各欄點擊後的排序網址 */
   sortHrefs: Record<SignerSortKey, string>;
-  /** 文件為簽署中時顯示通知列（後端尚未支援，按鈕停用） */
+  /** 文件為簽署中時顯示批次通知列 */
   canNotify: boolean;
-  /** 整份文件待簽署人數 */
-  pendingTotal: number;
+  /** 整份文件目前可催簽的簽署人（外部、待簽署、今天還沒催簽） */
+  eligibleIds: string[];
   emptyText: string;
 }) {
   const { showSnackbar } = useSnackbar();
   const queryClient = useQueryClient();
+  const notify = useNotify(documentId);
+  // 勾選要批次通知的簽署人；只保留目前仍可催簽的人
+  const [picked, setPicked] = useState<string[]>([]);
+  const selected = picked.filter((id) => eligibleIds.includes(id));
+  const pageEligible = rows.filter((s) => s.reminderEligibility.eligible).map((s) => s.publicId);
+  const pageAllSelected = pageEligible.length > 0 && pageEligible.every((id) => selected.includes(id));
+  const sendNotify = (target: Parameters<typeof notify.mutate>[0]) =>
+    notify.mutate(target, { onSuccess: () => setPicked([]) });
   const noteMutation = useMutation({
     mutationFn: saveSignerNote,
     // 錯誤顯示在備註欄
@@ -173,11 +152,18 @@ export default function DocumentSignerTable({
           <TableHead>
             <TableRow>
               <TableCell padding="checkbox">
-                <Tooltip title={`批次通知：${UNSUPPORTED}`}>
-                  <span>
-                    <Checkbox size="small" disabled slotProps={{ input: { 'aria-label': '選取本頁所有待簽署者' } }} />
-                  </span>
-                </Tooltip>
+                <Checkbox
+                  size="small"
+                  disabled={!pageEligible.length || notify.isPending}
+                  checked={pageAllSelected}
+                  indeterminate={!pageAllSelected && pageEligible.some((id) => selected.includes(id))}
+                  onChange={(_, checked) =>
+                    setPicked((prev) =>
+                      checked ? [...new Set([...prev, ...pageEligible])] : prev.filter((id) => !pageEligible.includes(id)),
+                    )
+                  }
+                  slotProps={{ input: { 'aria-label': '選取本頁可催簽的外部簽署人' } }}
+                />
               </TableCell>
               {COLUMNS.map((c) =>
                 c.key ? (
@@ -190,15 +176,7 @@ export default function DocumentSignerTable({
                     {c.label}
                   </SortableHeaderCell>
                 ) : (
-                  <TableCell key={c.label}>
-                    {c.unsupported ? (
-                      <UnsupportedLabel chip={c.unsupported.chip} hint={c.unsupported.hint}>
-                        {c.label}
-                      </UnsupportedLabel>
-                    ) : (
-                      c.label
-                    )}
-                  </TableCell>
+                  <TableCell key={c.label}>{c.label}</TableCell>
                 ),
               )}
             </TableRow>
@@ -217,7 +195,15 @@ export default function DocumentSignerTable({
                 return (
                   <TableRow key={s.publicId} hover>
                     <TableCell padding="checkbox">
-                      <Checkbox size="small" disabled slotProps={{ input: { 'aria-label': `選取 ${s.name}` } }} />
+                      <Checkbox
+                        size="small"
+                        disabled={!s.reminderEligibility.eligible || notify.isPending}
+                        checked={selected.includes(s.publicId)}
+                        onChange={(_, checked) =>
+                          setPicked((prev) => (checked ? [...prev, s.publicId] : prev.filter((id) => id !== s.publicId)))
+                        }
+                        slotProps={{ input: { 'aria-label': `選取 ${s.name}` } }}
+                      />
                     </TableCell>
                     <TableCell>
                       {/* content variant 預設渲染成 <p>，裡面不能放 Chip（<div>），改用 div */}
@@ -250,15 +236,37 @@ export default function DocumentSignerTable({
                         <NoData />
                       )}
                     </TableCell>
-                    {/* 通知次數後端尚未支援；外部簽署人顯示邀請信寄送結果 */}
+                    {/* 外部簽署人：邀請信結果、最近一次催簽與已寄出的催簽次數；內部員工沒有通知紀錄 */}
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {s.invitationDelivery ? (
-                        <Typography
-                          variant="content"
-                          sx={s.invitationDelivery === 'failed' ? { color: 'error.dark' } : undefined}
-                        >
-                          {DELIVERY_LABEL[s.invitationDelivery]}
-                        </Typography>
+                      {s.type === 'email' ? (
+                        <>
+                          {s.invitationDelivery ? (
+                            <Typography
+                              variant="content"
+                              component="div"
+                              sx={s.invitationDelivery === 'failed' ? { color: 'error.dark' } : undefined}
+                            >
+                              {DELIVERY_LABEL[s.invitationDelivery]}
+                            </Typography>
+                          ) : (
+                            // 補簽後不再顯示初次邀請的結果
+                            <NoData />
+                          )}
+                          {s.latestInvitation?.completedAt && (
+                            <Typography variant="helper" component="div">
+                              邀請 {notificationTime(s.latestInvitation.completedAt)}
+                            </Typography>
+                          )}
+                          {s.latestReminder && (
+                            <Typography variant="helper" component="div">
+                              催簽{notificationStatus(s.latestReminder.status)}
+                              {s.latestReminder.completedAt && ` ${notificationTime(s.latestReminder.completedAt)}`}
+                            </Typography>
+                          )}
+                          <Typography variant="helper" component="div">
+                            已寄出催簽 {s.deliveredReminderCount} 次
+                          </Typography>
+                        </>
                       ) : (
                         <NoData />
                       )}
@@ -271,11 +279,17 @@ export default function DocumentSignerTable({
                       />
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {/* 單人催簽：不能催簽時停用並說明原因 */}
                       <TooltipIconButton
-                        label={`通知（${UNSUPPORTED}）`}
+                        label={
+                          s.reminderEligibility.eligible
+                            ? '通知（寄送催簽信，每人每日一次）'
+                            : `通知（${notificationReason(s.reminderEligibility.reasonCode)}）`
+                        }
                         icon={<NotificationsActiveRoundedIcon />}
                         color="info"
-                        disabled
+                        disabled={!s.reminderEligibility.eligible || notify.isPending}
+                        onClick={() => sendNotify({ selection: 'selected', signerPublicIds: [s.publicId] })}
                       />
                       {/* 個人副本產製完成後才能下載；產製失敗改顯示警示圖示 */}
                       {s.completion.status === 'failed' ? (
@@ -318,10 +332,26 @@ export default function DocumentSignerTable({
       {canNotify && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="secondary" component="span" sx={{ mr: 'auto' }}>
-            勾選待簽署者後可批次通知（{UNSUPPORTED}）
+            勾選外部待簽署者後可批次通知；每人每日一次（台北時間午夜重置），內部員工不寄送催簽
           </Typography>
-          <UnsupportedButton variant="outlined">通知所選（0）</UnsupportedButton>
-          <UnsupportedButton variant="contained">通知所有未簽署者（{pendingTotal}）</UnsupportedButton>
+          <Button
+            size="large"
+            variant="outlined"
+            startIcon={<NotificationsActiveRoundedIcon />}
+            disabled={!selected.length || notify.isPending}
+            onClick={() => sendNotify({ selection: 'selected', signerPublicIds: selected })}
+          >
+            通知所選（{selected.length}）
+          </Button>
+          <Button
+            size="large"
+            variant="contained"
+            startIcon={<NotificationsActiveRoundedIcon />}
+            disabled={!eligibleIds.length || notify.isPending}
+            onClick={() => sendNotify({ selection: 'all_pending' })}
+          >
+            通知所有可催簽的外部簽署人（{eligibleIds.length}）
+          </Button>
         </Box>
       )}
     </>

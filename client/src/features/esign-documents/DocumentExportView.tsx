@@ -15,7 +15,6 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
-import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Paper from '@mui/material/Paper';
@@ -28,11 +27,10 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
-import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useMutation } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo, useTransition, type ReactNode } from 'react';
+import { useMemo, useState, useTransition, type ReactNode } from 'react';
 import {
   buildDeptOptions,
   exportPageHref,
@@ -45,16 +43,16 @@ import {
   type FieldKey,
 } from './exportQuery';
 import { DOCUMENT_STATUS_META, periodText } from './listQuery';
+import ZipExportPanel from './ZipExportPanel';
 
-const UNSUPPORTED = '後端尚未支援';
+type ContentType = 'list' | 'docs';
 
-const CONTENT_TYPES = [
-  { key: 'list', label: '簽署紀錄清單（Excel）', description: '每位簽署人一列，可選擇欄位與範圍。', enabled: true },
+const CONTENT_TYPES: { key: ContentType; label: string; description: string }[] = [
+  { key: 'list', label: '簽署紀錄清單（Excel）', description: '每位簽署人一列，可選擇欄位與範圍。' },
   {
     key: 'docs',
     label: '已簽署文件（PDF，每人一份打包為 ZIP）',
-    description: `${UNSUPPORTED}，之後提供。`,
-    enabled: false,
+    description: '由系統在背景打包，完成後即可下載。',
   },
 ];
 
@@ -68,13 +66,6 @@ function Section({ step, title, children }: { step: number; title: string; child
     </Box>
   );
 }
-
-/** 後端沒有資料的欄位標示 */
-const UnsupportedChip = () => (
-  <Tooltip title={`${UNSUPPORTED}，匯出為空白`}>
-    <Chip size="small" variant="outlined" label="未支援" sx={{ ml: 0.5, height: 20, fontSize: 11, color: 'text.secondary' }} />
-  </Tooltip>
-);
 
 export default function DocumentExportView({ documentId }: { documentId: string }) {
   const { data: doc, isPending, isError, error, refetch, isFetching } = useGetDocumentQuery(documentId);
@@ -117,6 +108,7 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
   const params = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const [, startTransition] = useTransition();
+  const [content, setContent] = useState<ContentType>('list');
   const query = useMemo(() => parseExportQuery(params), [params]);
   const deptOptions = useMemo(() => buildDeptOptions(doc.signers), [doc.signers]);
   const rows = useMemo(() => exportRows(doc.signers, query), [doc.signers, query]);
@@ -173,12 +165,11 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
       <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
         <Stack spacing={3}>
           <Section step={1} title="選擇匯出內容">
-            <RadioGroup value="list">
+            <RadioGroup value={content} onChange={(e) => setContent(e.target.value as ContentType)}>
               {CONTENT_TYPES.map((t) => (
                 <FormControlLabel
                   key={t.key}
                   value={t.key}
-                  disabled={!t.enabled}
                   control={<Radio />}
                   label={
                     <Box>
@@ -193,119 +184,133 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
             </RadioGroup>
           </Section>
 
-          <Section step={2} title="匯出範圍">
-            <Stack spacing={1.5}>
-              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 1 }}>
-                <Typography variant="label" component="span" sx={{ width: 72 }}>
-                  簽署狀態
-                </Typography>
-                <FormControlLabel
-                  control={<Checkbox size="small" checked={allStatuses} onChange={() => update({ statuses: [] })} />}
-                  label={<Typography variant="content">全部</Typography>}
-                />
-                {STATUS_OPTIONS.map((o) => (
-                  <FormControlLabel
-                    key={o.key}
-                    control={
-                      <Checkbox
-                        size="small"
-                        checked={!allStatuses && query.statuses.includes(o.key)}
-                        onChange={() => toggleStatus(o.key)}
-                      />
-                    }
-                    label={<Typography variant="content">{o.label}</Typography>}
-                  />
-                ))}
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'flex-start', columnGap: 1 }}>
-                <Typography variant="label" component="span" sx={{ width: 72, flexShrink: 0, pt: 1.25 }}>
-                  部門
-                </Typography>
-                <DeptTreeSelect tree={deptOptions} value={query.depts} onChange={(depts) => update({ depts })} />
-              </Box>
-            </Stack>
-          </Section>
-
-          <Section step={3} title="匯出欄位">
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 2 }}>
-              {FIELDS.map((f) => (
-                <FormControlLabel
-                  key={f.key}
-                  control={
-                    <Checkbox size="small" checked={query.fields.includes(f.key)} onChange={() => toggleField(f.key)} />
-                  }
-                  label={
-                    <Typography variant="content" component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                      {f.label}
-                      {'unsupported' in f && <UnsupportedChip />}
+          {content === 'docs' ? (
+            <Section step={2} title="產生與下載">
+              <ZipExportPanel documentId={doc.id} signedCount={signed} />
+            </Section>
+          ) : (
+            <>
+              <Section step={2} title="匯出範圍">
+                <Stack spacing={1.5}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 1 }}>
+                    <Typography variant="label" component="span" sx={{ width: 72 }}>
+                      簽署狀態
                     </Typography>
-                  }
-                />
-              ))}
-            </Box>
-          </Section>
+                    <FormControlLabel
+                      control={<Checkbox size="small" checked={allStatuses} onChange={() => update({ statuses: [] })} />}
+                      label={<Typography variant="content">全部</Typography>}
+                    />
+                    {STATUS_OPTIONS.map((o) => (
+                      <FormControlLabel
+                        key={o.key}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={!allStatuses && query.statuses.includes(o.key)}
+                            onChange={() => toggleStatus(o.key)}
+                          />
+                        }
+                        label={<Typography variant="content">{o.label}</Typography>}
+                      />
+                    ))}
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', columnGap: 1 }}>
+                    <Typography variant="label" component="span" sx={{ width: 72, flexShrink: 0, pt: 1.25 }}>
+                      部門
+                    </Typography>
+                    <DeptTreeSelect tree={deptOptions} value={query.depts} onChange={(depts) => update({ depts })} />
+                  </Box>
+                </Stack>
+              </Section>
+
+              <Section step={3} title="匯出欄位">
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 2 }}>
+                  {FIELDS.map((f) => (
+                    <FormControlLabel
+                      key={f.key}
+                      control={
+                        <Checkbox size="small" checked={query.fields.includes(f.key)} onChange={() => toggleField(f.key)} />
+                      }
+                      label={
+                        <Typography variant="content" component="span">
+                          {f.label}
+                        </Typography>
+                      }
+                    />
+                  ))}
+                </Box>
+              </Section>
+            </>
+          )}
         </Stack>
       </Paper>
 
-      <Stack spacing={1.5}>
-        <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 2 }}>
-          <Typography variant="subheading" component="div">
-            4. 預覽
-          </Typography>
-          <Typography variant="secondary" component="span">
-            將匯出 {rows.length} 筆
-          </Typography>
-        </Box>
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                {fields.map((f) => (
-                  <TableCell key={f.key}>{f.label}</TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={fields.length} align="center" sx={{ py: 4 }}>
-                    <Typography variant="description">此範圍沒有可匯出的簽署人。</Typography>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                preview.items.map((r) => (
-                  <TableRow key={r.publicId}>
+      {content === 'list' && (
+        <>
+          <Stack spacing={1.5}>
+            <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 2 }}>
+              <Typography variant="subheading" component="div">
+                4. 預覽
+              </Typography>
+              <Typography variant="secondary" component="span">
+                將匯出 {rows.length} 筆
+              </Typography>
+            </Box>
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
                     {fields.map((f) => (
-                      <TableCell key={f.key} sx={{ whiteSpace: f.key === 'rejectReason' ? 'normal' : 'nowrap' }}>
-                        {f.value(r) || '—'}
-                      </TableCell>
+                      <TableCell key={f.key}>{f.label}</TableCell>
                     ))}
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <LinkPagination
-          page={preview.page}
-          hrefs={pageHrefs(preview.pageCount, (p) => exportPageHref(doc.id, query, p))}
-        />
-      </Stack>
+                </TableHead>
+                <TableBody>
+                  {rows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={fields.length} align="center" sx={{ py: 4 }}>
+                        <Typography variant="description">此範圍沒有可匯出的簽署人。</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    preview.items.map((r) => (
+                      <TableRow key={r.publicId}>
+                        {fields.map((f) => (
+                          <TableCell key={f.key} sx={{ whiteSpace: f.key === 'rejectReason' ? 'normal' : 'nowrap' }}>
+                            {f.value(r) || '—'}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <LinkPagination
+              page={preview.page}
+              hrefs={pageHrefs(preview.pageCount, (p) => exportPageHref(doc.id, query, p))}
+            />
+          </Stack>
+
+        </>
+      )}
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
         <Button size="large" variant="outlined" href="/forms">
-          取消
+          {content === 'list' ? '取消' : '返回列表'}
         </Button>
-        <Button
-          size="large"
-          variant="contained"
-          startIcon={<FileDownloadRoundedIcon />}
-          onClick={() => download.mutate()}
-          loading={download.isPending}
-          disabled={rows.length === 0}
-        >
-          匯出 Excel（{rows.length} 筆）
-        </Button>
+        {content === 'list' && (
+          <Button
+            size="large"
+            variant="contained"
+            startIcon={<FileDownloadRoundedIcon />}
+            onClick={() => download.mutate()}
+            loading={download.isPending}
+            disabled={rows.length === 0}
+          >
+            匯出 Excel（{rows.length} 筆）
+          </Button>
+        )}
       </Box>
     </>
   );

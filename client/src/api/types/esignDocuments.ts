@@ -95,10 +95,30 @@ export interface EsignSignerView {
   verificationUrl: string | null;
 }
 
-/** 建立人檢視的簽署人：多了只給建立人看的管理備註 */
+/** 一次通知（初次邀請或催簽）的寄送結果；status 見 notificationLabels.ts */
+export interface EsignNotificationOutcome {
+  status: string;
+  completedAt: string | null;
+  reasonCode: string | null;
+}
+
+/** 建立人檢視的簽署人：多了只給建立人看的管理備註與通知紀錄 */
 export interface EsignManagedSignerView extends EsignSignerView {
   /** 管理備註（最多 30 字）；沒有時為空字串，不提供給簽署人本人 */
   note: string;
+  /** 最近一次初次邀請、催簽的結果；內部簽署人或沒有紀錄時為 null */
+  latestInvitation: EsignNotificationOutcome | null;
+  latestReminder: EsignNotificationOutcome | null;
+  /** 已寄出的催簽次數 */
+  deliveredReminderCount: number;
+  /** 目前能否催簽：只有外部簽署人、待簽署、在簽署期間內，且每人每日一次（台北時間） */
+  reminderEligibility: {
+    eligible: boolean;
+    /** 不能催簽的原因代碼；可以催簽時為 null */
+    reasonCode: string | null;
+    /** 達到每日上限時，下一次可催簽的時間 */
+    nextEligibleAt: string | null;
+  };
 }
 
 /** 共用欄位：屬於文件、不屬於特定簽署人 */
@@ -172,6 +192,66 @@ export interface ReopenDocumentResult {
   reopenedAt: string;
   /** 重新開放的待簽署人數 */
   pendingCount: number;
+}
+
+/** GET esign/documents/:id/reopening-invitations：補簽後外部待簽署人的新邀請連結（不寄信，連結即憑證，勿記錄或外流） */
+export interface ReopeningInvitation {
+  signerPublicId: string;
+  invitationUrl: string;
+  expiresAt: string;
+}
+
+/** POST esign/documents/:id/notification-batches：建立外部催簽批次（只受理，由後端背景寄送） */
+export interface CreateNotificationBatchBody {
+  /** UUID v4；同一批重送時沿用，後端依此判斷重複送出 */
+  requestId: string;
+  /** selected：指定的簽署人；all_pending：所有待簽署的外部簽署人 */
+  selection: 'selected' | 'all_pending';
+  /** selection 為 selected 時必填 */
+  signerPublicIds?: string[];
+}
+
+/** 催簽批次的摘要 */
+export interface EsignNotificationBatchSummary {
+  batchId: string;
+  kind: 'invitation' | 'reminder';
+  status: 'queued' | 'processing' | 'completed' | 'partial_failed' | 'failed' | 'unknown';
+  requestedBy: { userId: string; name: string } | null;
+  selectedCount: number;
+  /** 受理寄送的人數 */
+  queuedCount: number;
+  /** 不符合條件、未寄出的人數 */
+  notSentCount: number;
+  createdAt: string;
+}
+
+/** 催簽批次的逐人結果（分頁） */
+export interface EsignNotificationBatch extends EsignNotificationBatchSummary {
+  items: {
+    signerPublicId: string;
+    name: string;
+    status: string;
+    reasonCode: string | null;
+    attemptCount: number;
+    completedAt: string | null;
+    attemptHistory: { status: string; at: string; reasonCode: string | null }[];
+  }[];
+  nextCursor: string | null;
+}
+
+export interface NotificationPageParams {
+  cursor?: string;
+  /** 1～100，預設 20 */
+  limit?: number;
+}
+
+export interface NotificationListParams extends NotificationPageParams {
+  kind?: 'invitation' | 'reminder';
+}
+
+export interface EsignNotificationBatchList {
+  items: EsignNotificationBatchSummary[];
+  nextCursor: string | null;
 }
 
 /** PATCH esign/documents/:id/signers/:signerPublicId/note：空字串表示清除備註 */

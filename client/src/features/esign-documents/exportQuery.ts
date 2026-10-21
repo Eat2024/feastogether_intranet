@@ -18,8 +18,6 @@ type FieldDef = {
   label: string;
   /** Excel 欄寬（字元數） */
   width: number;
-  /** 後端沒有這項資料：選項標示「未支援」，匯出為空白 */
-  unsupported?: boolean;
   value: (s: EsignSignerView) => string;
 };
 

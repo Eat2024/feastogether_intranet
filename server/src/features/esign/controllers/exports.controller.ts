@@ -28,12 +28,15 @@ export class ExportsController {
     private readonly exports: EsignExportService,
     @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
   ) {}
+
   @Get('exportable-documents') list(@Query() query: ExportQueryDto) {
     return this.exports.listDocuments(query);
   }
+
   @Get('exports') history(@Query() query: ExportQueryDto) {
     return this.exports.history(query);
   }
+
   @Post('documents/:documentId/exports')
   @UseGuards(OriginGuard)
   async request(
@@ -46,12 +49,14 @@ export class ExportsController {
     reply.status(result.status === 'completed' ? 200 : 202);
     return result;
   }
+
   @Get('documents/:documentId/exports/:exportId') detail(
     @Param('documentId') id: string,
     @Param('exportId') exportId: string,
   ) {
     return this.exports.detail(numericId(id), exportId);
   }
+
   @Post('documents/:documentId/exports/:exportId/retries')
   @UseGuards(OriginGuard)
   async retry(
@@ -63,6 +68,7 @@ export class ExportsController {
     reply.status(result.status === 'completed' ? 200 : 202);
     return result;
   }
+
   @Get('documents/:documentId/exports/:exportId/files/:fileId')
   async download(
     @Param('documentId') id: string,

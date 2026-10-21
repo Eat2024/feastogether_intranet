@@ -138,6 +138,7 @@ export class SigningTasksController {
         return toSignatureResultView(result);
       });
   }
+
   @ApiOperation({
     summary: '舊內部副本入口（需 Email OTP）',
     description:

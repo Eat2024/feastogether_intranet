@@ -23,6 +23,7 @@ import { EsignReminderService } from '../services/esign-reminder.service';
 @Controller('esign/documents/:documentId/notification-batches')
 export class NotificationBatchesController {
   constructor(private readonly reminders: EsignReminderService) {}
+
   @ApiOperation({
     summary: '建立內外部催簽批次',
     description:
@@ -38,6 +39,7 @@ export class NotificationBatchesController {
   ) {
     return this.reminders.create(this.id(id), userId, body);
   }
+
   @ApiOperation({
     summary: '查詢催簽批次結果',
     description: '僅建立人可檢視逐人寄送結果；不回傳郵件憑證。',
@@ -60,6 +62,7 @@ export class NotificationBatchesController {
   ) {
     return this.reminders.detail(this.id(id), userId, batchId, page);
   }
+
   private id(value: string) {
     const id = Number(value);
     if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(id))

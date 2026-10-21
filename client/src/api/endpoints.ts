@@ -12,6 +12,12 @@ export const endpoints = {
     `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/completed-file`,
   ESIGN_DOCUMENT_STOPPAGES: (id: string) => `esign/documents/${encodeURIComponent(id)}/stoppages`,
   ESIGN_DOCUMENT_SOURCE_FILE: (id: string) => `esign/documents/${encodeURIComponent(id)}/source-file`,
+  // 本人的簽署任務（server/src/features/esign/controllers/signing-tasks.controller.ts）；id 為 signerPublicId
+  ESIGN_SIGNING_TASKS: 'esign/signing-tasks',
+  ESIGN_SIGNING_TASK: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}`,
+  ESIGN_SIGNING_TASK_SOURCE_FILE: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/source-file`,
+  ESIGN_SIGNING_TASK_SIGNATURES: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/signatures`,
+  ESIGN_SIGNING_TASK_COMPLETED_FILE: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/completed-file`,
   // 內部簽署人候選（server/src/features/esign/controllers/signer-candidates.controller.ts）
   ESIGN_SIGNER_CANDIDATES: 'esign/signer-candidates',
   // 外部簽署人（server/src/features/esign/controllers/external-signature.controller.ts）：以外部存取 cookie 驗證，

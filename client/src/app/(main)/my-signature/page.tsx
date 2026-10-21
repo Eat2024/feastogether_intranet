@@ -1,62 +1,28 @@
 import FlashSnackbar from '@/components/FlashSnackbar';
-import LinkPagination from '@/components/LinkPagination';
 import PageHeader from '@/components/PageHeader';
-import { getCurrentUserId } from '@/features/forms/orgChart';
-import { getForms, toSignerView } from '@/features/forms/store';
-import MySignTable from '@/features/my-signature/MySignTable';
-import MySignTabs from '@/features/my-signature/MySignTabs';
-import { mySignHref, parseMySort, sortTasks } from '@/features/my-signature/sort';
-import { getMySignTasks, parseTab } from '@/features/my-signature/tasks';
-import { PAGE_SIZE, pageHrefs, paginate, parsePage } from '@/lib/paginate';
-import Stack from '@mui/material/Stack';
+import SigningTasksListView from '@/features/signing-tasks/SigningTasksListView';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 
 export const metadata: Metadata = { title: '我的電子簽' };
 
-
 const FLASH_MESSAGES = {
   signed: '已完成簽署',
-  rejected: '已拒絕簽署',
 };
 
-export default async function MySignaturePage({ searchParams }: PageProps<'/my-signature'>) {
-  const params = await searchParams;
-  const tab = parseTab(params.tab);
-  const sort = parseMySort(params, tab);
-  // 以完整資料計算進度與可否簽署，再只保留本人的紀錄傳給畫面（不外流其他簽署人）
-  const userId = getCurrentUserId();
-  const allTasks = getMySignTasks(getForms(), userId, new Date());
-  const tasks = Object.fromEntries(
-    Object.entries(allTasks).map(([tab, list]) => [
-      tab,
-      list.map((t) => {
-        // me 也要用簽署人視角的資料（不含管理端備註，簽到表帶出序號）
-        const form = toSignerView(t.form, userId);
-        return { ...t, form, me: form.signers[0] ?? t.me };
-      }),
-    ]),
-  ) as typeof allTasks;
-  const counts = {
-    pending: tasks.pending.length,
-    signed: tasks.signed.length,
-    rejected: tasks.rejected.length,
-  };
-
-  const { items, page, pageCount } = paginate(sortTasks(tasks[tab], sort), parsePage(params.page), PAGE_SIZE);
-
+// 列表資料改由後端 GET /api/esign/signing-tasks 取得（SigningTasksListView，瀏覽器端呼叫）
+export default function MySignaturePage() {
   return (
     <>
       <PageHeader
         title="我的電子簽"
         hideTitleWhenEmbedded
-        description="查看需要你簽署的文件，並追蹤已簽署與已拒絕的紀錄。"
+        description="查看需要你簽署的文件，並追蹤已簽署的紀錄。"
       />
-      <Stack spacing={2}>
-        <MySignTabs value={tab} counts={counts} />
-        <MySignTable tab={tab} tasks={items} today={new Date()} sort={sort} />
-        <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => mySignHref(tab, sort, p))} />
-      </Stack>
+      {/* useSearchParams 需要 Suspense 邊界 */}
+      <Suspense>
+        <SigningTasksListView />
+      </Suspense>
       <Suspense>
         <FlashSnackbar messages={FLASH_MESSAGES} />
       </Suspense>

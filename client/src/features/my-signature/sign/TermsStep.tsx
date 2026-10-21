@@ -1,13 +1,14 @@
-'use client';
+"use client";
 
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Paper from '@mui/material/Paper';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import { useState } from 'react';
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import { useState } from "react";
+import { SIGN_TERMS, SIGN_TERMS_VERSION } from "./terms";
 
 // 距離底部多少 px 內視為已讀到底（避免小數像素差）
 const BOTTOM_TOLERANCE = 4;
@@ -15,29 +16,30 @@ const BOTTOM_TOLERANCE = 4;
 /** terms：內部員工的電子簽名使用條款；consent：外部簽署人的電子簽署同意聲明（後端目前有效的版本） */
 const COPY = {
   terms: {
-    title: '電子簽名使用條款',
-    guide: '請詳閱以下條款並捲動至最下方',
-    end: '— 條款結束 —',
-    version: '條款版本',
-    agree: '我已詳閱並同意上述電子簽名使用條款',
+    title: "電子簽名使用條款",
+    guide: "請詳閱以下條款並捲動至最下方",
+    end: "— 條款結束 —",
+    version: "條款版本",
+    agree: "我已詳閱並同意上述電子簽名使用條款",
   },
   consent: {
-    title: '電子簽署同意聲明',
-    guide: '請詳閱以下聲明',
+    title: "電子簽署同意聲明",
+    guide: "請詳閱以下聲明",
     end: null,
-    version: '聲明版本',
-    agree: '我已詳閱並同意上述聲明',
+    version: "聲明版本",
+    agree: "我已詳閱並同意上述聲明",
   },
 };
 
 /** 流程第一步：閱讀電子簽名使用條款（或同意聲明），捲動到底部後才能勾選同意 */
 export default function TermsStep({
   docName,
-  terms,
-  version,
-  kind = 'terms',
+  terms = SIGN_TERMS,
+  version = SIGN_TERMS_VERSION,
+  kind = "terms",
   backHref,
   onAgree,
+  agreeing = false,
 }: {
   docName: string;
   /** 條款全文；只有一段時不編號 */
@@ -48,6 +50,7 @@ export default function TermsStep({
   kind?: keyof typeof COPY;
   /** 「不同意，返回」的連結；未提供時不顯示此按鈕 */
   backHref?: string;
+  agreeing?: boolean;
   onAgree: () => void;
 }) {
   const copy = COPY[kind];
@@ -81,12 +84,12 @@ export default function TermsStep({
           sx={{
             // 固定較矮的高度，讓使用者須捲動閱讀；內容不足以捲動時直接視為已讀完
             maxHeight: 200,
-            overflowY: 'auto',
+            overflowY: "auto",
             px: 3,
             py: 2,
-            bgcolor: 'grey.100',
+            bgcolor: "grey.100",
             border: 1,
-            borderColor: 'formBorder',
+            borderColor: "formBorder",
             borderRadius: 1,
           }}
         >
@@ -101,7 +104,7 @@ export default function TermsStep({
                   key={term}
                   component="li"
                   variant="content"
-                  sx={{ mb: 1.5, display: 'list-item' }}
+                  sx={{ mb: 1.5, display: "list-item" }}
                 >
                   {term}
                 </Typography>
@@ -131,7 +134,7 @@ export default function TermsStep({
           />
         </Box>
 
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
           {backHref && (
             <Button size="large" variant="outlined" href={backHref}>
               不同意，返回
@@ -141,6 +144,7 @@ export default function TermsStep({
             size="large"
             variant="contained"
             disabled={!agreed}
+            loading={agreeing}
             onClick={onAgree}
           >
             同意並繼續

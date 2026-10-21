@@ -15,7 +15,8 @@ export default function ReadOnlyDocument({ form, me }: { form: EFormDoc; me: Sig
   return (
     <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
       <DocumentViewer
-        form={form}
+        docInfo={form}
+        pdfUrl={form.upload?.fileId ? `/files/forms/${form.id}` : null}
         signer={me}
         layout={layout}
         signatures={me.signatures ?? {}}

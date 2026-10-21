@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Spec:** 010 — US1、FR-001～003、FR-015～016。對應 T008、T011、T012、T018 的組織快取回歸，以及 T004 的解析錯誤；T001、T002 的本票必要基準與合成資料先行完成。
 
@@ -17,3 +17,22 @@
 - [ ] 既有候選人 GET 僅查本機、不寫入；解析 POST 驗證員工 session 與 Origin，驗證失敗不得呼叫來源。
 - [ ] 組織樹沿用共用 Redis 7,200 秒快取，命中不呼叫來源且不續期，過期由下一次查詢更新；不新增排程、強制刷新或全公司匯入。
 - [ ] 解析 HTTP、帳號唯一性、授權、GET 唯讀及快取回歸測試通過；同步相關 API 契約並記錄驗證結果。不得宣稱前端選人已完成。
+
+## 實作紀錄（2026-10-21）
+
+- 分支 `feat/010-ticket-01`；起點為整合分支 `feat/010-internal-email-signing`，已同步 `c62fc46`。依 implement-spec 與 tdd 執行，採使用者確認的 HTTP／服務／來源／快取 seams。
+- 新增 POST resolutions；GET candidates 改唯讀。本機批讀包含停用／軟刪除帳號，只有缺帳號且 5–8 碼者查既有資格來源；沿用 transaction 與員編唯一約束處理並發。
+- 新增解析 DTO、必要回應裁切及 directory-unavailable 錯誤；沿用 OriginGuard／員工 session，不回 Email；OpenAPI 與員工契約同步。
+- 紅燈證據：GET 唯讀案例最初取得新建帳號而失敗；POST 解析最初 404；來源失敗錯誤最初仍為 STAFF_LOOKUP_FAILED。各階段修正後轉綠。原 11 個 GET 隱性匯入單元案例改由真實 HTTP＋MySQL 的新規格案例取代，保留組織快取單元測試。
+- Node v26.4.0、pnpm 11.9.0；沿用已驗證的測試 DB prefix 與非零 Redis DB，與另一 ticket 序列使用資源。HR HTTP boundary 使用合成來源，未呼叫真實 HR、未寄信，測試只清理本次建立的合成人員。
+- 完整 server unit：101 suites／862 tests 通過；server build 通過；lint:check 無 error（既有 warning 保留），本票新改核心檔案定向 lint 零 warning。
+- 初次 HTTP 驗證：候選解析 15 cases＋組織快取 8 cases，共 23 通過（含跨 HTTP 實例共用、TTL 不續期、到期才更新）。另補邊界、部分失敗重試及 Swagger 驗證，待最終重跑記錄。
+- Client、schema、migration、dependencies、環境變數、排程均無變更；前端選人畫面仍待後續串接。票單維持 claimed，待合併者驗證並合入整合分支後結案。
+- 最終 HTTP 重跑：`pnpm --config.verifyDepsBeforeRun=false -C server test:e2e --testRegex '(esign-candidate-resolution|org-chart).e2e-spec.ts$'`，2 suites／26 tests 通過（解析 18＋快取 8）。新增 suite 已納入一般 e2e 設定。
+
+## 整合驗收紀錄（2026-10-21）
+
+- 實作 commit：`b9e4336`；以 `--no-ff` 合入 `feat/010-internal-email-signing`，merge commit：`d9713a0`，無衝突。
+- 合併者核對舊 GET 隱性匯入測試已由新 HTTP 案例替代，而非刪除安全驗證；新案例涵蓋停用／刪除、並發唯一性、精確資格核對、未授權拒絕、上游失敗、輸入邊界與 Swagger。快取服務未變更，沿用兩小時共享快取。
+- 整合分支重新執行 `pnpm --config.verifyDepsBeforeRun=false -C server test:e2e --testRegex '(esign-candidate-resolution|org-chart).e2e-spec.ts$'`：2 suites／26 tests 通過。DB／Redis 序列使用，結束後釋放。
+- 同一實作樹的完整 unit 101 suites／862 tests、build、lint:check（零 error）證據如上；本次 merge 無額外程式碼差異。上述七項驗收條件均完成，狀態改為 resolved；不代表前端畫面或其他票單已完成。

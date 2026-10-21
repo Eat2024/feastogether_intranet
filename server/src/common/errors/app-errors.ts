@@ -25,6 +25,11 @@ export const AppErrors = {
     '所選員工帳號無法使用',
     HttpStatus.UNPROCESSABLE_ENTITY,
   ],
+  ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE: [
+    AppErrorCode.ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE,
+    '員工資格來源暫時無法使用，請稍後再試',
+    HttpStatus.BAD_GATEWAY,
+  ],
   ESIGN_REMINDER_REQUEST_CONFLICT: [
     AppErrorCode.ESIGN_REMINDER_REQUEST_CONFLICT,
     '同一催簽請求不得變更內容',

@@ -18,6 +18,14 @@ export class UserRepository {
     return manager.findOne(User, { where: { empid }, withDeleted: true });
   }
 
+  findByEmpids(empids: string[], manager: EntityManager): Promise<User[]> {
+    if (empids.length === 0) return Promise.resolve([]);
+    return manager.find(User, {
+      where: { empid: In(empids) },
+      withDeleted: true,
+    });
+  }
+
   findByEmpidForUpdate(
     empid: string,
     manager: EntityManager,

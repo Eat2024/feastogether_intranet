@@ -16,13 +16,13 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
 import type { StaffLookupDto } from '#app/infrastructure/http-client/feastogether/types/staff-lookup.dto';
 import type { EntityManager } from 'typeorm';
+import type { SignerCandidateResolutionsDto } from '../dto/resolve-signer-candidates.dto';
 
-/** 完整八碼員編；只有完整員編才向饗賓人 API 查詢，避免逐字搜尋時大量呼叫 */
-const FULL_EMPID = /^[0-9]{8}$/;
+/** 既有 HR lookup 支援的完整員編範圍。 */
+const LOOKUP_EMPID = /^[A-Za-z0-9]{5,8}$/;
 
 /**
- * 簽署人候選：先查本地 users；以完整員編查詢且本地沒有時，改向饗賓人 API
- * 查詢試用／正式員工，並比照登入流程建立帳號，讓尚未登入過的同仁也能被指定為簽署人。
+ * 搜尋只查本機；明確解析已選員工時才查資格來源並建立必要帳號。
  */
 @Injectable()
 export class EsignSignerCandidateService {
@@ -88,12 +88,35 @@ export class EsignSignerCandidateService {
 
   async list(query: string | undefined): Promise<User[]> {
     const q = query?.trim().slice(0, 100);
-    const found = await this.users.findActiveCandidates(q, this.manager);
-    if (!q || !FULL_EMPID.test(q) || found.some((user) => user.empid === q)) {
-      return found;
+    return this.users.findActiveCandidates(q, this.manager);
+  }
+
+  async resolve(employeeNos: string[]): Promise<SignerCandidateResolutionsDto> {
+    const selected = [...new Set(employeeNos)];
+    const local = new Map(
+      (await this.users.findByEmpids(selected, this.manager)).map((user) => [
+        user.empid,
+        user,
+      ]),
+    );
+    const items: SignerCandidateResolutionsDto['items'] = [];
+    for (const employeeNo of selected) {
+      const existing = local.get(employeeNo);
+      const user = existing
+        ? this.activeOrUndefined(existing)
+        : LOOKUP_EMPID.test(employeeNo)
+          ? await this.importStaff(employeeNo)
+          : undefined;
+      items.push({
+        employeeNo,
+        userId: user ? String(user.id) : null,
+        name: user?.name ?? null,
+        department: user?.departmentName ?? null,
+        title: user?.titleName ?? null,
+        status: user ? 'resolved' : 'unavailable',
+      });
     }
-    const imported = await this.importStaff(q);
-    return imported ? [imported, ...found] : found;
+    return { items };
   }
 
   /** 向饗賓人 API 查詢員編並建立本地帳號；查無或不是試用／正式員工時回傳 undefined */
@@ -102,14 +125,14 @@ export class EsignSignerCandidateService {
     try {
       staff = await this.hr.lookupEligibleStaff(empid);
     } catch (error) {
-      // lookupEligibleStaff 以 AUTH_EXCHANGE_FAILED 表示查無此人或資格不符；連線失敗等其他錯誤照常拋出
+      // 查無或資格不符逐人 unavailable；來源失敗不轉成登入錯誤。
       if (
         error instanceof AppException &&
         error.code === AppErrorCode.AUTH_EXCHANGE_FAILED
       ) {
         return undefined;
       }
-      throw error;
+      throw new AppException(...AppErrors.ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE);
     }
 
     try {

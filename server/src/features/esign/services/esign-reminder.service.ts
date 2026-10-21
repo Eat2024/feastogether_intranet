@@ -68,9 +68,7 @@ export class EsignReminderService {
       const all = await this.signers.findByDocument(documentId, manager);
       const selected =
         input.selection === 'all_pending'
-          ? all.filter(
-              (s) => s.signerType === 'email' && s.status === 'pending',
-            )
+          ? all.filter((s) => s.status === 'pending')
           : all.filter((s) => ids.includes(s.publicId));
       if (input.selection === 'selected' && selected.length !== ids.length)
         throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
@@ -96,16 +94,12 @@ export class EsignReminderService {
           throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
         targets.push({
           signer,
-          reason:
-            reminderEligibility(
-              document,
-              signer,
-              history.filter((l) => l.signerId === signer.id),
-              now,
-            ) ??
-            (!signer.email || !signer.invitationTokenSha256
-              ? 'RECIPIENT_UNAVAILABLE'
-              : null),
+          reason: reminderEligibility(
+            document,
+            signer,
+            history.filter((l) => l.signerId === signer.id),
+            now,
+          ),
         });
       }
       if (!targets.some((t) => t.reason === null))

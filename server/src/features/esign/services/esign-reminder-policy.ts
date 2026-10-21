@@ -1,3 +1,5 @@
+import { isEmail } from 'class-validator';
+
 /** 業務曆日僅用於催簽額度，持久化時間仍為 UTC。 */
 export function taipeiDispatchDate(now: Date): string {
   return new Date(now.getTime() + 8 * 60 * 60_000).toISOString().slice(0, 10);
@@ -22,12 +24,13 @@ export function reminderEligibility(
     signerType: string;
     status: string;
     invitationExpiresAt?: Date | null;
+    email?: string | null;
+    invitationTokenSha256?: string | null;
     deletedAt?: Date | null;
   },
   history: ReminderHistory[],
   now: Date,
 ): string | null {
-  if (signer.signerType !== 'email') return 'INTERNAL_REMINDER_UNSUPPORTED';
   if (signer.status !== 'pending' || signer.deletedAt)
     return 'SIGNER_ALREADY_COMPLETED';
   if (
@@ -41,6 +44,8 @@ export function reminderEligibility(
     now >= signer.invitationExpiresAt
   )
     return 'SIGNING_WINDOW_CLOSED';
+  if (!signer.email || !isEmail(signer.email) || !signer.invitationTokenSha256)
+    return 'RECIPIENT_UNAVAILABLE';
   const reminders = history.filter((log) => log.batch?.kind === 'reminder');
   if (
     reminders.some(

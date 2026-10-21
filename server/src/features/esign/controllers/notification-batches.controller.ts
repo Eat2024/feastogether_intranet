@@ -24,6 +24,7 @@ import { EsignReminderService } from '../services/esign-reminder.service';
 export class NotificationBatchesController {
   constructor(private readonly reminders: EsignReminderService) {}
 
+  // 建立內外部待簽者的催簽批次，交由背景工作寄送通知。
   @ApiOperation({
     summary: '建立內外部催簽批次',
     description:
@@ -40,6 +41,7 @@ export class NotificationBatchesController {
     return this.reminders.create(this.id(id), userId, body);
   }
 
+  // 供建立人分頁查詢文件的催簽批次。
   @ApiOperation({
     summary: '查詢催簽批次結果',
     description: '僅建立人可檢視逐人寄送結果；不回傳郵件憑證。',
@@ -53,6 +55,7 @@ export class NotificationBatchesController {
     return this.reminders.list(this.id(id), userId, page);
   }
 
+  // 供建立人查詢指定催簽批次的逐人寄送結果。
   @Get(':batchId')
   detail(
     @Param('documentId') id: string,

@@ -75,6 +75,7 @@ export class DocumentsController {
     private readonly employeeEmails: EsignEmployeeEmailService,
   ) {}
 
+  // 依角色與狀態列出目前員工可見的電子簽文件。
   @ApiOperation({
     summary: '列出電子簽文件',
     description: '依角色與狀態查詢目前員工可見的文件。',
@@ -110,6 +111,7 @@ export class DocumentsController {
     return { id: String(document.id) };
   }
 
+  // 取得建立人可見的文件明細與簽署狀態。
   @ApiOperation({
     summary: '取得建立人的文件詳情',
     description:
@@ -120,6 +122,7 @@ export class DocumentsController {
     return this.queries.creatorDetail(this.id(id), userId);
   }
 
+  // 更新草稿內容，並在提供新 PDF 時替換原檔。
   @UseGuards(OriginGuard)
   @UseInterceptors(DocumentUploadInterceptor)
   @ApiOperation({
@@ -143,6 +146,7 @@ export class DocumentsController {
     return { id: String(documentId) };
   }
 
+  // 由建立人軟刪除尚未發起的草稿。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '刪除草稿',
@@ -155,6 +159,7 @@ export class DocumentsController {
     return this.drafts.delete(this.id(id), userId);
   }
 
+  // 儲存草稿簽署人名單、期間與選項，不發起簽署。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '儲存草稿簽署人名單、期間與選項',
@@ -172,6 +177,7 @@ export class DocumentsController {
     return (await this.queries.creatorDetail(documentId, userId)).signers;
   }
 
+  // 完整暫存草稿的簽署人名單、期間與選項。
   @UseGuards(OriginGuard)
   @ApiOperation({ summary: '完整暫存草稿名單、期間與選項' })
   @Patch(':documentId/draft-settings')
@@ -185,6 +191,7 @@ export class DocumentsController {
     return this.queries.creatorDetail(documentId, userId);
   }
 
+  // 整批取代草稿的共用簽署欄位。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '整批更新草稿共用欄位',
@@ -201,6 +208,7 @@ export class DocumentsController {
     return (await this.queries.creatorDetail(documentId, userId)).fields;
   }
 
+  // 預檢草稿所選員工的信箱，只回遮罩結果，不保存或寄信。
   @UseGuards(OriginGuard)
   @Post(':documentId/employee-email-checks')
   @HttpCode(HttpStatus.OK)
@@ -276,6 +284,7 @@ export class DocumentsController {
     return this.queries.creatorDetail(documentId, userId);
   }
 
+  // 由建立人重新開放到期文件補簽，並寄出待簽者的新邀請。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '重新開放已到期文件補簽',
@@ -302,6 +311,7 @@ export class DocumentsController {
     return this.reopenings.reopen(this.id(id), userId, body);
   }
 
+  // 取得目前補簽輪仍保留密文的邀請，不寄信或輪替憑證。
   @ApiOperation({
     summary: '取得仍可取用的補簽邀請',
     description:
@@ -317,6 +327,7 @@ export class DocumentsController {
     return this.queries.reopeningInvitations(this.id(id), userId);
   }
 
+  // 供建立人讀取文件原始 PDF。
   @ApiOperation({
     summary: '讀取建立人的原始 PDF',
     description: '驗證建立人權限後回傳原始 PDF 串流，供預覽使用。',
@@ -343,6 +354,7 @@ export class DocumentsController {
       .send(file.bytes);
   }
 
+  // 由建立人永久停止文件簽署。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '停止文件簽署',
@@ -360,6 +372,7 @@ export class DocumentsController {
     return this.queries.creatorDetail(documentId, userId);
   }
 
+  // 供建立人查詢文件歷程。
   @ApiOperation({
     summary: '查詢文件簽署歷程',
     description: '回傳建立人可見的文件事件與停止原因。',
@@ -369,6 +382,7 @@ export class DocumentsController {
     return this.queries.history(this.id(id), userId);
   }
 
+  // 由建立人儲存指定簽署人的管理備註。
   @UseGuards(OriginGuard)
   @ApiOperation({ summary: '儲存或清除簽署人的管理備註' })
   @Patch(':documentId/signers/:signerPublicId/note')
@@ -386,6 +400,7 @@ export class DocumentsController {
     );
   }
 
+  // 供建立人下載指定簽署人的已簽副本。
   @ApiOperation({
     summary: '下載指定簽署人的個人 PDF',
     description: '僅建立人可依簽署人下載已產製完成的個人副本',

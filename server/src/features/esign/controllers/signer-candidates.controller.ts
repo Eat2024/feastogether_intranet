@@ -26,6 +26,7 @@ import {
 export class SignerCandidatesController {
   constructor(private readonly candidates: EsignSignerCandidateService) {}
 
+  // 取得正式員工組織樹，沿用兩小時共用快取。
   @Get('org-chart')
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({
@@ -54,6 +55,7 @@ export class SignerCandidatesController {
     return this.candidates.getOrgChart();
   }
 
+  // 將所選員編解析為本機簽署人，必要時建立員工帳號。
   @Post('resolutions')
   @HttpCode(200)
   @UseGuards(OriginGuard)
@@ -91,6 +93,7 @@ export class SignerCandidatesController {
     return this.candidates.resolve(input.employeeNos);
   }
 
+  // 搜尋本機有效員工，不呼叫上游或建立帳號。
   @ApiOperation({
     summary: '查詢可指定的內部簽署人',
     description:

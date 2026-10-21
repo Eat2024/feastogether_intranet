@@ -59,6 +59,7 @@ export class ExternalSignatureController {
     private readonly config: ConfigService,
   ) {}
 
+  // 以 Email OTP 存取憑證拒絕本人簽署任務，內外部員工共用。
   @UseGuards(OriginGuard)
   @ApiOperation({ summary: '拒絕外部本人簽署任務' })
   @Post('external-signing-task/rejection')
@@ -76,6 +77,7 @@ export class ExternalSignatureController {
     return result;
   }
 
+  // 顯示 Email 邀請確認頁；此步驟不寄送 OTP 或建立 session。
   @ApiOperation({
     summary: '開啟外部簽署邀請確認頁',
     description:
@@ -95,6 +97,7 @@ export class ExternalSignatureController {
     this.sendInvitationPage(reply, HttpStatus.OK, invitationConfirmPage(token));
   }
 
+  // 驗證邀請並寄送 OTP 至固定收件信箱。
   @UseGuards(OriginGuard, AuthThrottlerGuard)
   @ApiOperation({
     summary: '寄出 Email 簽署驗證碼（內外部共用）',
@@ -130,6 +133,7 @@ export class ExternalSignatureController {
     );
   }
 
+  // 驗證 OTP、建立簽署存取 cookie，並導向簽署頁。
   @UseGuards(OriginGuard, AuthThrottlerGuard)
   @ApiOperation({
     summary: '以驗證碼建立 Email 簽署存取 session（內外部共用）',
@@ -162,6 +166,7 @@ export class ExternalSignatureController {
     });
   }
 
+  // 撤銷請求攜帶的簽署存取憑證並清除 cookie。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '結束外部簽署存取',
@@ -182,6 +187,7 @@ export class ExternalSignatureController {
     clearExternalAccessCookie(reply);
   }
 
+  // 以 Email OTP 存取憑證開啟本人任務並記錄開啟事件。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '開啟外部簽署任務',
@@ -194,6 +200,7 @@ export class ExternalSignatureController {
     return this.external.task(this.accessCredential(request), true);
   }
 
+  // 唯讀查詢本人簽署任務與副本狀態，不記錄開啟事件。
   @ApiOperation({
     summary: '查詢外部簽署任務（唯讀）',
     description:
@@ -205,6 +212,7 @@ export class ExternalSignatureController {
     return this.external.task(this.accessCredential(request), false);
   }
 
+  // 驗證 Email OTP 存取權限後回傳本人任務的原始 PDF。
   @ApiOperation({
     summary: '讀取外部簽署任務的原始 PDF',
     description:
@@ -229,6 +237,7 @@ export class ExternalSignatureController {
       .send(file.bytes);
   }
 
+  // 以 Email OTP 存取憑證提交本人簽名與同意紀錄。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '送出外部簽署人簽名',
@@ -254,6 +263,7 @@ export class ExternalSignatureController {
     return toSignatureResultView(result);
   }
 
+  // 驗證 Email OTP 存取權限與檔案完整性後下載本人已簽副本。
   @ApiOperation({
     summary: '下載外部簽署人的本人副本',
     description:

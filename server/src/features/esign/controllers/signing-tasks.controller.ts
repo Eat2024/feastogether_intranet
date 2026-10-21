@@ -40,6 +40,7 @@ export class SigningTasksController {
     private readonly completions: EsignCompletionAccessService,
   ) {}
 
+  // 舊員工拒簽入口：本人回 403，須改走 Email OTP 流程。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '舊內部拒簽入口（需 Email OTP）',
@@ -62,6 +63,7 @@ export class SigningTasksController {
     return result;
   }
 
+  // 列出目前員工的非草稿簽署任務。
   @ApiOperation({
     summary: '列出本人的簽署任務',
     description:
@@ -75,6 +77,7 @@ export class SigningTasksController {
     return this.tasks.list(userId, query.status);
   }
 
+  // 舊員工開啟入口：本人回 403，須改走 Email OTP 流程。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '開啟並確認本人簽署任務（舊入口，需 Email OTP）',
@@ -89,6 +92,7 @@ export class SigningTasksController {
     return this.tasks.open(signerPublicId, userId);
   }
 
+  // 舊員工原檔入口：本人回 403，須改走 Email OTP 流程。
   @ApiOperation({
     summary: '讀取內部簽署任務的原始 PDF（舊入口，需 Email OTP）',
     description:
@@ -114,6 +118,7 @@ export class SigningTasksController {
       .send(file.bytes);
   }
 
+  // 舊員工簽名入口：本人回 403，須改走 Email OTP 流程。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '送出內部員工簽名（舊入口，需 Email OTP）',
@@ -139,6 +144,7 @@ export class SigningTasksController {
       });
   }
 
+  // 舊員工副本入口：本人回 403，須改走 Email OTP 流程。
   @ApiOperation({
     summary: '舊內部副本入口（需 Email OTP）',
     description:

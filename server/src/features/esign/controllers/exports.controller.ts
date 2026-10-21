@@ -29,14 +29,17 @@ export class ExportsController {
     @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
   ) {}
 
+  // 查詢可匯出簽署副本的文件。
   @Get('exportable-documents') list(@Query() query: ExportQueryDto) {
     return this.exports.listDocuments(query);
   }
 
+  // 查詢文件副本匯出歷程。
   @Get('exports') history(@Query() query: ExportQueryDto) {
     return this.exports.history(query);
   }
 
+  // 由建立人申請文件副本 ZIP 匯出，回傳既有或新建的匯出狀態。
   @Post('documents/:documentId/exports')
   @UseGuards(OriginGuard)
   async request(
@@ -50,6 +53,7 @@ export class ExportsController {
     return result;
   }
 
+  // 查詢指定文件匯出工作的狀態與檔案資訊。
   @Get('documents/:documentId/exports/:exportId') detail(
     @Param('documentId') id: string,
     @Param('exportId') exportId: string,
@@ -57,6 +61,7 @@ export class ExportsController {
     return this.exports.detail(numericId(id), exportId);
   }
 
+  // 由建立人重試文件副本匯出工作。
   @Post('documents/:documentId/exports/:exportId/retries')
   @UseGuards(OriginGuard)
   async retry(
@@ -69,6 +74,7 @@ export class ExportsController {
     return result;
   }
 
+  // 下載匯出 ZIP 分檔，支援 Range 部分下載。
   @Get('documents/:documentId/exports/:exportId/files/:fileId')
   async download(
     @Param('documentId') id: string,

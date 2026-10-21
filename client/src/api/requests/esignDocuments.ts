@@ -20,6 +20,8 @@ import type {
   EsignSignerView,
   GetDocumentsParams,
   InitiateDocumentBody,
+  ReopenDocumentBody,
+  ReopenDocumentResult,
   UpdateDocumentBody,
 } from '@/api/types';
 
@@ -144,6 +146,16 @@ export const stopDocument = async ({ id, reason }: { id: string; reason: string 
     method: 'POST',
     url: endpoints.ESIGN_DOCUMENT_STOPPAGES(id),
     data: { reason },
+  });
+  return res.data;
+};
+
+/** 建立人為已到期文件設定新的截止時間；開始時間與既有簽署證據不變。 */
+export const reopenDocument = async ({ id, expectedSignEndAt, signEndAt, reason }: ReopenDocumentBody): Promise<ReopenDocumentResult> => {
+  const res = await api<ReopenDocumentResult>({
+    method: 'POST',
+    url: endpoints.ESIGN_DOCUMENT_REOPENINGS(id),
+    data: { expectedSignEndAt, signEndAt, reason },
   });
   return res.data;
 };

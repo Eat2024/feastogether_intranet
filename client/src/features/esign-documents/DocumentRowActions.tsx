@@ -4,25 +4,17 @@
 import type { EsignDocumentListItem } from '@/api/types';
 import TooltipIconButton from '@/components/TooltipIconButton';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
-import EventRepeatRoundedIcon from '@mui/icons-material/EventRepeatRounded';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
 import Box from '@mui/material/Box';
-import type { ReactNode } from 'react';
 import DeleteDocumentButton from './DeleteDocumentButton';
+import ReopenDocumentButton from './ReopenDocumentButton';
 import StopDocumentButton from './StopDocumentButton';
-
-// 尚未串接的操作
-const NOT_CONNECTED: { label: string; icon: ReactNode }[] = [
-  { label: '補簽', icon: <EventRepeatRoundedIcon /> },
-];
-
-// TODO: 串接補簽 API 後，依文件狀態啟用
 export default function DocumentRowActions({
   doc,
 }: {
-  doc: Pick<EsignDocumentListItem, 'id' | 'title' | 'status' | 'pendingCount'>;
+  doc: Pick<EsignDocumentListItem, 'id' | 'title' | 'status' | 'pendingCount' | 'signEndAt'>;
 }) {
   return (
     <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -58,9 +50,7 @@ export default function DocumentRowActions({
         href={`/forms/${doc.id}/edit`}
         disabled={doc.status !== 'draft'}
       />
-      {NOT_CONNECTED.map((a) => (
-        <TooltipIconButton key={a.label} label={`${a.label}（尚未串接後端）`} icon={a.icon} disabled />
-      ))}
+      <ReopenDocumentButton doc={doc} disabled={doc.status !== 'expired' || doc.pendingCount === 0} />
       {/* 簽署中、已到期才能停止 */}
       <StopDocumentButton doc={doc} disabled={doc.status !== 'active' && doc.status !== 'expired'} />
       {/* 後端只允許刪除尚未發起的草稿 */}

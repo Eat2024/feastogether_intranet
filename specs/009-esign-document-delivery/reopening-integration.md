@@ -6,7 +6,7 @@
 
 - `POST /api/esign/documents/:documentId/reopenings`：建立人提供 `expectedSignEndAt`、新 `signEndAt` 與必填原因；只開放已到期且仍有 pending 簽署人的文件。只改到期時間，保留開始時間、固定簽署證據與既有副本；每輪追加歷程。
 - `GET /api/esign/documents/:documentId/reopening-invitations`：建立人唯讀取得目前補簽輪的外部邀請。
-- 入口在 `documents.controller.ts`，交易主流程在 `EsignReopeningService.reopen()`。補簽不自動寄信；前端補簽按鈕的正式串接不在本次分支整合範圍。
+- 入口在 `documents.controller.ts`，交易主流程在 `EsignReopeningService.reopen()`。`/forms` 列表與文件詳情的補簽按鈕已串接正式 API；畫面只設定新截止日與原因，不提供修改開始時間。補簽不自動寄信。
 - 已停止、已完成及 finalizing 不可補簽。拒簽者仍不納入 pending；「拒簽後改簽」尚未實作。
 
 ## 衝突處理與相容性
@@ -28,5 +28,6 @@
 - 完整 e2e：17 suites／135 tests，含補簽兩輪、並發／舊請求、交易回滾、已簽副本與證據保留、舊邀請／session 失效、新 OTP、補簽與催簽交互驗證。
 - schema：2 suites／6 tests。
 - server build、lint:check 通過；lint 0 errors（202 warnings）。
+- client lint、production build 通過。真 Chrome（America/Los_Angeles）驗證列表補簽：payload 僅包含 `expectedSignEndAt`、台北日界線的新 `signEndAt` 與 trim 後原因；成功後列表 query 重新讀取並顯示簽署中。
 - 補簽保留 unknown 催簽結果的新增測試先重現結果被覆寫成 failed，限制停用對象為 invitation 後通過。
 - 原 Spec009 的 S3 部署容量驗收仍由 ticket11 承接，T028 未勾選；本次不宣稱完成該驗收。

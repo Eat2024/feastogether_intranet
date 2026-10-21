@@ -13,6 +13,7 @@ export const endpoints = {
   ESIGN_DOCUMENT_DRAFT_SETTINGS: (id: string) => `esign/documents/${encodeURIComponent(id)}/draft-settings`,
   ESIGN_DOCUMENT_DRAFT_SAVE: (id: string) => `esign/documents/${encodeURIComponent(id)}/draftSave`,
   ESIGN_DOCUMENT_INITIATIONS: (id: string) => `esign/documents/${encodeURIComponent(id)}/initiations`,
+  ESIGN_DOCUMENT_REOPENINGS: (id: string) => `esign/documents/${encodeURIComponent(id)}/reopenings`,
   ESIGN_DOCUMENT_HISTORY: (id: string) => `esign/documents/${encodeURIComponent(id)}/history`,
   ESIGN_SIGNER_NOTE: (id: string, signerPublicId: string) =>
     `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/note`,

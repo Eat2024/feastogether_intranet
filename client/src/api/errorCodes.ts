@@ -16,6 +16,10 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   ESIGN_REJECTION_REASON_INVALID: '拒絕原因須為最多 200 字的文字',
   ESIGN_REJECTION_CONFLICT: '簽署人已完成簽署或拒簽，無法變更結果',
   ESIGN_REJECTION_NOT_ALLOWED: '此文件未開放拒絕簽署',
+  ESIGN_REOPEN_INPUT_INVALID: '請填寫有效的補簽期限與 1 至 500 字的補簽原因',
+  ESIGN_REOPEN_STALE: '文件狀態已變更，請重新確認',
+  ESIGN_DOCUMENT_NOT_REOPENABLE: '只有仍有未簽署者的已到期文件可以補簽',
+  ESIGN_INVITATION_SERVICE_UNAVAILABLE: '目前無法取得補簽邀請，請稍後再試',
   // --- Auth ---
   UNAUTHORIZED: '登入已過期，請從入口網重新進入電子簽',
   INVALID_CREDENTIALS: '員工編號或密碼錯誤，或登入已失效',

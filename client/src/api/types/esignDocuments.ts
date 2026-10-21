@@ -169,6 +169,26 @@ export interface InitiateDocumentBody {
   allowReject: boolean;
 }
 
+/** POST esign/documents/:id/reopenings */
+export interface ReopenDocumentBody {
+  id: string;
+  expectedSignEndAt: string;
+  /** 新截止時間；補簽不修改原開始時間。 */
+  signEndAt: string;
+  /** 去除首尾空白後 1～500 個 Unicode 字元。 */
+  reason: string;
+}
+
+export interface ReopenDocumentResult {
+  documentId: string;
+  status: 'active';
+  originalSignEndAt: string;
+  signEndAt: string;
+  isReopened: true;
+  reopenedAt: string;
+  pendingCount: number;
+}
+
 /** GET esign/documents/:id/history 的一筆事件（依發生時間由舊到新） */
 export interface EsignHistoryItem {
   /** 事件類型，例如 document.initiated、signature.completed、document.stopped_by_creator */

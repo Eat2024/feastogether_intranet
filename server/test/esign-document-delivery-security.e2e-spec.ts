@@ -92,6 +92,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
       builder.overrideProvider(FeastogetherHrService).useValue({
+        getStaffEmails: syntheticStaffEmails,
         lookupEligibleStaff: (empid: string) =>
           Promise.resolve({
             person_empid: empid,
@@ -689,3 +690,4 @@ describe('Spec009 跨故事與管理安全邊界', () => {
     }
   });
 });
+import { syntheticStaffEmails } from './synthetic-staff-emails.helper';

@@ -106,6 +106,7 @@ describe('核心電子簽 US1', () => {
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
       builder.overrideProvider(FeastogetherHrService).useValue({
+        getStaffEmails: syntheticStaffEmails,
         lookupEligibleStaff: jest.fn(async (empid: string) => ({
           person_empid: empid,
           person_name: empid === creatorEmpid ? '建立人' : '未參與員工',
@@ -424,7 +425,7 @@ describe('核心電子簽 US1', () => {
     await remove(activeId).expect(409);
   });
 
-  it('簽署人候選：本地沒有的完整員編改查饗賓人 API 並建立帳號，之後直接由本地取得', async () => {
+  it('簽署人候選：GET 唯讀，選取後以 POST 解析完整員編建立帳號', async () => {
     await db.query('DELETE FROM users WHERE empid = ?', [importedEmpid]);
     const hr = ctx.app.get<{ lookupEligibleStaff: jest.Mock }>(
       FeastogetherHrService,
@@ -439,6 +440,14 @@ describe('核心電子簽 US1', () => {
           .expect(200),
       );
 
+    expect(await search(importedEmpid)).toEqual([]);
+    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    await request(ctx.server)
+      .post('/api/esign/signer-candidates/resolutions')
+      .set('Cookie', creatorCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send({ employeeNos: [importedEmpid] })
+      .expect(200);
     const first = await search(importedEmpid);
     expect(first).toEqual([
       expect.objectContaining({
@@ -3836,3 +3845,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
+import { syntheticStaffEmails } from './synthetic-staff-emails.helper';

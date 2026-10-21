@@ -49,11 +49,13 @@ describe('EsignInitiationService', () => {
       sha256: 'a'.repeat(64),
     };
     const mysql = {
+      getManager: jest.fn(() => manager),
       transaction: jest.fn((run: (value: never) => Promise<unknown>) =>
         run(manager),
       ),
     };
     const documents = {
+      findById: jest.fn(async () => document),
       save: jest.fn(async (value: object) => value),
     };
     const signerRepository = {
@@ -68,7 +70,10 @@ describe('EsignInitiationService', () => {
         values.map((value, index) => ({ id: 51 + index, ...value })),
       ),
     };
-    const access = { checkAndLockDraftDoc: jest.fn(async () => document) };
+    const access = {
+      checkAndLockDraftDoc: jest.fn(async () => document),
+      checkEsignCreator: jest.fn(),
+    };
     const pdf = {
       validatePersistedPdf: jest.fn(async () => ({
         mimeType: 'application/pdf',
@@ -115,6 +120,13 @@ describe('EsignInitiationService', () => {
       jobs as never,
       signerService as never,
       fieldService as never,
+      {
+        resolveUsers: jest.fn(async () => [{ userId: 8, empid: 'E008' }]),
+        lookupEmails: jest.fn(async () => [
+          { userId: 8, empid: 'E008', email: 'employee@example.test' },
+        ]),
+      } as never,
+      { checkStillDraft: jest.fn() } as never,
     );
     return {
       service,
@@ -285,7 +297,7 @@ describe('EsignInitiationService', () => {
     ).rejects.toThrow('簽署開始時間必須早於截止時間');
   });
 
-  it('純內部簽署人不建立 invitation batch', async () => {
+  it('純內部簽署人亦建立 invitation batch', async () => {
     const { service, notifications, jobs } = setup({
       signers: [
         {
@@ -304,9 +316,7 @@ describe('EsignInitiationService', () => {
     await service.initiate({
       documentId: 3,
       creatorUserId: 7,
-      signers: [
-        { type: 'email', name: '候選人', email: 'candidate@example.test' },
-      ],
+      signers: [{ type: 'user', userId: '8' }],
       fields: [
         {
           type: 'signature',
@@ -323,7 +333,7 @@ describe('EsignInitiationService', () => {
       watermark: false,
       allowReject: false,
     });
-    expect(notifications.saveBatch).not.toHaveBeenCalled();
-    expect(jobs.enqueueInvitations).toHaveBeenCalledWith([]);
+    expect(notifications.saveBatch).toHaveBeenCalledTimes(1);
+    expect(jobs.enqueueInvitations).toHaveBeenCalledWith([51]);
   });
 });

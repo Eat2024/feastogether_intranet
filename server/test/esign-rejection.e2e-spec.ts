@@ -54,6 +54,7 @@ describe('拒簽 HTTP 與結案', () => {
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
       builder.overrideProvider(FeastogetherHrService).useValue({
+        getStaffEmails: syntheticStaffEmails,
         lookupEligibleStaff: async (empid: string) => ({
           person_empid: empid,
           person_name: '拒簽測試',
@@ -494,3 +495,4 @@ describe('拒簽 HTTP 與結案', () => {
       .expect(200);
   });
 });
+import { syntheticStaffEmails } from './synthetic-staff-emails.helper';

@@ -51,6 +51,7 @@ describe('外部催簽 API', () => {
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
       builder.overrideProvider(FeastogetherHrService).useValue({
+        getStaffEmails: syntheticStaffEmails,
         lookupEligibleStaff: async (empid: string) => ({
           person_empid: empid,
           person_name: '催簽測試',
@@ -596,7 +597,7 @@ describe('外部催簽 API', () => {
       await worker().process({ data: { notificationLogId: row.id } } as Job<{
         notificationLogId: number;
       }>);
-    expect(mailer.deliveries.slice(before)).toHaveLength(4);
+    expect(mailer.deliveries.slice(before)).toHaveLength(5);
     const detail = apiData<{
       signers: Array<{
         type: string;
@@ -627,7 +628,7 @@ describe('外部催簽 API', () => {
       }),
     ]);
     expect(responses.map((r) => r.status)).toEqual([409, 409]);
-    expect(mailer.deliveries.slice(before)).toHaveLength(4);
+    expect(mailer.deliveries.slice(before)).toHaveLength(5);
   });
   it('明確失敗仍待重試時不能另建批次，原明細成功後只寄出一次', async () => {
     const doc = await create();
@@ -743,3 +744,4 @@ describe('外部催簽 API', () => {
     );
   });
 });
+import { syntheticStaffEmails } from './synthetic-staff-emails.helper';

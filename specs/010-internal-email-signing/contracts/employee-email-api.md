@@ -1,6 +1,6 @@
 # Contract：員工解析、信箱檢查與發起
 
-狀態：Ticket 01 已實作候選搜尋唯讀與員工解析；信箱檢查及發起擴充仍待後續 tickets。路徑包含 `/api` prefix。管理 API 使用既有員工 session；寫入及 POST 檢查套 OriginGuard。JSON 成功 envelope `{success:true,data,timestamp}`；錯誤 `{success:false,error:{code,message,details?},timestamp}`。ID 均以字串傳遞。
+狀態：Tickets 01–03 已實作並驗證候選搜尋唯讀、員工解析、信箱檢查及發起／邀請寄送。內部 OTP 簽署仍待 Ticket 04，不代表前端已交付。路徑包含 `/api` prefix。管理 API 使用既有員工 session；寫入及 POST 檢查套 OriginGuard。JSON 成功 envelope `{success:true,data,timestamp}`；錯誤 `{success:false,error:{code,message,details?},timestamp}`。ID 均以字串傳遞。
 
 ## 組織樹（已存在，沿用）
 
@@ -80,7 +80,7 @@ type Initiation = {
 };
 ```
 
-內部 signer 若額外傳 email 不得作為收件依據。既有 type=user 欄位檢查／白名單應拒絕不允許的輸入；不能因額外欄位透傳改寄信箱。
+內部 signer 若額外傳 email 或 name，既有 DTO 驗證回 400，不能作為收件依據。Service 直接呼叫亦拒絕覆寫；不能因額外欄位透傳改寄信箱。
 
 發起每次重新查所有內部 email；缺漏／不合法 → 422 `ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE`，details `{userIds:[...]}`，整份維持草稿。來源失敗 → 502；查詢後 userId→empid 改變或帳號失效 → 409 `ESIGN_EMPLOYEE_IDENTITY_CHANGED`，不提交。非草稿等既有錯誤維持現有碼。
 

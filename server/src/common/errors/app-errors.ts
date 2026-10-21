@@ -15,6 +15,16 @@ export function signAfterHint(startAt: Date): string {
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE: [
+    AppErrorCode.ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE,
+    '所選員工無有效信箱，請調整名單後再發起',
+    HttpStatus.UNPROCESSABLE_ENTITY,
+  ],
+  ESIGN_EMPLOYEE_IDENTITY_CHANGED: [
+    AppErrorCode.ESIGN_EMPLOYEE_IDENTITY_CHANGED,
+    '員工身分已異動，請重新確認名單',
+    HttpStatus.CONFLICT,
+  ],
   ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE: [
     AppErrorCode.ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE,
     '員工信箱來源暫時無法使用，請稍後再試',

@@ -4,10 +4,12 @@
 // 暫存以 PATCH .../draft-settings 保存同樣的設定，再次進入時帶回。
 // 第一步放的欄位是所有簽署人共用的位置，後端會替每位簽署人各產生一份個人副本。
 // 同仁從後端的正式員工組織架構（GET /api/esign/signer-candidates/org-chart）選取，
-// 送出前以 POST .../resolutions 將員編換成後端 userId（本機沒有帳號時後端會自動建立）。
+// 送出前以 POST .../resolutions 將員編換成後端 userId（本機沒有帳號時後端會自動建立）；
+// 發起前以 POST .../employee-email-checks 確認內部同仁的人事資料都有收件信箱（也可先手動檢查）。
 import { useGetDocumentQuery, useGetSignerOrgChartQuery } from "@/api/queries";
 import { queryKeys } from "@/api/query-keys";
 import {
+  checkEmployeeEmails,
   initiateDocument,
   resolveSignerCandidates,
   saveDraftSettings,
@@ -31,6 +33,7 @@ import type { OrgDept } from "@/features/forms/types";
 import { getErrorMessage } from "@/lib/apiError";
 import { dayBoundary } from "@/lib/dates";
 import { emailSignerId, isValidEmail, normalizeEmail } from "@/lib/email";
+import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -118,16 +121,51 @@ async function resolveUserIds(
 }
 
 /** 依選取順序轉成後端的簽署人格式（內部員工以員編查出 userId） */
-async function toSignerInputs(
+function toSignerInputs(
   signers: PickedSigner[],
-): Promise<EsignSignerInput[]> {
-  const userIds = await resolveUserIds(signers);
+  userIds: Map<string, string>,
+): EsignSignerInput[] {
   return signers.map((s) =>
     s.type === "user"
       ? { type: "user", userId: userIds.get(s.key)! }
       : { type: "email", name: s.name, email: s.email },
   );
 }
+
+/** 一位內部簽署人的收件信箱檢查結果；maskedEmail 為 null 表示人事資料沒有信箱 */
+type EmailCheckResult = { key: string; label: string; maskedEmail: string | null };
+
+/** 檢查內部簽署人的收件信箱（依選取順序）；userIds 為 resolveUserIds 的結果 */
+async function checkSignerEmails(
+  documentId: string,
+  signers: PickedSigner[],
+  userIds: Map<string, string>,
+): Promise<EmailCheckResult[]> {
+  const users = signers.filter((s) => s.type === "user");
+  if (!users.length) return [];
+  const items = await checkEmployeeEmails({
+    id: documentId,
+    userIds: [...new Set(userIds.values())],
+  });
+  const byUserId = new Map(items.map((item) => [item.userId, item]));
+  return users.map((s) => {
+    const item = byUserId.get(userIds.get(s.key)!);
+    return {
+      key: s.key,
+      label: s.label,
+      maskedEmail: item?.status === "ready" ? item.maskedEmail : null,
+    };
+  });
+}
+
+// 檢查通過時列出的人數上限
+const EMAIL_PREVIEW_COUNT = 5;
+
+/** 沒有收件信箱的同仁無法收到簽署通知，後端也會拒絕發起 */
+const missingEmailMessage = (missing: EmailCheckResult[]) =>
+  `以下同仁的人事資料沒有收件信箱，無法寄送簽署通知：${missing
+    .map((m) => m.label)
+    .join("、")}。請聯絡人事單位補上信箱，或先將他們移出簽署名單。`;
 
 /**
  * 草稿已暫存的簽署人帶回畫面：內部員工以員編對回組織架構的 id；不在目前組織架構中的另外列出（無法在樹狀選單中顯示）。
@@ -261,6 +299,11 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
     allowReject: doc.allowReject,
   });
   const [signerError, setSignerError] = useState<string>();
+  // 手動檢查收件信箱的結果；名單改變後不再顯示（selection 記錄檢查當時的內部簽署人）
+  const [emailCheck, setEmailCheck] = useState<{
+    selection: string;
+    results: EmailCheckResult[];
+  } | null>(null);
   const [deadlineError, setDeadlineError] = useState<string>();
   const [submitError, setSubmitError] = useState<string>();
 
@@ -303,8 +346,14 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
 
   const initiate = useMutation({
     mutationFn: async (): Promise<number> => {
+      const userIds = await resolveUserIds(signers);
+      // 先確認內部同仁都有收件信箱，有人沒有時列出是哪幾位
+      const missing = (await checkSignerEmails(doc.id, signers, userIds)).filter(
+        (r) => !r.maskedEmail,
+      );
+      if (missing.length) throw new Error(missingEmailMessage(missing));
       const body: InitiateDocumentBody = {
-        signers: await toSignerInputs(signers),
+        signers: toSignerInputs(signers, userIds),
         // 共用欄位：所有簽署人簽同一組位置，照草稿原樣送出
         fields: fields.map(
           ({
@@ -357,7 +406,7 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
       saveDraftSettings({
         id: doc.id,
         body: {
-          signers: await toSignerInputs(signers),
+          signers: toSignerInputs(signers, await resolveUserIds(signers)),
           signStartAt: deadline.start
             ? dayBoundary(deadline.start, "start")
             : null,
@@ -416,6 +465,29 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
     save.isPending ||
     save.isSuccess;
 
+  // 目前選取的內部簽署人（檢查結果只對同一份名單有效）
+  const userSelection = signers
+    .filter((s) => s.type === "user")
+    .map((s) => s.key)
+    .join(",");
+  const currentCheck =
+    emailCheck && emailCheck.selection === userSelection ? emailCheck.results : null;
+  const checkEmails = useMutation({
+    mutationFn: async () =>
+      checkSignerEmails(doc.id, signers, await resolveUserIds(signers)),
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: (results) => setEmailCheck({ selection: userSelection, results }),
+    onError: (err) => {
+      setEmailCheck(null);
+      setSignerError(
+        !axios.isAxiosError(err) && err instanceof Error
+          ? err.message
+          : getErrorMessage(err, "無法檢查收件信箱，請稍後再試"),
+      );
+    },
+  });
+  const missingEmails = currentCheck?.filter((r) => !r.maskedEmail) ?? [];
+
   return (
     <Stack spacing={3}>
       <PageHeader
@@ -469,6 +541,43 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
               {signerError ??
                 `共 ${signers.length} 位簽署人${emailSigners.length ? `（組織架構 ${selected.size} 位、Email ${emailSigners.length} 位）` : ""}`}
             </Typography>
+            {/* 發起時會自動檢查；也可以先檢查，提早發現沒有收件信箱的同仁 */}
+            {selected.size > 0 && (
+              <Box sx={{ mt: 1.5 }}>
+                {currentCheck ? (
+                  missingEmails.length ? (
+                    <Alert severity="warning" variant="outlined">
+                      {missingEmailMessage(missingEmails)}
+                    </Alert>
+                  ) : (
+                    <Alert severity="success" variant="outlined">
+                      已確認 {currentCheck.length} 位內部同仁都有收件信箱，發起後會寄送簽署通知：
+                      {/* 人數多時只列前幾位，避免提示過長 */}
+                      {currentCheck
+                        .slice(0, EMAIL_PREVIEW_COUNT)
+                        .map((r) => `${r.label} ${r.maskedEmail}`)
+                        .join("、")}
+                      {currentCheck.length > EMAIL_PREVIEW_COUNT &&
+                        ` 等 ${currentCheck.length} 位`}
+                    </Alert>
+                  )
+                ) : (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<MailOutlineRoundedIcon />}
+                    loading={checkEmails.isPending}
+                    disabled={busy}
+                    onClick={() => {
+                      setSignerError(undefined);
+                      checkEmails.mutate();
+                    }}
+                  >
+                    檢查內部同仁的收件信箱
+                  </Button>
+                )}
+              </Box>
+            )}
           </Box>
 
           <Box>

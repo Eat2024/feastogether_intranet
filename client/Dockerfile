@@ -3,7 +3,7 @@
 # build context = repository root（共用 workspace lockfile）
 # 採用 Next.js standalone output（自包含 server、image 最小）
 # ========================
-FROM node:20-alpine AS builder
+FROM node:24.22.1-alpine AS builder
 
 WORKDIR /workspace
 RUN corepack enable
@@ -27,7 +27,7 @@ RUN pnpm --filter feastogether-intranet-client build
 # ========================
 # Runtime stage
 # ========================
-FROM node:20-alpine
+FROM node:24.22.1-alpine
 
 WORKDIR /app
 ENV NODE_ENV=production

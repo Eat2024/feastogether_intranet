@@ -1,78 +1,13 @@
 import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
-import type {
-  EsignRejectionResult,
-  EsignSignatureResult,
-  EsignSigningTask,
-  GetSigningTasksParams,
-  RejectSigningTaskBody,
-  SubmitSignaturesBody,
-} from '@/api/types';
-import { getBlob } from './blob';
+import type { EsignSigningTask, GetSigningTasksParams } from '@/api/types';
 
 /**
  * @name 列出本人的簽署任務
- * @description 指派給目前員工、已發起的文件（含已停止、已到期）；不分頁
+ * @description 指派給目前員工、已發起的文件（含已停止、已到期）；不分頁。
+ * 簽署、拒簽與下載本人副本須從 Email 邀請並通過驗證碼（Spec 010），舊的個人操作 API 一律回 403
  */
 export const getSigningTasks = async (params: GetSigningTasksParams = {}): Promise<EsignSigningTask[]> => {
   const res = await api<EsignSigningTask[]>({ method: 'GET', url: endpoints.ESIGN_SIGNING_TASKS, params });
-  return res.data;
-};
-
-/**
- * @name 開啟簽署任務
- * @description 確認任務仍在簽署期間內可簽署，並記錄「開啟文件」事件；回傳最新的任務資料
- */
-export const openSigningTask = async (signerPublicId: string): Promise<EsignSigningTask> => {
-  const res = await api<EsignSigningTask>({ method: 'POST', url: endpoints.ESIGN_SIGNING_TASK(signerPublicId) });
-  return res.data;
-};
-
-/**
- * @name 送出簽名
- * @description 送出同意告知版本與各簽名欄位的 PNG；同一個 requestId 重送時回傳第一次的結果
- */
-export const submitSignatures = async ({
-  signerPublicId,
-  body,
-}: {
-  signerPublicId: string;
-  body: SubmitSignaturesBody;
-}): Promise<EsignSignatureResult> => {
-  const res = await api<EsignSignatureResult>({
-    method: 'POST',
-    url: endpoints.ESIGN_SIGNING_TASK_SIGNATURES(signerPublicId),
-    data: body,
-  });
-  return res.data;
-};
-
-/**
- * @name 下載本人的已簽署文件
- * @description 個人簽署副本產製完成後才能下載；回傳 PDF 檔
- */
-export const downloadMyCompletedFile = (signerPublicId: string): Promise<Blob> =>
-  getBlob(endpoints.ESIGN_SIGNING_TASK_COMPLETED_FILE(signerPublicId));
-
-/** 簽署人讀取原始 PDF 的網址（pdf.js 直接讀取，同源請求會帶上 session cookie）；只有簽署期間內或本人已簽署時可讀 */
-export const signingTaskSourceFileUrl = (signerPublicId: string) =>
-  `${api.defaults.baseURL}/${endpoints.ESIGN_SIGNING_TASK_SOURCE_FILE(signerPublicId)}`;
-
-/**
- * @name 拒絕簽署
- * @description 本人待簽署、在簽署期間內，且建立人開放拒絕簽署時才能拒絕；同一個 requestId 重送時回傳第一次的結果
- */
-export const rejectSigningTask = async ({
-  signerPublicId,
-  body,
-}: {
-  signerPublicId: string;
-  body: RejectSigningTaskBody;
-}): Promise<EsignRejectionResult> => {
-  const res = await api<EsignRejectionResult>({
-    method: 'POST',
-    url: endpoints.ESIGN_SIGNING_TASK_REJECTION(signerPublicId),
-    data: body,
-  });
   return res.data;
 };

@@ -5,7 +5,6 @@ import type { EsignSigningTask } from '@/api/types';
 import SortableHeaderCell from '@/components/SortableHeaderCell';
 import TooltipIconButton from '@/components/TooltipIconButton';
 import { DOCUMENT_STATUS_META, formatDate, formatDateTime } from '@/features/esign-documents/listQuery';
-import SignActionButton from '@/features/my-signature/SignActionButton';
 import { daysUntil } from '@/lib/dates';
 import { nextSortState } from '@/lib/tableSort';
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
@@ -20,9 +19,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
-import DownloadMyCopyButton from './DownloadMyCopyButton';
 import {
-  signBlock,
   signingHref,
   SORT_KEYS_BY_TAB,
   type SigningSort,
@@ -107,8 +104,15 @@ export default function SigningTasksTable({
       initiator,
       {
         header: '操作',
-        // 已逾期或尚未開始時停用
-        cell: (task) => <SignActionButton formId={task.signerPublicId} disabled={signBlock(task, now) !== null} />,
+        // 須從 Email 邀請簽署（Spec 010），此處只連到說明簽署方式與狀態的頁面
+        cell: (task) => (
+          <TooltipIconButton
+            label="檢視簽署方式"
+            icon={<VisibilityRoundedIcon />}
+            color="info"
+            href={`/my-signature/${task.signerPublicId}`}
+          />
+        ),
       },
     ],
     signed: [
@@ -131,16 +135,13 @@ export default function SigningTasksTable({
       {
         header: '操作',
         cell: (task) => (
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {/* 檢視：簽署頁會顯示簽署狀態與原始文件 */}
-            <TooltipIconButton
-              label="檢視"
-              icon={<VisibilityRoundedIcon />}
-              color="info"
-              href={`/my-signature/${task.signerPublicId}`}
-            />
-            <DownloadMyCopyButton task={task} variant="icon" />
-          </Box>
+          // 檢視：顯示簽署狀態與簽章驗證連結；本人副本須從原邀請信驗證後下載（Spec 010 FR-013）
+          <TooltipIconButton
+            label="檢視"
+            icon={<VisibilityRoundedIcon />}
+            color="info"
+            href={`/my-signature/${task.signerPublicId}`}
+          />
         ),
       },
     ],

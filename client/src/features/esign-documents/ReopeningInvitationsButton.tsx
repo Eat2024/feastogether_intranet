@@ -1,7 +1,8 @@
 'use client';
 
-// 補簽的外部邀請連結：GET /api/esign/documents/:id/reopening-invitations。
-// 補簽後外部簽署人需要新的邀請連結；後端不另外寄信，由建立人複製連結轉交。
+// 補簽邀請連結（備用）：GET /api/esign/documents/:id/reopening-invitations。
+// 補簽後系統會自動寄送新的邀請信給所有未簽署者；此處只列出「尚未寄達」的邀請連結，
+// 供寄送失敗時由建立人手動轉交。已寄達的不會列出，寄送結果以通知紀錄為準。
 // 連結即簽署憑證：只在開啟對話框時讀取、不保留在快取中，也不寫進網址或紀錄。
 import { useGetReopeningInvitationsQuery } from '@/api/queries';
 import type { EsignManagedSignerView } from '@/api/types';
@@ -80,7 +81,8 @@ function InvitationsDialog({
       <DialogContent>
         <Stack spacing={2}>
           <Typography variant="description">
-            補簽後外部簽署人需使用新的連結簽署，系統不會另外寄信。請將連結個別轉交給本人；連結即簽署憑證，請勿公開分享。
+            補簽後系統已自動寄送新的邀請信。以下只列出尚未寄達的邀請連結，信件寄送失敗時可手動轉交給本人；
+            連結即簽署憑證，請勿公開分享。寄送結果請見通知紀錄。
           </Typography>
           {isPending ? (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 3 }}>
@@ -91,12 +93,12 @@ function InvitationsDialog({
             <Alert severity="error">無法取得補簽連結：{getErrorMessage(error)}</Alert>
           ) : data.length === 0 ? (
             <Alert severity="info" variant="outlined">
-              目前沒有需要補簽連結的外部簽署人（文件須為補簽中，且仍有外部簽署人未簽署）。
+              補簽邀請信都已寄出，沒有需要手動轉交的連結；寄送結果請見通知紀錄。
             </Alert>
           ) : (
             data.map((inv) => {
               const signer = signerOf(inv.signerPublicId);
-              const name = signer?.name ?? '外部簽署人';
+              const name = signer?.name ?? '簽署人';
               return (
                 <Box key={inv.signerPublicId}>
                   <Typography variant="content" component="div">

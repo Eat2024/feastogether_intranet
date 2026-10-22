@@ -27,38 +27,3 @@ export interface EsignSigningTask {
 export interface GetSigningTasksParams {
   status?: 'pending' | 'signed' | 'rejected';
 }
-
-/** POST esign/signing-tasks/:signerPublicId/signatures */
-export interface SubmitSignaturesBody {
-  /** UUID v4；同一次送出重試時沿用，後端依此判斷重複送出 */
-  requestId: string;
-  consentVersion: string;
-  accepted: true;
-  /** 本人各簽名欄位的手寫簽名；日期欄位由後端填入 */
-  signatures: { fieldId: string; pngDataUrl: string }[];
-}
-
-/** 送出簽名的結果 */
-export interface EsignSignatureResult {
-  signerPublicId: string;
-  signedAt: string;
-  documentStatus: Exclude<EsignDocumentListItem['status'], 'draft'>;
-  completion: EsignSignerView['completion'];
-  verificationUrl: string | null;
-}
-
-/** POST esign/signing-tasks/:signerPublicId/rejection */
-export interface RejectSigningTaskBody {
-  /** UUID v4；同一次拒絕重試時沿用，後端依此判斷重複送出 */
-  requestId: string;
-  /** 拒絕原因（選填）；去除首尾空白後最多 200 字 */
-  reason?: string;
-}
-
-/** 拒絕簽署的結果 */
-export interface EsignRejectionResult {
-  signerPublicId: string;
-  status: 'rejected';
-  rejectedAt: string;
-  reason: string;
-}

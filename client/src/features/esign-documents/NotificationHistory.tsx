@@ -46,7 +46,7 @@ export default function NotificationHistory({ documentId }: { documentId: string
             通知紀錄
           </Typography>
           <Typography variant="helper" component="div">
-            「已寄出」表示郵件伺服器已接受，不代表對方已收到或已讀。催簽只支援外部簽署人。
+            「已寄出」表示郵件伺服器已接受，不代表對方已收到或已讀。
           </Typography>
         </Box>
         <TextField

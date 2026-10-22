@@ -8,7 +8,6 @@ import type { Signer } from '@/features/forms/types';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { isValidSignatureId } from '@/lib/signatureQr';
-import { formOptions } from '@/features/forms/options';
 import { getSignBlock } from './sign/eligibility';
 import { SIGN_TERMS_VERSION } from './sign/terms';
 
@@ -86,18 +85,3 @@ export async function signDocument(input: {
   redirect('/my-signature?tab=signed&flash=signed');
 }
 
-/** 拒絕簽署；原因選填。其他簽署人仍可繼續簽署 */
-export async function rejectDocument(input: { formId: string; reason: string }): Promise<ActionResult> {
-  const found = findMe(input.formId);
-  if ('error' in found) return found;
-  if (!formOptions(found.form).allowReject) return { error: '此文件不開放拒絕簽署' };
-  const reason = input.reason.trim();
-
-  Object.assign(found.signer, {
-    status: 'rejected',
-    rejectedAt: nowStr(),
-    rejectReason: reason || undefined,
-  } satisfies Partial<Signer>);
-  revalidateLists();
-  redirect('/my-signature?tab=rejected&flash=rejected');
-}

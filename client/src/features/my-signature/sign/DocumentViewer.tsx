@@ -11,7 +11,6 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { useEffect } from "react";
-import SignatureQr from "./SignatureQr";
 
 type DocumentViewerProps = {
   /** 系統簽署確認頁顯示的文件資訊 */
@@ -24,8 +23,6 @@ type DocumentViewerProps = {
   layout: SignLayout;
   /** 欄位 id → 手寫簽名 PNG */
   signatures: Record<number, string>;
-  /** 欄位 id → 簽名識別碼（顯示追蹤 QR code） */
-  signatureIds?: Record<number, string>;
   /**
    * 已簽名的欄位右下角改顯示「驗證 QR Code」的示意佔位圖（不可掃描）：
    * 後端文件的驗證 QR Code 由後端在簽署成功後產生於個人副本中，畫面不得自行產生（Spec 04 FR-004）
@@ -233,15 +230,12 @@ function QrPlaceholder() {
 function FieldBox({
   field,
   signature,
-  signatureId,
   qrPlaceholder,
   dateText,
   onSign,
 }: {
   field: UploadField;
   signature?: string;
-  /** 簽名識別碼；有值時在欄位右下角顯示追蹤 QR code */
-  signatureId?: string;
   /** 已簽名時在欄位右下角顯示驗證 QR Code 的示意佔位圖 */
   qrPlaceholder?: boolean;
   dateText: string;
@@ -293,16 +287,10 @@ function FieldBox({
         alt="你的簽名"
         sx={{ flex: 1, minWidth: 0, height: "100%", objectFit: "contain" }}
       />
-      {qrPlaceholder ? (
+      {qrPlaceholder && (
         <Box sx={{ height: "72%" }}>
           <QrPlaceholder />
         </Box>
-      ) : (
-        signatureId && (
-          <Box sx={{ height: "72%" }}>
-            <SignatureQr signatureId={signatureId} />
-          </Box>
-        )
       )}
     </Box>
   ) : (
@@ -381,7 +369,6 @@ export default function DocumentViewer({
   signer,
   layout,
   signatures,
-  signatureIds = {},
   qrPlaceholder = false,
   dateText,
   activePage,
@@ -479,7 +466,6 @@ export default function DocumentViewer({
             key={f.id}
             field={f}
             signature={signatures[f.id]}
-            signatureId={signatureIds[f.id]}
             qrPlaceholder={qrPlaceholder}
             dateText={dateText}
             onSign={onSignField && (() => onSignField(f))}

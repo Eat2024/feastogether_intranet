@@ -7,7 +7,8 @@
 - 這是饗賓內部電子簽署系統的前端原型，主要功能包含文件建立、簽署人設定、簽署／拒絕、進度追蹤與 Excel 匯出。
 - 技術棧：Next.js 16 App Router、React 19、TypeScript strict、MUI 9、pnpm。
 - 頁面文案、錯誤訊息與程式註解以繁體中文為主。
-- 建立人文件管理（`src/features/esign-documents`）與外部簽署頁（`src/features/external-signing`，Spec 008）透過 `src/api`（endpoints → types → requests → queries）呼叫 NestJS 後端；內部「我的簽署」（`/my-signature`）與部分 `forms` 路由尚未串接，資料仍以 `src/features/forms/store.ts` 的 Next.js server-memory mock store 保存，重啟 client server 會重置。
+- 電子簽列表與文件管理（`src/features/esign-documents`）、我的電子簽（`src/features/signing-tasks`）、Email 邀請簽署頁（`src/features/external-signing`，Spec 008／010）與公開簽章驗證頁（`src/features/signature-verification`）透過 `src/api`（endpoints → types → requests → queries）呼叫 NestJS 後端。
+- 只有後端尚未支援的「簽到表」仍是原型：資料以 `src/features/forms/store.ts` 的 Next.js server-memory mock store 保存（重啟 client server 會重置），透過 `forms` 路由中非數字 id 的分支與 Server Actions 操作；「歷史匯出文件」頁也仍使用 mock 資料。
 
 ## 常用指令
 
@@ -28,7 +29,7 @@ pnpm start
 ## 目錄與責任
 
 - `src/app/`：App Router layouts、pages 與 route handlers。頁面預設保持為 Server Component。
-- `src/features/forms/`：文件建立、簽署人、狀態、排序、匯出、mock store 與 Server Actions。
+- `src/features/forms/`：與後端共用的編輯器元件（上傳編輯器、選擇簽署人、組織樹轉換），以及簽到表原型的 mock store 與 Server Actions。
 - `src/features/my-signature/`：目前使用者的待簽／已簽流程與簽名處理。
 - `src/api/`：呼叫 NestJS 後端（`server/`）的 API 層，見下方「呼叫後端 API」。
 - `src/components/`：跨 feature 共用的 UI 元件；`src/components/providers/` 放全站 Provider（TanStack Query、Snackbar）。
@@ -51,7 +52,7 @@ pnpm start
 
 ## 呼叫後端 API（src/api）
 
-架構比照 CKS_Acceptance_System：`requests`（純函式）→ `queries`（TanStack Query hooks）→ 元件。目前畫面仍使用 mock store 與 Server Actions；串接後端時改走這一層。
+架構比照 CKS_Acceptance_System：`requests`（純函式）→ `queries`（TanStack Query hooks）→ 元件。除簽到表原型外，畫面都透過這一層呼叫後端。
 
 登入與 session 不在本專案處理：由外部流程建立 session（後端以 HttpOnly cookie 下發），這一層只負責帶著 cookie 呼叫其他 API。
 
@@ -79,7 +80,7 @@ pnpm start
 - 員工簽署人 ID 來自組織資料；外部 Email 簽署人 ID 使用 `emailSignerId()` 產生。Email 寫入前須 normalize 並驗證。
 - 文件已有簽署紀錄或已停止時，不得再修改受保護的文件／簽署設定，除非需求明確改變這項規則。
 - mutation 後要重新驗證 `/forms` 與 `/my-signature` 的相關畫面，避免列表與詳情狀態不同步。
-- mock store 會原地修改物件。新增排序／篩選時回傳新陣列，不要意外重排 `getForms()` 的原始陣列。
+- 簽到表原型的 mock store 會原地修改物件；新增排序／篩選時回傳新陣列，不要重排 store 內的原始陣列。
 
 ## 簽名與隱私
 

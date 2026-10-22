@@ -6,21 +6,17 @@ import { addExportRecord } from '@/features/export-history/store';
 import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
 import { getCurrentUser, getOrgTree, getStaff } from './orgChart';
 import { normalizeSignerNote } from './detail/signerNote';
-import { getStoredFile } from './files';
-import { isValidFieldBox } from './signLayout';
-import { validateResign } from './resign';
 import { sheetExportData, type SheetExport } from './sheet/exportData';
 import { sheetAddBlock, validateSheet } from './sheet/rules';
-import { deriveStatus, pendingCount, signedCount } from './status';
+import { deriveStatus, signedCount } from './status';
 import {
   getForm,
   insertForm,
   nextDocNumber,
-  todayStr,
   toSignerView,
   updateForm,
 } from './store';
-import type { EFormDoc, SheetInfo, Signer, UploadInfo } from './types';
+import type { EFormDoc, SheetInfo, Signer } from './types';
 
 /** 現在時間，格式 YYYY/MM/DD HH:mm */
 function nowStr() {
@@ -35,70 +31,6 @@ function revalidateLists() {
   // 'layout'：連同 /forms/[id] 等子頁面一起更新
   revalidatePath('/forms', 'layout');
   revalidatePath('/my-signature');
-}
-
-/** 步驟一：建立或更新上傳文件。草稿接著前往設定簽署；已發起的文件存完回列表 */
-export async function saveUploadDocument(input: {
-  id?: string;
-  name: string;
-  upload: UploadInfo;
-}): Promise<ActionResult> {
-  const name = input.name.trim();
-  const { upload } = input;
-  if (!name) return { error: '請輸入文件名稱' };
-  if (upload.pages <= 0) return { error: '請先上傳文件' };
-  if (upload.mode === 'inline' && upload.fields.length === 0) {
-    return { error: '請至少指定一個簽名位置，或改用系統簽署確認頁' };
-  }
-  // 新文件必須上傳原始檔，頁數以伺服器讀出的為準；
-  // 舊資料（沒有原始檔）編輯時若沒重新上傳，沿用原本的示意頁數
-  let fileId: string | undefined;
-  if (upload.fileId || !input.id) {
-    const stored = getStoredFile(upload.fileId);
-    if (!stored) return { error: '找不到上傳的檔案，請重新上傳文件' };
-    if (upload.pages !== stored.pages) return { error: '文件頁數與上傳的檔案不符，請重新上傳文件' };
-    fileId = stored.id;
-  }
-  if (upload.fields.some((f) => f.page < 1 || f.page > upload.pages)) {
-    return { error: '簽名位置超出文件頁數，請重新指定' };
-  }
-  if (upload.fields.some((f) => (f.type !== 'sign' && f.type !== 'date') || !isValidFieldBox(f))) {
-    return { error: '欄位位置或大小不正確，請重新調整' };
-  }
-  const cleanUpload: UploadInfo = {
-    ...upload,
-    fileId,
-    fields: upload.mode === 'inline' ? upload.fields : [],
-  };
-
-  if (input.id) {
-    const form = getForm(input.id);
-    if (!form) return { error: '找不到此文件' };
-    if (signedCount(form) > 0 || form.status === 'stopped') {
-      return { error: '此文件已有人簽署或已停止，無法再修改' };
-    }
-    updateForm(form.id, { name, upload: cleanUpload, docType: 'upload' });
-    revalidateLists();
-    if (form.status === 'draft') redirect(`/forms/${form.id}/signers`);
-    redirect('/forms?flash=updated');
-  }
-
-  const id = `f${Date.now()}`;
-  const me = getCurrentUser();
-  insertForm({
-    id,
-    name,
-    docNumber: nextDocNumber(),
-    docType: 'upload',
-    status: 'draft',
-    startAt: null,
-    endAt: null,
-    signers: [],
-    createdBy: { name: me.name, employeeNo: me.employeeNo },
-    upload: cleanUpload,
-  });
-  revalidateLists();
-  redirect(`/forms/${id}/signers`);
 }
 
 /** 步驟二：儲存簽署人與簽署期間；publish 為 true 時同時發起簽署 */
@@ -237,36 +169,6 @@ export async function updateSignerNote(input: {
   else delete signer.note;
   revalidateLists();
   return { note: result.note };
-}
-
-/**
- * 補簽：文件到期後仍有人未簽署時，設定新的補簽期間與原因，重新開放未簽署者簽署。
- * 已簽署、已拒絕的人不受影響；補簽期間到期後若仍有人未簽署，可再次補簽。
- * TODO: 串接登入與權限後，限制只有文件建立人或管理者可以補簽；並通知未簽署者
- */
-export async function reopenSigning(input: {
-  formId: string;
-  startAt: string;
-  endAt: string;
-  reason: string;
-}): Promise<{ error: string } | { pending: number }> {
-  const form = getForm(input.formId);
-  if (!form) return { error: '找不到此文件' };
-  if (deriveStatus(form) !== 'expired') return { error: '只有已到期且仍有人未簽署的文件可以補簽' };
-  const result = validateResign(input, todayStr());
-  if ('error' in result) return result;
-
-  const me = getCurrentUser();
-  form.resigns = [
-    ...(form.resigns ?? []),
-    {
-      ...result,
-      createdAt: nowStr(),
-      createdBy: { name: me.name, employeeNo: me.employeeNo },
-    },
-  ];
-  revalidateLists();
-  return { pending: pendingCount(form) };
 }
 
 /**

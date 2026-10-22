@@ -69,8 +69,9 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
     );
   }
 
+  // 其餘 id 為簽到表原型（mock store，後端尚未支援簽到表）
   const stored = getForm(id);
-  if (!stored) notFound();
+  if (!stored || stored.docType !== 'sheet') notFound();
   // 草稿尚無簽署進度，請改用「編輯」或「發起簽署」
   if (stored.status === 'draft') redirect('/forms');
 

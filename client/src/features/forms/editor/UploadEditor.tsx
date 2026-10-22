@@ -4,7 +4,6 @@ import { queryKeys } from "@/api/query-keys";
 import { createDocument, documentSourceFileUrl, updateDocument } from "@/api/requests";
 import type { EsignDocumentDetail } from "@/api/types";
 import { fromFieldViews, toFieldPlacements } from "@/features/esign-documents/fields";
-import { ACTION_FAILED_MESSAGE, isNavigationError } from "@/lib/actionError";
 import { getErrorMessage } from "@/lib/apiError";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DrawRoundedIcon from "@mui/icons-material/DrawRounded";
@@ -28,17 +27,15 @@ import {
   useEffect,
   useRef,
   useState,
-  useTransition,
   type DragEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { color } from "@/theme/tokens";
-import { saveUploadDocument } from "../actions";
 import { clampFieldSize, fieldSize } from "../signLayout";
 import { isPdfFile, MAX_PDF_BYTES, openPdf } from "../pdf/pdfjs";
 import { usePdfDocument, usePdfRenders } from "../pdf/usePdf";
-import type { EFormDoc, UploadField, UploadInfo } from "../types";
+import type { UploadField, UploadInfo } from "../types";
 
 // 目前只在瀏覽器端以 pdf.js 讀取 PDF；Word 需串接後端轉檔後才支援
 const ACCEPT = ".pdf,application/pdf";
@@ -323,21 +320,16 @@ function ConfirmPagePreview({
 
 /**
  * 新增／編輯上傳文件（流程第一步）。
- * 串接後端：新增文件（POST /api/esign/documents 建立草稿）、修改後端草稿（draft，PATCH /api/esign/documents/:id）；
- * 編輯既有的 mock 文件（form）仍走 Server Action。
+ * 串接後端：新增文件（POST /api/esign/documents 建立草稿）、修改後端草稿（draft，PATCH /api/esign/documents/:id）。
  */
 export default function UploadEditor({
-  form,
   draft,
   locked = false,
 }: {
-  form?: EFormDoc;
-  /** 要修改的後端草稿 */
+  /** 要修改的後端草稿；新增文件時不提供 */
   draft?: EsignDocumentDetail;
   locked?: boolean;
 }) {
-  // 新增文件或修改後端草稿時直接送到後端；PDF 由後端保存與驗證，不再上傳到 mock 的 /files/upload
-  const viaBackend = !form;
   const router = useRouter();
   const queryClient = useQueryClient();
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -369,8 +361,8 @@ export default function UploadEditor({
     mode: d.fields.length ? "inline" : "confirmPage",
     fields: fromFieldViews(d.fields),
   });
-  const up = form?.upload ?? (draft ? draftUpload(draft) : undefined);
-  const [name, setName] = useState(form?.name ?? draft?.title ?? "");
+  const up = draft ? draftUpload(draft) : undefined;
+  const [name, setName] = useState(draft?.title ?? "");
   const [fileName, setFileName] = useState(up?.fileName ?? "");
   const [pages, setPages] = useState(up?.pages ?? 0);
   const [confirmMode, setConfirmMode] = useState(up?.mode === "confirmPage");
@@ -378,28 +370,15 @@ export default function UploadEditor({
   const [activePage, setActivePage] = useState(up?.fields[0]?.page ?? 1);
   const [errors, setErrors] = useState<Errors>({});
   const [dragOverFile, setDragOverFile] = useState(false);
-  const [pending, startTransition] = useTransition();
-  // 本次上傳的 PDF；編輯既有文件且沒有重新上傳時，從伺服器讀取原始檔
+  // 本次上傳的 PDF；修改草稿且沒有重新上傳時，從後端讀取原始檔
   const [uploadedDoc, setUploadedDoc] = useState<PDFDocumentProxy | null>(null);
   const uploadedDocRef = useRef<PDFDocumentProxy | null>(null);
-  const existing = usePdfDocument(
-    uploadedDoc
-      ? null
-      : draft
-        ? documentSourceFileUrl(draft.id)
-        : up?.fileId && form
-          ? `/files/forms/${form.id}`
-          : null,
-  );
+  const existing = usePdfDocument(uploadedDoc || !draft ? null : documentSourceFileUrl(draft.id));
   const doc = uploadedDoc ?? existing.doc;
   const [zoom, setZoom] = useState<Zoom>(1);
   const renderWidth = ZOOM_LEVELS.find((z) => z.value === zoom)!.renderWidth;
   const { thumbs, pageImage, requestPage } = usePdfRenders(doc, renderWidth);
   const [reading, setReading] = useState(false);
-  // 伺服器保存的原始檔 id；上傳中為 undefined
-  const [fileId, setFileId] = useState(up?.fileId);
-  const [uploading, setUploading] = useState(false);
-  const uploadSeq = useRef(0);
 
   // 離開頁面時釋放 pdf.js 佔用的記憶體
   useEffect(() => () => void uploadedDocRef.current?.loadingTask.destroy(), []);
@@ -418,33 +397,7 @@ export default function UploadEditor({
 
   const selectPage = (page: number) => setActivePage(page);
 
-  /** 把原始檔上傳到伺服器保存（簽署人簽署時要閱讀原始文件），並確認伺服器讀到的頁數一致 */
-  const uploadFile = async (file: File, pageCount: number) => {
-    const seq = ++uploadSeq.current;
-    setUploading(true);
-    setFileId(undefined);
-    let error: string | null = null;
-    try {
-      const body = new FormData();
-      body.append("file", file);
-      const res = await fetch("/files/upload", { method: "POST", body });
-      const data = (await res.json()) as
-        | { id: string; pages: number }
-        | { error: string };
-      if (seq !== uploadSeq.current) return;
-      if ("error" in data) error = data.error;
-      else if (data.pages !== pageCount)
-        error = "伺服器讀到的頁數與預覽不同，請重新上傳";
-      else setFileId(data.id);
-    } catch {
-      if (seq !== uploadSeq.current) return;
-      error = "檔案上傳失敗，請檢查網路後重新上傳";
-    }
-    if (error) setErrors((e) => ({ ...e, file: error }));
-    setUploading(false);
-  };
-
-  // 先在瀏覽器以 pdf.js 讀取頁數與預覽，再把原始檔上傳到伺服器保存
+  // 先在瀏覽器以 pdf.js 讀取頁數與預覽；原始檔在送出時一併上傳到後端
   const acceptFile = async (file: File | undefined) => {
     if (!file || locked || reading) return;
     if (!isPdfFile(file)) {
@@ -488,8 +441,7 @@ export default function UploadEditor({
     setFields([]);
     setErrors((e) => ({ ...e, file: undefined }));
     setReading(false);
-    if (viaBackend) setPdfFile(file);
-    else await uploadFile(file, n);
+    setPdfFile(file);
   };
 
   const handleFileDrop = (e: DragEvent) => {
@@ -587,11 +539,8 @@ export default function UploadEditor({
     const next: Errors = {};
     if (!name.trim()) next.name = "請輸入文件名稱";
     if (!uploaded) next.file = "請先上傳文件";
-    // 修改後端草稿時可沿用原本的 PDF
-    else if (viaBackend && !draft && !pdfFile) next.file = "請先上傳文件";
-    // 後端模式由後端保存檔案，沒有 mock 的 fileId
-    else if (!viaBackend && uploading) next.file = "檔案上傳中，請稍候";
-    else if (!viaBackend && uploadedDoc && !fileId) next.file = "檔案尚未上傳成功，請重新上傳";
+    // 修改草稿時可沿用原本的 PDF
+    else if (!draft && !pdfFile) next.file = "請先上傳文件";
     else if (!confirmMode && fields.length === 0) {
       next.fields = "請至少指定一個簽名位置，或改用系統簽署確認頁";
     }
@@ -601,39 +550,15 @@ export default function UploadEditor({
 
   const submit = () => {
     if (!validate()) return;
-    if (viaBackend) {
-      // 系統簽署確認頁後端尚未支援：不帶欄位（修改時清除既有欄位），設定簽署頁會提示無法發起
-      const placements = confirmMode ? [] : toFieldPlacements(fields);
-      if (draft) {
-        // 沒有重新上傳時沿用原本的 PDF；欄位一律整批取代
-        update.mutate({ id: draft.id, title: name.trim(), file: pdfFile ?? undefined, fields: placements });
-      } else {
-        create.mutate({ title: name.trim(), file: pdfFile!, fields: placements });
-      }
-      return;
+    // 系統簽署確認頁後端尚未支援：不帶欄位（修改時清除既有欄位），設定簽署頁會提示無法發起
+    const placements = confirmMode ? [] : toFieldPlacements(fields);
+    if (draft) {
+      // 沒有重新上傳時沿用原本的 PDF；欄位一律整批取代
+      update.mutate({ id: draft.id, title: name.trim(), file: pdfFile ?? undefined, fields: placements });
+    } else {
+      create.mutate({ title: name.trim(), file: pdfFile!, fields: placements });
     }
-    startTransition(async () => {
-      try {
-        const result = await saveUploadDocument({
-          id: form?.id,
-          name,
-          upload: {
-            fileName,
-            fileId,
-            pages,
-            mode: confirmMode ? "confirmPage" : "inline",
-            fields,
-          },
-        });
-        if (result?.error) setErrors({ submit: result.error });
-      } catch (err) {
-        if (isNavigationError(err)) throw err;
-        setErrors({ submit: ACTION_FAILED_MESSAGE });
-      }
-    });
   };
-
-  const isDraftOrNew = !form || form.status === "draft";
 
   return (
     <Stack spacing={3}>
@@ -714,7 +639,6 @@ export default function UploadEditor({
                     : uploaded
                       ? fileName
                       : "點擊或拖曳 PDF 文件到這裡上傳"}
-                  {uploading && "（上傳中…）"}
                 </Typography>
                 <Typography variant="helper">
                   {uploaded
@@ -785,7 +709,7 @@ export default function UploadEditor({
                   <Typography variant="helper" component="div">
                     適用：掃描文件、不允許改動原版面、找不到合適簽名位置
                   </Typography>
-                  {viaBackend && confirmMode && (
+                  {confirmMode && (
                     <Typography variant="helper" component="div" sx={{ color: "warning.dark" }}>
                       後端尚未支援系統簽署確認頁，選擇此方式的文件可以先建立草稿，但暫時無法發起簽署。
                     </Typography>
@@ -810,7 +734,7 @@ export default function UploadEditor({
                   </FieldLabel>
                   <ConfirmPagePreview
                     name={name}
-                    docNumber={form?.docNumber ?? draft?.docNumber ?? null}
+                    docNumber={draft?.docNumber ?? null}
                     pages={pages}
                   />
                 </Box>
@@ -1050,7 +974,7 @@ export default function UploadEditor({
           size="large"
           variant="outlined"
           href="/forms"
-          disabled={pending || saving}
+          disabled={saving}
         >
           {locked ? "返回列表" : "取消"}
         </Button>
@@ -1059,9 +983,9 @@ export default function UploadEditor({
             size="large"
             variant="contained"
             onClick={submit}
-            loading={pending || saving}
+            loading={saving}
           >
-            {isDraftOrNew ? "下一步，設定簽署" : "儲存變更"}
+            下一步，設定簽署
           </Button>
         )}
       </Box>

@@ -39,8 +39,9 @@ export default async function FormSignersPage({
     );
   }
 
+  // 其餘 id 為簽到表原型（mock store，後端尚未支援簽到表）
   const form = getForm(id);
-  if (!form) notFound();
+  if (!form || form.docType !== 'sheet') notFound();
   // 已發起的文件不能再改簽署設定
   if (form.status !== 'draft') redirect('/forms');
 

@@ -9,10 +9,6 @@ import type { EFormDoc } from './types';
 const g = globalThis as typeof globalThis & { __eformStore?: EFormDoc[] };
 const forms: EFormDoc[] = (g.__eformStore ??= structuredClone(MOCK_FORMS));
 
-export function getForms(): EFormDoc[] {
-  return forms;
-}
-
 export function getForm(id: string): EFormDoc | undefined {
   return forms.find((f) => f.id === id);
 }

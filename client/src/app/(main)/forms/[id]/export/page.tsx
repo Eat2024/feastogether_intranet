@@ -54,8 +54,9 @@ export default async function FormExportPage({ params, searchParams }: PageProps
     );
   }
 
+  // 其餘 id 為簽到表原型（mock store，後端尚未支援簽到表）
   const form = getForm(id);
-  if (!form) notFound();
+  if (!form || form.docType !== 'sheet') notFound();
   // 草稿尚無簽署資料可匯出
   if (form.status === 'draft') redirect('/forms');
 

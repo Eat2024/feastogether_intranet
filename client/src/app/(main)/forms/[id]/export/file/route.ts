@@ -8,7 +8,8 @@ const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.s
 /** 下載簽署紀錄清單（Excel）；條件與匯出頁相同，由網址參數帶入。每次下載都會記入匯出紀錄 */
 export async function GET(request: Request, { params }: RouteContext<'/forms/[id]/export/file'>) {
   const form = getForm((await params).id);
-  if (!form || form.status === 'draft') return new Response('找不到可匯出的文件', { status: 404 });
+  // 簽到表原型（mock store）；後端文件的匯出在瀏覽器端產生
+  if (!form || form.status === 'draft' || form.docType !== 'sheet') return new Response('找不到可匯出的文件', { status: 404 });
 
   const query = parseExportQuery(Object.fromEntries(new URL(request.url).searchParams));
   const { file, count, scope, fileName } = await buildListExport(form, query);

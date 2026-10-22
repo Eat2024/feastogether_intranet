@@ -17,28 +17,23 @@ import dayjs, { type Dayjs } from 'dayjs';
 import 'dayjs/locale/zh-tw';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
-import { FORM_STATUS_META } from './status';
-import { FORM_STATUSES } from './sort';
 
 // 網址上的日期格式
 const PARAM_FORMAT = 'YYYY-MM-DD';
 
 export type StatusOption = { value: string; label: string };
 
-// 預設為 mock 文件的狀態；串接後端的列表可傳入自己的狀態選項
-const DEFAULT_STATUS_OPTIONS: StatusOption[] = FORM_STATUSES.map((s) => ({ value: s, label: FORM_STATUS_META[s].label }));
-
 export default function FormsFilterBar({
   statuses,
   from,
   to,
-  statusOptions = DEFAULT_STATUS_OPTIONS,
+  statusOptions,
 }: {
   statuses: string[];
   from: string | null;
   to: string | null;
   /** 狀態下拉選單的選項（依顯示順序） */
-  statusOptions?: StatusOption[];
+  statusOptions: StatusOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();

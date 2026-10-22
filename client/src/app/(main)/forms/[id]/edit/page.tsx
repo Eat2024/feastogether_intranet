@@ -1,7 +1,6 @@
 import PageHeader from '@/components/PageHeader';
 import StepFlow from '@/components/StepFlow';
 import DocumentEditView from '@/features/esign-documents/DocumentEditView';
-import UploadEditor from '@/features/forms/editor/UploadEditor';
 import { stepsOf } from '@/features/forms/editor/steps';
 import SheetEditor from '@/features/forms/sheet/SheetEditor';
 import { signedCount } from '@/features/forms/status';
@@ -32,8 +31,9 @@ export default async function EditFormPage({
     );
   }
 
+  // 其餘 id 為簽到表原型（mock store，後端尚未支援簽到表）
   const form = getForm(id);
-  if (!form) notFound();
+  if (!form || form.docType !== 'sheet') notFound();
 
   const locked = signedCount(form) > 0 || form.status === 'stopped';
   const isDraft = form.status === 'draft';
@@ -54,11 +54,9 @@ export default async function EditFormPage({
       {isDraft && <StepFlow steps={stepsOf(form.docType)} activeIndex={0} />}
       <PageHeader
         title="編輯文件"
-        description={`「${form.name}」${form.docNumber ? `（${form.docNumber}）` : ''}－ ${
-          form.docType === 'sheet' ? '設定簽到表的表頭資訊。' : '上傳 PDF 文件，逐頁預覽並指定簽名要落在哪裡。'
-        }`}
+        description={`「${form.name}」${form.docNumber ? `（${form.docNumber}）` : ''}－ 設定簽到表的表頭資訊。`}
       />
-      {form.docType === 'sheet' ? <SheetEditor form={form} locked={locked} /> : <UploadEditor form={form} locked={locked} />}
+      <SheetEditor form={form} locked={locked} />
     </>
   );
 }

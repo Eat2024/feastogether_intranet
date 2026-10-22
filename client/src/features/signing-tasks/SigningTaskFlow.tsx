@@ -19,7 +19,6 @@ import { SIGN_STEPS } from '@/features/my-signature/sign/steps';
 import TermsStep from '@/features/my-signature/sign/TermsStep';
 import { useSignaturePad } from '@/features/my-signature/sign/useSignaturePad';
 import { getErrorMessage } from '@/lib/apiError';
-import { newSignatureId } from '@/lib/signatureQr';
 import DrawRoundedIcon from '@mui/icons-material/DrawRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -82,11 +81,9 @@ function SignForm({ task, pdf }: { task: EsignSigningTask; pdf: PDFDocumentProxy
     padField,
     openPad,
     closePad,
-    confirmSignature: confirmPadSignature,
+    confirmSignature,
     activeStep,
   } = useSignaturePad(fields, fields[0]?.page ?? 1);
-  // 簽名旁的 QR code 為示意佔位；實際的簽章驗證 QR code 由後端產生在每份個人簽署副本中
-  const [signatureIds, setSignatureIds] = useState<Record<number, string>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   // 送出簽名或拒絕中：點擊當下就停用按鈕，避免連點送出兩次
@@ -140,13 +137,6 @@ function SignForm({ task, pdf }: { task: EsignSigningTask; pdf: PDFDocumentProxy
       },
       onError: (err) => setError(getErrorMessage(err, '無法開啟文件，請稍後再試')),
     });
-  };
-
-  const confirmSignature = (dataUrl: string) => {
-    if (!padField) return;
-    // 每次確認簽名都產生新的識別碼（重新簽名即換新）
-    setSignatureIds((prev) => ({ ...prev, [padField.id]: newSignatureId() }));
-    confirmPadSignature(dataUrl);
   };
 
   const submit = () => {
@@ -225,7 +215,8 @@ function SignForm({ task, pdf }: { task: EsignSigningTask; pdf: PDFDocumentProxy
             signer={{ name: task.signer.name, employeeNo: task.signer.employeeNo ?? '' }}
             layout={layout}
             signatures={signatures}
-            signatureIds={signatureIds}
+            // 簽名旁只顯示示意佔位圖；真正的簽章驗證 QR Code 由後端在簽署成功後產生於個人副本中（Spec 04 FR-004）
+            qrPlaceholder
             dateText={today}
             activePage={activePage}
             onPageChange={setActivePage}

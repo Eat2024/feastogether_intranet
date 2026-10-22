@@ -49,6 +49,9 @@ export const endpoints = {
   EXTERNAL_SIGNING_TASK_SIGNATURES: 'external-signing-task/signatures',
   EXTERNAL_SIGNING_TASK_COMPLETED_FILE: 'external-signing-task/completed-file',
 
+  // 公開簽章驗證（server/src/features/esign/controllers/signature-verification.controller.ts）：不需登入
+  SIGNATURE_VERIFICATION: (code: string) => `signature-verifications/${encodeURIComponent(code)}`,
+
   // Health
   HEALTH: 'health',
 };

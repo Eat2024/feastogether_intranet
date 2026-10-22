@@ -12,9 +12,10 @@ import { useState, type ReactNode } from 'react';
 import SessionExpiredDialog from './SessionExpiredDialog';
 import { useSnackbar } from './SnackbarProvider';
 
-// 個別 mutation 可宣告 meta.suppressGlobalErrorToast，自行處理錯誤顯示（避免全域與元件各跳一次）
+// 個別 query／mutation 可宣告 meta.suppressGlobalErrorToast，自行處理錯誤顯示（避免全域與元件各跳一次）
 declare module '@tanstack/react-query' {
   interface Register {
+    queryMeta: { suppressGlobalErrorToast?: boolean };
     mutationMeta: { suppressGlobalErrorToast?: boolean };
   }
 }
@@ -40,8 +41,8 @@ export default function ReactQueryProvider({ children }: { children: ReactNode }
     () =>
       new QueryClient({
         queryCache: new QueryCache({
-          onError(error) {
-            handleError(error);
+          onError(error, query) {
+            handleError(error, query.meta?.suppressGlobalErrorToast);
           },
         }),
         mutationCache: new MutationCache({

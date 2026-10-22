@@ -11,6 +11,7 @@ import DocumentViewer from '@/features/my-signature/sign/DocumentViewer';
 import { usePdfDocument } from '@/features/forms/pdf/usePdf';
 import { getErrorMessage } from '@/lib/apiError';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
+import VerifiedRoundedIcon from '@mui/icons-material/VerifiedRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -102,7 +103,26 @@ function Task({ task }: { task: EsignSigningTask }) {
           <Alert
             severity={signer.status === 'signed' ? 'success' : 'info'}
             variant="outlined"
-            action={signer.status === 'signed' ? <DownloadMyCopyButton task={task} /> : undefined}
+            action={
+              signer.status === 'signed' ? (
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  {/* 與已簽署文件上 QR Code 相同的公開驗證網址（Spec 04 FR-003） */}
+                  {signer.verificationUrl && (
+                    <Button
+                      size="large"
+                      variant="outlined"
+                      startIcon={<VerifiedRoundedIcon />}
+                      href={signer.verificationUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      查看簽章驗證
+                    </Button>
+                  )}
+                  <DownloadMyCopyButton task={task} />
+                </Box>
+              ) : undefined
+            }
           >
             {block}
           </Alert>

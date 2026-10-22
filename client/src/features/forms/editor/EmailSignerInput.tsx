@@ -13,6 +13,7 @@ import { useState, type KeyboardEvent } from 'react';
 export type EmailSigner = { email: string; name: string };
 
 const MAX_NAME_LENGTH = 50;
+const FORMAT_ERROR = 'Email 格式不正確，請確認後再加入（例如 name@example.com）';
 
 /** 以 Email 新增未列入組織架構的簽署人（例如尚未建檔的新進同仁） */
 export default function EmailSignerInput({
@@ -29,7 +30,7 @@ export default function EmailSignerInput({
   const add = () => {
     const normalized = normalizeEmail(email);
     if (!normalized) return setError('請輸入 Email');
-    if (!isValidEmail(normalized)) return setError('Email 格式不正確');
+    if (!isValidEmail(normalized)) return setError(FORMAT_ERROR);
     if (value.some((s) => s.email === normalized)) return setError('此 Email 已加入');
     onChange([...value, { email: normalized, name: name.trim() }]);
     setEmail('');
@@ -68,6 +69,11 @@ export default function EmailSignerInput({
             if (error) setError(undefined);
           }}
           onKeyDown={onEnter}
+          // 離開欄位時先檢查格式，不必等按「加入」才發現
+          onBlur={() => {
+            const normalized = normalizeEmail(email);
+            if (normalized && !isValidEmail(normalized)) setError(FORMAT_ERROR);
+          }}
           error={!!error}
           helperText={error}
           sx={{ flex: '2 1 240px' }}

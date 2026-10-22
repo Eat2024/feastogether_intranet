@@ -7,6 +7,8 @@ export const endpoints = {
   ESIGN_DOCUMENT: (id: string) => `esign/documents/${encodeURIComponent(id)}`,
   ESIGN_DOCUMENT_DRAFT_SETTINGS: (id: string) => `esign/documents/${encodeURIComponent(id)}/draft-settings`,
   ESIGN_DOCUMENT_INITIATIONS: (id: string) => `esign/documents/${encodeURIComponent(id)}/initiations`,
+  ESIGN_DOCUMENT_EMPLOYEE_EMAIL_CHECKS: (id: string) =>
+    `esign/documents/${encodeURIComponent(id)}/employee-email-checks`,
   ESIGN_DOCUMENT_HISTORY: (id: string) => `esign/documents/${encodeURIComponent(id)}/history`,
   ESIGN_SIGNER_COMPLETED_FILE: (id: string, signerPublicId: string) =>
     `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/completed-file`,

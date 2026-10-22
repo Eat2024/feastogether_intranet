@@ -6,6 +6,7 @@ import type {
   DraftSettingsBody,
   EsignDocumentDetail,
   EsignDocumentListItem,
+  EsignEmployeeEmailCheck,
   EsignHistoryItem,
   EsignNotificationBatch,
   EsignNotificationBatchList,
@@ -286,4 +287,24 @@ export const getNotificationBatch = async (
     params,
   });
   return res.data;
+};
+
+/**
+ * @name 檢查內部簽署人的收件信箱
+ * @description 僅草稿建立人；以後端 userId 逐人檢查人事資料是否有信箱，只回遮罩結果，不保存信箱、不寄信。
+ * 人事系統暫時無法使用時回錯誤
+ */
+export const checkEmployeeEmails = async ({
+  id,
+  userIds,
+}: {
+  id: string;
+  userIds: string[];
+}): Promise<EsignEmployeeEmailCheck[]> => {
+  const res = await api<{ items: EsignEmployeeEmailCheck[] }>({
+    method: 'POST',
+    url: endpoints.ESIGN_DOCUMENT_EMPLOYEE_EMAIL_CHECKS(id),
+    data: { userIds },
+  });
+  return res.data.items;
 };

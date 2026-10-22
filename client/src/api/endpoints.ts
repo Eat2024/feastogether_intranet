@@ -43,6 +43,7 @@ export const endpoints = {
   EXTERNAL_SIGNING_TASK: 'external-signing-task',
   EXTERNAL_SIGNING_TASK_SOURCE_FILE: 'external-signing-task/source-file',
   EXTERNAL_SIGNING_TASK_SIGNATURES: 'external-signing-task/signatures',
+  EXTERNAL_SIGNING_TASK_REJECTION: 'external-signing-task/rejection',
   EXTERNAL_SIGNING_TASK_COMPLETED_FILE: 'external-signing-task/completed-file',
 
   // 公開簽章驗證（server/src/features/esign/controllers/signature-verification.controller.ts）：不需登入

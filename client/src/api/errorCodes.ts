@@ -27,6 +27,9 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   ESIGN_STATE_CONFLICT: '文件目前的狀態不允許此操作，請重新整理後再試',
   ESIGN_INTEGRITY_FAILED: '文件驗證失敗，請重新整理後再試',
   ESIGN_UNAVAILABLE: '電子簽服務暫時無法使用，請稍後再試',
+  ESIGN_REJECTION_REASON_INVALID: '拒絕原因須為最多 200 字的文字',
+  ESIGN_REJECTION_CONFLICT: '簽署人已完成簽署或拒簽，無法變更結果',
+  ESIGN_REJECTION_NOT_ALLOWED: '此文件未開放拒絕簽署',
 
   // --- 外部服務 ---
   STAFF_LOOKUP_FAILED: '查詢員工資料失敗，請稍後再試',

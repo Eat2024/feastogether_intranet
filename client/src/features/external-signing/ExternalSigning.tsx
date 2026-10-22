@@ -1,10 +1,11 @@
 'use client';
 
-// 外部簽署頁：開啟任務 → 同意聲明 → 閱讀與簽名 → 送出 → 簽署完成（本人副本產生後可下載）。
+// 外部簽署頁：開啟任務 → 同意聲明 → 閱讀與簽名 → 送出 → 簽署完成（本人副本產生後可下載）；
+// 建立人開放時也可在閱讀與簽名時拒絕簽署，之後一律顯示拒絕結果。
 // 外部存取 cookie 的 path 只限 /api/external-signing-task，頁面請求不會帶上，資料一律由瀏覽器呼叫取得。
 import { useGetExternalSigningTaskQuery } from '@/api/queries';
 import { externalSourceFileUrl, openExternalSigningTask } from '@/api/requests';
-import type { ExternalSignatureResult, ExternalSigningTask } from '@/api/types';
+import type { ExternalRejectionResult, ExternalSignatureResult, ExternalSigningTask } from '@/api/types';
 import { ConfirmHeading } from '@/components/ConfirmDialog';
 import PageHeader from '@/components/PageHeader';
 import { usePdfDocument } from '@/features/forms/pdf/usePdf';
@@ -17,12 +18,14 @@ import LinkOffRoundedIcon from '@mui/icons-material/LinkOffRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ExternalDone from './ExternalDone';
+import ExternalRejected from './ExternalRejected';
 import ExternalSignForm from './ExternalSignForm';
 import SignSteps from './SignSteps';
 import { taipeiDate } from './taskForm';
@@ -50,9 +53,12 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
   const pdf = usePdfDocument(task?.signer.status === 'pending' ? externalSourceFileUrl() : null);
   const [consented, setConsented] = useState(false);
   const [result, setResult] = useState<ExternalSignatureResult | null>(null);
+  const [rejection, setRejection] = useState<ExternalRejectionResult | null>(null);
   const [accessLost, setAccessLost] = useState(false);
   // 剛送出成功，或任務本身已是已簽署（依 signer.status 決定流程，見 contracts/http-api.md）
   const signedAt = result?.signedAt ?? task?.signer.signedAt ?? null;
+  // 剛拒絕成功，或任務本身已是已拒絕（已拒絕的人不能再讀原始 PDF 或簽署）
+  const rejectedAt = rejection?.rejectedAt ?? task?.signer.rejectedAt ?? null;
   // 簽署完成後以唯讀查詢取得本人副本的最新狀態（產生中時自動輪詢，不記錄開啟）
   const latest = useGetExternalSigningTaskQuery({ enabled: signedAt !== null });
 
@@ -76,6 +82,8 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
         copyStatus={(latest.data?.signer ?? result ?? task.signer).completion.status}
       />
     </>
+  ) : rejectedAt ? (
+    <ExternalRejected rejectedAt={rejectedAt} reason={rejection?.reason ?? task.signer.rejectReason ?? ''} />
   ) : !consented ? (
     <>
       <SignSteps activeIndex={0} />
@@ -91,7 +99,13 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
       />
     </>
   ) : pdf.doc ? (
-    <ExternalSignForm task={task} pdf={pdf.doc} onSigned={setResult} onAccessLost={() => setAccessLost(true)} />
+    <ExternalSignForm
+      task={task}
+      pdf={pdf.doc}
+      onSigned={setResult}
+      onRejected={setRejection}
+      onAccessLost={() => setAccessLost(true)}
+    />
   ) : (
     // 看不到文件時不能簽名：載入失敗只提供重新整理
     <>
@@ -102,21 +116,34 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
 
   return (
     <Stack spacing={{ xs: 2, sm: 3 }}>
-      <PageHeader title={task.document.title} description={<SignerLine task={task} />} />
+      <PageHeader
+        title={rejectedAt ? <RejectedTitle title={task.document.title} /> : task.document.title}
+        description={<SignerLine task={task} withDeadline={!rejectedAt} />}
+      />
       {content}
     </Stack>
   );
 }
 
-/** 頁面說明只放本人姓名、Email（手機寬度省略）與簽署期限，不顯示其他簽署人或建立人 */
-function SignerLine({ task }: { task: ExternalSigningTask }) {
+/** 已拒絕時在文件名稱旁加上狀態標籤（與建立人簽署人清單的「已拒絕」相同） */
+function RejectedTitle({ title }: { title: string }) {
+  return (
+    <Box component="span" sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 1.5, rowGap: 1 }}>
+      {title}
+      <Chip component="span" size="small" variant="soft" color="error" label="已拒絕" />
+    </Box>
+  );
+}
+
+/** 頁面說明只放本人姓名、Email（手機寬度省略）與簽署期限（已拒絕後不再顯示），不顯示其他簽署人或建立人 */
+function SignerLine({ task, withDeadline }: { task: ExternalSigningTask; withDeadline: boolean }) {
   return (
     <>
       簽署人 {task.signer.name}
       <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
         （{task.signer.email}）
       </Box>
-      ・簽署期限 {task.document.signEndAt ? taipeiDate(task.document.signEndAt) : '不限'}
+      {withDeadline && `・簽署期限 ${task.document.signEndAt ? taipeiDate(task.document.signEndAt) : '不限'}`}
     </>
   );
 }

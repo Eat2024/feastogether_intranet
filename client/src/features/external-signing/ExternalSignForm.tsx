@@ -1,10 +1,11 @@
 'use client';
 
-import { submitExternalSignatures } from '@/api/requests';
-import type { ExternalSignatureResult, ExternalSigningTask } from '@/api/types';
+import { rejectExternalSigningTask, submitExternalSignatures } from '@/api/requests';
+import type { ExternalRejectionResult, ExternalSignatureResult, ExternalSigningTask } from '@/api/types';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { signFieldLabel, signFields } from '@/features/forms/signLayout';
 import DocumentViewer from '@/features/my-signature/sign/DocumentViewer';
+import RejectDialog from '@/features/my-signature/sign/RejectDialog';
 import SignaturePadDialog from '@/features/my-signature/sign/SignaturePadDialog';
 import SignProgressPanel from '@/features/my-signature/sign/SignProgressPanel';
 import { useSignaturePad } from '@/features/my-signature/sign/useSignaturePad';
@@ -15,7 +16,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import { useMutation } from '@tanstack/react-query';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import SignSteps from './SignSteps';
 import { taipeiDate, toSignLayout, toSubmission, toViewerForm } from './taskForm';
 
@@ -27,11 +28,12 @@ type ExternalSignFormProps = {
   /** 已讀取的原始 PDF（頁數與頁面內容） */
   pdf: PDFDocumentProxy;
   onSigned: (result: ExternalSignatureResult) => void;
+  onRejected: (result: ExternalRejectionResult) => void;
   onAccessLost: () => void;
 };
 
-/** 閱讀與簽名：逐頁閱讀文件、每個簽名欄位親手簽名，勾選同意後確認送出；外部簽署人不提供拒絕簽署 */
-export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: ExternalSignFormProps) {
+/** 閱讀與簽名：逐頁閱讀文件、每個簽名欄位親手簽名，勾選同意後確認送出；建立人開放時也可拒絕簽署 */
+export default function ExternalSignForm({ task, pdf, onSigned, onRejected, onAccessLost }: ExternalSignFormProps) {
   const layout = toSignLayout(task, pdf.numPages);
   const fields = signFields(layout);
   // 先停在第一個需要簽名的頁面
@@ -53,21 +55,32 @@ export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: 
   // 這次簽署的識別：送出失敗後重試沿用同一個，後端據此辨識重送，不會重複簽署
   const [requestId] = useState(() => crypto.randomUUID());
   // 送出中：用 React state 在點擊當下就停用按鈕（mutation 的 isPending 要到下一個 tick 才更新，連點會送出兩次）
-  const [busy, setBusy] = useState(false);
-  const submit = useMutation({
-    mutationFn: submitExternalSignatures,
-    onSuccess: onSigned,
-    // 其他錯誤（含 cookie 被其他邀請覆蓋時的「簽署對象已變更」）由全域 Snackbar 顯示後端訊息；確認視窗維持開啟，可直接再按一次重試
-    onError: (error) => {
-      setBusy(false);
-      if (isExternalAccessLost(error)) onAccessLost();
-    },
-  });
+  const [busy, setBusy] = useState<'sign' | 'reject' | null>(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  // 拒絕的識別：同一個原因重送時沿用，原因改變後換新的（後端只把相同 requestId 且相同原因視為重送）
+  const lastRejection = useRef<{ reason: string; requestId: string } | null>(null);
+  // 其他錯誤（含 cookie 被其他邀請覆蓋時的「簽署對象已變更」）由全域 Snackbar 顯示後端訊息；確認視窗維持開啟，可直接再按一次重試
+  const onError = (error: Error) => {
+    setBusy(null);
+    if (isExternalAccessLost(error)) onAccessLost();
+  };
+  const submit = useMutation({ mutationFn: submitExternalSignatures, onSuccess: onSigned, onError });
+  const reject = useMutation({ mutationFn: rejectExternalSigningTask, onSuccess: onRejected, onError });
 
   const confirmSubmit = () => {
     if (busy) return;
-    setBusy(true);
+    setBusy('sign');
     submit.mutate(toSubmission(task, layout, signatures, requestId));
+  };
+
+  const confirmReject = (input: string) => {
+    if (busy) return;
+    setBusy('reject');
+    const reason = input.trim();
+    if (lastRejection.current?.reason !== reason) {
+      lastRejection.current = { reason, requestId: crypto.randomUUID() };
+    }
+    reject.mutate({ signerPublicId: task.signerPublicId, requestId: lastRejection.current.requestId, reason });
   };
 
   return (
@@ -104,9 +117,11 @@ export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: 
           signatures={signatures}
           readAgreed={readAgreed}
           onReadAgreedChange={setReadAgreed}
-          busy={busy}
+          busy={busy !== null}
           onFieldClick={openPad}
           onConfirm={() => setConfirmOpen(true)}
+          // 建立人發起時可關閉拒絕簽署；送出時後端會再檢查
+          onReject={task.allowReject ? () => setRejectOpen(true) : undefined}
           fixedOnMobile
         />
       </Box>
@@ -123,9 +138,16 @@ export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: 
         title="確認簽署此文件？"
         description={`「${task.document.title}」送出後即完成簽署，無法修改或撤回。`}
         confirmLabel="確認簽署"
-        loading={busy}
+        loading={busy === 'sign'}
         onConfirm={confirmSubmit}
         onClose={() => setConfirmOpen(false)}
+      />
+      <RejectDialog
+        open={rejectOpen}
+        docName={task.document.title}
+        pending={busy === 'reject'}
+        onClose={() => setRejectOpen(false)}
+        onConfirm={confirmReject}
       />
     </Stack>
   );

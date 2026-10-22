@@ -1,6 +1,12 @@
 import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
-import type { ExternalSignatureResult, ExternalSigningTask, SubmitExternalSignaturesBody } from '@/api/types';
+import type {
+  ExternalRejectionResult,
+  ExternalSignatureResult,
+  ExternalSigningTask,
+  RejectExternalSigningTaskBody,
+  SubmitExternalSignaturesBody,
+} from '@/api/types';
 
 /**
  * @name 開啟外部簽署任務
@@ -28,6 +34,19 @@ export const submitExternalSignatures = async (body: SubmitExternalSignaturesBod
   const res = await api<ExternalSignatureResult>({
     method: 'POST',
     url: endpoints.EXTERNAL_SIGNING_TASK_SIGNATURES,
+    data: body,
+  });
+  return res.data;
+};
+
+/**
+ * @name 拒絕簽署
+ * @description 本人待簽署、在簽署期間內，且建立人開放拒絕簽署時才能拒絕；同一個 requestId 與原因重送時回傳第一次的結果
+ */
+export const rejectExternalSigningTask = async (body: RejectExternalSigningTaskBody): Promise<ExternalRejectionResult> => {
+  const res = await api<ExternalRejectionResult>({
+    method: 'POST',
+    url: endpoints.EXTERNAL_SIGNING_TASK_REJECTION,
     data: body,
   });
   return res.data;

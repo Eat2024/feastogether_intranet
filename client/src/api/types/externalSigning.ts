@@ -4,8 +4,13 @@ import type { EsignDocumentStatus, EsignFieldView, EsignSignerView } from './esi
 /** POST／GET external-signing-task：外部存取 cookie 所屬簽署人的簽署任務（不含其他簽署人與建立人資料） */
 export interface ExternalSigningTask {
   signerPublicId: string;
+  /** 建立人發起時是否開放拒絕簽署 */
+  allowReject: boolean;
   document: { id: string; title: string; status: EsignDocumentStatus; signEndAt: string | null };
-  signer: Pick<EsignSignerView, 'publicId' | 'type' | 'name' | 'email' | 'status' | 'signedAt' | 'completion'>;
+  signer: Pick<
+    EsignSignerView,
+    'publicId' | 'type' | 'name' | 'email' | 'status' | 'signedAt' | 'rejectedAt' | 'rejectReason' | 'completion'
+  >;
   /** 文件的共用欄位，每位簽署人都要簽 */
   fields: EsignFieldView[];
   /** 目前有效的電子簽署同意聲明；送出時帶回 version */
@@ -30,4 +35,22 @@ export interface ExternalSignatureResult {
   signedAt: string;
   documentStatus: EsignDocumentStatus;
   completion: EsignSignerView['completion'];
+}
+
+/** POST external-signing-task/rejection */
+export interface RejectExternalSigningTaskBody {
+  /** 頁面所屬的簽署人；與外部存取 cookie 的簽署人不符時回 409，不記錄拒絕 */
+  signerPublicId: string;
+  /** UUID v4；同一個原因重送時沿用，後端只把相同 requestId 且相同原因視為重送 */
+  requestId: string;
+  /** 拒絕原因（選填）；去除首尾空白後最多 200 字 */
+  reason?: string;
+}
+
+/** POST external-signing-task/rejection 的結果（重送回相同結果）；reason 未填為空字串 */
+export interface ExternalRejectionResult {
+  signerPublicId: string;
+  status: 'rejected';
+  rejectedAt: string;
+  reason: string;
 }

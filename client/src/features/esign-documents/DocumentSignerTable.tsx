@@ -1,9 +1,9 @@
 'use client';
 
 // 檢視頁（後端文件）的簽署人清單：本頁資料已在外層篩選、排序、分頁。
-// 欄位與 mock 版相同。催簽只支援外部簽署人（每人每日一次），內部員工的通知按鈕停用並說明原因。
+// 欄位與 mock 版相同。內外部簽署人都可催簽（每人每日一次，Spec 010 FR-014），不能催簽時按鈕停用並說明原因。
 // 備註呼叫 PATCH /api/esign/documents/:id/signers/:signerPublicId/note 儲存。
-// 外部簽署人的邀請信寄送結果顯示在「通知紀錄」，個人副本產製狀態顯示在操作欄的匯出按鈕。
+// 邀請信寄送結果顯示在「通知紀錄」，個人副本產製狀態顯示在操作欄的匯出按鈕。
 import { queryKeys } from '@/api/query-keys';
 import type { EsignDocumentDetail, EsignManagedSignerView, EsignSignerStatus, EsignSignerView } from '@/api/types';
 import { downloadSignerCompletedFile, saveSignerNote } from '@/api/requests';
@@ -42,7 +42,7 @@ const STATUS_META: Record<EsignSignerStatus, { label: string; color: ChipProps['
   rejected: { label: '已拒絕', color: 'error' },
 };
 
-/** 外部簽署人的邀請信寄送結果 */
+/** 邀請信寄送結果 */
 const DELIVERY_LABEL: Record<NonNullable<EsignSignerView['invitationDelivery']>, string> = {
   pending: '邀請信寄送中',
   delivered: '邀請信已寄出',
@@ -92,7 +92,7 @@ export default function DocumentSignerTable({
   sortHrefs: Record<SignerSortKey, string>;
   /** 文件為簽署中時顯示批次通知列 */
   canNotify: boolean;
-  /** 整份文件目前可催簽的簽署人（外部、待簽署、今天還沒催簽） */
+  /** 整份文件目前可催簽的簽署人（待簽署、在簽署期間內、今天還沒催簽） */
   eligibleIds: string[];
   emptyText: string;
 }) {
@@ -162,7 +162,7 @@ export default function DocumentSignerTable({
                       checked ? [...new Set([...prev, ...pageEligible])] : prev.filter((id) => !pageEligible.includes(id)),
                     )
                   }
-                  slotProps={{ input: { 'aria-label': '選取本頁可催簽的外部簽署人' } }}
+                  slotProps={{ input: { 'aria-label': '選取本頁可催簽的簽署人' } }}
                 />
               </TableCell>
               {COLUMNS.map((c) =>
@@ -236,9 +236,9 @@ export default function DocumentSignerTable({
                         <NoData />
                       )}
                     </TableCell>
-                    {/* 外部簽署人：邀請信結果、最近一次催簽與已寄出的催簽次數；內部員工沒有通知紀錄 */}
+                    {/* 邀請信結果、最近一次催簽與已寄出的催簽次數（內外部簽署人皆以 Email 通知） */}
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {s.type === 'email' ? (
+                      {s.invitationDelivery || s.latestInvitation || s.latestReminder || s.deliveredReminderCount ? (
                         <>
                           {s.invitationDelivery ? (
                             <Typography
@@ -332,7 +332,7 @@ export default function DocumentSignerTable({
       {canNotify && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="secondary" component="span" sx={{ mr: 'auto' }}>
-            勾選外部待簽署者後可批次通知；每人每日一次（台北時間午夜重置），內部員工不寄送催簽
+            勾選待簽署者後可批次通知；每人每日一次（台北時間午夜重置）
           </Typography>
           <Button
             size="large"
@@ -350,7 +350,7 @@ export default function DocumentSignerTable({
             disabled={!eligibleIds.length || notify.isPending}
             onClick={() => sendNotify({ selection: 'all_pending' })}
           >
-            通知所有可催簽的外部簽署人（{eligibleIds.length}）
+            通知所有可催簽的簽署人（{eligibleIds.length}）
           </Button>
         </Box>
       )}

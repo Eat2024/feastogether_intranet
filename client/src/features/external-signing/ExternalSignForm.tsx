@@ -89,6 +89,8 @@ export default function ExternalSignForm({ task, pdf, onSigned, onAccessLost }: 
             signer={{ name: task.signer.name, employeeNo: '' }}
             layout={layout}
             signatures={signatures}
+            // 簽名旁顯示驗證 QR Code 的示意佔位圖；真正的 QR Code 由後端在簽署成功後產生於本人副本（Spec 04 FR-004）
+            qrPlaceholder
             dateText={today}
             activePage={activePage}
             onPageChange={setActivePage}

@@ -1,16 +1,16 @@
 'use client';
 
 // 簽署頁（後端文件）：從 GET /api/esign/signing-tasks 找出指定 signerPublicId 的任務。
-// 可以簽署時進入簽署流程；不能簽署時說明原因，本人已簽署時可預覽原始文件並下載已簽署文件。
+// 內部員工須從 Email 邀請並通過驗證碼才能簽署、拒簽或下載本人副本（Spec 010），
+// 舊的個人操作 API 一律回 403 ESIGN_EMAIL_OTP_REQUIRED，此頁只顯示狀態並引導從邀請信開啟。
 import { useGetSigningTasksQuery } from '@/api/queries';
-import { signingTaskSourceFileUrl } from '@/api/requests';
 import type { EsignSigningTask } from '@/api/types';
 import PageHeader from '@/components/PageHeader';
 import { formatDate } from '@/features/esign-documents/listQuery';
-import DocumentViewer from '@/features/my-signature/sign/DocumentViewer';
-import { usePdfDocument } from '@/features/forms/pdf/usePdf';
 import { getErrorMessage } from '@/lib/apiError';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
+import MarkEmailReadRoundedIcon from '@mui/icons-material/MarkEmailReadRounded';
+import VerifiedRoundedIcon from '@mui/icons-material/VerifiedRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -18,8 +18,6 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import { useState } from 'react';
-import DownloadMyCopyButton from './DownloadMyCopyButton';
-import SigningTaskFlow from './SigningTaskFlow';
 import { backHref, signBlock } from './taskQuery';
 
 function BackButton({ href }: { href: string }) {
@@ -80,9 +78,10 @@ export default function SigningTaskView({ signerPublicId }: { signerPublicId: st
 
 function Task({ task }: { task: EsignSigningTask }) {
   const { document: doc, signer } = task;
-  // 以進入頁面的時間判斷可否簽署；送出時後端會再檢查一次
+  // 以進入頁面的時間判斷目前狀態（已簽署、已到期、尚未開始等）
   const [now] = useState(() => new Date());
   const block = signBlock(task, now);
+  const creator = doc.createdBy ? `建立人 ${doc.createdBy.name}` : '建立人';
 
   return (
     <>
@@ -97,53 +96,77 @@ function Task({ task }: { task: EsignSigningTask }) {
           .filter(Boolean)
           .join('・')}
       />
-      {block ? (
-        <>
-          <Alert
-            severity={signer.status === 'signed' ? 'success' : 'info'}
-            variant="outlined"
-            action={signer.status === 'signed' ? <DownloadMyCopyButton task={task} /> : undefined}
-          >
-            {block}
-          </Alert>
-          {/* 待簽署者在簽署期間外無法讀取文件；本人已簽署後仍可預覽原始文件 */}
-          {signer.status === 'signed' && <SignedPreview task={task} />}
-        </>
+      {signer.status === 'signed' ? (
+        <Alert
+          severity="success"
+          variant="outlined"
+          action={
+            // 與已簽署文件上 QR Code 相同的公開驗證網址（Spec 04 FR-003）
+            signer.verificationUrl && (
+              <Button
+                size="large"
+                variant="outlined"
+                startIcon={<VerifiedRoundedIcon />}
+                href={signer.verificationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                查看簽章驗證
+              </Button>
+            )
+          }
+        >
+          {block}
+          <Typography variant="helper" component="div" sx={{ mt: 0.5 }}>
+            如需下載已簽署文件，請從原邀請信開啟並完成 Email 驗證碼驗證後下載。
+          </Typography>
+        </Alert>
+      ) : block ? (
+        // 已拒絕、已停止、已到期、尚未開始等
+        <Alert severity="info" variant="outlined">
+          {block}
+        </Alert>
       ) : (
-        <SigningTaskFlow task={task} />
+        <InvitationGuide creator={creator} />
       )}
     </>
   );
 }
 
-/** 已簽署後的原始文件預覽；本人的簽名與簽署日期在下載的已簽署文件中 */
-function SignedPreview({ task }: { task: EsignSigningTask }) {
-  const { doc, error, loading } = usePdfDocument(signingTaskSourceFileUrl(task.signerPublicId));
-  const [activePage, setActivePage] = useState(1);
-  if (loading) return <Loading />;
-  if (error || !doc) {
-    return (
-      <Alert severity="warning" variant="outlined">
-        無法讀取文件內容，請改用「下載已簽署文件」查看。
-      </Alert>
-    );
-  }
+/**
+ * 待簽署：內部員工也須從 Email 邀請並通過驗證碼才能簽署或拒簽（Spec 010 FR-011），
+ * 一般員工登入不能直接簽署，此頁只說明簽署方式。
+ */
+function InvitationGuide({ creator }: { creator: string }) {
   return (
     <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-      <Typography variant="helper" component="div" sx={{ mb: 2 }}>
-        以下為原始文件；你的簽名與簽署日期請見「下載已簽署文件」。
-      </Typography>
-      <DocumentViewer
-        docInfo={{ name: task.document.title, docNumber: task.document.docNumber }}
-        pdfUrl={null}
-        pdfDoc={doc}
-        signer={{ name: task.signer.name, employeeNo: task.signer.employeeNo ?? '' }}
-        layout={{ pageCount: doc.numPages, originalPages: doc.numPages, confirmPage: null, fields: [] }}
-        signatures={{}}
-        dateText=""
-        activePage={activePage}
-        onPageChange={setActivePage}
-      />
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+        <Box sx={{ display: 'flex', color: 'primary.main', '& svg': { fontSize: 32 } }}>
+          <MarkEmailReadRoundedIcon />
+        </Box>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="sectionTitle" component="h2" sx={{ mb: 1 }}>
+            請從邀請信開啟文件簽署
+          </Typography>
+          <Typography variant="description" component="div">
+            為確認是本人簽署，電子簽署須透過寄到你信箱的邀請信進行：
+          </Typography>
+          <Box component="ol" sx={{ m: 0, mt: 1, pl: 2.5 }}>
+            {[
+              '開啟系統寄出的「電子簽署邀請」信件，點擊信中的連結。',
+              '依畫面指示寄送並輸入 Email 驗證碼（6 位數字，10 分鐘內有效）。',
+              '驗證通過後即可閱讀文件並簽署；如需拒絕簽署也在同一頁操作。',
+            ].map((step) => (
+              <Typography key={step} component="li" variant="content" sx={{ display: 'list-item', mb: 0.5 }}>
+                {step}
+              </Typography>
+            ))}
+          </Box>
+          <Typography variant="helper" component="div" sx={{ mt: 1 }}>
+            找不到邀請信時，請先檢查垃圾郵件匣，或聯絡{creator}重新寄送簽署通知。
+          </Typography>
+        </Box>
+      </Box>
     </Paper>
   );
 }

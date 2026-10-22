@@ -3,7 +3,6 @@ import { formatDateTime } from './listQuery';
 
 /** 不能催簽或寄送未完成的原因（server/src/features/esign/services/esign-reminder-policy.ts 等） */
 export const NOTIFICATION_REASONS: Record<string, string> = {
-  INTERNAL_REMINDER_UNSUPPORTED: '內部員工不寄送催簽，只支援外部簽署人',
   SIGNER_ALREADY_COMPLETED: '已簽署或已拒絕，不需催簽',
   SIGNING_WINDOW_CLOSED: '目前不在簽署期間內',
   REMINDER_IN_PROGRESS: '催簽排隊、寄送或重試中',

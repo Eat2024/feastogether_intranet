@@ -1,6 +1,6 @@
 'use client';
 
-// 建立外部催簽批次（POST /api/esign/documents/:id/notification-batches），單人通知與批次通知共用。
+// 建立催簽批次（POST /api/esign/documents/:id/notification-batches），單人通知與批次通知共用；內外部簽署人皆可催簽。
 // 後端只受理、背景寄送；成功後更新文件詳情（通知紀錄、可否催簽）與通知歷史。
 import { queryKeys } from '@/api/query-keys';
 import { createNotificationBatch } from '@/api/requests';

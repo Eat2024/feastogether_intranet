@@ -42,6 +42,11 @@ export const queryOptions: Record<
     staleTime: minutes(10),
     gcTime: minutes(10),
   },
+  // 每次開啟都重新驗證（後端每次查詢都會重新比對簽署證據），不保留結果
+  useGetSignatureVerificationQuery: {
+    staleTime: 0,
+    gcTime: 0,
+  },
   // 邀請連結即憑證：不保留在快取中，每次開啟都重新取得
   useGetReopeningInvitationsQuery: {
     staleTime: 0,

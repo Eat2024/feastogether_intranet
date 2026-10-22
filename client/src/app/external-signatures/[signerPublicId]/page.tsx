@@ -1,6 +1,5 @@
+import PublicPageShell from '@/components/PublicPageShell';
 import ExternalSigning from '@/features/external-signing/ExternalSigning';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = { title: '簽署文件' };
@@ -13,25 +12,8 @@ export default async function ExternalSigningPage({ params }: PageProps<'/extern
   const { signerPublicId } = await params;
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Box
-        component="header"
-        sx={{
-          height: { xs: 56, sm: 64 },
-          flex: 'none',
-          display: 'flex',
-          alignItems: 'center',
-          px: { xs: 2, sm: 3 },
-          bgcolor: 'navBg',
-        }}
-      >
-        <Typography variant="sectionTitle" component="div" sx={{ color: 'common.white' }}>
-          電子簽署
-        </Typography>
-      </Box>
-      <Box component="main" sx={{ flex: 1, minWidth: 0, p: { xs: 2, sm: 3 }, display: 'flex', flexDirection: 'column' }}>
-        <ExternalSigning signerPublicId={signerPublicId} />
-      </Box>
-    </Box>
+    <PublicPageShell>
+      <ExternalSigning signerPublicId={signerPublicId} />
+    </PublicPageShell>
   );
 }

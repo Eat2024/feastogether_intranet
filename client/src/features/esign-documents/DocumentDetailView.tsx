@@ -96,9 +96,9 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
   const query = useMemo(() => parseSignerQuery(params), [params]);
   const statusMeta = DOCUMENT_STATUS_META[doc.status];
   const counts = countByStatus(doc.signers);
-  // 整份文件目前可催簽的簽署人（批次通知用）；補簽中仍未簽署的外部簽署人（補簽連結用）
+  // 整份文件目前可催簽的簽署人（批次通知用）；補簽中仍未簽署的簽署人（補簽邀請連結用）
   const eligibleIds = doc.signers.filter((s) => s.reminderEligibility.eligible).map((s) => s.publicId);
-  const pendingExternal = doc.signers.filter((s) => s.type === 'email' && s.status === 'pending');
+  const pendingSigners = doc.signers.filter((s) => s.status === 'pending');
   const { items, page, pageCount, total } = querySigners(doc.signers, query);
   const percent = counts.all ? Math.round((counts.signed / counts.all) * 100) : 0;
 
@@ -139,9 +139,9 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
               variant="button"
               disabled={doc.status !== 'expired' || counts.pending === 0}
             />
-            {/* 補簽中且仍有外部簽署人未簽署時，可取得新的邀請連結轉交 */}
-            {doc.isReopened && doc.status === 'active' && pendingExternal.length > 0 && (
-              <ReopeningInvitationsButton documentId={doc.id} signers={pendingExternal} />
+            {/* 補簽中且仍有人未簽署時，可取得尚未寄達的邀請連結手動轉交（備用） */}
+            {doc.isReopened && doc.status === 'active' && pendingSigners.length > 0 && (
+              <ReopeningInvitationsButton documentId={doc.id} signers={pendingSigners} />
             )}
           </>
         }

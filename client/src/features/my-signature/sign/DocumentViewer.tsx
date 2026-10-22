@@ -4,6 +4,7 @@ import { usePdfDocument, usePdfRenders } from "@/features/forms/pdf/usePdf";
 import { fieldSize, type SignLayout } from "@/features/forms/signLayout";
 import type { EFormDoc, Signer, UploadField } from "@/features/forms/types";
 import DrawRoundedIcon from "@mui/icons-material/DrawRounded";
+import QrCode2RoundedIcon from "@mui/icons-material/QrCode2Rounded";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
@@ -25,6 +26,11 @@ type DocumentViewerProps = {
   signatures: Record<number, string>;
   /** 欄位 id → 簽名識別碼（顯示追蹤 QR code） */
   signatureIds?: Record<number, string>;
+  /**
+   * 已簽名的欄位右下角改顯示「驗證 QR Code」的示意佔位圖（不可掃描）：
+   * 後端文件的驗證 QR Code 由後端在簽署成功後產生於個人副本中，畫面不得自行產生（Spec 04 FR-004）
+   */
+  qrPlaceholder?: boolean;
   /** 日期欄位顯示的日期 */
   dateText: string;
   activePage: number;
@@ -198,10 +204,37 @@ function ConfirmPageContent({
   );
 }
 
+/** 驗證 QR Code 的示意佔位圖：位置與大小同個人副本上的 QR Code，但不是可掃描的條碼 */
+function QrPlaceholder() {
+  return (
+    <Box
+      title="簽署完成後，系統會在已簽署文件的此處產生簽章驗證 QR Code"
+      sx={{
+        height: "100%",
+        aspectRatio: "1 / 1",
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        border: 1,
+        borderStyle: "dashed",
+        borderColor: "grey.400",
+        borderRadius: 0.5,
+        bgcolor: "grey.50",
+        color: "grey.400",
+        "& svg": { width: "70%", height: "70%" },
+      }}
+    >
+      <QrCode2RoundedIcon />
+    </Box>
+  );
+}
+
 function FieldBox({
   field,
   signature,
   signatureId,
+  qrPlaceholder,
   dateText,
   onSign,
 }: {
@@ -209,6 +242,8 @@ function FieldBox({
   signature?: string;
   /** 簽名識別碼；有值時在欄位右下角顯示追蹤 QR code */
   signatureId?: string;
+  /** 已簽名時在欄位右下角顯示驗證 QR Code 的示意佔位圖 */
+  qrPlaceholder?: boolean;
   dateText: string;
   onSign?: () => void;
 }) {
@@ -258,10 +293,16 @@ function FieldBox({
         alt="你的簽名"
         sx={{ flex: 1, minWidth: 0, height: "100%", objectFit: "contain" }}
       />
-      {signatureId && (
+      {qrPlaceholder ? (
         <Box sx={{ height: "72%" }}>
-          <SignatureQr signatureId={signatureId} />
+          <QrPlaceholder />
         </Box>
+      ) : (
+        signatureId && (
+          <Box sx={{ height: "72%" }}>
+            <SignatureQr signatureId={signatureId} />
+          </Box>
+        )
       )}
     </Box>
   ) : (
@@ -341,6 +382,7 @@ export default function DocumentViewer({
   layout,
   signatures,
   signatureIds = {},
+  qrPlaceholder = false,
   dateText,
   activePage,
   onPageChange,
@@ -438,6 +480,7 @@ export default function DocumentViewer({
             field={f}
             signature={signatures[f.id]}
             signatureId={signatureIds[f.id]}
+            qrPlaceholder={qrPlaceholder}
             dateText={dateText}
             onSign={onSignField && (() => onSignField(f))}
           />

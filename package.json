@@ -5,7 +5,7 @@
   "description": "饗賓內部電子簽署系統",
   "packageManager": "pnpm@11.9.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24.22.1"
   },
   "scripts": {
     "dev": "concurrently -n server,worker,client -c blue,magenta,green \"pnpm --filter feastogether-intranet-server dev\" \"pnpm --filter feastogether-intranet-server worker:dev\" \"pnpm --filter feastogether-intranet-client dev\"",

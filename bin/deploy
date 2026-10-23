@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# 正式環境尚未交接；避免只推 main 卻誤報已部署 production。
+set -euo pipefail
+if [[ ${1:-} == --help || ${1:-} == -h ]]; then
+  echo 'bin/deploy：production 發布入口，目前尚未接通正式環境。'
+  exit 0
+fi
+cat >&2 <<'MESSAGE'
+Production 尚未配置，未推送任何分支、未觸發部署。
+目前 repository 只有 UAT workflow。請先確認正式環境的：
+- 觸發分支、runner／部署方式與目標主機
+- RDS 連線、migration 權限、備份與復原方式
+- production 所需 S3、IAM role、SMTP 與 HTTPS 設定
+完成 production workflow 後，再接通此入口及 UAT 驗收版本檢查。
+UAT 發布請使用 bin/staging。
+MESSAGE
+exit 2

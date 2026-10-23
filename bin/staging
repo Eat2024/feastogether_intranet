@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# 將已推送的來源版本 fast-forward 到 origin/uat，不切換或修改 working tree。
+set -euo pipefail
+cd "$(dirname "$0")/.."
+if [[ $# -gt 1 ]]; then
+  echo '用法：bin/staging [branch|sha|.]' >&2
+  exit 2
+fi
+if [[ ${1:-} == --help || ${1:-} == -h ]]; then
+  echo '用法：bin/staging [branch|sha|.]；預設 origin/dev，更新 origin/uat 觸發部署。'
+  exit 0
+fi
+source_branch=${1:-dev}
+if [[ "$source_branch" == . ]]; then
+  source_branch=$(git symbolic-ref --quiet --short HEAD) || {
+    echo '目前為 detached HEAD，請指定已推送的分支或 SHA。' >&2; exit 1;
+  }
+fi
+git fetch origin --prune --quiet
+before_sha=$(git rev-parse --verify refs/remotes/origin/uat^{commit}) || {
+  echo 'origin/uat 不存在，請先建立 UAT 分支。' >&2; exit 1;
+}
+if git check-ref-format "refs/heads/$source_branch" >/dev/null 2>&1 &&
+   source_sha=$(git rev-parse --verify --quiet "refs/remotes/origin/$source_branch^{commit}"); then
+  source_label="origin/$source_branch"
+elif [[ "$source_branch" =~ ^[0-9a-fA-F]{7,40}$ ]] &&
+     source_sha=$(git rev-parse --verify --quiet "$source_branch^{commit}"); then
+  # 不允許只存在本機的 commit 直接繞過來源分支發佈。
+  published=$(git for-each-ref --contains "$source_sha" --format='%(refname)' refs/remotes/origin/)
+  [[ -n "$published" ]] || { echo '此 SHA 尚未推送到 origin 分支。' >&2; exit 1; }
+  source_label="$source_sha"
+else
+  echo '找不到來源；請先推送分支，或指定已推送的 commit SHA。' >&2
+  exit 1
+fi
+if git merge-base --is-ancestor "$source_sha" "$before_sha"; then
+  echo "uat 已包含 ${source_label}，沒有更新；若需重部署，請在 Actions 對 uat 手動觸發。"
+  exit 0
+fi
+git merge-base --is-ancestor "$before_sha" "$source_sha" || {
+  echo 'uat 與來源已分歧，無法 fast-forward；請先整合分支，不會強制覆寫。' >&2; exit 1;
+}
+git cat-file -e "$source_sha:.github/workflows/uat-release.yml" || {
+  echo '來源版本缺少 UAT workflow，停止發布。' >&2; exit 1;
+}
+echo "準備將 $source_label ($source_sha) 推進 origin/uat："
+git log --oneline "$before_sha..$source_sha"
+git diff --stat "$before_sha" "$source_sha"
+echo '僅發布以上遠端版本；本機未提交／未推送的修改不包含在內。'
+git push origin "$source_sha:refs/heads/uat"
+echo 'uat 已更新，請查看實際部署結果（push 成功不代表部署完成）：'
+echo "gh run list --workflow uat-release.yml --branch uat --commit $source_sha --limit 5"

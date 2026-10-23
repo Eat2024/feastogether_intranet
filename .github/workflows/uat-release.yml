@@ -21,12 +21,19 @@ jobs:
     timeout-minutes: 60
     env:
       TARGET_SHA: ${{ github.sha }}
-      DOCKER_CONFIG: ${{ runner.temp }}/intranet-docker-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: 準備獨立的 Docker 登入設定
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker_config_dir="${RUNNER_TEMP}/intranet-docker-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$docker_config_dir"
+          chmod 700 "$docker_config_dir"
+          printf 'DOCKER_CONFIG=%s\n' "$docker_config_dir" >> "$GITHUB_ENV"
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io

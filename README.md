@@ -71,3 +71,5 @@ Swagger 的前端用途為串接參考，不代表目前 client 已完成對應�
 ## UAT CI/CD
 
 電子簽 UAT 使用本機 Git hooks 檢查品質，`uat` 更新後由專用 self-hosted runner 建置 GHCR images 並以 root `docker-compose.uat.yml` 部署。首次 runner 設定、既有 volumes 接管、migration 備份與故障處理請見 [UAT CI/CD 操作文件](docs/deployment/uat-cicd.md)。
+
+發布 UAT 可執行 `bin/staging`（預設將已推送的 `origin/dev` 推進 `origin/uat`）；參數與正式環境尚未就緒的限制見 [發布操作指令](bin/README.md)。

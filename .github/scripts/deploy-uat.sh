@@ -47,9 +47,20 @@ start_apps() {
   "${compose[@]}" up -d --no-deps worker client
 }
 smoke() {
-  curl --fail --silent --show-error --retry 12 --retry-connrefused --retry-delay 5 \
-    --max-time 10 http://127.0.0.1:3000/api/health >/dev/null || return 1
-  curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/ >/dev/null || return 1
+  # Docker Started 不代表 Next.js 已可接 HTTP；啟動期間可能 reset/empty reply。
+  # GET 檢查有界重試，持續故障仍必須讓部署失敗，回復舊版也沿用此流程。
+  local ready=false
+  for attempt in {1..12}; do
+    if curl --fail --silent --show-error --max-time 10 \
+      http://127.0.0.1:3000/api/health >/dev/null &&
+      curl --fail --silent --show-error --max-time 10 \
+      http://127.0.0.1:3000/ >/dev/null; then
+      ready=true
+      break
+    fi
+    if [[ "$attempt" -lt 12 ]]; then sleep 5; fi
+  done
+  [[ "$ready" == true ]] || return 1
   local worker_id
   worker_id=$("${compose[@]}" ps -q worker)
   [[ -n "$worker_id" ]] || return 1

@@ -34,6 +34,15 @@ esac
 MOCK
 cat > "$tmp/bin/curl" <<'MOCK'
 #!/usr/bin/env bash
+count_file="${TEST_LOG}.curl-count"
+count=0
+[[ ! -f "$count_file" ]] || count=$(cat "$count_file")
+count=$((count + 1))
+printf '%s' "$count" > "$count_file"
+if [[ ${FAIL_HTTP_ALWAYS:-0} == 1 || $count -le ${FAIL_HTTP_COUNT:-0} ]]; then
+  echo 'curl: (56) Recv failure: Connection reset by peer' >&2
+  exit 56
+fi
 exit 0
 MOCK
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/sleep"
@@ -41,6 +50,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/flock"
 chmod +x "$tmp/bin/"*
 run_case() {
   : > "$TEST_LOG"
+  rm -f "${TEST_LOG}.curl-count"
   rm -rf "$tmp/uat/releases" "$tmp/uat/backups"
   local actual=0
   bash "$tmp/repo/.github/scripts/deploy-uat.sh" > "$tmp/output" 2>&1 || actual=$?
@@ -77,3 +87,14 @@ run_case 1
 grep -q '已恢復部署前' "$tmp/output"
 test ! -f "$tmp/uat/releases/current.env"
 echo '部署流程測試通過：正常部署、檢查失敗、備份、備份失敗回復、migration 失敗停止、應用部署失敗回復。'
+
+export FAIL_START=0 FAIL_HTTP_COUNT=2
+run_case 0
+test -f "$tmp/uat/releases/current.env"
+! grep -q '嘗試恢復' "$tmp/output"
+export FAIL_HTTP_COUNT=0 FAIL_HTTP_ALWAYS=1
+run_case 1
+test ! -f "$tmp/uat/releases/current.env"
+test "$(cat "${TEST_LOG}.curl-count")" = 24
+grep -q '恢復失敗' "$tmp/output"
+echo '啟動檢查測試通過：暫時 connection reset 可恢復；持續失敗有上限且不記錄成功。'

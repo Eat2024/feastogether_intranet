@@ -16,14 +16,15 @@ state_dir="$uat_root/releases"
 mkdir -p "$state_dir" "$uat_root/backups"
 exec 9>"$uat_root/deploy.lock"
 flock -n 9 || { echo '另一個 UAT 部署正在執行' >&2; exit 1; }
-compose=(docker compose --project-name intranet-uat --env-file "$uat_root/.env" -f "$repo_root/docker-compose.uat.yml")
+compose=(docker compose --project-name intranet-uat --env-file /dev/null -f "$repo_root/docker-compose.uat.yml")
 "${compose[@]}" config --quiet
 
 # 只接管已存在的環境；避免錯誤的主機產生全新空資料庫。
-for volume in mysql-data redis-data esign-data; do
+for volume in redis-data esign-data; do
   docker volume inspect "intranet-uat_$volume" >/dev/null
 done
-for service in mysql redis; do
+docker network inspect intranet-uat_default >/dev/null
+for service in redis; do
   id=$("${compose[@]}" ps -q "$service")
   [[ -n "$id" && $(docker inspect -f '{{.State.Health.Status}}' "$id") == healthy ]] || {
     echo "$service 尚未 healthy，停止部署" >&2; exit 1;
@@ -86,18 +87,25 @@ check_status=0
 "${compose[@]}" run --rm --no-deps -T server node -e '
 (async () => {
   const ds = require("./dist/infrastructure/database/mysql/data-source.js").default;
-  try { await ds.initialize(); process.exitCode = (await ds.showMigrations()) ? 10 : 0; }
-  catch { console.error("migration 檢查失敗，請檢查 DB 連線與映像"); process.exitCode = 1; }
+  try {
+    if (ds.options.host !== "ftg2-00-test-rds-cluster.cluster-cheguogu8mzk.ap-east-2.rds.amazonaws.com" ||
+        ds.options.database !== "intranet_uat" || !ds.options.ssl?.ca ||
+        ds.options.ssl.rejectUnauthorized === false) {
+      throw new Error("RDS 目標或 CA 設定不正確");
+    }
+    await ds.initialize(); process.exitCode = (await ds.showMigrations()) ? 10 : 0;
+  }
+  catch { console.error("migration 檢查失敗，請檢查 RDS 目標、CA、連線與映像"); process.exitCode = 1; }
   finally { if (ds.isInitialized) await ds.destroy(); }
 })();' || check_status=$?
 case "$check_status" in
   0) echo '沒有 pending migration' ;;
   10)
+    "${compose[@]}" --profile tools pull db-backup
     services_changed=true
     "${compose[@]}" stop client worker server
-    # 停止寫入後備份；root 密碼由 MySQL 容器既有環境取得，不輸出到命令列。
-    "${compose[@]}" exec -T mysql sh -c \
-      'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --single-transaction --routines --triggers --events --no-tablespaces --set-gtid-purged=OFF "$MYSQL_DATABASE"' \
+    # 同一份 raw RDS 設定；驗證主機憑證、只備份 intranet_uat，不讀取 OAuth。
+    "${compose[@]}" --profile tools run --rm --no-deps -T db-backup \
       | gzip > "$backup.tmp"
     gzip -t "$backup.tmp"
     mv "$backup.tmp" "$backup"

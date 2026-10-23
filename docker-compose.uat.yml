@@ -1,4 +1,4 @@
-# 沿用現有 EC2 的專案、網路與 volumes；不要使用 down -v。
+# RDS 已完成切換；保留既有 Redis、簽署檔案與網路，不管理舊 MySQL。
 name: intranet-uat
 
 x-logging: &logging
@@ -11,16 +11,13 @@ x-backend: &backend
   image: ${SERVER_IMAGE:?必須提供 SERVER_IMAGE}
   restart: unless-stopped
   env_file:
-    - /home/feasteng/deploy/intranet-uat/server.env
+    - path: /home/feasteng/deploy/intranet-uat/server.env
+    - path: /home/feasteng/deploy/intranet-uat/migration.env
+      format: raw
   environment:
     NODE_ENV: staging
     PORT: "3000"
     DEVMOD: "false"
-    DB_MYSQL_HOST: mysql
-    DB_MYSQL_PORT: "3306"
-    DB_MYSQL_USER: intranet_app
-    DB_MYSQL_PASS: ${DB_MYSQL_PASS:?缺少既有資料庫密碼}
-    DB_MYSQL_DB: feastogether_intranet_uat
     REDIS_HOST: redis
     REDIS_PORT: "6379"
     REDIS_PASSWORD: ""
@@ -61,25 +58,27 @@ services:
     healthcheck:
       disable: true
 
-  mysql:
+  # 僅提供遠端 RDS 備份工具；不啟動 MySQL daemon、不掛載資料庫 volume。
+  db-backup:
     image: mysql:8.4
-    restart: unless-stopped
-    command: ["--default-time-zone=+00:00"]
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?缺少既有 root 密碼}
-      MYSQL_DATABASE: feastogether_intranet_uat
-      MYSQL_USER: intranet_app
-      MYSQL_PASSWORD: ${DB_MYSQL_PASS:?缺少既有資料庫密碼}
-      TZ: UTC
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", 'MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP -h 127.0.0.1 -u "$${MYSQL_USER}" "$${MYSQL_DATABASE}" -e "SELECT 1" >/dev/null']
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 60s
-    logging: *logging
+    profiles: ["tools"]
+    restart: "no"
+    env_file:
+      - path: /home/feasteng/deploy/intranet-uat/migration.env
+        format: raw
+    entrypoint: ["sh", "-ec"]
+    command:
+      - |
+        umask 077
+        test -n "$${DB_MYSQL_SSL_CA_B64}"
+        printf '%s' "$${DB_MYSQL_SSL_CA_B64}" | base64 -d > /tmp/rds-ca.pem
+        export MYSQL_PWD="$${DB_MYSQL_PASS}"
+        exec mysqldump \
+          --host="$${DB_MYSQL_HOST}" --port="$${DB_MYSQL_PORT}" \
+          --user="$${DB_MYSQL_USER}" \
+          --ssl-mode=VERIFY_IDENTITY --ssl-ca=/tmp/rds-ca.pem \
+          --single-transaction --skip-lock-tables --no-tablespaces \
+          --set-gtid-purged=OFF --triggers "$${DB_MYSQL_DB}"
 
   redis:
     image: redis:7-alpine
@@ -95,12 +94,14 @@ services:
     logging: *logging
 
 volumes:
-  mysql-data:
-    external: true
-    name: intranet-uat_mysql-data
   redis-data:
     external: true
     name: intranet-uat_redis-data
   esign-data:
     external: true
     name: intranet-uat_esign-data
+
+networks:
+  default:
+    external: true
+    name: intranet-uat_default

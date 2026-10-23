@@ -23,7 +23,7 @@
     "hooks:install": "node .github/scripts/install-git-hooks.cjs",
     "verify:commit": "bash .github/scripts/verify-local.sh commit",
     "verify:push": "bash .github/scripts/verify-local.sh push",
-    "test:deploy": "bash .github/scripts/deploy-uat.test.sh"
+    "test:deploy": "node .github/scripts/uat-compose.test.cjs && bash .github/scripts/deploy-uat.test.sh"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

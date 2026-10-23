@@ -15,7 +15,7 @@ cat > "$tmp/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TEST_LOG"
 case "$*" in
-  'volume inspect '*) exit 0 ;;
+  'volume inspect '*|'network inspect '*) exit 0 ;;
   'inspect -f {{.Image}} intranet-uat-client-1') echo sha256:old-client ;;
   'inspect -f {{.Image}} '*) echo sha256:old-server ;;
   'inspect -f {{.State.Health.Status}} '*) echo healthy ;;
@@ -23,7 +23,8 @@ case "$*" in
   'logs '*) echo '[worker] background worker started' ;;
   *' ps -q '*) echo mock-container ;;
   *'process.exitCode = (await ds.showMigrations())'*) exit "${CHECK_STATUS:-0}" ;;
-  *' exec -T mysql '*)
+  *' pull db-backup') exit "${FAIL_PULL_BACKUP:-0}" ;;
+  *' run --rm --no-deps -T db-backup'*)
     [[ ${FAIL_BACKUP:-0} == 0 ]] || exit 1
     echo 'CREATE TABLE example (id INT);' ;;
   *' migration:run '*) exit "${MIGRATE_STATUS:-0}" ;;
@@ -48,14 +49,20 @@ run_case() {
 export CHECK_STATUS=0
 run_case 0
 test -f "$tmp/uat/releases/current.env"
+! grep -q "db-backup" "$TEST_LOG"
 ! grep -q 'migration:run' "$TEST_LOG"
 export CHECK_STATUS=1
 run_case 1
 ! grep -q ' stop ' "$TEST_LOG"
 ! grep -q ' up -d ' "$TEST_LOG"
-export CHECK_STATUS=10
+export CHECK_STATUS=10 FAIL_PULL_BACKUP=1
+run_case 1
+! grep -q ' stop ' "$TEST_LOG"
+! grep -q 'migration:run' "$TEST_LOG"
+export FAIL_PULL_BACKUP=0
 run_case 0
 grep -q 'migration:run' "$TEST_LOG"
+! grep -q 'mysql-data\|exec -T mysql' "$TEST_LOG"
 test "$(find "$tmp/uat/backups" -name '*.sql.gz' | wc -l | tr -d ' ')" = 1
 export FAIL_BACKUP=1
 run_case 1

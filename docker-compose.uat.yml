@@ -1,0 +1,107 @@
+# RDS 已完成切換；保留既有 Redis、簽署檔案與網路，不管理舊 MySQL。
+name: intranet-uat
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend: &backend
+  image: ${SERVER_IMAGE:?必須提供 SERVER_IMAGE}
+  restart: unless-stopped
+  env_file:
+    - path: /home/feasteng/deploy/intranet-uat/server.env
+    - path: /home/feasteng/deploy/intranet-uat/migration.env
+      format: raw
+  environment:
+    NODE_ENV: staging
+    PORT: "3000"
+    DEVMOD: "false"
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    REDIS_PASSWORD: ""
+    ESIGN_STORAGE_DRIVER: local
+    ESIGN_STORAGE_ROOT: /data/esign
+  volumes:
+    - esign-data:/data/esign
+  logging: *logging
+
+services:
+  client:
+    image: ${CLIENT_IMAGE:?必須提供 CLIENT_IMAGE}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      server:
+        condition: service_healthy
+    logging: *logging
+
+  server:
+    <<: *backend
+    command: ["node", "dist/main.js"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  worker:
+    <<: *backend
+    command: ["node", "dist/worker.js"]
+    healthcheck:
+      disable: true
+
+  # 僅提供遠端 RDS 備份工具；不啟動 MySQL daemon、不掛載資料庫 volume。
+  db-backup:
+    image: mysql:8.4
+    profiles: ["tools"]
+    restart: "no"
+    env_file:
+      - path: /home/feasteng/deploy/intranet-uat/migration.env
+        format: raw
+    entrypoint: ["sh", "-ec"]
+    command:
+      - |
+        umask 077
+        test -n "$${DB_MYSQL_SSL_CA_B64}"
+        printf '%s' "$${DB_MYSQL_SSL_CA_B64}" | base64 -d > /tmp/rds-ca.pem
+        export MYSQL_PWD="$${DB_MYSQL_PASS}"
+        exec mysqldump \
+          --host="$${DB_MYSQL_HOST}" --port="$${DB_MYSQL_PORT}" \
+          --user="$${DB_MYSQL_USER}" \
+          --ssl-mode=VERIFY_IDENTITY --ssl-ca=/tmp/rds-ca.pem \
+          --single-transaction --skip-lock-tables --no-tablespaces \
+          --set-gtid-purged=OFF --triggers "$${DB_MYSQL_DB}"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+volumes:
+  redis-data:
+    external: true
+    name: intranet-uat_redis-data
+  esign-data:
+    external: true
+    name: intranet-uat_esign-data
+
+networks:
+  default:
+    external: true
+    name: intranet-uat_default

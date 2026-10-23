@@ -18,7 +18,12 @@
     "test": "pnpm --filter feastogether-intranet-server test",
     "lint": "pnpm --filter feastogether-intranet-server lint:check && pnpm --filter feastogether-intranet-client lint",
     "format": "pnpm --filter feastogether-intranet-server format",
-    "install:all": "pnpm install"
+    "install:all": "pnpm install",
+    "prepare": "node .github/scripts/install-git-hooks.cjs",
+    "hooks:install": "node .github/scripts/install-git-hooks.cjs",
+    "verify:commit": "bash .github/scripts/verify-local.sh commit",
+    "verify:push": "bash .github/scripts/verify-local.sh push",
+    "test:deploy": "bash .github/scripts/deploy-uat.test.sh"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

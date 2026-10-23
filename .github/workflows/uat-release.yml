@@ -1,0 +1,63 @@
+name: 電子簽 UAT 部署
+
+on:
+  push:
+    branches: [uat]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: intranet-uat
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/uat'
+    environment: uat
+    runs-on: [self-hosted, linux, x64, intranet-uat]
+    timeout-minutes: 60
+    env:
+      TARGET_SHA: ${{ github.sha }}
+      DOCKER_CONFIG: ${{ runner.temp }}/intranet-docker-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: images
+        name: 依序建置並推送映像
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          for component in server client; do
+            repository="ghcr.io/${owner}/feastogether-intranet-${component}"
+            image="${repository}:${TARGET_SHA}"
+            docker build --build-arg API_PROXY_TARGET=http://server:3000 \
+              --build-arg NEXT_PUBLIC_API_BASE_URL=/api \
+              -f "${component}/Dockerfile" -t "$image" .
+            docker push "$image"
+            docker pull "$image"
+            digest=$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')
+            [[ "$digest" == "${repository}@sha256:"* ]]
+            echo "${component}_image=$digest" >> "$GITHUB_OUTPUT"
+          done
+      - name: 備份、migration、部署與驗證
+        env:
+          CLIENT_IMAGE: ${{ steps.images.outputs.client_image }}
+          SERVER_IMAGE: ${{ steps.images.outputs.server_image }}
+        run: bash .github/scripts/deploy-uat.sh
+      - name: 部署摘要
+        if: always()
+        env:
+          RELEASE_RESULT: ${{ job.status }}
+        run: |
+          printf '版本：`%s`\n\n結果：%s\n' "$TARGET_SHA" "$RELEASE_RESULT" >> "$GITHUB_STEP_SUMMARY"

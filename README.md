@@ -67,3 +67,7 @@ client 請求 `/api/*` 時，`client/next.config.ts` 會代理到 `API_PROXY_TAR
 OAuth 後端入口保留供後續串接，啟用時須完整設定 `OAUTH_*` 並向上游註冊回呼網址。登入頁、OAuth 前端回呼、session 過期導向及電子簽畫面 API 串接均由前端工程師另行實作，本 PR 不包含這些前端變更。
 
 Swagger 的前端用途為串接參考，不代表目前 client 已完成對應功能。
+
+## UAT CI/CD
+
+電子簽 UAT 使用本機 Git hooks 檢查品質，`uat` 更新後由專用 self-hosted runner 建置 GHCR images 並以 root `docker-compose.uat.yml` 部署。首次 runner 設定、既有 volumes 接管、migration 備份與故障處理請見 [UAT CI/CD 操作文件](docs/deployment/uat-cicd.md)。

@@ -1,0 +1,106 @@
+# 沿用現有 EC2 的專案、網路與 volumes；不要使用 down -v。
+name: intranet-uat
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend: &backend
+  image: ${SERVER_IMAGE:?必須提供 SERVER_IMAGE}
+  restart: unless-stopped
+  env_file:
+    - /home/feasteng/deploy/intranet-uat/server.env
+  environment:
+    NODE_ENV: staging
+    PORT: "3000"
+    DEVMOD: "false"
+    DB_MYSQL_HOST: mysql
+    DB_MYSQL_PORT: "3306"
+    DB_MYSQL_USER: intranet_app
+    DB_MYSQL_PASS: ${DB_MYSQL_PASS:?缺少既有資料庫密碼}
+    DB_MYSQL_DB: feastogether_intranet_uat
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    REDIS_PASSWORD: ""
+    ESIGN_STORAGE_DRIVER: local
+    ESIGN_STORAGE_ROOT: /data/esign
+  volumes:
+    - esign-data:/data/esign
+  logging: *logging
+
+services:
+  client:
+    image: ${CLIENT_IMAGE:?必須提供 CLIENT_IMAGE}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      server:
+        condition: service_healthy
+    logging: *logging
+
+  server:
+    <<: *backend
+    command: ["node", "dist/main.js"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  worker:
+    <<: *backend
+    command: ["node", "dist/worker.js"]
+    healthcheck:
+      disable: true
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: ["--default-time-zone=+00:00"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?缺少既有 root 密碼}
+      MYSQL_DATABASE: feastogether_intranet_uat
+      MYSQL_USER: intranet_app
+      MYSQL_PASSWORD: ${DB_MYSQL_PASS:?缺少既有資料庫密碼}
+      TZ: UTC
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", 'MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP -h 127.0.0.1 -u "$${MYSQL_USER}" "$${MYSQL_DATABASE}" -e "SELECT 1" >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+volumes:
+  mysql-data:
+    external: true
+    name: intranet-uat_mysql-data
+  redis-data:
+    external: true
+    name: intranet-uat_redis-data
+  esign-data:
+    external: true
+    name: intranet-uat_esign-data

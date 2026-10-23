@@ -10,6 +10,7 @@ RUN corepack enable
 
 # 先複製 workspace manifest 與唯一 lockfile（利用 layer 快取）
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY .github/scripts/install-git-hooks.cjs ./.github/scripts/install-git-hooks.cjs
 COPY client/package.json ./client/package.json
 COPY server/package.json ./server/package.json
 RUN pnpm install --frozen-lockfile --filter feastogether-intranet-client...

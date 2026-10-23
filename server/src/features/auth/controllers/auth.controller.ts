@@ -200,7 +200,7 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     const token = cookieTokenFromMap(request.cookies, AUTH_COOKIE_NAME);
-    clearAuthCookie(reply);
+    clearAuthCookie(reply, this.config);
     return this.authService.logout(token);
   }
 

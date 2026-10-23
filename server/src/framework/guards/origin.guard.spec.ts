@@ -88,7 +88,33 @@ describe('OriginGuard', () => {
     ).toThrow();
   });
 
-  it('未帶 Origin → 放行（SameSite=Lax 為主防線）', () => {
+  it('Origin 在允許清單但 Sec-Fetch-Site 為跨站或同站不同源 → 拒絕（SameSite=None cookie 會隨跨站請求送出）', () => {
+    const guard = makeGuard(
+      'http://localhost:3000',
+      'https://esign.example.com,http://portal.example.com',
+    );
+
+    for (const fetchSite of ['cross-site', 'same-site']) {
+      expect(() =>
+        guard.canActivate(
+          contextWithOrigin('http://portal.example.com', '/api/auth/session', {
+            'sec-fetch-site': fetchSite,
+          }),
+        ),
+      ).toThrow(
+        expect.objectContaining({ code: AppErrorCode.CSRF_ORIGIN_REJECTED }),
+      );
+    }
+    expect(
+      guard.canActivate(
+        contextWithOrigin('https://esign.example.com', '/api/auth/session', {
+          'sec-fetch-site': 'same-origin',
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('未帶 Origin → 放行（瀏覽器的跨站異動請求一律帶 Origin）', () => {
     expect(
       makeGuard('http://localhost:3000').canActivate(contextWithOrigin()),
     ).toBe(true);

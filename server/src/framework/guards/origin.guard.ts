@@ -11,8 +11,10 @@ import { getRequestPath } from '#app/framework/http/request.context';
  * 瀏覽器對跨站 POST 一律附 `Origin`；有帶就必須 exact-match 允許清單，不符即 403。
  * 允許清單讀 `AUTH_TRUSTED_ORIGINS`（逗號分隔），未設時退回 `CORS_ORIGIN`。
  * 兩者皆空即拒絕所有帶 Origin 的請求（fail closed）。
- * 未帶 Origin 的請求（同站 GET 導航、非瀏覽器工具）放行——主要防線仍是
- * SameSite=Lax cookie，本 guard 是縱深防禦而非唯一依據。
+ * 未帶 Origin 的請求（同站 GET 導航、非瀏覽器工具）放行。
+ * HTTPS 環境的登入 cookie 為 SameSite=None（主平台 iframe 嵌入需要，見 auth-cookie.ts），
+ * 跨站請求也會帶上 cookie，因此瀏覽器以 `Sec-Fetch-Site` 標明非同源時一律拒絕——
+ * 包含為了 iframe 嵌入而列入允許清單的主平台；電子簽前端呼叫 API 一律同源（/api）。
  */
 @Injectable()
 export class OriginGuard implements CanActivate {
@@ -20,6 +22,10 @@ export class OriginGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<FastifyRequest>();
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite === 'cross-site' || fetchSite === 'same-site') {
+      throw new AppException(...AppErrors.CSRF_ORIGIN_REJECTED);
+    }
     const origin = req.headers.origin;
     if (origin === undefined) {
       if (this.requiresExplicitOrigin(req)) {

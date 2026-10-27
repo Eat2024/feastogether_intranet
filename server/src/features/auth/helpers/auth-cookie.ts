@@ -25,6 +25,16 @@ function baseCookieOptions(config: ConfigService): CookieSerializeOptions {
   };
 }
 
+/**
+ * 登入 cookie 的屬性。主平台（http 入口網）以 iframe 嵌入電子簽時，依 schemeful same-site 屬跨站，
+ * SameSite=Lax 的 cookie 在 iframe 內寫不進也帶不出去，因此 HTTPS 環境改用 SameSite=None（須搭配 Secure）；
+ * 跨站的異動請求改由 OriginGuard 擋下。本機 http 開發不能用 None，維持 Lax。
+ */
+function authCookieOptions(config: ConfigService): CookieSerializeOptions {
+  const options = baseCookieOptions(config);
+  return options.secure ? { ...options, sameSite: 'none' } : options;
+}
+
 /** 寫入 WebView 本地 session cookie；固定 8 小時且不滑動。 */
 export function setAuthCookie(
   reply: FastifyReply,
@@ -32,7 +42,7 @@ export function setAuthCookie(
   token: string,
 ): void {
   reply.setCookie(AUTH_COOKIE_NAME, token, {
-    ...baseCookieOptions(config),
+    ...authCookieOptions(config),
     maxAge: WEBVIEW_SESSION_TTL_SECONDS,
   });
 }
@@ -49,9 +59,12 @@ export function setOauthTxCookie(
   });
 }
 
-/** 清除登入 cookie（登出、改密碼、登入失敗共用；屬性須與寫入時一致）。 */
-export function clearAuthCookie(reply: FastifyReply): void {
-  reply.clearCookie(AUTH_COOKIE_NAME, { path: '/' });
+/** 清除登入 cookie（登出、改密碼、登入失敗共用；屬性須與寫入時一致，iframe 內的跨站回應才清得掉）。 */
+export function clearAuthCookie(
+  reply: FastifyReply,
+  config: ConfigService,
+): void {
+  reply.clearCookie(AUTH_COOKIE_NAME, authCookieOptions(config));
 }
 
 /** 清除交易 cookie（回呼完成或登出時；使尚未完成的登入交易無法再回呼）。 */

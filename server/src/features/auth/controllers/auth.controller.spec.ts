@@ -127,6 +127,9 @@ describe('AuthController WebView boundary', () => {
       ),
     ).resolves.toEqual({ localLogout: 'completed' });
     expect(response.clearCookie).toHaveBeenCalledWith(AUTH_COOKIE_NAME, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
       path: '/',
     });
     expect(auth.logout).toHaveBeenCalledWith('a'.repeat(43));

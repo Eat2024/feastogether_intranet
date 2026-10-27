@@ -155,14 +155,16 @@ code=<opaque-one-time-code>
 HTTP/1.1 303 See Other
 Cache-Control: no-store
 Referrer-Policy: no-referrer
-Set-Cookie: FT_ESIGN_SESSION=<opaque>; Max-Age=28800; Path=/; HttpOnly; Secure; SameSite=Lax
+Set-Cookie: FT_ESIGN_SESSION=<opaque>; Max-Age=28800; Path=/; HttpOnly; Secure; SameSite=None
 Location: /
 ```
 
 - Code 最長 60 秒，只能由此 POST 成功消耗一次。
 - Endpoint 不接受 JWT、員編、User ID 或任意 redirect URL。
 - Cookie 是 host-only，不設 `Domain`。
-- Production／staging 必須帶 `Secure`；本機 HTTP 測試可不帶。
+- Production／staging 必須帶 `Secure` 與 `SameSite=None`：主平台為 http 時，iframe 內的電子簽依 schemeful same-site 屬跨站，`SameSite=Lax` 會被瀏覽器擋下。本機 HTTP 測試不帶 `Secure`，維持 `SameSite=Lax`。
+- 因 cookie 會隨跨站請求送出，以 cookie 認證的異動端點由 `OriginGuard` 擋下 `Sec-Fetch-Site` 為 `cross-site`／`same-site` 或 Origin 不在允許清單的請求。
+- 瀏覽器封鎖第三方 cookie 時（例如 Chrome 無痕視窗的預設值）iframe 內仍無法建立 session，主平台會顯示錯誤。
 - 8 小時為固定壽命，不因活動滑動延長。
 - Application 與 reverse proxy access log 都不得記錄 request body。
 

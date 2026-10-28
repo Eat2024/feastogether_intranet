@@ -96,31 +96,85 @@ export class ExportJobRepository {
       order: { id: 'DESC' },
     });
   }
-  history(
-    q: { documentId?: number; cursor?: string; limit: number },
+  /** 依匯出時間、流水號由新到舊列出一頁紀錄，帶出文件、匯出員工與簽署人。 */
+  historyPage(
+    q: {
+      exportType: string;
+      documentId?: number;
+      offset: number;
+      limit: number;
+    },
     manager: EntityManager,
   ) {
+    return (
+      this.historyQuery(q.documentId, manager)
+        .andWhere('job.exportType = :exportType', { exportType: q.exportType })
+        // 不載入 ZIP 快照與已固定副本清單，單筆可達數千項。
+        .select([
+          'job.id',
+          'job.publicId',
+          'job.exportType',
+          'job.documentId',
+          'job.createdByUserId',
+          'job.signerId',
+          'job.conditionsJson',
+          'job.status',
+          'job.scopeDescription',
+          'job.recordCount',
+          'job.snapshotAt',
+          'job.processedCount',
+          'job.waitingCount',
+          'job.completedAt',
+          'job.expiresAt',
+          'job.failureCode',
+          'job.createdAt',
+          'document.id',
+          'document.title',
+          'document.docNumber',
+          'exporter.id',
+          'exporter.name',
+          'exporter.empid',
+          'signer.id',
+          'signer.publicId',
+          'signer.nameSnapshot',
+          'signer.email',
+        ])
+        .leftJoin('job.createdByUser', 'exporter')
+        .leftJoin('job.signer', 'signer')
+        .orderBy('job.createdAt', 'DESC')
+        .addOrderBy('job.id', 'DESC')
+        .offset(q.offset)
+        .limit(q.limit)
+        .getMany()
+    );
+  }
+
+  /** 依匯出類型分組計數，條件與 historyPage 相同。 */
+  async historyCounts(
+    exportTypes: string[],
+    documentId: number | undefined,
+    manager: EntityManager,
+  ) {
+    const rows = await this.historyQuery(documentId, manager)
+      .andWhere('job.exportType IN (:...exportTypes)', { exportTypes })
+      .select('job.exportType', 'exportType')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('job.exportType')
+      .getRawMany<{ exportType: string; count: number | string }>();
+    return new Map(rows.map((row) => [row.exportType, Number(row.count)]));
+  }
+
+  /** 歷史紀錄共同條件：文件未刪除；ZIP 只計有快照的匯出工作。 */
+  private historyQuery(documentId: number | undefined, manager: EntityManager) {
     const query = manager
       .createQueryBuilder(EsignExportJob, 'job')
-      .innerJoin(
-        EsignDocument,
-        'document',
-        'document.id=job.documentId AND document.deletedAt IS NULL',
-      )
-      .leftJoinAndSelect('job.createdByUser', 'creator')
+      .innerJoin('job.document', 'document', 'document.deletedAt IS NULL')
       .where(
-        "job.snapshotJson IS NOT NULL AND job.exportType = 'signed_copies_zip'",
+        "(job.exportType <> 'signed_copies_zip' OR job.snapshotJson IS NOT NULL)",
       );
-    if (q.documentId)
-      query.andWhere('job.documentId=:documentId', {
-        documentId: q.documentId,
-      });
-    if (q.cursor)
-      query.andWhere('job.id < :cursor', { cursor: Number(q.cursor) });
-    return query
-      .orderBy('job.id', 'DESC')
-      .take(q.limit + 1)
-      .getMany();
+    if (documentId)
+      query.andWhere('job.documentId = :documentId', { documentId });
+    return query;
   }
   signedCount(documentId: number, manager: EntityManager) {
     return manager

@@ -78,3 +78,31 @@ pnpm -C server test:e2e
 - 「最新 migration 無 drift」案例同時驗證 entity 與 DB 一致。
 
 `schema.sql` 由隔離庫重新匯出後，可載入空的測試庫（13 張表）。
+
+### 02 查詢（T007–T013，2026-10-28）
+
+環境：Node v26.4.0、pnpm 11.9.0。基準為整合分支 `feat/015-export-history`（e7ed918），實作分支 `impl/015-02`。
+
+測試隔離：worktree 的 `server/.env.test` 改為 `DB_MYSQL_DB=feastogether_intranet_test1502`、`REDIS_DB=12`；`test:schema` 加上 33 字元亂數後仍在 MySQL 64 字元上限內。
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors（265 個既有 warnings，本次變更檔案 0 個） |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e --testRegex '(esign-export-history\|esign-export\|esign-document-delivery-security\|api-coverage)\.e2e-spec\.ts$'` | 4 suites／55 tests 通過：`esign-export-history` 14、`esign-export`（ZIP，不變）4、`esign-document-delivery-security` 3、`api-coverage` 34 |
+| `pnpm -C server test:e2e`（全套，額外回歸） | 28 suites／255 tests 通過（01 合併後為 27／240；新增本檔 14 個與 api-coverage 1 個） |
+
+驗收矩陣 #5–#8 與 #18 的 `GET /api/esign/exports` 已由 `esign-export-history`、`api-coverage` 自動化：
+- 400 `INVALID_REQUEST`：缺 `type`、`type=sheet`、`page=0`、`pageSize=101`、`pageSize=0`、`documentId=abc`、`documentId=0`、未知參數。
+- 23 筆 `excel`（每兩筆同一匯出時間，且越晚寫入的時間越早）以 `pageSize=10` 翻頁得 10／10／3／0，順序依匯出時間、流水號由新到舊，`total=23`。
+- 帶 `documentId` 時 `typeTotals` 與逐頁合計相同；沒有紀錄的類型回 0；不帶 `documentId` 時與查詢前的基準相差本次寫入的筆數（測試庫不重建，以差值驗證）。
+- 非建立人、非匯出人的員工看得到全部紀錄；未登入與外部存取 cookie（Redis 實際核發的憑證）回 401。
+- `exportedBy`：員工取自員工資料（姓名、員工編號），本人下載的內部簽署人同樣取員工資料而非簽署人快照，外部簽署人本人下載為姓名＋Email。
+- `zip` 只列有快照的匯出工作（沒有快照的舊 ZIP 列較新也不會出現），欄位與 ZIP 工作狀態相同，含 `files[].downloadPath`，不含 `requesterName`。
+- Excel／PDF／ZIP 合成紀錄以 entity manager 直接寫入，`created_at` 以 SQL 固定；寫入 API 在 03、04 票單。
+
+變異檢查：暫時拿掉 ZIP 快照條件、排序改為只依流水號、內部員工匯出人改取簽署人快照，新 e2e 有 5 個案例轉紅；還原後全綠。
+
+Swagger：以 build 產物產生文件確認 `GET /api/esign/history/export` 的參數（`type` 必填 enum；`page`／`pageSize` 選填，預設 1／10，範圍 1–Number.MAX_SAFE_INTEGER／1–100；`documentId` pattern）、200／400／401 與回應 schema；`/api/esign/exports` 不在文件中。

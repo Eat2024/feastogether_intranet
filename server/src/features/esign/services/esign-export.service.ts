@@ -227,24 +227,6 @@ export class EsignExportService {
     };
   }
 
-  async history(q: ExportQueryDto) {
-    const rows = await this.jobs.history(
-      { ...q, documentId: q.documentId ? Number(q.documentId) : undefined },
-      this.mysql.getManager(),
-    );
-    const selected = rows.slice(0, q.limit);
-    return {
-      items: await Promise.all(
-        selected.map(async (j) => ({
-          ...(await this.view(j)),
-          requesterName: j.createdByUser?.name ?? '',
-        })),
-      ),
-      nextCursor:
-        rows.length > q.limit ? String(selected[selected.length - 1].id) : null,
-    };
-  }
-
   async view(job: EsignExportJob) {
     const expired = job.expiresAt && job.expiresAt <= new Date();
     const files = await this.jobs.files(job.id, this.mysql.getManager());

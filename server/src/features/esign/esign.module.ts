@@ -1,5 +1,7 @@
 import { ExportsController } from './controllers/exports.controller';
 import { EsignExportService } from './services/esign-export.service';
+import { ExportHistoryController } from './controllers/export-history.controller';
+import { EsignExportHistoryService } from './services/esign-export-history.service';
 import { NotificationBatchesController } from './controllers/notification-batches.controller';
 import { EsignReminderService } from './services/esign-reminder.service';
 import { EsignExpiryService } from './services/esign-expiry.service';
@@ -46,6 +48,7 @@ import { EsignEmployeeEmailService } from './services/esign-employee-email.servi
 const esignServices = [
   EsignEmployeeEmailService,
   EsignExportService,
+  EsignExportHistoryService,
   EsignReminderService,
   EsignRejectionService,
   EsignExpiryService,
@@ -87,6 +90,7 @@ const esignServices = [
   providers: esignServices,
   controllers: [
     ExportsController,
+    ExportHistoryController,
     NotificationBatchesController,
     DocumentsController,
     SignerCandidatesController,

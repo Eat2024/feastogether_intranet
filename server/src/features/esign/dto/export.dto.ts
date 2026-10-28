@@ -17,5 +17,4 @@ export class ExportQueryDto {
   @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 50;
   @IsOptional() @IsString() @MaxLength(100) q?: string;
   @IsOptional() @IsString() @MaxLength(20) status?: string;
-  @IsOptional() @Matches(/^[1-9][0-9]{0,14}$/) documentId?: string;
 }

@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 員工閱讀與簽署。
 
-**Status:** claimed
+**Status:** resolved
 
 **Tasks coverage:** T017/T022；T012/T013/T018/T019/T021/T023 的拒簽、副本與完成頁部分。
 
@@ -23,3 +23,8 @@
 - 新增 internal-portal-completion suite 並註冊一般／security configs。隔離 DB feastogether_intranet_test_spec016_t05、儲存 /tmp/feastogether-spec016-t05。真實 worker 產生 PDF，驗證拒簽併發、allowReject／時間／狀態、本人副本、過期後 bytes 不變、公共驗證 internal_session、跨人、未簽與 hash 損毀。與 internal-portal-signing／security-core-esign-flow 共 3 suites／27 tests 通過。
 - Chrome CDP 合成 API/PDF（/tmp/ft05-browser.mjs）：桌面1280×900 processing→ready 後停止 GET、POST open 恰一次、下載 PDF bytes 相同；窄版嵌入390×844 failed 停止、離頁停止、無水平溢出、拒簽原因與 503 重試 UUID 相同、結果與列表更新。公開驗證頁顯示新驗證方式。沒有 Runtime exception；截圖 /tmp/ft05-ready.png。
 - 上述 browser fixtures 不代表正式 Portal 整合；舊內部 OTP 測試 fixture 由 ticket09 遷移，未刪除既有安全斷言。等待 merger 整合後標 resolved。
+
+### 整合紀錄
+
+- `impl/016-05` 的 `8796109` 已 fast-forward 整合至 `feat/016-internal-portal-signing`；拒簽、副本 API／實際 PDF 產製及桌面／窄螢幕 fixture 驗收完成。
+- 09 仍等待 07 催簽與補簽整合；正式 Portal 完整旅程未在本票宣稱通過。

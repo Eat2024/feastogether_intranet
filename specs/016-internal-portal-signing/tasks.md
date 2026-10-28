@@ -40,17 +40,17 @@
 
 **獨立驗收**：合成員工 session 可直接操作本人任務，跨人／外部指派拒絕；重送只有一筆證據，已簽者下載本人副本。可不依賴 Portal UI 測 API，但完整旅程仍依 US1。對應 FR-004～008／011、驗收 2／3／5／6／7／9／10／13。
 
-- [ ] T012 [P] [US2] 在 `server/src/features/esign/services/esign-signing.service.spec.ts`、`esign-rejection.service.spec.ts`（同目錄）補內部 principal、兩處重送、併發及驗證方式案例；保留外部回歸，驗證「`pending → signed` 或 `pending → rejected` 在交易鎖內完成」與「新 requestId 不可再次完成」。
-- [ ] T013 [P] [US2] 新增 `server/test/internal-portal-signing.e2e-spec.ts`，加入 `server/test/jest-e2e.json` 及 `server/test/jest-e2e-security.json` 適用清單，先寫 401／404、本人 source/open/sign/reject/copy、狀態／期限／聲明／PNG／hash 竄改與去重案例；測試 DB 名稱須以 `feastogether_intranet_test` 開頭。
+- [x] T012 [P] [US2] 在 `server/src/features/esign/services/esign-signing.service.spec.ts`、`esign-rejection.service.spec.ts`（同目錄）補內部 principal、兩處重送、併發及驗證方式案例；保留外部回歸，驗證「`pending → signed` 或 `pending → rejected` 在交易鎖內完成」與「新 requestId 不可再次完成」。
+- [x] T013 [P] [US2] 新增 `server/test/internal-portal-signing.e2e-spec.ts`，加入 `server/test/jest-e2e.json` 及 `server/test/jest-e2e-security.json` 適用清單，先寫 401／404、本人 source/open/sign/reject/copy、狀態／期限／聲明／PNG／hash 竄改與去重案例；測試 DB 名稱須以 `feastogether_intranet_test` 開頭。
 - [x] T014 [US2] 修改 `server/src/features/esign/services/esign-signing-task.service.ts` 的 open/source，移除本人 OTP 阻擋並保留身分、草稿／刪除、期間與原檔完整性；POST 記開啟事件，GET 無寫入，列表仍只含本人資料。
 - [x] T015 [US2] 修改 `server/src/features/esign/services/esign-signing.service.ts` 的初始檢查、assertPrincipal、交易鎖內及兩個 repeated 分支；以本人 session 而非 invitation generation 授權，保留鎖定後的期間、欄位、PNG、source／payload hash 與唯一索引驗證。
 - [x] T016 [US2] 在 `server/src/features/esign/services/esign-signing.service.ts` 依 principal 寫 `authenticationMethod`：「新內部紀錄 `internal_session`，外部保留 `email_invitation`」；event ID 沿「`internal:<signerPublicId>:<requestId>`／`external:<signerPublicId>:<requestId>`」，不存 session token、不回填歷史 `esign_signature_records` 或 PDF／manifest。
-- [ ] T017 [US2] 修改 `server/src/features/esign/services/esign-rejection.service.ts` 與 `esign-completion-access.service.ts` 的本人入口，保留 allowReject、本人已簽資格與 personalCopy 完整性；副本沿「`pending → processing → ready|failed`」，到期後本人可讀、不授權重簽。
-- [ ] T018 [US2] 更新 `server/src/features/esign/controllers/signing-tasks.controller.ts` 契約／Swagger，保留 OriginGuard、首次 201／重送 200、PDF cache/frame headers；`SignatureSubmissionDto` 沿 requestId UUIDv4、accepted=true、1–200 筆簽名及每 PNG data URL 最長 400,000，拒簽 reason trim 後最多 200 code points，不新增身分輸入或單筆 GET。
-- [ ] T019 [US2] 在 `client/src/api/endpoints.ts`、`types/signingTasks.ts`、`requests/signingTasks.ts`、`queries/signingTasks.ts` 及各 barrel／query-key/options 補本人 open/sign/reject 與原檔／副本 URL；沿同源 cookie、既有 GET 列表及 mutation 失敗規則。
+- [x] T017 [US2] 修改 `server/src/features/esign/services/esign-rejection.service.ts` 與 `esign-completion-access.service.ts` 的本人入口，保留 allowReject、本人已簽資格與 personalCopy 完整性；副本沿「`pending → processing → ready|failed`」，到期後本人可讀、不授權重簽。
+- [x] T018 [US2] 更新 `server/src/features/esign/controllers/signing-tasks.controller.ts` 契約／Swagger，保留 OriginGuard、首次 201／重送 200、PDF cache/frame headers；`SignatureSubmissionDto` 沿 requestId UUIDv4、accepted=true、1–200 筆簽名及每 PNG data URL 最長 400,000，拒簽 reason trim 後最多 200 code points，不新增身分輸入或單筆 GET。
+- [x] T019 [US2] 在 `client/src/api/endpoints.ts`、`types/signingTasks.ts`、`requests/signingTasks.ts`、`queries/signingTasks.ts` 及各 barrel／query-key/options 補本人 open/sign/reject 與原檔／副本 URL；沿同源 cookie、既有 GET 列表及 mutation 失敗規則。
 - [x] T020 [US2] 從 `client/src/features/external-signing/ExternalSignForm.tsx`、`taskForm.ts` 擷取實際重複的表單／轉換至 `client/src/features/my-signature/sign/SigningForm.tsx` 與 `signingTaskForm.ts`（新增）；共用現有 TermsStep、DocumentViewer、SignaturePadDialog、RejectDialog，內外容器各自注入提交 callback，不帶外部 cookie API 或 Email 文案進內部。
-- [ ] T021 [US2] 改寫 `client/src/features/signing-tasks/SigningTaskView.tsx`：取代邀請信提示，進入 POST open、本人閱讀／同意／簽署／拒簽；換 signer 重置狀態、重試沿用 requestId、pending 防連點、401 提示 Portal 重登，不自動提交未完成簽名。
-- [ ] T022 [US2] 在 `client/src/features/signing-tasks/SigningTaskView.tsx` 接完成結果、GET 列表副本輪詢及 completed-file 下載；ready/failed 停止輪詢，卸載清理，成功 invalidate 本人列表，保留公開驗證連結，不再要求回 Email，不用 POST open 輪詢。
+- [x] T021 [US2] 改寫 `client/src/features/signing-tasks/SigningTaskView.tsx`：取代邀請信提示，進入 POST open、本人閱讀／同意／簽署／拒簽；換 signer 重置狀態、重試沿用 requestId、pending 防連點、401 提示 Portal 重登，不自動提交未完成簽名。
+- [x] T022 [US2] 在 `client/src/features/signing-tasks/SigningTaskView.tsx` 接完成結果、GET 列表副本輪詢及 completed-file 下載；ready/failed 停止輪詢，卸載清理，成功 invalidate 本人列表，保留公開驗證連結，不再要求回 Email，不用 POST open 輪詢。
 - [ ] T023 [US2] 執行 T012／T013 與外部表單回歸，依 `specs/016-internal-portal-signing/quickstart.md` 記錄桌面／窄螢幕、鍵盤、session 失效、切換文件及副本流程；確認任一正式員工 session 同等授權，未實作 Spec 014 不宣稱測過。
 
 ## Phase 5：US3 內部 BCC 群寄與無 Email 員工（P1）
@@ -136,3 +136,7 @@ Ticket 06 已整合（`e3ca0fa`／實作 `495abb0`），T003、T027、T028 完�
 ## 本人閱讀與簽署整合進度（2026-10-28）
 
 Ticket 04 已整合（`69ee7cc`／實作 `f239ed4`），T014–T016 完成。T012／T013／T018／T019／T021／T023 的閱讀、簽署、授權、重送及畫面部分已驗證；共用任務保留未勾選，等待 05 的拒簽／副本及 09 的舊入口安全回歸補齊。完整證據見 ticket 04。
+
+## 拒簽與本人副本整合進度（2026-10-28）
+
+Ticket 05 已整合（`8796109`），T017／T022 完成；04／05 已補齊 T012／T013／T018／T019／T021 的 service、API、本人畫面與拒簽／副本部分。T023 保留未勾選，正式 Portal／跨環境旅程仍待環境驗收；因取消內部 token 而失效的舊 fixture 由 09 遷移。完整本機證據見 ticket 05。

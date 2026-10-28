@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 015 — US1、FR-001～005、FR-011、FR-012；對應 T007–T013。
 
@@ -60,3 +60,24 @@
 - `EsignExportHistoryService.item(job, type)` 需要 `job.document`、`job.createdByUser`、`job.signer` 已載入（`historyPage` 的 select）。03 的 `recordExcel`、04 的 `recordPdf` 回傳 item 時，要以相同欄位重新讀取或自行帶入關聯。
 - `historyPage` 只選列出的欄位；新增 item 欄位時要一併加進 select。
 - 新 e2e 在 `describe('查詢紀錄')` 的 `beforeAll` 以 `baseline` 差值驗證不帶 `documentId` 的 `typeTotals`。03／04 新增的 describe 若在它之前寫入紀錄，不影響差值（基準在該 `beforeAll` 取得）；在它之後寫入也不影響已執行的案例。共用 fixture（員工、`docA`／`docB`、內部／外部簽署人、`insertRecord`、`history()`）在最外層。
+
+## 整合驗收紀錄（2026-10-28，`feat/015-export-history`）
+
+- 審查 `impl/015-02`（da379df）：
+  - 新路由只有 `GET /api/esign/history/export`，查詢路徑沒有寫入。
+  - API `type` 與 DB `export_type` 的對應只在 `EsignExportHistoryService` 的 `EXPORT_TYPE_COLUMN`；repository 的 `'signed_copies_zip'` 是既有的 ZIP 快照條件，不是 API 對應。
+  - `GET /api/esign/exports`、`EsignExportService.history()`、舊 cursor `ExportJobRepository.history()` 都已移除；api-coverage 驗證回 404。
+  - 回應形狀與 contract 相同（`items`、`page`、`pageSize`、`total`、`typeTotals`；`conditions` 只在 excel、`signerPublicId` 只在 pdf、zip 合併既有工作欄位且不含 `requesterName`）。
+  - 沒有修改 client。
+- 合併：`git merge --no-ff impl/015-02`，merge commit `c4f0768e8ef5c0f52897fbec58f05d8896f0f92e`，無衝突。
+- 在合併後的工作樹以環境變數 `DB_MYSQL_DB=feastogether_intranet_test15m`、`REDIS_DB=10` 隔離執行：
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors；265 warnings 都不在本票變更的檔案 |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e --testRegex '(esign-export-history\|esign-export\|esign-document-delivery-security\|api-coverage).e2e-spec.ts$'` | 4 suites／55 tests 通過 |
+
+狀態改為 `resolved`。

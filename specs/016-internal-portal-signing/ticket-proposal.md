@@ -1,6 +1,6 @@
-# Spec 016 ticket 拆分草稿
+# Spec 016 ticket 拆分方案
 
-狀態：待使用者確認拆分與依賴，尚未建立新的正式 tickets。
+狀態：使用者已指示依本方案執行 implement-spec；正式 tickets 02–10 已建立於 `.scratch/016-internal-portal-signing/issues/`。以下保留拆分與依賴依據，執行狀態以各 ticket 為準。
 
 依據：[spec](spec.md)、[plan](plan.md)、[tasks](tasks.md) 及 [contracts](contracts/portal-login.md)。既有 01 規劃票保留原狀，不覆寫、關閉或重新編號。新增實作票預計從 02 起，各票正式建立時狀態為 ready-for-agent，只有 blockers 全部 resolved 才開始。規劃文件已存在，01 的歷史與待環境驗收項目不作為所有實作票的人為阻擋。
 

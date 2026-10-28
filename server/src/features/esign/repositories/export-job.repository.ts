@@ -18,6 +18,10 @@ export class ExportJobRepository {
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
+  /** 依紀錄 UUID 與類型取得單筆紀錄。 */
+  findRecord(publicId: string, exportType: string, manager: EntityManager) {
+    return manager.findOneBy(EsignExportJob, { publicId, exportType });
+  }
   byId(id: number, manager: EntityManager, lock = false) {
     return manager.findOne(EsignExportJob, {
       where: { id },

@@ -313,7 +313,7 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
         '/rejection',
         { signerPublicId: publicId, requestId: randomUUID() },
       ],
-      ['get', '/completed-file', {}],
+      ['post', '/completed-file/downloads', {}],
     ] as const) {
       const response = await request(ctx.server)
         [method]('/api/external-signing-task' + suffix)

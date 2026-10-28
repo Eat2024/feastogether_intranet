@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import type { EntityManager } from 'typeorm';
 import { AuthService } from '#app/features/auth/services/auth.service';
@@ -8,9 +9,16 @@ import { EsignDocument } from '#app/features/esign/entities/esign-document.entit
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
 import { EsignExportJob } from '#app/features/esign/entities/esign-export-job.entity';
 import { EsignFileObject } from '#app/features/esign/entities/esign-file-object.entity';
+import { EsignSignatureRecord } from '#app/features/esign/entities/esign-signature-record.entity';
+import { ExportJobRepository } from '#app/features/esign/repositories/export-job.repository';
+import { canonicalSha256 } from '#app/features/esign/services/esign-audit.service';
 import { ExternalAccessCredentialService } from '#app/features/esign/services/external-access-credential.service';
 import { EXTERNAL_ACCESS_COOKIE } from '#app/features/esign/helpers/external-signature-cookie';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import {
+  PRIVATE_FILE_STORAGE,
+  type PrivateFileStorage,
+} from '#app/infrastructure/file-storage/private-file-storage.port';
 import { apiData, apiError } from './api-response.helper';
 import {
   closeSecurityE2eApp,
@@ -468,6 +476,515 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         },
       ]);
       expect(page.items[0]).not.toHaveProperty('requesterName');
+    });
+  });
+
+  describe('單人 PDF 下載紀錄', () => {
+    const origin = 'http://localhost:3000';
+    interface SignedCopy {
+      signer: EsignSigner;
+      bytes: Buffer;
+    }
+    let pdfDoc: EsignDocument;
+    let internalCopy: SignedCopy;
+    let externalCopy: SignedCopy;
+    let pendingInternal: EsignSigner;
+    let pendingExternal: EsignSigner;
+    /** 重新下載用的既有紀錄：可下載的 pdf、副本未產生的 pdf，以及其他類型。 */
+    let records: Record<'pdf' | 'pendingPdf' | 'excel' | 'zip', EsignExportJob>;
+    let creatorCookie: string;
+
+    beforeAll(async () => {
+      creatorCookie = await employeeCookie(creator);
+      const payload = { synthetic: 'spec015-pdf-download' };
+      pdfDoc = await manager.save(
+        EsignDocument,
+        manager.create(EsignDocument, {
+          docNumber: randomUUID(),
+          title: '合成下載文件',
+          status: 'active',
+          createdByUserId: creator.id,
+          signStartAt: new Date(Date.now() - 86_400_000),
+          signEndAt: new Date(Date.now() + 86_400_000),
+          signingPayloadJson: payload,
+          signingPayloadSha256: canonicalSha256(payload),
+        }),
+      );
+      internalCopy = await signedCopy({
+        signerType: 'user',
+        userId: internalUser.id,
+        empidSnapshot: internalUser.empid,
+        nameSnapshot: '內部本人',
+        sortOrder: 0,
+      });
+      externalCopy = await signedCopy({
+        signerType: 'email',
+        email: `copy-${randomBytes(4).toString('hex')}@example.test`,
+        nameSnapshot: '外部本人',
+        invitationTokenSha256: randomBytes(32).toString('hex'),
+        sortOrder: 1,
+      });
+      const pending = (fields: Partial<EsignSigner>) =>
+        manager.save(
+          EsignSigner,
+          manager.create(EsignSigner, {
+            publicId: randomUUID(),
+            documentId: pdfDoc.id,
+            status: 'pending',
+            ...fields,
+          }),
+        );
+      pendingInternal = await pending({
+        signerType: 'user',
+        userId: exporter.id,
+        empidSnapshot: exporter.empid,
+        nameSnapshot: '待簽員工',
+        sortOrder: 2,
+      });
+      pendingExternal = await pending({
+        signerType: 'email',
+        email: `pending-${randomBytes(4).toString('hex')}@example.test`,
+        nameSnapshot: '待簽外部',
+        invitationTokenSha256: randomBytes(32).toString('hex'),
+        invitationExpiresAt: new Date(Date.now() + 86_400_000),
+        sortOrder: 3,
+      });
+      const past = new Date(Date.now() - 3_600_000);
+      const record = (fields: Partial<EsignExportJob>) =>
+        insertRecord(
+          {
+            documentId: pdfDoc.id,
+            createdByUserId: creator.id,
+            scopeDescription: '合成紀錄',
+            recordCount: 1,
+            ...fields,
+          },
+          past,
+        );
+      records = {
+        pdf: await record({
+          exportType: 'pdf',
+          signerId: internalCopy.signer.id,
+        }),
+        pendingPdf: await record({
+          exportType: 'pdf',
+          signerId: pendingInternal.id,
+        }),
+        excel: await record({
+          exportType: 'excel',
+          conditionsJson: { statuses: [], depts: [], fields: ['name'] },
+        }),
+        zip: await record({ exportType: 'signed_copies_zip' }),
+      };
+    });
+
+    /** 已簽且副本已產製的簽署人：證據與檔案摘要一致，走真實的副本讀取與完整性驗證。 */
+    async function signedCopy(fields: Partial<EsignSigner>) {
+      const signedAt = new Date();
+      const signer = await manager.save(
+        EsignSigner,
+        manager.create(EsignSigner, {
+          publicId: randomUUID(),
+          documentId: pdfDoc.id,
+          status: 'signed',
+          signedAt,
+          completionStatus: 'ready',
+          completionReadyAt: signedAt,
+          ...fields,
+        }),
+      );
+      const record = await manager.save(
+        EsignSignatureRecord,
+        manager.create(EsignSignatureRecord, {
+          signerId: signer.id,
+          documentSha256: 'a'.repeat(64),
+          signingPayloadSha256: pdfDoc.signingPayloadSha256,
+          consentVersion: 'test',
+          authenticationMethod: 'test',
+          authenticationEventId: randomUUID(),
+          signedAtUtc: signedAt,
+        }),
+      );
+      const pdf = await PDFDocument.create();
+      pdf.setTitle(signer.publicId);
+      pdf.addPage();
+      const bytes = Buffer.from(await pdf.save());
+      const stored = await ctx.app
+        .get<PrivateFileStorage>(PRIVATE_FILE_STORAGE)
+        .store({
+          directory: `documents/history-pdf-${pdfDoc.id}`,
+          extension: 'pdf',
+          mimeType: 'application/pdf',
+          bytes,
+        });
+      await manager.save(
+        EsignFileObject,
+        manager.create(EsignFileObject, {
+          ...stored,
+          signatureRecordId: record.id,
+          filePurpose: 'completed_pdf',
+          archiveStatus: 'active',
+        }),
+      );
+      return { signer, bytes };
+    }
+
+    function creatorPath(signer: EsignSigner) {
+      return `/api/esign/documents/${pdfDoc.id}/signers/${signer.publicId}/completed-file/downloads`;
+    }
+
+    function selfPath(signer: EsignSigner) {
+      return `/api/esign/signing-tasks/${signer.publicId}/completed-file/downloads`;
+    }
+
+    const externalPath = '/api/external-signing-task/completed-file/downloads';
+
+    function redownloadPath(recordId: string) {
+      return `${historyPath}/${recordId}/downloads`;
+    }
+
+    /** 以外部簽署人目前的邀請世代核發存取 cookie（等同通過 Email OTP）。 */
+    async function accessCookie(signer: EsignSigner) {
+      const credential = await ctx.app
+        .get(ExternalAccessCredentialService)
+        .issue(signer.id, signer.invitationTokenSha256!);
+      return `${EXTERNAL_ACCESS_COOKIE}=${credential}`;
+    }
+
+    function externalCopyCookie() {
+      return accessCookie(externalCopy.signer);
+    }
+
+    function download(path: string, cookie?: string) {
+      const pending = request(ctx.server).post(path).set('Origin', origin);
+      return cookie ? pending.set('Cookie', cookie) : pending;
+    }
+
+    function pdfHistory() {
+      return history(`type=pdf&documentId=${pdfDoc.id}`);
+    }
+
+    /** 與原本 GET 下載相同：附件檔名、不快取、nosniff，內容為已存的副本。 */
+    function expectCompletedPdf(response: request.Response, copy: SignedCopy) {
+      const fileName = `${pdfDoc.docNumber}_${pdfDoc.title}_${copy.signer.nameSnapshot}.pdf`;
+      expect(response.headers['content-type']).toMatch(/^application\/pdf/);
+      expect(response.headers['content-disposition']).toBe(
+        `attachment; filename="completed.pdf"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      );
+      expect(response.headers['cache-control']).toBe('private, no-store');
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(Buffer.compare(response.body as Buffer, copy.bytes)).toBe(0);
+    }
+
+    function pdfItem(copy: SignedCopy, exportedBy: HistoryItem['exportedBy']) {
+      const signer = copy.signer;
+      const label =
+        signer.signerType === 'email' ? signer.email : signer.empidSnapshot;
+      return {
+        id: expect.any(String) as string,
+        type: 'pdf',
+        document: documentView(pdfDoc),
+        exportedBy,
+        exportedAt: expect.any(String) as string,
+        scope: `${signer.nameSnapshot}（${label}）`,
+        count: 1,
+        signerPublicId: signer.publicId,
+      };
+    }
+
+    it('建立人下載簽署人副本：回傳原本的 PDF 與標頭，並新增匯出人為建立人的紀錄', async () => {
+      const before = (await pdfHistory()).total;
+      const response = await download(
+        creatorPath(externalCopy.signer),
+        creatorCookie,
+      ).expect(200);
+      expectCompletedPdf(response, externalCopy);
+      const page = await pdfHistory();
+      expect(page.total).toBe(before + 1);
+      expect(page.items[0]).toEqual(
+        pdfItem(externalCopy, {
+          name: creator.name,
+          employeeNo: creator.empid,
+          email: null,
+        }),
+      );
+    });
+
+    it('內部員工以員工 session 下載本人副本：匯出人與範圍都是該員工', async () => {
+      const response = await download(
+        selfPath(internalCopy.signer),
+        await employeeCookie(internalUser),
+      ).expect(200);
+      expectCompletedPdf(response, internalCopy);
+      expect((await pdfHistory()).items[0]).toEqual(
+        pdfItem(internalCopy, {
+          name: internalUser.name,
+          employeeNo: internalUser.empid,
+          email: null,
+        }),
+      );
+    });
+
+    it('外部簽署人以 Email OTP 存取下載本人副本：匯出人為姓名＋Email', async () => {
+      const response = await download(
+        externalPath,
+        await externalCopyCookie(),
+      ).expect(200);
+      expectCompletedPdf(response, externalCopy);
+      expect((await pdfHistory()).items[0]).toEqual(
+        pdfItem(externalCopy, {
+          name: externalCopy.signer.nameSnapshot,
+          employeeNo: null,
+          email: externalCopy.signer.email!,
+        }),
+      );
+    });
+
+    it('簽署人標籤超過 255 字時截斷', async () => {
+      const name = '長'.repeat(100);
+      const email = `${'a'.repeat(64)}@${'b'.repeat(60)}.${'c'.repeat(60)}.example.test`;
+      const longCopy = await signedCopy({
+        signerType: 'email',
+        email,
+        nameSnapshot: name,
+        invitationTokenSha256: randomBytes(32).toString('hex'),
+        sortOrder: 4,
+      });
+      const response = await download(
+        creatorPath(longCopy.signer),
+        creatorCookie,
+      ).expect(200);
+      expectCompletedPdf(response, longCopy);
+      const { scope } = (await pdfHistory()).items[0];
+      expect(scope).toHaveLength(255);
+      expect(scope).toBe(`${name}（${email}`.slice(0, 255));
+    });
+
+    it('任何員工都能從 pdf 紀錄重新下載：回目前的副本，新紀錄沿用文件、簽署人與範圍，匯出人為目前使用者', async () => {
+      const original = await insertRecord(
+        {
+          exportType: 'pdf',
+          documentId: pdfDoc.id,
+          createdByUserId: creator.id,
+          signerId: externalCopy.signer.id,
+          scopeDescription: '原紀錄的範圍說明',
+          recordCount: 1,
+        },
+        new Date(Date.now() - 60_000),
+      );
+      const before = (await pdfHistory()).total;
+      // 非建立人、也不是原匯出人。
+      const response = await download(
+        redownloadPath(original.publicId!),
+        await employeeCookie(exporter),
+      ).expect(200);
+      expectCompletedPdf(response, externalCopy);
+      const page = await pdfHistory();
+      expect(page.total).toBe(before + 1);
+      expect(page.items[0]).toEqual({
+        ...pdfItem(externalCopy, {
+          name: exporter.name,
+          employeeNo: exporter.empid,
+          email: null,
+        }),
+        scope: '原紀錄的範圍說明',
+      });
+      expect(page.items[0].id).not.toBe(original.publicId);
+    });
+
+    const withoutOrigin = (path: string, cookie: string) =>
+      request(ctx.server).post(path).set('Cookie', cookie);
+    it.each<{
+      name: string;
+      send: () => Promise<request.Response>;
+      status: number;
+      code: string;
+    }>([
+      {
+        name: '非建立人以建立人路由下載',
+        send: () => download(creatorPath(internalCopy.signer), viewerCookie),
+        status: 404,
+        code: 'ESIGN_RESOURCE_NOT_FOUND',
+      },
+      {
+        name: '建立人下載尚未簽署的簽署人',
+        send: () => download(creatorPath(pendingInternal), creatorCookie),
+        status: 409,
+        code: 'ESIGN_STATE_CONFLICT',
+      },
+      {
+        name: '其他員工以本人路由下載',
+        send: () => download(selfPath(internalCopy.signer), viewerCookie),
+        status: 404,
+        code: 'ESIGN_RESOURCE_NOT_FOUND',
+      },
+      {
+        name: '本人尚未簽署',
+        send: async () =>
+          download(selfPath(pendingInternal), await employeeCookie(exporter)),
+        status: 409,
+        code: 'ESIGN_STATE_CONFLICT',
+      },
+      {
+        name: '外部簽署人尚未簽署',
+        send: async () =>
+          download(externalPath, await accessCookie(pendingExternal)),
+        status: 401,
+        code: 'ESIGN_EXTERNAL_UNAUTHORIZED',
+      },
+      {
+        name: '外部存取已失效',
+        send: () => download(externalPath, externalCookie),
+        status: 401,
+        code: 'ESIGN_EXTERNAL_UNAUTHORIZED',
+      },
+      {
+        name: '未登入呼叫建立人路由',
+        send: () => download(creatorPath(internalCopy.signer)),
+        status: 401,
+        code: 'UNAUTHORIZED',
+      },
+      {
+        name: '未登入呼叫本人路由',
+        send: () => download(selfPath(internalCopy.signer)),
+        status: 401,
+        code: 'UNAUTHORIZED',
+      },
+      {
+        name: '外部存取 cookie 呼叫本人路由',
+        send: async () =>
+          download(selfPath(internalCopy.signer), await externalCopyCookie()),
+        status: 401,
+        code: 'UNAUTHORIZED',
+      },
+      {
+        name: '沒有外部存取 cookie',
+        send: () => download(externalPath),
+        status: 401,
+        code: 'ESIGN_EXTERNAL_UNAUTHORIZED',
+      },
+      {
+        name: '建立人路由缺 Origin',
+        send: () =>
+          withoutOrigin(creatorPath(internalCopy.signer), creatorCookie),
+        status: 403,
+        code: 'CSRF_ORIGIN_REJECTED',
+      },
+      {
+        name: '本人路由缺 Origin',
+        send: async () =>
+          withoutOrigin(
+            selfPath(internalCopy.signer),
+            await employeeCookie(internalUser),
+          ),
+        status: 403,
+        code: 'CSRF_ORIGIN_REJECTED',
+      },
+      {
+        name: '外部路由缺 Origin',
+        send: async () =>
+          withoutOrigin(externalPath, await externalCopyCookie()),
+        status: 403,
+        code: 'CSRF_ORIGIN_REJECTED',
+      },
+      ...(['excel', 'zip'] as const).map((type) => ({
+        name: `重新下載 ${type} 紀錄`,
+        send: () =>
+          download(redownloadPath(records[type].publicId!), viewerCookie),
+        status: 404,
+        code: 'ESIGN_RESOURCE_NOT_FOUND',
+      })),
+      {
+        name: '重新下載不存在的紀錄',
+        send: () => download(redownloadPath(randomUUID()), viewerCookie),
+        status: 404,
+        code: 'ESIGN_RESOURCE_NOT_FOUND',
+      },
+      {
+        name: '重新下載格式不符的紀錄 id',
+        send: () => download(redownloadPath('not-a-record'), viewerCookie),
+        status: 404,
+        code: 'ESIGN_RESOURCE_NOT_FOUND',
+      },
+      {
+        name: '重新下載副本未產生的 pdf 紀錄',
+        send: () =>
+          download(redownloadPath(records.pendingPdf.publicId!), viewerCookie),
+        status: 409,
+        code: 'ESIGN_STATE_CONFLICT',
+      },
+      {
+        name: '未登入重新下載',
+        send: () => download(redownloadPath(records.pdf.publicId!)),
+        status: 401,
+        code: 'UNAUTHORIZED',
+      },
+      {
+        name: '外部存取 cookie 重新下載',
+        send: async () =>
+          download(
+            redownloadPath(records.pdf.publicId!),
+            await externalCopyCookie(),
+          ),
+        status: 401,
+        code: 'UNAUTHORIZED',
+      },
+      {
+        name: '重新下載缺 Origin',
+        send: () =>
+          withoutOrigin(redownloadPath(records.pdf.publicId!), viewerCookie),
+        status: 403,
+        code: 'CSRF_ORIGIN_REJECTED',
+      },
+    ])(
+      '$name：回 $status $code，不新增紀錄',
+      async ({ send, status, code }) => {
+        const before = (await pdfHistory()).total;
+        const response = await send();
+        expect(response.status).toBe(status);
+        expect(apiError(response).code).toBe(code);
+        expect((await pdfHistory()).total).toBe(before);
+      },
+    );
+
+    it.each<{ name: string; send: () => Promise<request.Response> }>([
+      {
+        name: '建立人下載',
+        send: () => download(creatorPath(externalCopy.signer), creatorCookie),
+      },
+      {
+        name: '內部員工本人下載',
+        send: async () =>
+          download(
+            selfPath(internalCopy.signer),
+            await employeeCookie(internalUser),
+          ),
+      },
+      {
+        name: '外部簽署人本人下載',
+        send: async () => download(externalPath, await externalCopyCookie()),
+      },
+      {
+        name: '從紀錄重新下載',
+        send: () =>
+          download(redownloadPath(records.pdf.publicId!), viewerCookie),
+      },
+    ])('$name：紀錄寫入失敗回 500，不送出 PDF', async ({ send }) => {
+      const before = (await pdfHistory()).total;
+      const failure = jest
+        .spyOn(ctx.app.get(ExportJobRepository), 'save')
+        .mockRejectedValueOnce(new Error('合成紀錄寫入失敗'));
+      try {
+        const response = await send();
+        expect(response.status).toBe(500);
+        expect(response.headers['content-type']).toMatch(/application\/json/);
+        expect(response.headers['content-disposition']).toBeUndefined();
+        expect(apiError(response).code).toBe('INTERNAL_ERROR');
+        expect(failure).toHaveBeenCalledTimes(1);
+      } finally {
+        failure.mockRestore();
+      }
+      expect((await pdfHistory()).total).toBe(before);
     });
   });
 });

@@ -176,6 +176,21 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       .get(`/api/external-signing-task${path}`)
       .set('Cookie', cookie);
   }
+  /** 本人副本下載（POST，送出前寫入匯出紀錄）。 */
+  function downloadCopy(cookie: string, query = '') {
+    return request(ctx.server)
+      .post(`/api/external-signing-task/completed-file/downloads${query}`)
+      .set('Cookie', cookie)
+      .set('Origin', origin);
+  }
+  /** 以外部存取 cookie 讀取的三個端點：任務、原始檔與本人副本下載。 */
+  function externalEndpoints(cookie: string) {
+    return [
+      () => get('', cookie),
+      () => get('/source-file', cookie),
+      () => downloadCopy(cookie),
+    ];
+  }
   async function sign(f: Awaited<ReturnType<typeof fixture>>) {
     const task = apiData<Task>(await get('', f.cookie).expect(200));
     const body = {
@@ -210,7 +225,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     const f = await fixture();
     const signed = await sign(f);
     await finish(f);
-    const original = await get('/completed-file', f.cookie).expect(200);
+    const original = await downloadCopy(f.cookie).expect(200);
     const manager = ctx.app.get(MysqlService).getManager();
     // 明確建立切換前 fixture：保留真實 OTP 簽署證據、token 與 PDF，將指派關聯設為歷史員工。
     await manager.update(EsignSigner, f.signers[0].id, {
@@ -230,8 +245,8 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     const redirect = await requestOtp(ctx, f.signers[0].token).expect(303);
     expect(redirect.headers.location).toBe(INTERNAL_PORTAL_LOGIN_URL);
     expect(redirect.headers['set-cookie']).toBeUndefined();
-    for (const suffix of ['', '/source-file', '/completed-file']) {
-      const denied = await get(suffix, f.cookie).expect(403);
+    for (const send of externalEndpoints(f.cookie)) {
+      const denied = await send().expect(403);
       expect(denied.body.error.code).toBe('ESIGN_INTERNAL_LOGIN_REQUIRED');
       expect(denied.headers['content-type']).toContain('application/json');
     }
@@ -250,7 +265,10 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       .get(EsignExpiryService)
       .expireByDeadline(Number(f.document.id));
     const copy = await request(ctx.server)
-      .get(`/api/esign/signing-tasks/${f.signers[0].publicId}/completed-file`)
+      .post(
+        `/api/esign/signing-tasks/${f.signers[0].publicId}/completed-file/downloads`,
+      )
+      .set('Origin', origin)
       .set('Cookie', employeeCookie)
       .expect(200);
     expect(copy.body).toEqual(original.body);
@@ -273,7 +291,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     const f = await fixture();
     const signed = await sign(f);
     await finish(f);
-    const original = await get('/completed-file', f.cookie).expect(200);
+    const original = await downloadCopy(f.cookie).expect(200);
     const evidence = apiData<SignatureVerification>(
       await getSignatureVerification(ctx.server, signed.verificationUrl).expect(
         200,
@@ -304,7 +322,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     await get('', pendingCookie).expect(401);
     await requestOtp(ctx, f.signers[1].token).expect(401);
     const renewed = await openExternalSession(ctx, f.signers[0].token);
-    expect((await get('/completed-file', renewed).expect(200)).body).toEqual(
+    expect((await downloadCopy(renewed).expect(200)).body).toEqual(
       original.body,
     );
     const after = apiData<SignatureVerification>(
@@ -322,7 +340,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
   });
   it('內部員工同次 OTP 存取可輪詢 pending→ready，取得與建立人完全相同的真實 PDF', async () => {
     const f = await fixture();
-    await get('/completed-file', f.cookie).expect(401);
+    await downloadCopy(f.cookie).expect(401);
     await sign(f);
     expect(
       apiData<Task>(
@@ -331,7 +349,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
           .expect('Cache-Control', 'private, no-store'),
       ).signer.completion.status,
     ).toBe('pending');
-    await get('/completed-file', f.cookie).expect(409);
+    await downloadCopy(f.cookie).expect(409);
     await finish(f);
     expect(
       apiData<Task>(await get('', f.cookie).expect(200)).signer.completion
@@ -343,15 +361,16 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         .set('Cookie', creatorCookie)
         .expect(200);
     const before = apiData<unknown>(await history());
-    const personal = await get('/completed-file', f.cookie)
+    const personal = await downloadCopy(f.cookie)
       .expect(200)
       .expect('Content-Type', /application\/pdf/)
       .expect('Cache-Control', 'private, no-store')
       .expect('Content-Disposition', /^attachment;/);
     const creator = await request(ctx.server)
-      .get(
-        `/api/esign/documents/${f.document.id}/signers/${f.signers[0].publicId}/completed-file`,
+      .post(
+        `/api/esign/documents/${f.document.id}/signers/${f.signers[0].publicId}/completed-file/downloads`,
       )
+      .set('Origin', origin)
       .set('Cookie', creatorCookie)
       .expect(200);
     expect(personal.body).toEqual(creator.body);
@@ -378,7 +397,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         apiData<Task>(await get('', f.cookie).expect(200)).signer.completion
           .status,
       ).toBe('failed');
-      await get('/completed-file', f.cookie).expect(409);
+      await downloadCopy(f.cookie).expect(409);
     } finally {
       failure.mockRestore();
     }
@@ -404,7 +423,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         apiData<Task>(await get('', f.cookie).expect(200)).signer.completion
           .status,
       ).toBe('processing');
-      await get('/completed-file', f.cookie).expect(409);
+      await downloadCopy(f.cookie).expect(409);
     } finally {
       release();
       await running;
@@ -414,7 +433,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       apiData<Task>(await get('', f.cookie).expect(200)).signer.completion
         .status,
     ).toBe('ready');
-    await get('/completed-file', f.cookie).expect(200);
+    await downloadCopy(f.cookie).expect(200);
   });
   it.each(['expired', 'stopped', 'completed'])(
     '%s 後原邀請重新 OTP 仍可下載同一副本，不能再次簽署且證據不變',
@@ -422,7 +441,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       const f = await fixture(state === 'completed' ? 1 : 2);
       const signed = await sign(f);
       await finish(f);
-      const original = await get('/completed-file', f.cookie).expect(200);
+      const original = await downloadCopy(f.cookie).expect(200);
       const evidence = apiData<SignatureVerification>(
         await getSignatureVerification(
           ctx.server,
@@ -463,17 +482,18 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       expect(await redis.ttl(key)).toBeGreaterThan(8 * 60 * 60 - 60);
       // Redis 使用系統時鐘，刪除該測試 credential 模擬 8 小時後已由 Redis 過期。
       await redis.del(key);
-      await get('/completed-file', f.cookie).expect(401);
-      await get('/completed-file', creatorCookie).expect(401);
+      await downloadCopy(f.cookie).expect(401);
+      await downloadCopy(creatorCookie).expect(401);
       await request(ctx.server)
-        .get('/api/external-signing-task/completed-file')
+        .post('/api/external-signing-task/completed-file/downloads')
+        .set('Origin', origin)
         .expect(401);
       const renewed = await openExternalSession(ctx, f.signers[0].token);
       expect(apiData<Task>(await get('', renewed).expect(200))).toMatchObject({
         document: { status: state },
         signer: { status: 'signed', completion: { status: 'ready' } },
       });
-      expect((await get('/completed-file', renewed).expect(200)).body).toEqual(
+      expect((await downloadCopy(renewed).expect(200)).body).toEqual(
         original.body,
       );
       await request(ctx.server)
@@ -503,8 +523,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
           'UPDATE esign_documents SET deleted_at=UTC_TIMESTAMP(6) WHERE id=?',
           [f.document.id],
         );
-      for (const path of ['', '/source-file', '/completed-file'])
-        await get(path, renewed).expect(401);
+      for (const send of externalEndpoints(renewed)) await send().expect(401);
       await requestOtp(ctx, f.signers[0].token).expect(401);
     },
   );
@@ -528,7 +547,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       signer: { status: 'rejected' },
     });
     await get('/source-file', other).expect(401);
-    await get('/completed-file', other).expect(401);
+    await downloadCopy(other).expect(401);
     const another = await fixture();
     // 讀取介面無可改寫的文件／簽署人參數；偽造 query 仍只能得到 cookie 本人的結果。
     expect(
@@ -539,9 +558,9 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         ).expect(200),
       ).signerPublicId,
     ).toBe(another.signers[0].publicId);
-    await get(
-      `/completed-file?documentId=${f.document.id}&signerPublicId=${f.signers[0].publicId}`,
+    await downloadCopy(
       another.cookie,
+      `?documentId=${f.document.id}&signerPublicId=${f.signers[0].publicId}`,
     ).expect(401);
     for (const cookie of [
       other,
@@ -549,14 +568,15 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       'FT_ESIGN_EXTERNAL_ACCESS=invalid',
     ]) {
       await request(ctx.server)
-        .get(
-          `/api/esign/documents/${f.document.id}/signers/${f.signers[0].publicId}/completed-file`,
+        .post(
+          `/api/esign/documents/${f.document.id}/signers/${f.signers[0].publicId}/completed-file/downloads`,
         )
+        .set('Origin', origin)
         .set('Cookie', cookie)
         .expect(401);
     }
-    for (const path of ['', '/source-file', '/completed-file'])
-      await get(path, 'FT_ESIGN_EXTERNAL_ACCESS=invalid').expect(401);
+    for (const send of externalEndpoints('FT_ESIGN_EXTERNAL_ACCESS=invalid'))
+      await send().expect(401);
     // 即使 credential 還在，錯誤邀請世代不得放行已簽者。
     await ctx.app
       .get(MysqlService)
@@ -565,8 +585,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         randomBytes(32).toString('hex'),
         f.signers[0].id,
       ]);
-    for (const path of ['', '/source-file', '/completed-file'])
-      await get(path, f.cookie).expect(401);
+    for (const send of externalEndpoints(f.cookie)) await send().expect(401);
   });
   it('儲存設備回傳被置換的有效 PDF 時，本人與建立人皆拒絕提供副本', async () => {
     const f = await fixture();
@@ -580,17 +599,18 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       .spyOn(storage, 'openReadStream')
       .mockImplementation(() => Promise.resolve(Readable.from([bytes])));
     try {
-      const personal = await get('/completed-file', f.cookie).expect(409);
+      const personal = await downloadCopy(f.cookie).expect(409);
       expect(JSON.stringify(personal.body)).toContain('ESIGN_INTEGRITY_FAILED');
       await request(ctx.server)
-        .get(
-          `/api/esign/documents/${f.document.id}/signers/${f.signers[0].publicId}/completed-file`,
+        .post(
+          `/api/esign/documents/${f.document.id}/signers/${f.signers[0].publicId}/completed-file/downloads`,
         )
+        .set('Origin', origin)
         .set('Cookie', creatorCookie)
         .expect(409);
     } finally {
       fault.mockRestore();
     }
-    await get('/completed-file', f.cookie).expect(200);
+    await downloadCopy(f.cookie).expect(200);
   });
 });

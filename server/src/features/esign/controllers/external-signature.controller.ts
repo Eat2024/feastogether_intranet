@@ -2,7 +2,7 @@ import { INTERNAL_PORTAL_LOGIN_URL } from '../esign.constants';
 import { EsignRejectionService } from '../services/esign-rejection.service';
 import { ExternalRejectionDto } from '../dto/rejection.dto';
 import { AppErrors } from '#app/common/errors/app-errors';
-import { ApiOperation } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiProduces } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -36,6 +36,8 @@ import {
 } from '../services/esign-signing.service';
 import { SigningNotStartedException } from '../services/esign-access-policy.service';
 import { ExternalAccessService } from '../services/external-access.service';
+import { EsignExportHistoryService } from '../services/esign-export-history.service';
+import { sendCompletedPdf } from '../helpers/completed-pdf-reply';
 import { ExternalOtpService } from '../services/external-otp.service';
 import { allowPdfPreview } from '../helpers/pdf-frame-policy';
 import {
@@ -58,6 +60,7 @@ export class ExternalSignatureController {
     private readonly otp: ExternalOtpService,
     private readonly signing: EsignSigningService,
     private readonly config: ConfigService,
+    private readonly exportHistory: EsignExportHistoryService,
   ) {}
 
   // 以 Email OTP 存取憑證拒絕本人簽署任務，僅限外部指派。
@@ -264,31 +267,33 @@ export class ExternalSignatureController {
     return toSignatureResultView(result);
   }
 
-  // 驗證 Email OTP 存取權限與檔案完整性後下載本人已簽副本。
+  // 驗證 Email OTP 存取權限與檔案完整性後下載本人已簽副本；送出前寫入 pdf 匯出紀錄。
+  @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '下載外部簽署人的本人副本',
     description:
-      '以 Email OTP 存取 cookie（僅限外部指派） 驗證後回傳本人的已簽署 PDF（附件），經與建立人下載相同的完整性檢查；不記錄稽核。尚未簽署或存取失效回 401；副本產生中或產製失敗回 409。\n\n前端串接參考：ExternalDone 的「下載已簽署文件」以一般連結直接下載。',
+      '以 Email OTP 存取 cookie（僅限外部指派） 驗證後回傳本人的已簽署 PDF（200 application/pdf 附件），經與建立人下載相同的完整性檢查；不記錄稽核。送出前新增一筆 pdf 匯出紀錄（匯出人與範圍都是該外部簽署人，匯出員工為 NULL），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403；尚未簽署或存取失效回 401；副本產生中或產製失敗回 409，都不記錄。取代已移除的 GET /api/external-signing-task/completed-file。\n\n前端串接參考：ExternalDone 的「下載已簽署文件」以 POST 取得 blob 後下載。',
   })
-  @Get('external-signing-task/completed-file')
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({
+    description: '已簽署副本 PDF（附件）',
+    schema: { type: 'string', format: 'binary' },
+  })
+  @Post('external-signing-task/completed-file/downloads')
+  @HttpCode(HttpStatus.OK)
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
-  async completedFile(
+  async downloadCompletedFile(
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    const file = await this.external.completedFile(
+    const { signer, file } = await this.external.completedFile(
       this.accessCredential(request),
     );
     if (!file)
       throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
-    reply
-      .type('application/pdf')
-      .header(
-        'Content-Disposition',
-        `attachment; filename="completed.pdf"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
-      )
-      .send(file.bytes);
+    await this.exportHistory.recordPdf(signer, null);
+    sendCompletedPdf(reply, file);
   }
 
   /** 外部存取 cookie 中的存取憑證（與邀請 token 同為 43 字元 base64url）；缺少或格式錯誤回 401 */

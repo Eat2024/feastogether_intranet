@@ -4,17 +4,60 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** 015 — US3、US4（PDF）、FR-004、FR-008、FR-014；research R5、R6；對應 T018–T025。
 
 **執行約定:** 所有票單只實作後端、必要 migration 與契約文件，不修改 client、不部署、不建立遠端 issues。開始實作改 claimed；驗收通過並合併至功能整合分支後才改 resolved，追加驗證與 commit 紀錄，保留原驗收條件。測試 DB 名稱必須以 `feastogether_intranet_test` 開頭，只清理本次建立的合成資料。
 
-- [ ] 先寫會失敗的 HTTP 案例：三條 POST 的成功、錯誤、Origin、401，以及紀錄寫入失敗回 500 且不送出 PDF。
-- [ ] `POST …/signers/{signerPublicId}/completed-file/downloads`：只限建立人（同原本），PDF bytes 與標頭與原本 GET 相同，匯出人為建立人。
-- [ ] `POST /api/esign/signing-tasks/{signerPublicId}/completed-file/downloads`：員工 session，只限已簽本人（同 016）；匯出人為該員工。
-- [ ] `POST /api/external-signing-task/completed-file/downloads`：只限已簽的外部簽署人本人（同 016）；`created_by_user_id` 為 NULL；匯出人為「姓名＋Email」。
-- [ ] `POST /api/esign/history/export/{id}/downloads`：任何有效員工；只接受 `pdf` 紀錄；新紀錄的匯出人為目前使用者，文件、簽署人與範圍沿用原紀錄。
-- [ ] 副本未完成或權限不符時沿用原本錯誤，且不新增紀錄；簽署人標籤超過 255 字時截斷。
-- [ ] 舊的三條 GET 回 404；`core-esign-flow`、`internal-email-copy`、`esign-rejection`、`esign-document-delivery-security`、`security-core-esign-flow`、`api-coverage` 已改用 POST 並通過。
-- [ ] Swagger 說明與 contract 一致，移除「一般連結直接下載」的串接說明。
+- [x] 先寫會失敗的 HTTP 案例：三條 POST 的成功、錯誤、Origin、401，以及紀錄寫入失敗回 500 且不送出 PDF。
+- [x] `POST …/signers/{signerPublicId}/completed-file/downloads`：只限建立人（同原本），PDF bytes 與標頭與原本 GET 相同，匯出人為建立人。
+- [x] `POST /api/esign/signing-tasks/{signerPublicId}/completed-file/downloads`：員工 session，只限已簽本人（同 016）；匯出人為該員工。
+- [x] `POST /api/external-signing-task/completed-file/downloads`：只限已簽的外部簽署人本人（同 016）；`created_by_user_id` 為 NULL；匯出人為「姓名＋Email」。
+- [x] `POST /api/esign/history/export/{id}/downloads`：任何有效員工；只接受 `pdf` 紀錄；新紀錄的匯出人為目前使用者，文件、簽署人與範圍沿用原紀錄。
+- [x] 副本未完成或權限不符時沿用原本錯誤，且不新增紀錄；簽署人標籤超過 255 字時截斷。
+- [x] 舊的三條 GET 回 404；`core-esign-flow`、`internal-email-copy`、`esign-rejection`、`esign-document-delivery-security`、`security-core-esign-flow`、`api-coverage` 已改用 POST 並通過。
+- [x] Swagger 說明與 contract 一致，移除「一般連結直接下載」的串接說明。
+
+## 實作紀錄（2026-10-29，分支 `impl/015-04`，基準 `feat/015-export-history` f08e454）
+
+狀態維持 `claimed`；合併至整合分支後改 `resolved`。
+
+### 變更
+- `server/src/features/esign/services/esign-export-history.service.ts`：
+  - `recordPdf(signer, exporterUserId | null)`：寫入 `pdf` 紀錄（新 UUID、`status=completed`、`record_count=1`、`completed_at`），文件取簽署人所屬文件，範圍為簽署人標籤（內部「姓名（員工編號）」、外部「姓名（Email）」，依字元截斷到 255 字）。寫入失敗直接拋錯。
+  - `redownloadPdf(recordId, userId)`：只接受 `pdf` 紀錄；簽署人或文件不存在（含已刪除）回 404；`personalCopy` 未產生回 409 `ESIGN_PERSONAL_COPY_NOT_READY`；送出前新增紀錄，範圍沿用原紀錄的說明，匯出人為目前使用者。
+- `server/src/features/esign/services/esign-completion-access.service.ts`：`creatorFile`／`signerFile` 改回 `{ signer, file }`（`PersonalCopyDownload`）；新增 `PersonalCopyFile` 型別。`external-access.service.ts` 的 `completedFile` 同樣回 `{ signer, file }`。
+- `server/src/features/esign/helpers/completed-pdf-reply.ts`（新增）：`sendCompletedPdf(reply, file)`，四條下載共用的附件送出（原本三處重複）；`Cache-Control` 與 `nosniff` 仍由各路由的 `@Header` 設定，錯誤回應也帶上。
+- Controllers（皆 `OriginGuard`、`@HttpCode(200)`、Swagger 200 `application/pdf`）：
+  - `documents.controller.ts`：`POST :documentId/signers/:signerPublicId/completed-file/downloads` 取代 GET；匯出人為建立人。
+  - `signing-tasks.controller.ts`：`POST :signerPublicId/completed-file/downloads` 取代 GET；匯出人為該員工。
+  - `external-signature.controller.ts`：`POST external-signing-task/completed-file/downloads` 取代 GET；匯出人 NULL；Swagger 移除「一般連結直接下載」。
+  - `export-history.controller.ts`：`POST :id/downloads`。
+  - 順序一律為：權限與副本檢查 → 副本未產生拋原本的錯誤 → 寫入紀錄 → 送出。
+- `server/src/features/esign/repositories/export-job.repository.ts`：`findRecord(publicId, exportType)`。
+- 測試：
+  - `server/test/esign-export-history.e2e-spec.ts`：新增「單人 PDF 下載紀錄」區塊 30 案（自建文件與已產製副本，走真實完整性驗證）。
+  - 既有 e2e 改用 POST：`core-esign-flow`（另於 afterAll 清除本 suite 文件的匯出紀錄）、`internal-email-copy`、`internal-email-signing`、`internal-portal-completion`、`esign-rejection`、`esign-document-delivery-security`、`security-core-esign-flow`、`api-coverage`（舊三條 GET 404、新 POST 未登入 401）。`internal-email-signing` 與 `internal-portal-completion` 不在原清單，但也呼叫舊 GET，一併更新。
+  - 單元測試：`esign-completion-access.service.spec.ts`、`external-access.service.spec.ts` 配合新回傳形狀；`document-upload.interceptor.spec.ts` 補上 `EsignExportHistoryService` stub。
+- 契約：`specs/003-core-esign-flow/contracts/openapi.yaml` 的兩條下載路徑改為 POST `…/completed-file/downloads`（api-coverage 讀這份契約驗證 session gate）。
+- 文件：`specs/015-export-history/tasks.md` 勾選 T018–T025；`quickstart.md`「驗證紀錄 › 04 PDF 下載紀錄」。
+
+### 驗證
+詳見 `specs/015-export-history/quickstart.md`「驗證紀錄 › 04 PDF 下載紀錄」。
+- 紅燈：四個成功案例在路由實作前都因 404 失敗；錯誤、截斷與寫入失敗案例以變異檢查確認（3 案轉紅後還原）。
+- `lint:check`：0 errors（265 個既有 warnings，總數不變）。
+- `build`：通過。
+- `test`：106 suites／964 tests。
+- `test:schema`：2 suites／12 tests。
+- e2e（本票涉及與匯出相關的 9 個 suites）：9 suites／134 tests。
+- `test:e2e:security`：11 suites／60 tests。
+- 全套 `test:e2e`：28 suites／286 tests。
+
+### 與 contract／tasks 的對照
+- 四條 POST 的路徑、身分、匯出人、標頭與錯誤都與 contract 相同；舊三條 GET 回 404。
+- contract 沒寫、依既有行為決定的細節：
+  - 重新下載時簽署人或文件已刪除回 404（與查詢不列出已刪除文件的紀錄一致）；副本無法取得時回 409（`ESIGN_PERSONAL_COPY_NOT_READY` 或 `ESIGN_INTEGRITY_FAILED`）。
+  - 紀錄 id 不是 UUID 時回 404，不另做 400 格式驗證。
+  - 重新下載的範圍逐字沿用原紀錄的 `scope_description`，不重新計算。
+- tasks 寫法的差異（內部介面，不影響 API）：`recordPdf` 只收 `(signer, exporterUserId)`，文件取 `signer.documentId`；`creatorFile`／`signerFile`／`completedFile` 只多回 `signer`，不回 `document`。

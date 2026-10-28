@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 015 — US2、US4（Excel）、FR-006、FR-009、FR-010；對應 T014–T017、T026–T027。
 
@@ -55,3 +55,23 @@
 - `ExportJobRepository.historyRecord(publicId)` 可供 `recordPdf` 寫入後讀回新列，及 `POST :id/downloads` 讀取原紀錄（再自行檢查 `exportType`）。
 - `ExportConditionsDto` 已有驗證裝飾器；它同時是查詢回應的 schema。
 
+## 整合驗收紀錄（2026-10-29，`feat/015-export-history`）
+
+- 審查 `impl/015-03`（27e63df）：
+  - `POST /api/esign/history/export` 套用 `OriginGuard`，回 201；匯出人只取自 `@CurrentUserId()`，body 沒有匯出人欄位（`forbidNonWhitelisted` 擋下前端傳入）；文件以 `DocumentRepository.findById`（排除已刪除）讀取並排除草稿，不檢查建立人。
+  - `GET /api/esign/history/export/{id}/document` 只讀不寫；先以 `historyRecord` 讀紀錄（文件未刪除），只接受 `excel` 類型，否則 404。回應經 `excelExportDocument` 裁切，簽署人只有 `type`、`name`、`employeeNo`、`department`、`title`、`email`、`status`、`signedAt`、`rejectedAt`、`rejectReason`，不含 `publicId`、管理備註、通知結果與 `verificationUrl`。
+  - `esign-view.mapper.ts` 重構：`documentSummary` 以 `...this.signingEnd()` 開頭，仍依序為 `signEndAt`、`originalSignEndAt`、`isReopened`、`id`…；`signer()` 仍依序為 `publicId`、`type`…`rejectReason`、`completion`、`invitationDelivery`、`verificationUrl`。既有回應的欄位與順序不變，全套 e2e 通過。
+  - `ExportJobRepository` 把欄位清單抽成 `historyItems`，`historyPage` 的排序、分頁與 `historyCounts` 行為不變。
+  - 沒有修改 client，沒有 migration。
+- 合併：`git merge --no-ff impl/015-03`，merge commit `4a8570581026304fefbe0540cac08be32bd78634`，無衝突。
+- 在合併後的工作樹以環境變數 `DB_MYSQL_DB=feastogether_intranet_test15m`、`REDIS_DB=10` 隔離執行：
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors；265 warnings 都不在本票變更的檔案 |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e`（全套；mapper 重構影響其他路由） | 28 suites／282 tests 通過 |
+
+狀態改為 `resolved`。

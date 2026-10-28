@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 015 — US3、US4（PDF）、FR-004、FR-008、FR-014；research R5、R6；對應 T018–T025。
 
@@ -83,3 +83,26 @@
 | `pnpm -C server test:e2e:security`（含 `security-core-esign-flow`） | 11 suites／60 tests 通過 |
 
 - Swagger（合併後的 build 產物）：`/api/esign/history/export` 底下 GET、POST、`GET {id}/document`、`POST {id}/downloads` 與三條 `POST …/completed-file/downloads` 都在文件中，四條下載為 200 `application/pdf`；三條舊 GET 不在文件中。
+
+## 整合驗收紀錄（2026-10-29，`feat/015-export-history`）
+
+- 審查 `impl/015-04`（a4b3872，含 d62f98c 與整合分支 c922db8 的合併）：
+  - 四條 `POST` 下載（建立人、員工本人、外部本人、`/api/esign/history/export/{id}/downloads`）都套用 `OriginGuard` 與 `@HttpCode(200)`；順序為權限與副本檢查 → 副本未產生拋原本的錯誤 → `await recordPdf`／`insertPdf` → `sendCompletedPdf`。紀錄寫入失敗由例外過濾器回 500 JSON，不帶 `Content-Disposition`（e2e 以 `ExportJobRepository.save` 失敗驗證四條路由）。
+  - 舊三條 `GET …/completed-file` 已從 controller 移除，`api-coverage` 驗證回 404；server 原始碼只剩 Swagger 說明與 access-log 單元測試的路徑字串。
+  - 外部本人下載以 `recordPdf(signer, null)` 寫入，`created_by_user_id` 為 NULL；e2e 確認 `exportedBy` 為簽署人姓名＋Email、`employeeNo` 為 null。
+  - 重新下載以 03 的 `historyRecord`（排除已刪除文件）讀紀錄，只接受 `pdf` 類型，其他類型、不存在或非 UUID 回 404；新紀錄沿用原紀錄的簽署人（含文件）與 `scope_description`，匯出人為目前使用者。
+  - `specs/003-core-esign-flow/contracts/openapi.yaml` 只改兩條下載路徑（`get` → `post`、路徑加 `/downloads`、描述補一句 Spec 015 說明），`operationId` 與回應不變。`internal-email-signing` 只把外部 cookie 檢查清單的 `get /completed-file` 改為 `post /completed-file/downloads`；`internal-portal-completion` 只把 GET 換成帶 `Origin` 的 POST，斷言不變。兩處都正確且最小。
+  - 沒有修改 client（`client/src/api/endpoints.ts` 仍指向舊 GET，依 contract「前端交接」由前端工程師與後端一起部署時處理），沒有 migration。
+- 合併：`git merge --no-ff impl/015-04`，merge commit `e3507f8db24747eb6dfc653117de50a52cf2270a`，無衝突。
+- 在合併後的工作樹以環境變數 `DB_MYSQL_DB=feastogether_intranet_test15m`、`REDIS_DB=10` 隔離執行：
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors；265 warnings，總數與 03 合併後相同 |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e`（全套） | 28 suites／313 tests 通過 |
+| `pnpm -C server test:e2e:security` | 11 suites／60 tests 通過 |
+
+狀態改為 `resolved`。

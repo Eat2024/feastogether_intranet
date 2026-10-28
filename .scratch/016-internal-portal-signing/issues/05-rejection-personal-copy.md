@@ -28,3 +28,9 @@
 
 - `impl/016-05` 的 `8796109` 已 fast-forward 整合至 `feat/016-internal-portal-signing`；拒簽、副本 API／實際 PDF 產製及桌面／窄螢幕 fixture 驗收完成。
 - 09 仍等待 07 催簽與補簽整合；正式 Portal 完整旅程未在本票宣稱通過。
+
+### 最終審查補正：副本下載後才過期的 session
+
+- ready 停止輪詢後，直接附件連結原會在 session 過期時導向 API 401 JSON。改由 API Blob 請求與 mutation 經全域 provider 顯示登入過期提示；非 401 JSON 錯誤保留原訊息，成功才依伺服器檔名下載，pending 停用。
+- Chrome CDP 先重現舊版導向 JSON（red），新版 1280px／390px 逐一驗證 ready 後 401 留在原頁並顯示入口網重新登入提示、409 顯示完整性錯誤、成功保留檔名及逐 byte 相同 PDF（green）。每次僅一個下載 GET，沒有重試、重新 open 或恢復輪詢。
+- client lint/build 通過；不變更後端、schema、設定或依賴，不新增測試框架。

@@ -1,3 +1,4 @@
+import axios from 'axios';
 import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
 import type { EsignSigningTask, GetSigningTasksParams, SubmitSigningTaskBody, SigningTaskSignatureResult, RejectSigningTaskBody, SigningTaskRejectionResult } from '@/api/types';
@@ -33,5 +34,26 @@ export const rejectSigningTask = async (signerPublicId: string, body: RejectSign
   return res.data;
 };
 
-export const signingTaskCompletedFileUrl = (signerPublicId: string) =>
-  `${api.defaults.baseURL}/${endpoints.ESIGN_SIGNING_TASK_COMPLETED_FILE(signerPublicId)}`;
+/** 以 API 請求下載本人副本，讓登入過期與業務錯誤仍由全域 provider 處理。 */
+export const downloadSigningTaskCompletedFile = async (signerPublicId: string): Promise<{ bytes: Blob; fileName: string }> => {
+  try {
+    const res = await api<Blob>({
+      method: 'GET',
+      url: endpoints.ESIGN_SIGNING_TASK_COMPLETED_FILE(signerPublicId),
+      responseType: 'blob',
+    });
+    const disposition: unknown = res.headers['content-disposition'];
+    const encoded = typeof disposition === 'string' ? /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1] : undefined;
+    if (!encoded) throw new Error('下載檔名格式不正確');
+    return { bytes: res.data, fileName: decodeURIComponent(encoded) };
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.data instanceof Blob && error.response.data.type.includes('json')) {
+      try {
+        error.response.data = JSON.parse(await error.response.data.text());
+      } catch {
+        // 非 JSON 錯誤仍交由既有通用訊息處理。
+      }
+    }
+    throw error;
+  }
+};

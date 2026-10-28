@@ -18,7 +18,7 @@ import Typography from '@mui/material/Typography';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/api/query-keys';
-import { openSigningTask, signingTaskSourceFileUrl, submitSigningTaskSignatures, rejectSigningTask, signingTaskCompletedFileUrl } from '@/api/requests';
+import { openSigningTask, signingTaskSourceFileUrl, submitSigningTaskSignatures, rejectSigningTask, downloadSigningTaskCompletedFile } from '@/api/requests';
 import { usePdfDocument } from '@/features/forms/pdf/usePdf';
 import SigningForm from '@/features/my-signature/sign/SigningForm';
 import TermsStep from '@/features/my-signature/sign/TermsStep';
@@ -99,6 +99,17 @@ function Task({ task: listedTask }: { task: EsignSigningTask }) {
         (current) => current?.map((item) => item.signerPublicId === openedTask.signerPublicId ? openedTask : item));
     },
   });
+  const download = useMutation({
+    mutationFn: downloadSigningTaskCompletedFile,
+    onSuccess: ({ bytes, fileName }) => {
+      const url = URL.createObjectURL(bytes);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    },
+  });
   const { mutate: openTask } = open;
   const opened = useRef(false);
   useEffect(() => {
@@ -146,8 +157,9 @@ function Task({ task: listedTask }: { task: EsignSigningTask }) {
             <Alert severity="error">已簽署文件暫時無法產生，您的簽署已完成並保存，請聯絡文件發起人。</Alert>
           ) : (
             <Box>
-              <Button component="a" variant="contained" disabled={copyStatus !== 'ready'} aria-busy={copyStatus !== 'ready'}
-                href={copyStatus === 'ready' ? signingTaskCompletedFileUrl(task.signerPublicId) : undefined}
+              <Button variant="contained" disabled={copyStatus !== 'ready' || download.isPending}
+                loading={download.isPending} aria-busy={copyStatus !== 'ready' || download.isPending}
+                onClick={() => download.mutate(task.signerPublicId)}
                 startIcon={copyStatus === 'ready' ? <DownloadRoundedIcon /> : <CircularProgress size={20} color="inherit" />}>
                 下載已簽署文件
               </Button>

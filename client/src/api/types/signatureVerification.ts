@@ -1,8 +1,8 @@
 // 公開簽章驗證（server/src/features/esign/dto/signature-verification.dto.ts）；只含 Spec 04 FR-009 白名單欄位
 import type { EsignDocumentStatus } from './esignDocuments';
 
-/** employee_session：員工登入後簽署；email_invitation：外部簽署人以 Email 邀請與驗證碼簽署 */
-export type EsignAuthenticationMethod = 'employee_session' | 'email_invitation';
+/** internal_session：本人指派登入簽署；employee_session：歷史員工簽署；email_invitation：外部 Email 邀請與驗證碼簽署 */
+export type EsignAuthenticationMethod = 'employee_session' | 'internal_session' | 'email_invitation';
 
 /** GET signature-verifications/:code 的回應；查無、格式錯誤一律 404，資料不一致 409 */
 export interface SignatureVerification {

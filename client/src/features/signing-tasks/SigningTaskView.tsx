@@ -2,12 +2,14 @@
 
 // 本人簽署：員工 session 授權，開啟事件使用 POST，狀態刷新使用 GET 列表。
 import { useGetSigningTasksQuery } from '@/api/queries';
-import type { EsignSigningTask, SigningTaskSignatureResult } from '@/api/types';
+import type { EsignSigningTask, SigningTaskSignatureResult, SigningTaskRejectionResult } from '@/api/types';
 import PageHeader from '@/components/PageHeader';
 import { formatDate } from '@/features/esign-documents/listQuery';
 import { getErrorMessage } from '@/lib/apiError';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import VerifiedRoundedIcon from '@mui/icons-material/VerifiedRounded';
+import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
+import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -16,11 +18,12 @@ import Typography from '@mui/material/Typography';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/api/query-keys';
-import { openSigningTask, signingTaskSourceFileUrl, submitSigningTaskSignatures } from '@/api/requests';
+import { openSigningTask, signingTaskSourceFileUrl, submitSigningTaskSignatures, rejectSigningTask, signingTaskCompletedFileUrl } from '@/api/requests';
 import { usePdfDocument } from '@/features/forms/pdf/usePdf';
 import SigningForm from '@/features/my-signature/sign/SigningForm';
 import TermsStep from '@/features/my-signature/sign/TermsStep';
 import SignSteps from '@/features/my-signature/sign/SignSteps';
+import { taipeiDateTime } from '@/features/my-signature/sign/signingTaskForm';
 import { backHref, signBlock } from './taskQuery';
 
 function BackButton({ href }: { href: string }) {
@@ -43,7 +46,13 @@ function Loading() {
 }
 
 export default function SigningTaskView({ signerPublicId }: { signerPublicId: string }) {
-  const { data, isPending, isError, error, refetch, isFetching } = useGetSigningTasksQuery();
+  const { data, isPending, isError, error, refetch, isFetching } = useGetSigningTasksQuery({}, {
+    refetchInterval: (query) => {
+      if (query.state.status === 'error') return false;
+      const current = query.state.data?.find((task) => task.signerPublicId === signerPublicId);
+      return current?.signer.status === 'signed' && ['pending', 'processing'].includes(current.signer.completion.status ?? '') ? 2000 : false;
+    },
+  });
 
   if (isPending) return <Loading />;
   if (isError) {
@@ -81,7 +90,15 @@ export default function SigningTaskView({ signerPublicId }: { signerPublicId: st
 
 function Task({ task: listedTask }: { task: EsignSigningTask }) {
   const queryClient = useQueryClient();
-  const open = useMutation({ mutationFn: openSigningTask, meta: { suppressGlobalErrorToast: true } });
+  const open = useMutation({
+    mutationFn: openSigningTask,
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: (openedTask) => {
+      // open 只記一次事件；把回應合入列表快取，後續以 GET 的新狀態為準。
+      queryClient.setQueriesData<EsignSigningTask[]>({ queryKey: [queryKeys.ESIGN_SIGNING_TASKS] },
+        (current) => current?.map((item) => item.signerPublicId === openedTask.signerPublicId ? openedTask : item));
+    },
+  });
   const { mutate: openTask } = open;
   const opened = useRef(false);
   useEffect(() => {
@@ -91,16 +108,19 @@ function Task({ task: listedTask }: { task: EsignSigningTask }) {
   }, [openTask, listedTask.signerPublicId]);
   const [consented, setConsented] = useState(false);
   const [result, setResult] = useState<SigningTaskSignatureResult | null>(null);
-  const task = open.data ?? listedTask;
+  const [rejection, setRejection] = useState<SigningTaskRejectionResult | null>(null);
+  const task = listedTask;
   const { document: doc, signer } = task;
   const signedAt = result?.signedAt ?? signer.signedAt;
+  const rejectedAt = rejection?.rejectedAt ?? signer.rejectedAt;
+  const copyStatus = signer.status === 'signed' ? signer.completion.status : result?.completion.status;
   const verificationUrl = result?.verificationUrl ?? signer.verificationUrl;
-  const pdf = usePdfDocument(open.data && signer.status === 'pending' && !signedAt ? signingTaskSourceFileUrl(task.signerPublicId) : null);
+  const pdf = usePdfDocument(open.data && signer.status === 'pending' && !signedAt && !rejectedAt ? signingTaskSourceFileUrl(task.signerPublicId) : null);
   const block = signBlock(task, new Date());
 
   return (
     <>
-      <BackButton href={signedAt ? '/my-signature?tab=signed' : backHref(task)} />
+      <BackButton href={signedAt ? '/my-signature?tab=signed' : rejectedAt ? '/my-signature?tab=rejected' : backHref(task)} />
       <PageHeader
         title={doc.title}
         description={[
@@ -114,12 +134,33 @@ function Task({ task: listedTask }: { task: EsignSigningTask }) {
           無法開啟文件：{getErrorMessage(open.error)}
         </Alert>
       ) : !open.data ? <Loading /> : signedAt ? (
-        <Alert severity="success" variant="outlined" action={verificationUrl && (
-          <Button variant="outlined" startIcon={<VerifiedRoundedIcon />} href={verificationUrl} target="_blank" rel="noopener noreferrer">
-            查看簽章驗證
-          </Button>
-        )}>
-          已完成簽署。
+        <Stack spacing={2}>
+          <Alert severity="success" variant="outlined" action={verificationUrl && (
+            <Button variant="outlined" startIcon={<VerifiedRoundedIcon />} href={verificationUrl} target="_blank" rel="noopener noreferrer">
+              查看簽章驗證
+            </Button>
+          )}>
+            已於 {taipeiDateTime(signedAt)} 完成簽署。
+          </Alert>
+          {copyStatus === 'failed' ? (
+            <Alert severity="error">已簽署文件暫時無法產生，您的簽署已完成並保存，請聯絡文件發起人。</Alert>
+          ) : (
+            <Box>
+              <Button component="a" variant="contained" disabled={copyStatus !== 'ready'} aria-busy={copyStatus !== 'ready'}
+                href={copyStatus === 'ready' ? signingTaskCompletedFileUrl(task.signerPublicId) : undefined}
+                startIcon={copyStatus === 'ready' ? <DownloadRoundedIcon /> : <CircularProgress size={20} color="inherit" />}>
+                下載已簽署文件
+              </Button>
+              <Typography variant="helper" component="div" sx={{ mt: 1 }}>
+                {copyStatus === 'ready' ? '下載您的個人簽署副本（PDF）。' : '文件產生中，完成後即可下載。'}
+              </Typography>
+            </Box>
+          )}
+        </Stack>
+      ) : rejectedAt ? (
+        <Alert severity="info" variant="outlined">
+          已於 {taipeiDateTime(rejectedAt)} 拒絕簽署。
+          <Typography variant="content" component="div">拒絕原因：{(rejection?.reason ?? signer.rejectReason) || '未填寫'}</Typography>
         </Alert>
       ) : block ? (
         <Alert severity="info" variant="outlined">{block}</Alert>
@@ -136,6 +177,11 @@ function Task({ task: listedTask }: { task: EsignSigningTask }) {
           onSubmit={async (body) => {
             const signed = await submitSigningTaskSignatures(task.signerPublicId, body);
             setResult(signed);
+            void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_SIGNING_TASKS] });
+          }}
+          onReject={async (body) => {
+            const rejected = await rejectSigningTask(task.signerPublicId, body);
+            setRejection(rejected);
             void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_SIGNING_TASKS] });
           }}
           onError={() => { /* API 錯誤及 session 過期交由全域 provider 顯示，不自動重新提交。 */ }}

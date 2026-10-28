@@ -80,10 +80,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
       expect((await f.service.creatorFile(4, 'person-a', 7))?.bytes).toEqual(
         f.bytes,
       );
-      await expect(f.service.signerFile('person-a', 20)).rejects.toMatchObject({
-        status: 403,
-        code: 'ESIGN_EMAIL_OTP_REQUIRED',
-      });
+      expect((await f.service.signerFile('person-a', 20))?.bytes).toEqual(f.bytes);
       expect(f.files.findCompletedFile).toHaveBeenCalledWith(
         21,
         expect.anything(),

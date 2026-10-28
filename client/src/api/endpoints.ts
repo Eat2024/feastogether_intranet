@@ -33,6 +33,8 @@ export const endpoints = {
   ESIGN_DOCUMENT_SOURCE_FILE: (id: string) => `esign/documents/${encodeURIComponent(id)}/source-file`,
   // 本人的簽署任務列表（server/src/features/esign/controllers/signing-tasks.controller.ts）；
   // 個人簽署／拒簽／下載等舊入口已改為須從 Email 邀請操作（Spec 010），前端不再呼叫
+  ESIGN_SIGNING_TASK_REJECTION: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/rejection`,
+  ESIGN_SIGNING_TASK_COMPLETED_FILE: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/completed-file`,
   ESIGN_SIGNING_TASKS: 'esign/signing-tasks',
   ESIGN_SIGNING_TASK: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}`,
   ESIGN_SIGNING_TASK_SIGNATURES: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/signatures`,

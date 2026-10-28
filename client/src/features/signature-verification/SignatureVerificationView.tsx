@@ -26,6 +26,7 @@ import axios from 'axios';
 import type { ReactNode } from 'react';
 
 const AUTH_METHOD_LABEL: Record<EsignAuthenticationMethod, string> = {
+  internal_session: '員工登入後以本人指派簽署',
   employee_session: '員工登入電子簽系統後簽署',
   email_invitation: '外部簽署人以 Email 邀請連結及驗證碼簽署',
 };

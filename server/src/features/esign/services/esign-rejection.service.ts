@@ -109,7 +109,7 @@ export class EsignRejectionService {
   ): void {
     if (principal.kind === 'internal') {
       this.access.assertInternalSigner(document, signer, principal.userId);
-      throw new AppException(...AppErrors.ESIGN_EMAIL_OTP_REQUIRED);
+      return;
     }
     if (signer.id !== principal.signerId)
       throw new AppException(...AppErrors.ESIGN_EXTERNAL_SIGNER_MISMATCH);

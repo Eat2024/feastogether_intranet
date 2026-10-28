@@ -9,7 +9,8 @@ import type { SecurityE2eContext } from './security-e2e.helper';
 import { randomClientIp } from './signature-verification.helper';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
-import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
+import { AuthService } from '#app/features/auth/services/auth.service';
+import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 
 /**
  * 外部簽署人開啟文件的兩個表單端點都依 client IP 限流，計數存 Redis 且跨測試回合存活；
@@ -75,17 +76,16 @@ export async function openExternalSession(
   return cookie;
 }
 
-/** 合成內部指派 fixture：在寄送 worker 清除密文前模擬開啟邀請信，仍走真實 OTP HTTP。 */
-export async function openInternalEmailSession(
+/** 合成內部指派 fixture：直接核發有效員工 session，不建立 Email OTP 或外部存取。 */
+export async function openInternalEmployeeSession(
   ctx: SecurityE2eContext,
   signerPublicId: string,
 ): Promise<string> {
   const signer = await ctx.app
     .get(SignerRepository)
     .findByPublicId(signerPublicId, ctx.app.get(MysqlService).getManager());
-  if (!signer?.invitationTokenCiphertext) throw new Error('合成邀請缺少密文');
-  return openExternalSession(
-    ctx,
-    ctx.app.get(EsignTokenService).decrypt(signer.invitationTokenCiphertext),
-  );
+  if (signer?.signerType !== 'user' || !signer.userId)
+    throw new Error('合成指派不是內部員工');
+  const session = await ctx.app.get(AuthService).issueSession(signer.userId);
+  return `${AUTH_COOKIE_NAME}=${session.token}`;
 }

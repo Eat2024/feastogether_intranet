@@ -325,7 +325,7 @@ export class ExternalAccessService {
 }
 
 /** 外部指派的存取檢查已確認固定有效信箱。 */
-function invitationEmail(signer: { email?: string }): string {
+function invitationEmail(signer: { email?: string | null }): string {
   if (!signer.email) throw new Error('unreachable');
   return signer.email;
 }

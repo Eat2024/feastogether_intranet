@@ -24,7 +24,10 @@ import {
   createSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { openExternalSession } from './external-session.helper';
+import {
+  openExternalSession,
+  openInternalEmployeeSession,
+} from './external-session.helper';
 import { esignTestPng } from './esign-test-png';
 
 const origin = 'http://localhost:3000';
@@ -223,26 +226,25 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       .send({ note: value });
   const internalCookies = new Map<string, string>();
   async function signInternal(publicId: string) {
-    const emailCookie = await external(publicId);
-    internalCookies.set(publicId, emailCookie);
+    const employeeCookie = await openInternalEmployeeSession(ctx, publicId);
+    internalCookies.set(publicId, employeeCookie);
     const task = apiData<{
       consent: { version: string };
       fields: Array<{ id: string; type: string }>;
     }>(
       await request(ctx.server)
-        .post('/api/external-signing-task')
-        .set('Cookie', emailCookie)
+        .post(`/api/esign/signing-tasks/${publicId}`)
+        .set('Cookie', employeeCookie)
         .set('Origin', origin)
-        .expect(200),
+        .expect(201),
     );
     return apiData<{ verificationUrl: string }>(
       await request(ctx.server)
-        .post('/api/external-signing-task/signatures')
-        .set('Cookie', emailCookie)
+        .post(`/api/esign/signing-tasks/${publicId}/signatures`)
+        .set('Cookie', employeeCookie)
         .set('Origin', origin)
         .send({
           requestId: randomUUID(),
-          signerPublicId: publicId,
           consentVersion: task.consent.version,
           accepted: true,
           signatures: task.fields
@@ -359,7 +361,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       expect((await read(doc.id)).status).toBe('active');
       const personal = bytes(
         await request(ctx.server)
-          .get('/api/external-signing-task/completed-file')
+          .get(`/api/esign/signing-tasks/${internal.publicId}/completed-file`)
           .set('Cookie', internalCookies.get(internal.publicId)!)
           .buffer(true)
           .parse(binary)
@@ -432,7 +434,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       expect(
         bytes(
           await request(ctx.server)
-            .get('/api/external-signing-task/completed-file')
+            .get(`/api/esign/signing-tasks/${internal.publicId}/completed-file`)
             .set('Cookie', internalCookies.get(internal.publicId)!)
             .buffer(true)
             .parse(binary)

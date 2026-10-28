@@ -89,8 +89,8 @@ export interface EsignSignerView {
   rejectReason: string | null;
   /** 個人簽署副本的產製狀態；尚未簽署時 status 為 null */
   completion: { status: 'pending' | 'processing' | 'ready' | 'failed' | null; readyAt: string | null };
-  /** 外部（Email）簽署人的邀請寄送結果；內部簽署人為 null */
-  invitationDelivery: 'pending' | 'delivered' | 'failed' | null;
+  /** 內外部簽署人的最新邀請通知結果；尚無通知紀錄時為 null */
+  invitationDelivery: 'pending' | 'processing' | 'delivered' | 'failed' | 'skipped' | 'unknown' | null;
   /** 簽章公開驗證網址；只有 status 為 signed 時有值 */
   verificationUrl: string | null;
 }

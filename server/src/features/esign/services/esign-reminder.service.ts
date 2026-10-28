@@ -103,7 +103,14 @@ export class EsignReminderService {
           ),
         });
       }
-      if (!targets.some((t) => t.reason === null))
+      const allInternalWithoutEmail =
+        targets.length > 0 &&
+        targets.every(
+          (target) =>
+            target.signer.signerType === 'user' &&
+            target.reason === 'RECIPIENT_UNAVAILABLE',
+        );
+      if (!targets.some((t) => t.reason === null) && !allInternalWithoutEmail)
         throw new AppException(
           ...AppErrors.ESIGN_NO_ELIGIBLE_REMINDER_RECIPIENTS,
           {

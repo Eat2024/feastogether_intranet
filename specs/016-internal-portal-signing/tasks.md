@@ -59,20 +59,20 @@
 
 **獨立驗收**：測試 mail transport 捕捉 2／50 地址一次 send、51 地址兩次、6,000 地址 120 次（無失敗時），共用地址只投遞一次；部分受理不重寄已受理者；無 Email 發起／補簽成功。完整簽署依 US2，但通知可獨立驗收。對應 FR-001／012／013、驗收 8／12／14／15／16。
 
-- [ ] T024 [P] [US3] 擴充 `server/src/infrastructure/mail/invitation-mail-sender.spec.ts` 及 `mail-delivery-outcome.spec.ts`，先驗證 BCC MIME／envelope 隱私、單次多地址、固定正式 Portal 連結、accepted/rejected/unknown、永久／暫時拒收與外部逐人／OTP 不變。
-- [ ] T025 [P] [US3] 擴充 `server/test/internal-email-initiation.e2e-spec.ts`、`internal-email-capacity.e2e-spec.ts`、`esign-employee-email-checks.e2e-spec.ts`，驗證 mixed／全無信箱可發起、nullable 快照、身分無效及上游失敗仍阻擋；維持 6,000 人與每批 100 人查詢邊界，不把容量測試變成真實大量寄信。
-- [ ] T026 [P] [US3] 擴充 `server/src/worker/esign/external-invitation.processor.spec.ts`、`esign-maintenance.processor.spec.ts`（同目錄），先寫群組租約、舊單 log 轉批次、部分失敗、SMTP 後落庫失敗、stale processing、併發與 supersede 測試。
+- [x] T024 [P] [US3] 擴充 `server/src/infrastructure/mail/invitation-mail-sender.spec.ts` 及 `mail-delivery-outcome.spec.ts`，先驗證 BCC MIME／envelope 隱私、單次多地址、固定正式 Portal 連結、accepted/rejected/unknown、永久／暫時拒收與外部逐人／OTP 不變。
+- [x] T025 [P] [US3] 擴充 `server/test/internal-email-initiation.e2e-spec.ts`、`internal-email-capacity.e2e-spec.ts`、`esign-employee-email-checks.e2e-spec.ts`，驗證 mixed／全無信箱可發起、nullable 快照、身分無效及上游失敗仍阻擋；維持 6,000 人與每批 100 人查詢邊界，不把容量測試變成真實大量寄信。
+- [x] T026 [P] [US3] 擴充 `server/src/worker/esign/external-invitation.processor.spec.ts`、`esign-maintenance.processor.spec.ts`（同目錄），先寫群組租約、舊單 log 轉批次、部分失敗、SMTP 後落庫失敗、stale processing、併發與 supersede 測試。
 - [x] T027 [US3] 在 `server/src/infrastructure/mail/invitation-mail-sender.port.ts` 加 `sendInternalGroup`，輸入最多 50 個不同 BCC 地址、kind、文件資訊及可信固定 Portal URL，回逐地址結果；外部 send／sendOtp 保持單人契約，內部無 invitationToken。
 - [x] T028 [US3] 修改 `server/src/infrastructure/mail/invitation-mail-content.ts`、`smtp-invitation-mail-sender.service.ts`、`fake-invitation-mail-sender.service.ts` 及 `mail-delivery-outcome.ts`：一次 sendMail 多 BCC，To/CC 不放員工，MIME 不保留 BCC；解析受理與拒收，不以 Promise resolve 推定全成功，不記原始收件名單／憑證至 log。
-- [ ] T029 [US3] 修改 `server/src/features/esign/services/esign-initiation.service.ts` 與 `esign-document-validation.service.ts`：內部「`email` 可以 NULL」，「`signerType=user` 必須有可信本機 `userId` 與員編快照」；缺信箱保留全部指派，外部仍需有效 Email，HR 故障不能當空值，既有快照不改寫。
-- [ ] T030 [US3] 修改 `server/src/features/esign/services/esign-initiation.service.ts` 的 token／通知建立：內部新 `invitationTokenSha256/invitationTokenCiphertext/invitationExpiresAt`「保持 NULL」，可寄者 pending、無有效地址「`skipped`，reasonCode 使用既有 `RECIPIENT_UNAVAILABLE`」，不入寄信佇列；保留逐人 log，不新增 schema。
+- [x] T029 [US3] 修改 `server/src/features/esign/services/esign-initiation.service.ts` 與 `esign-document-validation.service.ts`：內部「`email` 可以 NULL」，「`signerType=user` 必須有可信本機 `userId` 與員編快照」；缺信箱保留全部指派，外部仍需有效 Email，HR 故障不能當空值，既有快照不改寫。
+- [x] T030 [US3] 修改 `server/src/features/esign/services/esign-initiation.service.ts` 的 token／通知建立：內部新 `invitationTokenSha256/invitationTokenCiphertext/invitationExpiresAt`「保持 NULL」，可寄者 pending、無有效地址「`skipped`，reasonCode 使用既有 `RECIPIENT_UNAVAILABLE`」，不入寄信佇列；保留逐人 log，不新增 schema。
 - [x] T031 [US3] 修改 `server/src/features/esign/services/esign-reopening.service.ts`、`esign-reminder.service.ts`、`esign-reminder-policy.ts`，內部期間不依賴 invitation token；補簽同交易 supersede 舊通知、建立新批次，無 Email 仍可補簽，保留台北每日催簽限制及原有限重試，外部 token 世代照舊。
 - [x] T032 [US3] 在 `server/src/features/esign/repositories/notification.repository.ts` 加入同 document/batch 的群組候選與原子領取／finish 查詢；按 log id 穩定排序、地址去重並領取同地址全部合格 log，共用 lease／processingStartedAt，逐人 attemptCount；排除 delivered/unknown/skipped/未到期重試，統一鎖順序且 SMTP 不在交易內。
 - [x] T033 [US3] 修改 `server/src/features/esign/services/esign-job-producer.service.ts`、`server/src/features/esign/esign-queue.constants.ts` 與 `server/src/worker/esign/esign-maintenance.processor.ts`：沿現有 queue，內部 `{notificationBatchId}` 去重、外部 `{notificationLogId}`，維護候選不再要求內部 token；群組工作完成後確保剩餘 chunk 可繼續處理，不增 scheduler。
 - [x] T034 [US3] 修改 `server/src/worker/esign/external-invitation.processor.ts`，分流新 batch／歷史單 log 工作，內部同批合格地址一次 BCC（最多 50），外部仍逐人；批次中只有一位或重試剩一位可寄，不能為湊數加入未選取者，不能跨文件合併。
 - [x] T035 [US3] 完成 `server/src/worker/esign/external-invitation.processor.ts` 與 `server/src/worker/esign/esign-maintenance.processor.ts` 的逐地址 finish／恢復：accepted 映射該地址所有 log 為 delivered，暫時未寄出才重試，「內部每個 log 最多 3 次（含首次），採既有催簽的 30／60 秒退避」；永久拒收停止，未知與 stale processing 轉 unknown 不重寄；finish 匹配 lease，不覆寫 superseded／新批次。
-- [ ] T036 [US3] 修改 `client/src/features/esign-documents/DocumentSignersEditor.tsx`、`DocumentEditView.tsx` 與 `notificationLabels.ts`：無 Email 只提示人資另行通知、不擋發起；身分／上游錯誤仍擋，通知歷史維持逐人結果，不把人次誤稱寄送封數，不新增 HR 通知介面。
-- [ ] T037 [US3] 執行群寄、容量與 `server/test/esign-reminders.e2e-spec.ts` 回歸，將 1/2/50/51/6,000 地址、共用信箱、混合內外部、補簽競態、未知結果與兩環境相同 URL 的證據記入 `specs/016-internal-portal-signing/quickstart.md`；驗證未知結果沒有被 maintenance 再寄。
+- [x] T036 [US3] 修改 `client/src/features/esign-documents/DocumentSignersEditor.tsx`、`DocumentEditView.tsx` 與 `notificationLabels.ts`：無 Email 只提示人資另行通知、不擋發起；身分／上游錯誤仍擋，通知歷史維持逐人結果，不把人次誤稱寄送封數，不新增 HR 通知介面。
+- [x] T037 [US3] 執行群寄、容量與 `server/test/esign-reminders.e2e-spec.ts` 回歸，將 1/2/50/51/6,000 地址、共用信箱、混合內外部、補簽競態、未知結果與兩環境相同 URL 的證據記入 `specs/016-internal-portal-signing/quickstart.md`；驗證未知結果沒有被 maintenance 再寄。
 
 ## Phase 6：US4 舊邀請切換與外部回歸（P1）
 
@@ -144,3 +144,7 @@ Ticket 05 已整合（`8796109`），T017／T022 完成；04／05 已補齊 T012
 ## 催簽與補簽整合進度（2026-10-28）
 
 Ticket 07 已整合（`1326771`／實作 `ce8fe97`），T031 及 06／07 共用的 T032–T035 完成。T037 保留未勾選，等待 08 補齊無 Email 與 6,000 人容量證據；完整本機 SMTP／MySQL／Chrome 合成驗證見 06／07，正式 Portal／公司 SMTP 不列為已驗收。
+
+## 無 Email 與容量整合進度（2026-10-28）
+
+Ticket 08 已整合（`cf6da85`／實作 `5525979`），T025／T029／T030／T036／T037 完成；連同 06／07 的 SMTP、worker、競態證據，T024／T026 測試部分完成。真實 6,000 人發起及 worker 共 120 次 50 地址的 fake 群寄，未寄公司信箱。相關 E2E 47 cases、容量及信箱 API 20 cases 與桌面／窄螢幕合成 UI 驗證紀錄見 ticket 08；正式 Portal 旅程保留待驗。

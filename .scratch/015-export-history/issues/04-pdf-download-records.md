@@ -35,7 +35,7 @@
   - `external-signature.controller.ts`：`POST external-signing-task/completed-file/downloads` 取代 GET；匯出人 NULL；Swagger 移除「一般連結直接下載」。
   - `export-history.controller.ts`：`POST :id/downloads`。
   - 順序一律為：權限與副本檢查 → 副本未產生拋原本的錯誤 → 寫入紀錄 → 送出。
-- `server/src/features/esign/repositories/export-job.repository.ts`：`findRecord(publicId, exportType)`。
+- `server/src/features/esign/repositories/export-job.repository.ts`：實作時新增 `findRecord(publicId, exportType)`；合併 03 後改用 03 的 `historyRecord(publicId)` 並移除（見下方合併紀錄）。
 - 測試：
   - `server/test/esign-export-history.e2e-spec.ts`：新增「單人 PDF 下載紀錄」區塊 30 案（自建文件與已產製副本，走真實完整性驗證）。
   - 既有 e2e 改用 POST：`core-esign-flow`（另於 afterAll 清除本 suite 文件的匯出紀錄）、`internal-email-copy`、`internal-email-signing`、`internal-portal-completion`、`esign-rejection`、`esign-document-delivery-security`、`security-core-esign-flow`、`api-coverage`（舊三條 GET 404、新 POST 未登入 401）。`internal-email-signing` 與 `internal-portal-completion` 不在原清單，但也呼叫舊 GET，一併更新。
@@ -61,3 +61,25 @@
   - 紀錄 id 不是 UUID 時回 404，不另做 400 格式驗證。
   - 重新下載的範圍逐字沿用原紀錄的 `scope_description`，不重新計算。
 - tasks 寫法的差異（內部介面，不影響 API）：`recordPdf` 只收 `(signer, exporterUserId)`，文件取 `signer.documentId`；`creatorFile`／`signerFile`／`completedFile` 只多回 `signer`，不回 `document`。
+
+### 合併整合分支（2026-10-29）
+
+- 先在 `impl/015-04` 提交 `d62f98c`，再把整合分支最新版 `feat/015-export-history`（c922db8，含 03）合入。
+- 衝突與處理：
+  - `esign-export-history.service.ts`：兩票都新增 `documents`／`signers` 依賴與方法，保留 03 的 `recordExcel`／`excelDocument` 與本票的 `recordPdf`／`redownloadPdf`。重新下載改用 03 新增的 `ExportJobRepository.historyRecord(publicId)` 再比對 `pdf` 類型（與 `excelDocument` 相同寫法），移除本票重複的 `findRecord`；`historyRecord` 同時排除已刪除文件。
+  - `export-history.controller.ts`：合併兩票的 import 與路由，重新下載補上 `ApiParam`（與 03 的 `GET :id/document` 一致）。
+  - `esign-export-history.e2e-spec.ts`：兩票各自的 describe 都保留（「單人 PDF 下載紀錄」、「Excel 紀錄」），使用各自的文件。
+  - `tasks.md`：T014–T027 全部勾選，`Status` 改為 27／30（03 沒有更新計數）。
+  - `quickstart.md`：依票號排列 03、04 的驗證紀錄。
+- 合併後在同一隔離庫（`feastogether_intranet_test1504`、`REDIS_DB=14`）重跑：
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors（265 個既有 warnings，總數不變） |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e`（全套） | 28 suites／313 tests 通過（03 合併後 282＋本票 31）；本票涉及的 suites：`esign-export-history` 71（02 的 14＋03 的 27＋本票 30）、`api-coverage` 35、`core-esign-flow` 25、`internal-email-copy` 9、`internal-portal-completion` 6、`esign-rejection` 5、`esign-export` 4、`esign-document-delivery-security` 3、`internal-email-signing` 3 |
+| `pnpm -C server test:e2e:security`（含 `security-core-esign-flow`） | 11 suites／60 tests 通過 |
+
+- Swagger（合併後的 build 產物）：`/api/esign/history/export` 底下 GET、POST、`GET {id}/document`、`POST {id}/downloads` 與三條 `POST …/completed-file/downloads` 都在文件中，四條下載為 200 `application/pdf`；三條舊 GET 不在文件中。

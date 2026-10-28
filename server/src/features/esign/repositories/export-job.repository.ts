@@ -18,10 +18,6 @@ export class ExportJobRepository {
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
-  /** 依紀錄 UUID 與類型取得單筆紀錄。 */
-  findRecord(publicId: string, exportType: string, manager: EntityManager) {
-    return manager.findOneBy(EsignExportJob, { publicId, exportType });
-  }
   byId(id: number, manager: EntityManager, lock = false) {
     return manager.findOne(EsignExportJob, {
       where: { id },
@@ -110,9 +106,41 @@ export class ExportJobRepository {
     },
     manager: EntityManager,
   ) {
+    return this.historyItems(q.documentId, manager)
+      .andWhere('job.exportType = :exportType', { exportType: q.exportType })
+      .orderBy('job.createdAt', 'DESC')
+      .addOrderBy('job.id', 'DESC')
+      .offset(q.offset)
+      .limit(q.limit)
+      .getMany();
+  }
+
+  /** 依紀錄 UUID 讀取一筆紀錄，欄位與條件同 historyPage。 */
+  historyRecord(publicId: string, manager: EntityManager) {
+    return this.historyItems(undefined, manager)
+      .andWhere('job.publicId = :publicId', { publicId })
+      .getOne();
+  }
+
+  /** 依匯出類型分組計數，條件與 historyPage 相同。 */
+  async historyCounts(
+    exportTypes: string[],
+    documentId: number | undefined,
+    manager: EntityManager,
+  ) {
+    const rows = await this.historyQuery(documentId, manager)
+      .andWhere('job.exportType IN (:...exportTypes)', { exportTypes })
+      .select('job.exportType', 'exportType')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('job.exportType')
+      .getRawMany<{ exportType: string; count: number | string }>();
+    return new Map(rows.map((row) => [row.exportType, Number(row.count)]));
+  }
+
+  /** 紀錄列表項目需要的欄位：文件、匯出員工與簽署人。 */
+  private historyItems(documentId: number | undefined, manager: EntityManager) {
     return (
-      this.historyQuery(q.documentId, manager)
-        .andWhere('job.exportType = :exportType', { exportType: q.exportType })
+      this.historyQuery(documentId, manager)
         // 不載入 ZIP 快照與已固定副本清單，單筆可達數千項。
         .select([
           'job.id',
@@ -145,27 +173,7 @@ export class ExportJobRepository {
         ])
         .leftJoin('job.createdByUser', 'exporter')
         .leftJoin('job.signer', 'signer')
-        .orderBy('job.createdAt', 'DESC')
-        .addOrderBy('job.id', 'DESC')
-        .offset(q.offset)
-        .limit(q.limit)
-        .getMany()
     );
-  }
-
-  /** 依匯出類型分組計數，條件與 historyPage 相同。 */
-  async historyCounts(
-    exportTypes: string[],
-    documentId: number | undefined,
-    manager: EntityManager,
-  ) {
-    const rows = await this.historyQuery(documentId, manager)
-      .andWhere('job.exportType IN (:...exportTypes)', { exportTypes })
-      .select('job.exportType', 'exportType')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('job.exportType')
-      .getRawMany<{ exportType: string; count: number | string }>();
-    return new Map(rows.map((row) => [row.exportType, Number(row.count)]));
   }
 
   /** 歷史紀錄共同條件：文件未刪除；ZIP 只計有快照的匯出工作。 */

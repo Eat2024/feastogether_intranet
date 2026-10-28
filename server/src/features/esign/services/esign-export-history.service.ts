@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { DocumentRepository } from '../repositories/document.repository';
 import { ExportJobRepository } from '../repositories/export-job.repository';
@@ -9,6 +10,8 @@ import { SignerRepository } from '../repositories/signer.repository';
 import { type EsignExportJob } from '../entities/esign-export-job.entity';
 import { type EsignSigner } from '../entities/esign-signer.entity';
 import {
+  type CreateExcelExportRecordDto,
+  type ExcelExportDocumentDto,
   EXPORT_HISTORY_TYPES,
   type ExportedByDto,
   type ExportHistoryItemDto,
@@ -21,6 +24,7 @@ import {
   type PersonalCopyFile,
 } from './esign-completion-access.service';
 import { EsignExportService } from './esign-export.service';
+import { EsignViewMapper } from './esign-view.mapper';
 
 /** API 紀錄類型與 DB `export_type` 的唯一對應；ZIP 沿用 Spec 009 的既有值。 */
 const EXPORT_TYPE_COLUMN: Record<ExportHistoryType, string> = {
@@ -38,9 +42,11 @@ export class EsignExportHistoryService {
   constructor(
     private readonly mysql: MysqlService,
     private readonly jobs: ExportJobRepository,
-    private readonly exports: EsignExportService,
     private readonly documents: DocumentRepository,
     private readonly signers: SignerRepository,
+    private readonly users: UserRepository,
+    private readonly exports: EsignExportService,
+    private readonly mapper: EsignViewMapper,
     private readonly completions: EsignCompletionAccessService,
   ) {}
 
@@ -75,6 +81,60 @@ export class EsignExportHistoryService {
     };
   }
 
+  /** 記錄前端產生的 Excel：任何員工可記錄已發起文件，匯出人取自 session。 */
+  async recordExcel(
+    userId: number,
+    body: CreateExcelExportRecordDto,
+  ): Promise<ExportHistoryItemDto> {
+    const manager = this.mysql.getManager();
+    const document = await this.documents.findById(
+      Number(body.documentId),
+      manager,
+    );
+    // 已發起的文件不會再回到草稿或被刪除，不需鎖定。
+    if (!document || document.status === 'draft')
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    const { statuses, depts, fields } = body.conditions;
+    const job = await this.jobs.save(
+      this.jobs.create(
+        {
+          publicId: randomUUID(),
+          exportType: EXPORT_TYPE_COLUMN.excel,
+          documentId: document.id,
+          createdByUserId: userId,
+          status: 'completed',
+          scopeDescription: body.scope,
+          recordCount: body.count,
+          conditionsJson: { statuses, depts, fields },
+          completedAt: new Date(),
+        },
+        manager,
+      ),
+      manager,
+    );
+    return this.item(
+      (await this.jobs.historyRecord(job.publicId!, manager))!,
+      'excel',
+    );
+  }
+
+  /** Excel 重新下載資料：任何員工可依 excel 紀錄取得文件目前的資料；唯讀，不新增紀錄。 */
+  async excelDocument(publicId: string): Promise<ExcelExportDocumentDto> {
+    const manager = this.mysql.getManager();
+    const job = await this.jobs.historyRecord(publicId, manager);
+    const document =
+      job?.exportType === EXPORT_TYPE_COLUMN.excel
+        ? await this.documents.findById(job.documentId!, manager)
+        : null;
+    if (!document)
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    const [creator, signers] = await Promise.all([
+      this.users.findById(document.createdByUserId, manager),
+      this.signers.findByDocument(document.id, manager),
+    ]);
+    return this.mapper.excelExportDocument(document, creator, signers);
+  }
+
   /**
    * 單人副本送出前寫入一筆 pdf 紀錄，範圍為簽署人標籤。
    * exporterUserId 為 NULL 代表外部簽署人本人下載；寫入失敗時拋錯，呼叫端不可送出檔案。
@@ -88,18 +148,15 @@ export class EsignExportHistoryService {
    * 送出前新增一筆紀錄，簽署人（含文件）與範圍沿用原紀錄，匯出人為目前使用者。
    */
   async redownloadPdf(
-    recordId: string,
+    publicId: string,
     userId: number,
   ): Promise<PersonalCopyFile> {
     const manager = this.mysql.getManager();
-    const record = await this.jobs.findRecord(
-      recordId,
-      EXPORT_TYPE_COLUMN.pdf,
-      manager,
-    );
-    const signer = record?.signerId
-      ? await this.signers.findById(record.signerId, manager)
-      : null;
+    const record = await this.jobs.historyRecord(publicId, manager);
+    const signer =
+      record?.exportType === EXPORT_TYPE_COLUMN.pdf
+        ? await this.signers.findById(record.signerId!, manager)
+        : null;
     const document = signer
       ? await this.documents.findById(signer.documentId, manager)
       : null;

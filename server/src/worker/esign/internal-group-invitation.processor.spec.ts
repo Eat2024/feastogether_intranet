@@ -11,6 +11,7 @@ function setup(emails: string[]) {
     id: 7,
     status: 'active',
     title: '文件',
+    signStartAt: new Date(Date.now() - 60_000),
     signEndAt: new Date(Date.now() + 86_400_000),
     createdByUser: { name: '人資' },
   };
@@ -34,6 +35,9 @@ function setup(emails: string[]) {
   );
   const batch = { id: 9, documentId: 7, kind: 'invitation' };
   const notifications = {
+    findBySignerIds: jest
+      .fn<Promise<EsignNotificationLog[]>, unknown[]>()
+      .mockResolvedValue([]),
     findInternalBatchContextForUpdate: jest.fn(async () => ({
       document,
       batch,
@@ -83,7 +87,16 @@ function setup(emails: string[]) {
     mailer,
   );
   const job = { data: { notificationBatchId: 9 } } as Job;
-  return { processor, logs, mailer, job, notifications, audit, document };
+  return {
+    processor,
+    logs,
+    mailer,
+    job,
+    notifications,
+    audit,
+    document,
+    batch,
+  };
 }
 
 describe('內部通知群寄', () => {
@@ -320,5 +333,38 @@ describe('內部通知群寄', () => {
     expect(logs[0].nextAttemptAt).toBeNull();
     await processor.process(job);
     expect(mailer.sendInternalGroup).toHaveBeenCalledTimes(1);
+  });
+  it('內部催簽 worker 重新檢查開始時間，未開始則 skipped 不寄送', async () => {
+    const { processor, logs, mailer, job, document, batch } = setup([
+      'a@example.test',
+    ]);
+    batch.kind = 'reminder';
+    document.signStartAt = new Date(Date.now() + 60_000);
+    await processor.process(job);
+    expect(logs[0].result).toBe('skipped');
+    expect(logs[0].errorCode).toBe('SIGNING_WINDOW_CLOSED');
+    expect(mailer.sendInternalGroup).not.toHaveBeenCalled();
+  });
+
+  it('內部催簽 worker 重新檢查同日已受理歷史，過期排隊工作不得再寄', async () => {
+    const { processor, logs, mailer, job, batch, notifications } = setup([
+      'a@example.test',
+    ]);
+    batch.kind = 'reminder';
+    notifications.findBySignerIds.mockResolvedValue([
+      Object.assign(new EsignNotificationLog(), {
+        id: 99,
+        signerId: 1,
+        result: 'delivered',
+        dispatchDate: new Date(Date.now() + 8 * 3600000)
+          .toISOString()
+          .slice(0, 10),
+        batch: { kind: 'reminder' },
+      }),
+    ]);
+    await processor.process(job);
+    expect(logs[0].result).toBe('skipped');
+    expect(logs[0].errorCode).toBe('REMINDER_DAILY_LIMIT');
+    expect(mailer.sendInternalGroup).not.toHaveBeenCalled();
   });
 });

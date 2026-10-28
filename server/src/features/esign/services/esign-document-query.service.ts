@@ -54,11 +54,7 @@ export class EsignDocumentQueryService {
     logs: EsignNotificationLog[],
   ) {
     const now = new Date();
-    const reasonCode =
-      reminderEligibility(document, signer, logs, now) ??
-      (!signer.email || !signer.invitationTokenSha256
-        ? 'RECIPIENT_UNAVAILABLE'
-        : null);
+    const reasonCode = reminderEligibility(document, signer, logs, now);
     const latest = logs.find((l) => l.batch?.kind === 'reminder');
     const invitation = logs.find(
       (l) =>
@@ -258,7 +254,9 @@ export class EsignDocumentQueryService {
       return signers
         .filter(
           (signer) =>
-            signer.status === 'pending' && !!signer.invitationTokenCiphertext,
+            signer.signerType === 'email' &&
+            signer.status === 'pending' &&
+            !!signer.invitationTokenCiphertext,
         )
         .map((signer) => {
           try {

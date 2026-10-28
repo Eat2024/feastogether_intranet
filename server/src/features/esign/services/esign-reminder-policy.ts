@@ -40,11 +40,16 @@ export function reminderEligibility(
     !document.signEndAt ||
     now < document.signStartAt ||
     now >= document.signEndAt ||
-    !signer.invitationExpiresAt ||
-    now >= signer.invitationExpiresAt
+    (signer.signerType === 'email' &&
+      (!signer.invitationExpiresAt || now >= signer.invitationExpiresAt))
   )
     return 'SIGNING_WINDOW_CLOSED';
-  if (!signer.email || !isEmail(signer.email) || !signer.invitationTokenSha256)
+  if (
+    !['user', 'email'].includes(signer.signerType) ||
+    !signer.email ||
+    !isEmail(signer.email) ||
+    (signer.signerType === 'email' && !signer.invitationTokenSha256)
+  )
     return 'RECIPIENT_UNAVAILABLE';
   const reminders = history.filter((log) => log.batch?.kind === 'reminder');
   if (

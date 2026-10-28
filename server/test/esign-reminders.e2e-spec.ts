@@ -596,6 +596,7 @@ describe('內外部催簽 API', () => {
       INVITATION_MAIL_SENDER,
     );
     const before = mailer.deliveries.length;
+    const beforeGroups = mailer.internalGroupDeliveries.length;
     for (const row of rows)
       await worker().process({ data: { notificationLogId: row.id } } as Job<{
         notificationLogId: number;
@@ -603,9 +604,14 @@ describe('內外部催簽 API', () => {
     const sent = mailer.deliveries.slice(before);
     expect(sent.map((mail) => mail.recipientEmail)).toEqual([
       'e2e00905@example.test',
-      'e2e00905@example.test',
     ]);
-    expect(new Set(sent.map((mail) => mail.invitationToken)).size).toBe(2);
+    expect(new Set(sent.map((mail) => mail.invitationToken)).size).toBe(1);
+    expect(mailer.internalGroupDeliveries.slice(beforeGroups)).toEqual([
+      expect.objectContaining({
+        kind: 'reminder',
+        recipientEmails: ['e2e00905@example.test'],
+      }),
+    ]);
     const limited = await post(doc.id, {
       requestId: randomUUID(),
       selection: 'all_pending',
@@ -617,7 +623,7 @@ describe('內外部催簽 API', () => {
       })),
     });
   });
-  it('歷史內部缺固定信箱或邀請時回逐人原因，不查 HR 補登或寄出', async () => {
+  it('歷史內部缺固定信箱時回逐人原因，不查 HR 補登或寄出', async () => {
     const [user] = await db.query<Array<{ id: number }>>(
       'SELECT id FROM users WHERE empid=?',
       ['E2E00905'],
@@ -684,11 +690,17 @@ describe('內外部催簽 API', () => {
       INVITATION_MAIL_SENDER,
     );
     const before = mailer.deliveries.length;
+    const beforeGroups = mailer.internalGroupDeliveries.length;
     for (const row of rows)
       await worker().process({ data: { notificationLogId: row.id } } as Job<{
         notificationLogId: number;
       }>);
-    expect(mailer.deliveries.slice(before)).toHaveLength(6);
+    expect(mailer.deliveries.slice(before)).toHaveLength(4);
+    expect(
+      mailer.internalGroupDeliveries
+        .slice(beforeGroups)
+        .map((mail) => mail.kind),
+    ).toEqual(['invitation', 'reminder']);
     const detail = apiData<{
       signers: Array<{
         type: string;
@@ -719,7 +731,8 @@ describe('內外部催簽 API', () => {
       }),
     ]);
     expect(responses.map((r) => r.status)).toEqual([409, 409]);
-    expect(mailer.deliveries.slice(before)).toHaveLength(6);
+    expect(mailer.deliveries.slice(before)).toHaveLength(4);
+    expect(mailer.internalGroupDeliveries.slice(beforeGroups)).toHaveLength(2);
   });
   it('明確失敗仍待重試時不能另建批次，原明細成功後只寄出一次', async () => {
     const doc = await create();

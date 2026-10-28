@@ -58,10 +58,11 @@ export class EsignReopeningService {
       const originalSignEndAt = this.validateOriginalPayload(document);
       const unavailable = pending.filter(
         (signer) =>
-          !signer.email ||
-          !isEmail(signer.email) ||
-          !signer.invitationTokenSha256 ||
-          !signer.invitationExpiresAt,
+          signer.signerType === 'email' &&
+          (!signer.email ||
+            !isEmail(signer.email) ||
+            !signer.invitationTokenSha256 ||
+            !signer.invitationExpiresAt),
       );
       if (unavailable.length > 0)
         throw new AppException(
@@ -93,24 +94,48 @@ export class EsignReopeningService {
         manager,
       );
       const newLogs = await this.notifications.saveLogs(
-        pending.map((signer) =>
-          this.notifications.createLog(
+        pending.map((signer) => {
+          const unavailable =
+            signer.signerType === 'user' &&
+            (!signer.email || !isEmail(signer.email));
+          return this.notifications.createLog(
             {
               batchId: batch.id,
               signerId: signer.id,
               channel: 'email',
-              result: 'pending',
+              result: unavailable ? 'skipped' : 'pending',
+              errorCode: unavailable ? 'RECIPIENT_UNAVAILABLE' : null,
+              completedAt: unavailable ? now : undefined,
               attemptCount: 0,
-              invitationGenerationSha256: signer.invitationTokenSha256,
-              nextAttemptAt: now,
+              invitationGenerationSha256:
+                signer.signerType === 'email'
+                  ? signer.invitationTokenSha256
+                  : null,
+              nextAttemptAt: unavailable ? null : now,
             },
             manager,
-          ),
-        ),
+          );
+        }),
         manager,
       );
+      const internalSignerIds = new Set(
+        pending
+          .filter((signer) => signer.signerType === 'user')
+          .map((signer) => signer.id),
+      );
       return {
-        notificationLogIds: newLogs.map((log) => log.id),
+        notificationLogIds: newLogs
+          .filter(
+            (log) =>
+              log.result === 'pending' && !internalSignerIds.has(log.signerId),
+          )
+          .map((log) => log.id),
+        notificationBatchIds: newLogs.some(
+          (log) =>
+            log.result === 'pending' && internalSignerIds.has(log.signerId),
+        )
+          ? [batch.id]
+          : [],
         result: {
           documentId: String(documentId),
           status: 'active',
@@ -122,7 +147,10 @@ export class EsignReopeningService {
         },
       };
     });
-    await this.jobs.enqueueInvitations(committed.notificationLogIds);
+    await this.jobs.enqueueInvitations(
+      committed.notificationLogIds,
+      committed.notificationBatchIds,
+    );
     return committed.result;
   }
 
@@ -219,10 +247,13 @@ export class EsignReopeningService {
     manager: EntityManager,
   ): Promise<void> {
     for (const signer of pending) {
-      const invitation = this.tokens.createInvitationToken();
-      signer.invitationTokenSha256 = invitation.digest;
-      signer.invitationTokenCiphertext = invitation.ciphertext;
-      signer.invitationExpiresAt = next;
+      if (signer.signerType === 'email') {
+        const invitation = this.tokens.createInvitationToken();
+        signer.invitationTokenSha256 = invitation.digest;
+        signer.invitationTokenCiphertext = invitation.ciphertext;
+        signer.invitationExpiresAt = next;
+      }
+      // 內部歷史 token 僅供舊入口識別，不輪替或作為補簽資格。
       signer.invitationDeliveredAt = null;
     }
     await this.signers.saveMany(pending, manager);

@@ -215,6 +215,15 @@ export class ExternalInvitationProcessor extends WorkerHost {
           await this.notifications.saveLog(log, manager);
         }
       }
+      // 文件鎖內重新以 locking read 讀催簽歷史，避免等待鎖前建立的快照漏掉另一批已送達結果。
+      const history =
+        batch.kind === 'reminder'
+          ? await this.notifications.findBySignerIds(
+              internal.map((log) => log.signerId),
+              manager,
+              true,
+            )
+          : [];
       const groups = new Map<string, EsignNotificationLog[]>();
       for (const log of internal) {
         if (
@@ -226,14 +235,25 @@ export class ExternalInvitationProcessor extends WorkerHost {
         )
           continue;
         const email = log.signer?.email?.trim().toLowerCase();
-        const reason = !email
-          ? 'RECIPIENT_UNAVAILABLE'
-          : document.status !== 'active' ||
-              !document.signEndAt ||
-              now >= document.signEndAt ||
-              log.signer?.status !== 'pending'
-            ? 'INVITATION_NO_LONGER_ACTIVE'
-            : null;
+        const reason =
+          batch.kind === 'reminder' && log.signer
+            ? reminderEligibility(
+                document,
+                log.signer,
+                history.filter(
+                  (other) =>
+                    other.signerId === log.signerId && other.id !== log.id,
+                ),
+                now,
+              )
+            : !email
+              ? 'RECIPIENT_UNAVAILABLE'
+              : document.status !== 'active' ||
+                  !document.signEndAt ||
+                  now >= document.signEndAt ||
+                  log.signer?.status !== 'pending'
+                ? 'INVITATION_NO_LONGER_ACTIVE'
+                : null;
         if (reason) {
           log.result = 'skipped';
           log.errorCode = reason;

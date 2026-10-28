@@ -267,11 +267,16 @@ export class NotificationRepository {
       .getRawMany<{ id: string; batchId: string; signerType: string }>();
   }
 
-  findBySignerIds(signerIds: number[], manager: EntityManager) {
+  findBySignerIds(
+    signerIds: number[],
+    manager: EntityManager,
+    forUpdate = false,
+  ) {
     if (signerIds.length === 0) return Promise.resolve([]);
     return manager.find(EsignNotificationLog, {
       where: { signerId: In(signerIds) },
       relations: { batch: true },
+      ...(forUpdate ? { lock: { mode: 'pessimistic_write' as const } } : {}),
       order: { createdAt: 'DESC', id: 'DESC' },
     });
   }

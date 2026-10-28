@@ -218,6 +218,7 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
         new Date(),
         new Date(Date.now() - 300000),
         manager,
+        Number(logs[0].id) - 1,
       );
     expect(
       candidates.filter((row) => Number(row.batchId) === batchId),

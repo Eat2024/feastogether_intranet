@@ -27,6 +27,15 @@
 - 真實 MySQL：新增 `internal-group-reminders.e2e-spec.ts` 8 案，覆蓋選取子集合、混合內外部、requestId 重送、台北跨日、併發申請、跨午夜部分重試、補簽退休舊工作與 SMTP 在途完成競態、無 Email 補簽。
 - 新舊群寄與催簽共 3 suites／31 tests 全通過，包含既有外部 OTP 催簽回歸；使用獨立 `feastogether_intranet_test_spec016_t07`。
 - 修正 06 新測試的 maintenance 候選分頁起點，使重複執行或與其他 suites 同跑不依賴測試 DB 無舊待寄紀錄。
-- Server build、lint:check（0 errors）通過。建立人操作與結果經 HTTP API 驗證；未執行瀏覽器／正式 Portal 或實際公司 SMTP 驗收，留待 10 整體驗收。
+- Server build、lint:check（0 errors）通過。建立人操作與結果經 HTTP API 驗證；Chrome 合成 fixture 驗證見下節。正式 Portal 與實際公司 SMTP 留待環境驗收。
 
 狀態維持 claimed，等待整合分支合併後關閉。
+
+
+### Chrome 合成介面 smoke
+
+- 使用本分支 Next dev 與獨立 headless Chrome，以 CDP 攔截 API 回應，驗證既有建立人頁面 1280px／390px 操作：選取兩位員工催簽、requestId／selection／signerPublicIds 請求、逐人成功結果、補簽日期與原因／expectedSignEndAt 請求。兩種寬度均操作成功且沒有 runtime exception。
+- 模擬 `data-embedded` 的 Portal 呈現，確認結果與補簽對話框左右邊界落在視窗內，並目視檢查截圖；窄版逐人表格在容器內橫向捲動。
+- 截圖：`/tmp/ft016-t07-results-{1280,390}.png`、`/tmp/ft016-t07-reopen-{1280,390}.png`；暫存 harness：`/tmp/ft016-t07-browser.mjs`。均為合成人員與攔截 API，並非真實 Portal 登入／SMTP 端到端測試。
+- 既有窄版限制：PageHeader 的同列操作會把主標題擠成直排；standalone 390px 的永久 sidebar 也會壓縮主內容。對話框可操作不代表整頁窄版視覺已完成，已交由 10 整合驗收追蹤。此票未修改共用版型。
+- 已停止測試 Next dev／Chrome，僅移除 Next dev 自動追加至 client/AGENTS.md 的生成區塊，未修改專案規範。

@@ -28,3 +28,8 @@
 
 - 實作 `5525979` 已隨 `impl/016-08` 的 `cf6da85` fast-forward 整合至 `feat/016-internal-portal-signing`；無 Email 指派、本人簽署、補簽、來源故障及 6,000 人容量驗收完成。
 - 09 保持 claimed，10 的正式 Portal 旅程仍等待 03 環境驗收；不將合成 browser fixtures 視為已部署驗收。
+
+### 整合回歸補充（2026-10-28）
+
+- 更新舊催簽套件的「歷史內部缺固定信箱」案例：回應 202、持久化 skipped／RECIPIENT_UNAVAILABLE，requestId 重送返回同批。保留無 HR 查詢、無 SMTP、不可變快照完全相同的斷言，並主動執行舊 log job 確認不寄送。
+- `esign-reminders.e2e-spec.ts` 真實 API/MySQL/Redis 18/18 通過（DB `_spec016_t08`、Redis DB 10）；這是舊測試契約遷移，未更動 runtime 政策。

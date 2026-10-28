@@ -52,4 +52,29 @@ pnpm -C server test:e2e
 
 ## 驗證紀錄
 
-尚未執行。
+### 01 schema（T001–T006，2026-10-28）
+
+環境：Node v26.4.0、pnpm 11.9.0、MySQL／mysqldump 8.4.11（Homebrew）。基準為整合分支 `feat/015-export-history`（f974afe）。
+
+測試隔離：
+- e2e 使用 `DB_MYSQL_DB=feastogether_intranet_test_015_01`、`REDIS_DB=11`。
+- `test:schema` 會在 DB 名稱後加 `_` 與 32 字元亂數；上述名稱加上後超過 MySQL 64 字元上限，因此改以環境變數 `DB_MYSQL_DB=feastogether_intranet_test1501` 執行，每個案例仍各自建立並刪除隨機測試庫。
+- `pnpm -C server schema:dump` 讀 `.env`（開發庫），本次不碰開發庫：改用同一支腳本讀 `.env.test`，從已套用新 migration 的隔離庫匯出（`node --env-file=.env.test --conditions=development -r ts-node/register src/infrastructure/database/dump-schema.ts`）。
+
+核對：root／server `AGENTS.md`、constitution（目前為 **2.0.0**，T001 寫的 1.5.0 已被 016 修訂；本票沒有牴觸）、migration 次序（新增於 `1792454405000-InternalEmailInvitations` 之後）。
+
+| 指令 | 基準（變更前） | 變更後 |
+|---|---|---|
+| `pnpm -C server lint:check` | — | 0 errors（265 個既有 warnings，本次變更檔案 0 個） |
+| `pnpm -C server build` | — | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／8 tests 通過 | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e test/esign-export.e2e-spec.ts`（ZIP） | 1 suite／4 tests 通過 | 1 suite／4 tests 通過 |
+| `pnpm -C server test:e2e`（全套，額外回歸） | — | 27 suites／240 tests 通過 |
+
+`test:schema` 新增案例：
+- `schema-constraints`：`chk_esign_export_jobs_record_type` 的 8 個拒絕與 4 個接受案例；`fk_esign_export_jobs_signer` 拒絕不存在的簽署人與刪除被引用的簽署人，`DELETE_RULE=RESTRICT`；CHECK 清單加入新名稱。
+- `schema-migration`：先停在 `InternalEmailInvitations` 寫入既有形狀的 ZIP 工作，up 後欄位、三個複合索引、外鍵與 CHECK 正確，既有單欄日期索引保留，ZIP 列仍可更新；down 還原到 up 前的結構（`created_by_user_id` 回到 NOT NULL）；再 up 結構相同。已有 `excel` 或 `pdf` 紀錄時 down 拋出「無法回滾」，資料與結構都不變。
+- 「最新 migration 無 drift」案例同時驗證 entity 與 DB 一致。
+
+`schema.sql` 由隔離庫重新匯出後，可載入空的測試庫（13 張表）。

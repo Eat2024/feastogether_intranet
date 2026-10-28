@@ -1,5 +1,6 @@
 import { LocalZipExports1792454403000 } from '../migrations/1792454403000-LocalZipExports';
 import { InternalEmailInvitations1792454405000 } from '../migrations/1792454405000-InternalEmailInvitations';
+import { ExportHistory1792454406000 } from '../migrations/1792454406000-ExportHistory';
 import { ExternalReminders1792454402000 } from '../migrations/1792454402000-ExternalReminders';
 import { SignerNote1792454404000 } from '#app/infrastructure/database/migrations/1792454404000-SignerNote';
 import { RejectionCompletion1792454401000 } from '#app/infrastructure/database/migrations/1792454401000-RejectionCompletion';
@@ -103,6 +104,7 @@ export function buildMysqlOptions(
       LocalZipExports1792454403000,
       SignerNote1792454404000,
       InternalEmailInvitations1792454405000,
+      ExportHistory1792454406000,
     ],
 
     extra: {

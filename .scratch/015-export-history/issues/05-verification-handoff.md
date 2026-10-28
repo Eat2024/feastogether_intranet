@@ -4,7 +4,7 @@
 
 **Blocked by:** 03、04
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 015 — SC-001～004、quickstart 驗收矩陣；對應 T028–T030。
 
@@ -59,3 +59,25 @@
 - 前端 `describeScope` 可能超過 `scope` 的 255 字上限：契約本身明確，前端需要縮短說明。
 - 契約 ZIP 範例的 `scope` 值與實際不同。
 - 匯出員工帳號被軟刪除時，查詢會 500 或顯示錯誤的匯出人：潛在問題，目前沒有程式路徑會觸發。
+
+## 整合驗收紀錄（2026-10-29，`feat/015-export-history`）
+
+- 審查 `impl/015-05`（9399bf3，基準為整合分支 cce0dc9）：
+  - 只改 server 測試與文件，沒有 `server/src`、client 或 migration 變更。
+  - 新案例「ZIP 不受 excel／pdf 紀錄影響」在同一文件放兩筆經 API 寫入的 `excel`／`pdf` 紀錄，加兩筆沒有快照、狀態像待處理 ZIP 工作的列（結束時刪除）；涵蓋 ZIP 申請、失敗後重試、下載、重用、明細與重試路由對新類型回 404、歷史路由對 ZIP 工作回 404，以及 `maintain()` 後新類型列整列不變。worker 以 `NestFactory.createApplicationContext(WorkerModule)` 啟動並在 `finally` 關閉，與既有 e2e 寫法相同。
+  - `signedCopy` 與 `createSignableDocument` 提到最外層，只多了文件參數與回傳 `objectKey`，「單人 PDF 下載紀錄」的行為不變。
+  - contract 只改「前端交接」一節（檔案最後一節，前面各節沒有變動），內容與 client 現況相符：`getBlob` 只發 GET、三個 `*_COMPLETED_FILE` endpoint、`features/forms/actions.ts` 與 `/forms/[id]/export/file` 引用 mock store、`(main)/layout.tsx` 與 SideNav 的 `adminOnly`、`pageSize` 1–100 預設 10。沒有描述歷史頁或前端已完成。
+  - 待辦清單、implementation-notes、quickstart 驗收矩陣與 tasks（30／30）都符合本票驗收條件。
+- 合併：`git merge --no-ff impl/015-05`，merge commit `8473fd25309041080c04d75ae549b951b467178b`，無衝突。
+- 在合併後的工作樹以環境變數 `DB_MYSQL_DB=feastogether_intranet_test15m`、`REDIS_DB=10` 隔離執行：
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors；265 warnings，總數與 04 合併後相同 |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e`（全套） | 28 suites／314 tests 通過（`core-esign-flow` 偶發失敗本次未出現） |
+| `pnpm -C server test:e2e:security` | 11 suites／60 tests 通過 |
+
+狀態改為 `resolved`。

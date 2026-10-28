@@ -30,3 +30,5 @@
 - 2026-10-28：使用者確認登入後須自動抵達「我的電子簽」。Portal 本機調查確認既有嵌入導頁可沿用，缺口在登入與改密碼的目的地保留；未修改 Portal 程式。
 - 2026-10-28：Grilling Q1、Q2 採建議；Q3 由人資通知無 Email 員工自行登入 Portal。同步修訂 spec 授權來源、舊流程切換與無信箱發起規則，未修改程式。
 - 2026-10-28：已切換 PR #34 分支完成 speckit-plan Phase 0／1，產出 plan、data-model、三份 contracts、quickstart，擴充 research 並修訂憲章。使用者指定電子簽 UAT／PRD 都導 Portal 正式機；不新增環境變數。原驗收清單保留，含真實環境驗收及 tasks 拆分者尚待後續；未提交／合併，故不標 resolved。
+
+- 2026-10-28：實作 tickets 02／04～09 已在本機整合並完成回歸與雙向審查；程式 `5abefa1`、Portal `961ed6a8`。原清單「只接受固定路徑、不新增通用功能」屬先前決策，已由使用者後續要求及 FR-003b 的通用允許清單取代，保留文字作歷史，不作現行限制。驗證見 specs/016-internal-portal-signing/validation.md；03／10 與 T011／T045 真實環境驗收仍待完成，未推送或部署。

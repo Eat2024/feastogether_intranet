@@ -1,6 +1,6 @@
 # 實作後驗證指南
 
-本文件為驗證步驟，尚未執行業務測試或部署。只用合成帳號、文件與簽名，測試 DB 名稱須以 `feastogether_intranet_test` 開頭，不清理正式資料。
+本文件保留驗證步驟；本機程式與驗證已完成，結果見 [validation.md](validation.md)，真實 Portal 環境與部署仍待交付流程。只用合成帳號、文件與簽名，測試 DB 名稱須以 `feastogether_intranet_test` 開頭，不清理正式資料。
 
 ## 前置條件
 
@@ -80,3 +80,7 @@ pnpm lint
 - 實作前 API e2e：23 suites／209 tests 通過；security：9 suites／45 tests 通過（隔離 integration DB）。
 - Ticket 02：client lint/build、root hooks 104 suites／948 tests，以及 Chrome 合成 API fixture 桌面 1280×900／窄螢幕 390×844 通過。閱讀、鍵盤同意、真實筆畫、重送同 requestId、防連點、拒簽及換人狀態重置已驗證；這不代表真實 Portal/後端完整旅程。
 - Portal 本機整合 `961ed6a8`：兩個 PHP harness 與 8 檔語法檢查通過。真實 Portal／iframe/session 未驗收，ticket03 保留 ready-for-human；T011 及環境完整旅程仍未完成。
+
+## 最後交付
+
+程式整合 `5abefa1`、Portal `961ed6a8`；完整 API 27 suites／240 tests、security 11 suites／60 tests、unit 106 suites／964 tests 通過。完整驗證界線、FR 對應及尚待環境項目見 [validation.md](validation.md)，雙向審查見 [review.md](review.md)。

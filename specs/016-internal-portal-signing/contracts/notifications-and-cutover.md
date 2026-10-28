@@ -44,3 +44,68 @@ worker 在 claim/send/finish 全部依 signerType 分支。內部沿文件／簽
 ## 環境驗收限制
 
 電子簽 UAT 寄信也導正式 Portal，其後所見文件來自正式 Portal 實際接的電子簽環境。本次不保留來源環境、不傳 UAT 回跳、不同步 DB；兩邊同一員工登入不代表文件相同。驗收區分 URL 指向正確、UAT API 正確與 Portal 對應環境端到端三種證據。
+
+## 本次可執行交付清單（尚未執行部署）
+
+交付程式：電子簽 `5abefa1`（後續文件 commit 不改 runtime）、Portal `961ed6a8`。Portal 原 `master/index.php` 本機修改保留，交付取整合分支，不覆蓋該工作區。無新 migration、環境變數或套件；新增的 Portal 非機密設定為 `application/config/login_redirect.php`。
+
+### 1. 先交付 Portal
+
+以同一版本交付 Login、Account、WebController、modify_password view、Login_redirect library 及 login_redirect config。沿既有部署方式保留服務的機密設定與選單權限。部署 PHP 版本需先驗證下列檢查，再以合成帳號實測登入／改密碼／登出及目的頁權限：
+
+```bash
+php tests/login_redirect_test.php
+php tests/login_redirect_controller_test.php
+php -l application/libraries/Login_redirect.php
+php -l application/config/login_redirect.php
+php -l application/controllers/Login.php
+php -l application/controllers/Account.php
+php -l application/core/WebController.php
+php -l application/views/admin/account/modify_password.php
+```
+
+確認正式 Portal 可接 `login?redirect_to=hr/esign/mine`；記錄實際 iframe origin。電子簽 UAT 與 PRD 的信都走此正式入口，不以改 Portal 所接環境或複製文件當作驗收。
+
+### 2. 維持維護窗口並停下舊應用
+
+由既有運維流程先限制入口流量／業務寫入；此 CR 沒有新增維護開關。保留現行 images、release manifest、Redis queue、通知 log 與檔案。既有 UAT workflow 在沒有 pending migration 時可能直接更新服務，**本次不可略過協調停機**，也不可因 smoke 成功就解除維護窗口。
+
+下列只適用 repository 已記錄的 UAT Compose，在部署主機的正確 checkout 執行；PRD 需由其既有部署負責人對應相同三服務順序，不臆測主機或服務名稱。先載入只含版本資訊的現行 manifest（不可 source migration.env）：
+
+```bash
+set -a
+. /home/feasteng/deploy/intranet-uat/releases/current.env
+set +a
+docker compose --env-file /dev/null -f docker-compose.uat.yml ps
+docker compose --env-file /dev/null -f docker-compose.uat.yml stop -t 360 worker client server
+```
+
+給舊 worker 在途工作正常結束的時間；若超時中斷，保留 processing 租約。只讀核對通知狀態與停機時間，不把 processing／unknown 改為 pending、不刪 queue/log。新版會將超過 5 分鐘的 processing 保守轉 unknown；DATA 後斷線或寄出後落庫失敗不能證明未寄出，禁止整批補寄。
+
+### 3. 同版啟動與驗收
+
+依既有發佈流程取得已核准的 CLIENT_IMAGE／SERVER_IMAGE digest，明確設為候選版本；server 與 worker 必須使用同一 SERVER_IMAGE。機密環境檔維持原位置，不輸出完整 compose config。無本 CR migration，但仍依既有流程核對整個 release 是否另有 migration。
+
+```bash
+: "${CLIENT_IMAGE:?請先設定已核准的候選 client digest}"
+: "${SERVER_IMAGE:?請先設定已核准的候選 server digest}"
+docker compose --env-file /dev/null -f docker-compose.uat.yml pull client server worker
+docker compose --env-file /dev/null -f docker-compose.uat.yml up -d --no-deps --wait --wait-timeout 180 server
+docker compose --env-file /dev/null -f docker-compose.uat.yml up -d --no-deps client
+```
+
+在維護窗口內，先以合成帳號驗證本人 API／UI 與舊內部憑證 403，再啟動同版 worker：
+
+```bash
+docker compose --env-file /dev/null -f docker-compose.uat.yml up -d --no-deps worker
+docker compose --env-file /dev/null -f docker-compose.uat.yml ps
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3000/api/health
+```
+
+以合成文件確認內部 BCC、外部逐人 OTP、無信箱 skipped、部分結果與未知結果不重寄；核對歷史單 log 工作會走內部 batch，逐人結果仍可追查。完成 T011／T045 的實際旅程、記錄版本與資料環境，才依運維流程解除維護窗口。health/smoke 並非業務驗收。
+
+### 4. 失敗與回退界線
+
+若失敗，維持入口限制並停止受影響的 client/server/worker，保留新指派、簽章、PDF、manifest、queue 與逐人 log；優先修正前進。舊版本不能正確處理無信箱指派，且會恢復內部 OTP 授權，因此不可只回退 HTTP 或 worker，也不可把新證據改寫成舊 authenticationMethod。
+
+既有 UAT script 的「無 migration 自動回復舊 images」只代表一般部署機制；若發生，仍須立即保持停派送／維護窗口，不能視為本 CR 已安全回退或自動開放流量。整版回退須先核對是否已有新指派／新通知格式與簽署，再由部署負責人決定；不得刪除資料以迎合舊版。詳細既有流程見 `docs/deployment/uat-cicd.md`。本次只交付方案，未執行以上主機命令。

@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 拒簽與本人副本、07 催簽與補簽。
 
-**Status:** claimed
+**Status:** resolved
 
 **Tasks coverage:** T004/T038–T043；歷史佇列分流由 06／07 提供，本票整合驗證。
 
@@ -22,3 +22,7 @@
 - 真實 HTTP：internal-email-signing/copy 2 suites、12 tests 通過（隔離 MySQL/Redis DB 11/storage）。其他內部 fixture 遷移由平行子票 7816692 保留原安全斷言並改員工端點，5 suites、38 tests 通過。
 - Chrome CDP 合成 API：1280px 外部 PDF／同意／手寫簽名／同 requestId 重試／完成；390px 換人清空／拒簽重試／結果；兩種寬度的開啟 403、PDF 403、下載 403、惡意目標拒絕、外部成功下載均通過，無水平溢出。真實 API/worker 另由上述 HTTP suites 驗證。
 - client/server lint 與 build 通過；server 全量 unit 通過。無 schema、環境變數或 dependency 變更。queue 相容由 06／07 與最終全量整合驗證覆蓋。
+
+## 整合結案（2026-10-28）
+
+實作 `2e8de6c`、fixtures `7816692`，整合 `ff13579`；完整 API 27 suites／240 tests、security 11 suites／60 tests、unit 106 suites／964 tests 通過，外部與舊憑證 Chrome 回歸通過。後續 `5abefa1` 補齊本人副本下載 401 提示，Spec reviewer 已覆核。詳見 specs/016-internal-portal-signing/validation.md。未推送／部署。

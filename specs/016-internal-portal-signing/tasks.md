@@ -18,7 +18,7 @@
 **前置**：T001–T002。完成後 US1／US2／US3 可分線開發，實際合併依下方依賴表。
 
 - [x] T003 新增 `server/src/features/esign/esign.constants.ts` 的單一固定 Portal 登入網址及內部 BCC 上限 50 常數，供 worker／舊入口使用；值為 `http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine`，不新增環境變數、不改外部 origin，mail adapter 透過輸入接收網址以維持邊界。
-- [ ] T004 在 `server/src/common/errors/app-error-code.ts`、`server/src/common/errors/app-errors.ts` 與 `client/src/api/errorCodes.ts` 定義 `ESIGN_INTERNAL_LOGIN_REQUIRED`（403）及繁體中文文案；錯誤 details 中的 `portalLoginUrl` 只能由 T003 固定值產生，不接受 caller 回跳 URL。
+- [x] T004 在 `server/src/common/errors/app-error-code.ts`、`server/src/common/errors/app-errors.ts` 與 `client/src/api/errorCodes.ts` 定義 `ESIGN_INTERNAL_LOGIN_REQUIRED`（403）及繁體中文文案；錯誤 details 中的 `portalLoginUrl` 只能由 T003 固定值產生，不接受 caller 回跳 URL。
 
 ## Phase 3：US1 Portal 登入後自動到我的電子簽（P1）
 
@@ -51,7 +51,7 @@
 - [x] T020 [US2] 從 `client/src/features/external-signing/ExternalSignForm.tsx`、`taskForm.ts` 擷取實際重複的表單／轉換至 `client/src/features/my-signature/sign/SigningForm.tsx` 與 `signingTaskForm.ts`（新增）；共用現有 TermsStep、DocumentViewer、SignaturePadDialog、RejectDialog，內外容器各自注入提交 callback，不帶外部 cookie API 或 Email 文案進內部。
 - [x] T021 [US2] 改寫 `client/src/features/signing-tasks/SigningTaskView.tsx`：取代邀請信提示，進入 POST open、本人閱讀／同意／簽署／拒簽；換 signer 重置狀態、重試沿用 requestId、pending 防連點、401 提示 Portal 重登，不自動提交未完成簽名。
 - [x] T022 [US2] 在 `client/src/features/signing-tasks/SigningTaskView.tsx` 接完成結果、GET 列表副本輪詢及 completed-file 下載；ready/failed 停止輪詢，卸載清理，成功 invalidate 本人列表，保留公開驗證連結，不再要求回 Email，不用 POST open 輪詢。
-- [ ] T023 [US2] 執行 T012／T013 與外部表單回歸，依 `specs/016-internal-portal-signing/quickstart.md` 記錄桌面／窄螢幕、鍵盤、session 失效、切換文件及副本流程；確認任一正式員工 session 同等授權，未實作 Spec 014 不宣稱測過。
+- [x] T023 [US2] 執行 T012／T013 與外部表單回歸，依 `specs/016-internal-portal-signing/quickstart.md` 記錄桌面／窄螢幕、鍵盤、session 失效、切換文件及副本流程；確認任一正式員工 session 同等授權，未實作 Spec 014 不宣稱測過。
 
 ## Phase 5：US3 內部 BCC 群寄與無 Email 員工（P1）
 
@@ -82,21 +82,21 @@
 
 **獨立驗收**：預置舊內部邀請／cookie／queue 與歷史簽章，驗證引導、拒絕與資料不變；外部完整 OTP 及下載回歸。對應 FR-009～010／011、驗收 4／8／9／16。
 
-- [ ] T038 [P] [US4] 擴充 `server/test/internal-email-signing.e2e-spec.ts`、`internal-email-copy.e2e-spec.ts`，使用明確建立的舊內部 token／cookie fixtures，驗證 open/source/sign/reject/copy／重送都不能靠 OTP；舊 pending 指派用 session 可簽，歷史證據 hash 不變。
-- [ ] T039 [P] [US4] 擴充 `server/src/features/esign/services/external-access.service.spec.ts` 與 `esign-access-policy.service.spec.ts`（同目錄），測邀請 GET 無副作用、內部 token POST 303 固定 Portal、無效 token 原失效、外部 OTP／拒簽重送／期限後下載照舊。
-- [ ] T040 [US4] 修改 `server/src/features/esign/services/esign-access-policy.service.ts`、`external-access.service.ts`、`external-access-credential.service.ts` 及 signing/rejection 的 external 分支，只允許 `signerType=email`；有效舊內部 cookie 回 T004 的 403 固定提示，原檔／副本回錯誤而非 HTML，token／cookie 不因持有就成為員工 session。
-- [ ] T041 [US4] 修改 `server/src/features/esign/controllers/external-signature.controller.ts` 與 `server/src/features/esign/services/external-access.service.ts`：保留 GET 確認頁不查 DB／不寄碼，POST 可辨識的舊內部 token 303 到 T003，不建立外部 session、不回文件；外部驗證流程維持。
-- [ ] T042 [US4] 修改 `client/src/features/external-signing/ExternalSigning.tsx` 與 `client/src/api/types/externalSigning.ts`（核對既有型別檔後就地擴充），處理 `ESIGN_INTERNAL_LOGIN_REQUIRED` 及固定 `portalLoginUrl` 按鈕，不自動提交，不把其他一般錯誤誤判成需 Portal 登入。
-- [ ] T043 [US4] 執行 T038／T039 與 `server/test/security-core-esign-flow.e2e-spec.ts`、`esign-document-delivery-security.e2e-spec.ts`，確認外部逐人專屬信／OTP／副本完整性、舊內部 queue BCC 路徑、歷史證據不變，記錄至 `specs/016-internal-portal-signing/quickstart.md`。
+- [x] T038 [P] [US4] 擴充 `server/test/internal-email-signing.e2e-spec.ts`、`internal-email-copy.e2e-spec.ts`，使用明確建立的舊內部 token／cookie fixtures，驗證 open/source/sign/reject/copy／重送都不能靠 OTP；舊 pending 指派用 session 可簽，歷史證據 hash 不變。
+- [x] T039 [P] [US4] 擴充 `server/src/features/esign/services/external-access.service.spec.ts` 與 `esign-access-policy.service.spec.ts`（同目錄），測邀請 GET 無副作用、內部 token POST 303 固定 Portal、無效 token 原失效、外部 OTP／拒簽重送／期限後下載照舊。
+- [x] T040 [US4] 修改 `server/src/features/esign/services/esign-access-policy.service.ts`、`external-access.service.ts`、`external-access-credential.service.ts` 及 signing/rejection 的 external 分支，只允許 `signerType=email`；有效舊內部 cookie 回 T004 的 403 固定提示，原檔／副本回錯誤而非 HTML，token／cookie 不因持有就成為員工 session。
+- [x] T041 [US4] 修改 `server/src/features/esign/controllers/external-signature.controller.ts` 與 `server/src/features/esign/services/external-access.service.ts`：保留 GET 確認頁不查 DB／不寄碼，POST 可辨識的舊內部 token 303 到 T003，不建立外部 session、不回文件；外部驗證流程維持。
+- [x] T042 [US4] 修改 `client/src/features/external-signing/ExternalSigning.tsx` 與 `client/src/api/types/externalSigning.ts`（核對既有型別檔後就地擴充），處理 `ESIGN_INTERNAL_LOGIN_REQUIRED` 及固定 `portalLoginUrl` 按鈕，不自動提交，不把其他一般錯誤誤判成需 Portal 登入。
+- [x] T043 [US4] 執行 T038／T039 與 `server/test/security-core-esign-flow.e2e-spec.ts`、`esign-document-delivery-security.e2e-spec.ts`，確認外部逐人專屬信／OTP／副本完整性、舊內部 queue BCC 路徑、歷史證據不變，記錄至 `specs/016-internal-portal-signing/quickstart.md`。
 
 ## Phase 7：跨專案驗證與交付
 
 **前置**：四個故事全部通過局部驗收。此階段不推定授權部署正式機。
 
-- [ ] T044 依 `specs/016-internal-portal-signing/quickstart.md` 執行 server lint:check/test/build/e2e/security、client lint/build、root build/lint 及 Portal PHP 檢查；新增 suite 依 `server/test/jest-e2e.json`／`jest-e2e-security.json` 實際納入，失敗修復後重跑相關項目，不宣稱 client 有不存在的 test script。
+- [x] T044 依 `specs/016-internal-portal-signing/quickstart.md` 執行 server lint:check/test/build/e2e/security、client lint/build、root build/lint 及 Portal PHP 檢查；新增 suite 依 `server/test/jest-e2e.json`／`jest-e2e-security.json` 實際納入，失敗修復後重跑相關項目，不宣稱 client 有不存在的 test script。
 - [ ] T045 依 `specs/016-internal-portal-signing/quickstart.md` 以合成資料驗收 Email→Portal 登入→本人簽署→副本與內部 BCC／外部逐人；記錄實際 iframe origin、資料環境及桌面／窄螢幕。UAT 通知連正式 Portal 不代表 UAT 文件會出現，沒有環境存取時記未驗收，不自行改正式配置或同步資料。
-- [ ] T046 更新 `specs/016-internal-portal-signing/contracts/notifications-and-cutover.md` 的可執行交付紀錄：Portal 先行、舊 worker 停止／在途處理、新 HTTP/client/worker 協調切換、逐人 log 保留與安全回退；列明新增 Portal 版控回跳清單，無 migration／環境變數新增，實際上版待部署流程，不由 tasks 自動執行。
-- [ ] T047 核對 `specs/016-internal-portal-signing/spec.md` 所有 FR／驗收對應完成證據，更新 `plan.md`、`quickstart.md` 及 `.scratch/016-internal-portal-signing/issues/01-plan-internal-portal-signing.md`；依 `.specify/memory/constitution.md` 審查 Sync Impact Report、只在提交前按治理規則移除，未驗收／未整合不得標 resolved，不自行建立遠端 Issue／PR 或推送。
+- [x] T046 更新 `specs/016-internal-portal-signing/contracts/notifications-and-cutover.md` 的可執行交付紀錄：Portal 先行、舊 worker 停止／在途處理、新 HTTP/client/worker 協調切換、逐人 log 保留與安全回退；列明新增 Portal 版控回跳清單，無 migration／環境變數新增，實際上版待部署流程，不由 tasks 自動執行。
+- [x] T047 核對 `specs/016-internal-portal-signing/spec.md` 所有 FR／驗收對應完成證據，更新 `plan.md`、`quickstart.md` 及 `.scratch/016-internal-portal-signing/issues/01-plan-internal-portal-signing.md`；依 `.specify/memory/constitution.md` 審查 Sync Impact Report、只在提交前按治理規則移除，未驗收／未整合不得標 resolved，不自行建立遠端 Issue／PR 或推送。
 
 ## 依賴與平行安排
 
@@ -127,7 +127,7 @@ T001–T002 → T003–T004
 
 合計 47 項。最小示範先完成 US1（登入直達列表），再以 US2 展示本人簽署；正式 CR 交付必須包含 US3 BCC 與 US4 舊入口隔離，不能以示範完成取代安全切換。無 Email 的人資通知方式、Spec 014 實作與跨環境同步不在 tasks 範圍。
 
-每項完成後才勾選並追加驗證證據；若依賴環境無法驗收則保留未完成與原因。本 tasks 不建立 GitHub Issues，不代表已修改任何應用程式。
+每項完成後才勾選並追加驗證證據；若依賴環境無法驗收則保留未完成與原因。本 tasks 不建立 GitHub Issues；實際修改與驗證見 [validation.md](validation.md)。T011／T045 保留真實 Portal 環境待驗收，不以本機測試代替。
 
 ## 邀請群寄整合進度（2026-10-28）
 
@@ -148,3 +148,7 @@ Ticket 07 已整合（`1326771`／實作 `ce8fe97`），T031 及 06／07 共用�
 ## 無 Email 與容量整合進度（2026-10-28）
 
 Ticket 08 已整合（`cf6da85`／實作 `5525979`），T025／T029／T030／T036／T037 完成；連同 06／07 的 SMTP、worker、競態證據，T024／T026 測試部分完成。真實 6,000 人發起及 worker 共 120 次 50 地址的 fake 群寄，未寄公司信箱。相關 E2E 47 cases、容量及信箱 API 20 cases 與桌面／窄螢幕合成 UI 驗證紀錄見 ticket 08；正式 Portal 旅程保留待驗。
+
+## 最終本機驗證（2026-10-28）
+
+45／47 項完成；T011、T045 需真實 Portal 環境。程式整合 `5abefa1`／Portal `961ed6a8`，完整 API 27／240、security 11／60、unit 106／964；build/lint/PHP 與合成瀏覽器案例見 [validation.md](validation.md)。審查的唯一 P2 已修正並覆核。未推送或部署，03／10 不標 resolved。

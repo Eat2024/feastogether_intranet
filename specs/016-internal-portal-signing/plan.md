@@ -3,7 +3,7 @@
 **Branch**：`feat/016-internal-portal-signing`（PR #34）  
 **Date**：2026-10-28  
 **Spec**：[spec.md](spec.md)  
-**狀態**：Phase 0／1 設計完成；尚未實作或部署。
+**狀態**：程式與本機整合驗證完成；真實 Portal／iframe 環境驗收及部署尚待進行。驗證及 FR 對應見 [validation.md](validation.md)。
 
 ## Summary
 

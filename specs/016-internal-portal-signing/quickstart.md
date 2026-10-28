@@ -68,3 +68,11 @@ pnpm lint
 ## 切換與交付紀錄
 
 依 [切換契約](contracts/notifications-and-cutover.md) 先 Portal、再協調 server/client/worker。交付列出版本、日期、環境、執行指令、通過／失敗、瀏覽器與未驗證原因。新增 Portal 非機密版控回跳清單，無 schema migration 或新環境變數；需確認原有 WebView 配置與選單授權。不要將靜態程式調查當成真實登入結果。
+
+## 本機執行紀錄（2026-10-28）
+
+- 電子簽整合分支 `feat/016-internal-portal-signing`，實作前文件基準 `c5a8480`；既有單元測試 104 suites／948 tests 通過，root lint 無錯誤（server 206 項既有警告）。
+- Node v26.4.0、pnpm 11.9.0、PHP CLI 8.5.12；已核對 root/client/server/Portal AGENTS 與憲章 2.0.0、API／通知／Portal 契約。
+- Portal 原工作區 `master` 的 `index.php` 保留；另以 `develop` 的 `0f814565` 建立 `feat/016-portal-login-return` 整合分支與獨立實作 worktree。
+- 已確認本機測試 MySQL／Redis 可連線；測試使用 `feastogether_intranet_test_spec016_*` 隔離 DB 與 `/tmp/feastogether-spec016-*` 檔案，不操作正式資料。
+- 不引入 Spec 014 另一分支程式；UAT／PRD 信件固定指向正式 Portal，無 Email 人員由人資通知的方式不在本次實作。

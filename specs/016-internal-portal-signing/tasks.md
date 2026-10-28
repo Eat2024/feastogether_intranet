@@ -2,7 +2,7 @@
 
 **輸入**：[spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、`contracts/`、[quickstart.md](quickstart.md)。
 
-**分支**：電子簽 `feat/016-internal-portal-signing`（PR #34）；Portal 是獨立 repository。以下路徑相對電子簽 root，`../portal/` 指本機 Portal。本次只產生任務，所有核取方塊均未執行。
+**分支**：電子簽 `feat/016-internal-portal-signing`（PR #34）；Portal 是獨立 repository。以下路徑相對電子簽 root，`../portal/` 指本機 Portal。已開始依正式 tickets 實作；核取方塊只標示已有證據的完成項目。
 
 **測試依據**：spec 的授權、重送、狀態、群寄及完整旅程驗收，以及憲章 V 要求相應測試；先補能重現差異的測試再改實作。不新增 client 測試框架，不使用正式個資／文件，不把環境受限寫成通過。
 
@@ -10,8 +10,8 @@
 
 ## Phase 1：Setup
 
-- [ ] T001 核對 `AGENTS.md`、`client/AGENTS.md`、`server/AGENTS.md`、`../portal/AGENTS.md` 與兩個 git 工作區；記錄分支、工具與測試前置到 `specs/016-internal-portal-signing/quickstart.md`，保留 Portal `index.php` 修改，後續 Portal 改動使用 develop 衍生分支或隔離 worktree，不重設既有工作。
-- [ ] T002 核對 `.specify/memory/constitution.md` 2.0.0 與 `specs/016-internal-portal-signing/contracts/`，確認本次包含內部 BCC、UAT／PRD 同導 Portal 正式機、無 Email 仍可簽署；以相鄰舊規格作歷史來源，Spec 014 跨分支衝突依 016，不引入另一功能程式。
+- [x] T001 核對 `AGENTS.md`、`client/AGENTS.md`、`server/AGENTS.md`、`../portal/AGENTS.md` 與兩個 git 工作區；記錄分支、工具與測試前置到 `specs/016-internal-portal-signing/quickstart.md`，保留 Portal `index.php` 修改，後續 Portal 改動使用 develop 衍生分支或隔離 worktree，不重設既有工作。
+- [x] T002 核對 `.specify/memory/constitution.md` 2.0.0 與 `specs/016-internal-portal-signing/contracts/`，確認本次包含內部 BCC、UAT／PRD 同導 Portal 正式機、無 Email 仍可簽署；以相鄰舊規格作歷史來源，Spec 014 跨分支衝突依 016，不引入另一功能程式。
 
 ## Phase 2：共用基礎
 

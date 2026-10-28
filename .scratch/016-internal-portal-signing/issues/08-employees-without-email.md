@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 員工簽署、07 催簽與補簽。
 
-**Status:** claimed
+**Status:** resolved
 
 **Tasks coverage:** T025/T029/T036；T030/T031/T037 的缺信箱、跳過紀錄與容量部分。
 
@@ -23,3 +23,8 @@
 - 最新相關 E2E：發起／預檢／群寄催簽共 3 suites、47 tests 通過；完整單元測試 106 suites、977 tests 通過。root build、lint 通過（既有 warnings，無 errors）。測試使用隔離 `feastogether_intranet_test_spec016_t08`、Redis DB 10、`/tmp/feastogether-spec016-t08`；未 flush 共用 Redis。
 - Chrome 合成 API browser smoke：1280px／390px Portal embedded 呈現下，無 Email 警告可見且仍送出正確 userId 的發起；來源 502 阻擋發起；詳情 skipped／unknown 與內部寄送中文歷程正確，無 runtime exception。截圖 `/tmp/ft016-t08-warning-{1280,390}.png`；未宣稱真實 Portal 登入串接或正式 SMTP 驗收。390px 警告區塊經實際截圖確認可閱讀。
 - 無新增 table、migration、環境變數或套件；entity 僅補正既有 nullable Email 的 TypeScript 型別。狀態維持 claimed，由整合者合併後結案。
+
+### 整合紀錄
+
+- 實作 `5525979` 已隨 `impl/016-08` 的 `cf6da85` fast-forward 整合至 `feat/016-internal-portal-signing`；無 Email 指派、本人簽署、補簽、來源故障及 6,000 人容量驗收完成。
+- 09 保持 claimed，10 的正式 Portal 旅程仍等待 03 環境驗收；不將合成 browser fixtures 視為已部署驗收。

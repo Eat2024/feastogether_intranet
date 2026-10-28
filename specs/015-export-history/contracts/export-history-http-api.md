@@ -165,19 +165,42 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 
 ## 前端交接
 
-本 spec 只做後端，以下由前端工程師在後端完成後處理。
+本 spec 只做後端。後端已完成，前端尚未串接，以下由前端工程師處理；`/export-history` 目前仍是 mock。後端與契約的差異、未明定行為與限制見 [implementation-notes.md](../implementation-notes.md)。
 
 上線時必須跟後端一起部署（後端移除舊路由後，這四處會立刻失效）：
-- `ZipExportPanel`：`useGetExportHistoryQuery({ documentId, limit: 1 })` 改為新路由的 `documentId` 加 `pageSize=1`。
-- `DocumentSignerTable`：`downloadSignerCompletedFile` 改用 POST。
-- 「我的電子簽」本人副本：`downloadSigningTaskCompletedFile` 改用 POST。
-- `ExternalDone`：`downloadExternalCompletedFile` 改用 POST；移除不再使用的 `externalCompletedFileUrl`。
+- `ZipExportPanel`：
+  - `useGetExportHistoryQuery({ documentId, limit: 1 })` 改為 `GET /api/esign/history/export?type=zip&documentId=…&pageSize=1`（`type` 必填）。
+  - 最近一次匯出仍讀 `items[0].id`（即 ZIP 工作 id）。
+  - `endpoints.ESIGN_EXPORTS`、`ExportHistoryParams`（`cursor`／`limit`）、`EsignExportHistory`（`nextCursor`、`requesterName`）都要換成新的查詢參數與回應型別。
+- `DocumentSignerTable`：`downloadSignerCompletedFile` 改為 `POST …/signers/{signerPublicId}/completed-file/downloads`。它目前用的 `getBlob` 只會發 GET，需要改成以 POST 取得 blob。
+- 「我的電子簽」本人副本（`/my-signature/[id]` 的 `SigningTaskView`）：`downloadSigningTaskCompletedFile` 改為 `POST /api/esign/signing-tasks/{signerPublicId}/completed-file/downloads`。
+- `ExternalDone`：`downloadExternalCompletedFile` 改為 `POST /api/external-signing-task/completed-file/downloads`；移除不再使用的 `externalCompletedFileUrl`。
 
-這三個下載函式在 016 之後都已經用 API 請求取得 blob，只需要把 method 改成 POST。
+這三個下載函式在 016 之後都已經用 API 請求取得 blob。要改的地方：
+- 路徑多了 `/downloads`：`client/src/api/endpoints.ts` 的 `ESIGN_SIGNER_COMPLETED_FILE`、`ESIGN_SIGNING_TASK_COMPLETED_FILE`、`EXTERNAL_SIGNING_TASK_COMPLETED_FILE`。
+- method 改成 POST。這是寫入請求，缺 `Origin` 會回 403 `CSRF_ORIGIN_REJECTED`；瀏覽器同源 POST 會自動帶上 `Origin`。
+
+不變的地方：
+- 回應仍是 PDF 附件，檔名取自 `Content-Disposition` 的 `filename*`。
+- 錯誤仍是 JSON，以 blob 接收時需要解析。
 
 新功能：
 - `/export-history`：改用 `GET /api/esign/history/export`。
   - 頁籤依 `type`，筆數用 `typeTotals`；ZIP 頁籤是否新增由前端評估。
-  - 移除 `isAdmin()` 在頁面與 SideNav 的限制，以及 `features/export-history` 的 mock store 與 server actions。
-  - 重新下載：PDF 用 `POST …/{id}/downloads` 取得 blob；Excel 依上節流程。
-- `/forms/[id]/export`：Excel 下載前先呼叫 `POST /api/esign/history/export`，成功才下載。
+  - 分頁用 `page`、`pageSize`（1–100，預設 10）；`total` 是目前頁籤的總筆數。
+  - 移除 `isAdmin()` 的限制：頁面、`(main)/layout.tsx` 與 SideNav 的 `adminOnly`。
+  - 移除 `features/export-history` 的 mock store 與 server actions。`features/forms/actions.ts` 與 `/forms/[id]/export/file` 原型也引用這個 store，要一併處理。
+  - 重新下載：
+    - PDF 用 `POST …/{id}/downloads` 取得 blob，後端會新增一筆紀錄，匯出人為目前使用者。
+    - Excel 依上節流程。`buildExportXlsx` 的參數型別目前是 `EsignDocumentDetail`，它與 `exportRows` 實際用到的欄位都在 `GET …/{id}/document` 的回應中（簽署人沒有 `publicId`），需要把型別放寬。
+- `/forms/[id]/export`（`DocumentExportView` 的下載）：Excel 下載前先呼叫 `POST /api/esign/history/export`，成功才以 `buildExportXlsx` 產生並下載。
+  - body 對應：
+    - `documentId`：文件 id
+    - `scope`：畫面上的範圍說明
+    - `count`：匯出列數
+    - `conditions`：目前的 `statuses`、`depts`、`fields`
+  - `scope` trim 後最多 255 字，`depts` 每個鍵最多 255 字。目前的寫法可能超過上限而回 400：
+    - `describeScope` 會列出所有選取的部門名稱。
+    - 部門鍵是 `d:` 加 `encodeURIComponent(部門名稱)`，一個中文字編碼後是 9 個字元。
+
+    選很多部門或部門名稱超過 28 個中文字時就會超過；處理方式待確認（見 implementation-notes）。

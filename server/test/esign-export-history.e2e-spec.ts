@@ -1,7 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { NestFactory } from '@nestjs/core';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import type { EntityManager } from 'typeorm';
+import { WorkerModule } from '#app/worker.module';
+import { DocumentExportProcessor } from '#app/worker/esign/document-export.processor';
 import { AuthService } from '#app/features/auth/services/auth.service';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
@@ -479,12 +484,86 @@ describe('Spec015 歷史匯出紀錄 API', () => {
     });
   });
 
+  /** 可產生已簽副本的文件：簽署 payload 與證據摘要一致。 */
+  function createSignableDocument(title: string) {
+    const payload = { synthetic: title };
+    return manager.save(
+      EsignDocument,
+      manager.create(EsignDocument, {
+        docNumber: randomUUID(),
+        title,
+        status: 'active',
+        createdByUserId: creator.id,
+        signStartAt: new Date(Date.now() - 86_400_000),
+        signEndAt: new Date(Date.now() + 86_400_000),
+        signingPayloadJson: payload,
+        signingPayloadSha256: canonicalSha256(payload),
+      }),
+    );
+  }
+
+  interface SignedCopy {
+    signer: EsignSigner;
+    bytes: Buffer;
+    objectKey: string;
+  }
+
+  /** 已簽且副本已產製的簽署人：證據與檔案摘要一致，走真實的副本讀取與完整性驗證。 */
+  async function signedCopy(
+    document: EsignDocument,
+    fields: Partial<EsignSigner>,
+  ): Promise<SignedCopy> {
+    const signedAt = new Date();
+    const signer = await manager.save(
+      EsignSigner,
+      manager.create(EsignSigner, {
+        publicId: randomUUID(),
+        documentId: document.id,
+        status: 'signed',
+        signedAt,
+        completionStatus: 'ready',
+        completionReadyAt: signedAt,
+        ...fields,
+      }),
+    );
+    const record = await manager.save(
+      EsignSignatureRecord,
+      manager.create(EsignSignatureRecord, {
+        signerId: signer.id,
+        documentSha256: 'a'.repeat(64),
+        signingPayloadSha256: document.signingPayloadSha256,
+        consentVersion: 'test',
+        authenticationMethod: 'test',
+        authenticationEventId: randomUUID(),
+        signedAtUtc: signedAt,
+      }),
+    );
+    const pdf = await PDFDocument.create();
+    pdf.setTitle(signer.publicId);
+    pdf.addPage();
+    const bytes = Buffer.from(await pdf.save());
+    const stored = await ctx.app
+      .get<PrivateFileStorage>(PRIVATE_FILE_STORAGE)
+      .store({
+        directory: `documents/history-pdf-${document.id}`,
+        extension: 'pdf',
+        mimeType: 'application/pdf',
+        bytes,
+      });
+    await manager.save(
+      EsignFileObject,
+      manager.create(EsignFileObject, {
+        ...stored,
+        signatureRecordId: record.id,
+        filePurpose: 'completed_pdf',
+        archiveStatus: 'active',
+      }),
+    );
+    return { signer, bytes, objectKey: stored.objectKey };
+  }
+
   describe('單人 PDF 下載紀錄', () => {
     const origin = 'http://localhost:3000';
-    interface SignedCopy {
-      signer: EsignSigner;
-      bytes: Buffer;
-    }
     let pdfDoc: EsignDocument;
     let internalCopy: SignedCopy;
     let externalCopy: SignedCopy;
@@ -496,28 +575,15 @@ describe('Spec015 歷史匯出紀錄 API', () => {
 
     beforeAll(async () => {
       creatorCookie = await employeeCookie(creator);
-      const payload = { synthetic: 'spec015-pdf-download' };
-      pdfDoc = await manager.save(
-        EsignDocument,
-        manager.create(EsignDocument, {
-          docNumber: randomUUID(),
-          title: '合成下載文件',
-          status: 'active',
-          createdByUserId: creator.id,
-          signStartAt: new Date(Date.now() - 86_400_000),
-          signEndAt: new Date(Date.now() + 86_400_000),
-          signingPayloadJson: payload,
-          signingPayloadSha256: canonicalSha256(payload),
-        }),
-      );
-      internalCopy = await signedCopy({
+      pdfDoc = await createSignableDocument('合成下載文件');
+      internalCopy = await signedCopy(pdfDoc, {
         signerType: 'user',
         userId: internalUser.id,
         empidSnapshot: internalUser.empid,
         nameSnapshot: '內部本人',
         sortOrder: 0,
       });
-      externalCopy = await signedCopy({
+      externalCopy = await signedCopy(pdfDoc, {
         signerType: 'email',
         email: `copy-${randomBytes(4).toString('hex')}@example.test`,
         nameSnapshot: '外部本人',
@@ -577,57 +643,6 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         zip: await record({ exportType: 'signed_copies_zip' }),
       };
     });
-
-    /** 已簽且副本已產製的簽署人：證據與檔案摘要一致，走真實的副本讀取與完整性驗證。 */
-    async function signedCopy(fields: Partial<EsignSigner>) {
-      const signedAt = new Date();
-      const signer = await manager.save(
-        EsignSigner,
-        manager.create(EsignSigner, {
-          publicId: randomUUID(),
-          documentId: pdfDoc.id,
-          status: 'signed',
-          signedAt,
-          completionStatus: 'ready',
-          completionReadyAt: signedAt,
-          ...fields,
-        }),
-      );
-      const record = await manager.save(
-        EsignSignatureRecord,
-        manager.create(EsignSignatureRecord, {
-          signerId: signer.id,
-          documentSha256: 'a'.repeat(64),
-          signingPayloadSha256: pdfDoc.signingPayloadSha256,
-          consentVersion: 'test',
-          authenticationMethod: 'test',
-          authenticationEventId: randomUUID(),
-          signedAtUtc: signedAt,
-        }),
-      );
-      const pdf = await PDFDocument.create();
-      pdf.setTitle(signer.publicId);
-      pdf.addPage();
-      const bytes = Buffer.from(await pdf.save());
-      const stored = await ctx.app
-        .get<PrivateFileStorage>(PRIVATE_FILE_STORAGE)
-        .store({
-          directory: `documents/history-pdf-${pdfDoc.id}`,
-          extension: 'pdf',
-          mimeType: 'application/pdf',
-          bytes,
-        });
-      await manager.save(
-        EsignFileObject,
-        manager.create(EsignFileObject, {
-          ...stored,
-          signatureRecordId: record.id,
-          filePurpose: 'completed_pdf',
-          archiveStatus: 'active',
-        }),
-      );
-      return { signer, bytes };
-    }
 
     function creatorPath(signer: EsignSigner) {
       return `/api/esign/documents/${pdfDoc.id}/signers/${signer.publicId}/completed-file/downloads`;
@@ -743,7 +758,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
     it('簽署人標籤超過 255 字時截斷', async () => {
       const name = '長'.repeat(100);
       const email = `${'a'.repeat(64)}@${'b'.repeat(60)}.${'c'.repeat(60)}.example.test`;
-      const longCopy = await signedCopy({
+      const longCopy = await signedCopy(pdfDoc, {
         signerType: 'email',
         email,
         nameSnapshot: name,
@@ -1375,6 +1390,155 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         );
         expect(apiError(response).code).toBe('UNAUTHORIZED');
       });
+    });
+  });
+
+  describe('ZIP 不受 excel／pdf 紀錄影響', () => {
+    const origin = 'http://localhost:3000';
+    interface ZipJob {
+      id: string;
+      status: string;
+      failureCode: string | null;
+      expectedCount: number;
+      files: Array<{ downloadPath: string }>;
+    }
+
+    it('同一文件已有 excel／pdf 紀錄時，ZIP 申請、重試、下載與重用不變，worker 與維護掃描不選中也不更新新類型', async () => {
+      const zipDoc = await createSignableDocument('合成 ZIP 隔離文件');
+      const copy = await signedCopy(zipDoc, {
+        signerType: 'email',
+        email: `zip-${randomBytes(4).toString('hex')}@example.test`,
+        nameSnapshot: 'ZIP 簽署人',
+        sortOrder: 0,
+      });
+      const exportsPath = `/api/esign/documents/${zipDoc.id}/exports`;
+      const post = (path: string) =>
+        request(ctx.server)
+          .post(path)
+          .set('Origin', origin)
+          .set('Cookie', viewerCookie);
+      const get = (path: string) =>
+        request(ctx.server).get(path).set('Cookie', viewerCookie);
+      const zipJob = async (jobId: string, status: string) => {
+        for (let i = 0; i < 200; i++) {
+          const job = apiData<ZipJob>(
+            await get(`${exportsPath}/${jobId}`).expect(200),
+          );
+          if (job.status === status) return job;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        throw new Error(`ZIP 工作未進入 ${status}`);
+      };
+      const totals = async () =>
+        (await history(`type=zip&documentId=${zipDoc.id}`)).typeTotals;
+      const newTypeRows = () =>
+        manager.query<Array<{ public_id: string }>>(
+          "SELECT * FROM esign_export_jobs WHERE document_id = ? AND export_type IN ('excel','pdf') ORDER BY id",
+          [zipDoc.id],
+        );
+
+      // 經 API 寫入的 excel 與 pdf 紀錄。
+      await post(historyPath)
+        .send({
+          type: 'excel',
+          documentId: String(zipDoc.id),
+          scope: '全部',
+          count: 1,
+          conditions: { statuses: [], depts: [], fields: ['name'] },
+        })
+        .expect(201);
+      await request(ctx.server)
+        .post(
+          `/api/esign/documents/${zipDoc.id}/signers/${copy.signer.publicId}/completed-file/downloads`,
+        )
+        .set('Origin', origin)
+        .set('Cookie', await employeeCookie(creator))
+        .expect(200);
+      // 最壞情況：狀態欄位看起來像排隊中、租約已過期的 ZIP 工作，但沒有快照。
+      const lookalikes = [
+        await insertRecord(
+          {
+            exportType: 'excel',
+            documentId: zipDoc.id,
+            createdByUserId: exporter.id,
+            status: 'pending',
+            completedAt: null,
+            scopeDescription: '全部',
+            recordCount: 1,
+            conditionsJson: { statuses: [], depts: [], fields: ['name'] },
+          },
+          new Date(),
+        ),
+        await insertRecord(
+          {
+            exportType: 'pdf',
+            documentId: zipDoc.id,
+            signerId: copy.signer.id,
+            status: 'processing',
+            completedAt: null,
+            leaseToken: randomUUID(),
+            leaseExpiresAt: new Date(0),
+            scopeDescription: 'ZIP 簽署人',
+            recordCount: 1,
+          },
+          new Date(),
+        ),
+      ];
+      const before = await newTypeRows();
+      expect(before).toHaveLength(4);
+      expect(await totals()).toEqual({ excel: 2, pdf: 2, zip: 0 });
+
+      // 來源副本暫時遺失，讓工作先失敗，以驗證重試。
+      const sourcePath = join(process.env.ESIGN_STORAGE_ROOT!, copy.objectKey);
+      await rm(sourcePath);
+      const requested = apiData<ZipJob>(
+        await post(exportsPath).send({ type: 'signed_copies_zip' }).expect(202),
+      );
+      expect(requested.expectedCount).toBe(1);
+      const worker = await NestFactory.createApplicationContext(WorkerModule, {
+        logger: false,
+      });
+      try {
+        expect(await zipJob(requested.id, 'failed')).toMatchObject({
+          failureCode: 'ESIGN_EXPORT_UNAVAILABLE',
+        });
+        // ZIP 路由不接受 excel／pdf 紀錄。
+        for (const { public_id } of before) {
+          await get(`${exportsPath}/${public_id}`).expect(404);
+          await post(`${exportsPath}/${public_id}/retries`).expect(404);
+        }
+        await writeFile(sourcePath, copy.bytes);
+        expect(
+          apiData<ZipJob>(
+            await post(`${exportsPath}/${requested.id}/retries`).expect(202),
+          ).id,
+        ).toBe(requested.id);
+        const completed = await zipJob(requested.id, 'completed');
+        expect(completed.expectedCount).toBe(1);
+        await get(completed.files[0].downloadPath).expect(200);
+        // 下載不新增紀錄；zip 只依匯出工作計數。
+        expect(await totals()).toEqual({ excel: 2, pdf: 2, zip: 1 });
+        expect(
+          apiData<ZipJob>(
+            await post(exportsPath)
+              .send({ type: 'signed_copies_zip' })
+              .expect(200),
+          ).id,
+        ).toBe(requested.id);
+        // 歷史的重新下載與 Excel 資料不接受 ZIP 工作。
+        await post(`${historyPath}/${requested.id}/downloads`).expect(404);
+        await get(`${historyPath}/${requested.id}/document`).expect(404);
+
+        await worker.get(DocumentExportProcessor).maintain();
+        expect(await newTypeRows()).toEqual(before);
+        expect(await totals()).toEqual({ excel: 2, pdf: 2, zip: 1 });
+      } finally {
+        await worker.close();
+        await manager.delete(
+          EsignExportJob,
+          lookalikes.map((job) => job.id),
+        );
+      }
     });
   });
 });

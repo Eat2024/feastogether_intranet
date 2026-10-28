@@ -2,7 +2,7 @@
 
 **Input**: [spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、[contracts/export-history-http-api.md](contracts/export-history-http-api.md)、[quickstart.md](quickstart.md)。
 
-**Status**: 27／30。
+**Status**: 30／30。
 
 **Base**: 以 016（PR #34）為基礎；PR #33 須在 PR #34 之後合併。
 
@@ -127,9 +127,9 @@
 
 ## Phase 7: Polish — 回歸與交接
 
-- [ ] T028 完整回歸：`pnpm -C server lint:check`、`build`、`test`、`test:schema`、`test:e2e`。核對 quickstart 矩陣 #22、#23：ZIP 申請、重用、重試、下載與 worker／維護掃描不受新類型影響。結果記入 quickstart「驗證紀錄」。（依賴 T025、T027）
-- [ ] T029 對照實作與 `contracts/export-history-http-api.md`，有差異時先回報使用者再更新契約；更新 `docs/agents/電子簽串接待辦清單.md` 的「匯出紀錄（歷史匯出文件頁）」為「後端已完成，待前端串接」；新增 `specs/015-export-history/implementation-notes.md` 記錄交付與限制。（依賴 T028）
-- [ ] T030 準備給前端工程師的交接：contract「前端交接」列出的必須同時部署三處、歷史頁、Excel 回報流程與重新下載流程。不得描述歷史頁已完成。（依賴 T029）
+- [x] T028 完整回歸：`pnpm -C server lint:check`、`build`、`test`、`test:schema`、`test:e2e`。核對 quickstart 矩陣 #22、#23：ZIP 申請、重用、重試、下載與 worker／維護掃描不受新類型影響。結果記入 quickstart「驗證紀錄」。（依賴 T025、T027）
+- [x] T029 對照實作與 `contracts/export-history-http-api.md`，有差異時先回報使用者再更新契約；更新 `docs/agents/電子簽串接待辦清單.md` 的「匯出紀錄（歷史匯出文件頁）」為「後端已完成，待前端串接」；新增 `specs/015-export-history/implementation-notes.md` 記錄交付與限制。（依賴 T028）
+- [x] T030 準備給前端工程師的交接：contract「前端交接」列出的必須同時部署三處、歷史頁、Excel 回報流程與重新下載流程。不得描述歷史頁已完成。（依賴 T029）
 
 ## 依賴與票單
 

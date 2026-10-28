@@ -166,3 +166,104 @@ Swagger：以 build 產物產生文件確認 `POST /api/esign/history/export`（
 Swagger：以 build 產物產生文件確認四條 `POST …/downloads` 都是 200 `application/pdf`（binary），重新下載另列 401／403／404／409／500；三條舊 GET 不在文件中；外部下載說明已改為「以 POST 取得 blob 後下載」。
 
 合併整合分支（含 03，c922db8）後重跑：`lint:check` 0 errors（265 warnings）、`build` 通過、`test` 106／964、`test:schema` 2／12、全套 `test:e2e` 28 suites／313 tests（`esign-export-history` 71＝02 的 14＋03 的 27＋04 的 30）、`test:e2e:security` 11／60，全部通過。重新下載改用 03 的 `ExportJobRepository.historyRecord`，移除重複的查詢方法。
+
+### 05 回歸驗證與交接（T028–T030，2026-10-29）
+
+環境：Node v26.4.0、pnpm 11.9.0。基準為整合分支 `feat/015-export-history`（cce0dc9），實作分支 `impl/015-05`。
+
+測試隔離：worktree 的 `server/.env.test` 改為 `DB_MYSQL_DB=feastogether_intranet_test1505`、`REDIS_DB=15`。
+
+第一次全套（變更前）：
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors（265 個既有 warnings） |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e` | 28 suites／313 tests，1 個失敗（見下方） |
+| `pnpm -C server test:e2e:security` | 11 suites／60 tests 通過 |
+
+失敗的是 `core-esign-flow`「10 人共用 3 欄位各產一份 PDF，先簽先下載、跨人拒絕、全 ready 才結案」：
+- 錯誤：兩個 finalization 並行時，`EsignVerificationService.saveSnapshot` 回報 `ESIGN_INTEGRITY_FAILED`。
+- 單獨重跑 `core-esign-flow`（含 `security-core-esign-flow`）2 suites／38 tests 通過，第二次全套也通過。
+- Spec 015 沒有修改 finalization 與 verification，研判是既有的並行時序問題，未在本票處理。
+
+新增 #22、#23 案例後重跑全套：
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors（265 個既有 warnings，本次變更檔案 0 個） |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e` | 28 suites／314 tests 通過（`esign-export-history` 72＝02 的 14＋03 的 27＋04 的 30＋本票 1） |
+| `pnpm -C server test:e2e:security` | 11 suites／60 tests 通過 |
+
+`schema.sql` 核對（#1）：以同一支 dump 腳本讀 `.env.test`，從已由 e2e global setup 套用全部 migration 的隔離庫匯出。結果與提交的 `schema.sql` 無差異，`doc/esign-db-schema.sql` 與它相同。
+
+#### 驗收矩陣對照
+
+`esign-export-history` 指 `server/test/esign-export-history.e2e-spec.ts`。
+
+| # | 自動化測試 |
+|---|---|
+| 1 | `schema-migration`「匯出紀錄 migration 保留既有 ZIP 工作，可 up → down → up」（既有 ZIP 列 up 後通過 CHECK）、「最新 migration 可 apply → 無 drift → 單獨 revert → reapply」（entity 與 DB 一致）；`schema-metadata.spec.ts`；`schema.sql` 由本票以 dump 核對（見上） |
+| 2 | `schema-migration`「已有 excel／pdf 紀錄時，匯出紀錄 migration 在任何 DDL 前拒絕回滾」 |
+| 3 | `schema-migration`「匯出紀錄 migration 保留既有 ZIP 工作，可 up → down → up」 |
+| 4 | `schema-constraints`「匯出紀錄依類型限制匯出人、簽署人與條件，簽署人外鍵為 RESTRICT」 |
+| 5 | `esign-export-history`「查詢紀錄 › … 回 400 INVALID_REQUEST」（8 案） |
+| 6 | `esign-export-history`「查詢紀錄 › 依匯出時間、流水號由新到舊以頁碼翻頁，不漏不重」 |
+| 7 | `esign-export-history`「查詢紀錄 › typeTotals 帶與不帶 documentId 都正確，並與逐頁合計一致」 |
+| 8 | `esign-export-history`「查詢紀錄 › 非建立人、非匯出人也看得到 excel 紀錄與匯出條件」，查詢案例都以非建立人、非匯出人的員工查詢 |
+| 9 | `esign-export-history` 四處：「查詢紀錄 › 未登入與外部存取 cookie 回 401」、「Excel 紀錄 › 未登入與外部存取 cookie 回 401，不新增紀錄」、「單人 PDF 下載紀錄 › 未登入重新下載／外部存取 cookie 重新下載」、「Excel 重新下載資料 › 未登入與外部存取 cookie 回 401」；`api-coverage`「匯出歷程改由 history/export 提供，舊路由不再提供存取」 |
+| 10 | `esign-export-history`「Excel 紀錄 › 非建立人可記錄，匯出人取自 session，回 201 與查詢相同的 item」 |
+| 11 | `esign-export-history`「Excel 紀錄 › 文件為草稿、已刪除或不存在時回 404，不新增紀錄」 |
+| 12 | `esign-export-history`「Excel 紀錄 › … 回 400 INVALID_REQUEST，不新增紀錄」（19 案）與「邊界值可記錄」 |
+| 13 | `esign-export-history`「單人 PDF 下載紀錄 › 建立人下載簽署人副本…」、「簽署人標籤超過 255 字時截斷」 |
+| 14 | `esign-export-history`「單人 PDF 下載紀錄 › 外部簽署人以 Email OTP 存取下載本人副本：匯出人為姓名＋Email」 |
+| 15 | `esign-export-history`「單人 PDF 下載紀錄 › 內部員工以員工 session 下載本人副本：匯出人與範圍都是該員工」 |
+| 16 | `esign-export-history`「單人 PDF 下載紀錄 › …：回 … ，不新增紀錄」（21 案） |
+| 17 | `esign-export-history`「單人 PDF 下載紀錄 › …：紀錄寫入失敗回 500，不送出 PDF」（4 條路由） |
+| 18 | `api-coverage`「匯出歷程改由 history/export 提供，舊路由不再提供存取」（`/exports` 與三條舊 GET 都回 404） |
+| 19 | `esign-export-history`「單人 PDF 下載紀錄 › 任何員工都能從 pdf 紀錄重新下載…」 |
+| 20 | `esign-export-history` 三處：「單人 PDF 下載紀錄 › 重新下載 excel／zip 紀錄」、「Excel 重新下載資料 › pdf／zip 紀錄、不存在的紀錄與文件已刪除時回 404」，以及本票新增案例（以真實 ZIP 工作呼叫 `POST …/{id}/downloads` 與 `GET …/{id}/document`） |
+| 21 | `esign-export-history`「Excel 重新下載資料 › 任何員工可取得文件目前資料，只含產生 Excel 需要的欄位，不新增紀錄」 |
+| 22 | `esign-export`（Spec 009 的 4 案，不變）；`esign-export-history`「查詢紀錄 › zip 只列有快照的匯出工作…」；本票新增「ZIP 不受 excel／pdf 紀錄影響 › …」 |
+| 23 | 本票新增「ZIP 不受 excel／pdf 紀錄影響 › …」 |
+
+全部 23 列都有自動化測試。另外，SC-001 由 #10、#13–#15、#19（每次各多一筆）與 #22（重用、下載不新增）涵蓋；SC-003 由 #6、#7 涵蓋；SC-004 由 #9 涵蓋；SC-002 的前端部分待前端串接。
+
+#### #22、#23 新增案例
+
+`esign-export-history` 新增 describe「ZIP 不受 excel／pdf 紀錄影響」。為了讓兩個 describe 共用，把 `signedCopy` 與可簽署文件的建立提到最外層。
+
+案例在同一份文件上放四筆新類型紀錄：
+- 經 API 寫入的 `excel` 紀錄（`POST /api/esign/history/export`）。
+- 經 API 寫入的 `pdf` 紀錄（建立人下載）。
+- 兩筆「看起來像待處理 ZIP 工作」的紀錄：`excel` 為 `pending`，`pdf` 為 `processing` 且租約已過期，但都沒有快照。這兩筆在案例結束時刪除。
+
+接著驗證：
+- 申請 ZIP 回 202 並建立新工作，`expectedCount` 只計已簽副本，不會重用新類型的列。
+- 來源副本暫時移除時，worker 讓工作失敗（`ESIGN_EXPORT_UNAVAILABLE`）。
+- ZIP 的明細與重試路由對 `excel`／`pdf` 紀錄回 404。
+- 還原來源後重試回 202，worker 完成工作。
+- 下載 ZIP 回 200，`typeTotals` 維持 `{ excel: 2, pdf: 2, zip: 1 }`，下載不新增紀錄。
+- 再次申請回 200，重用同一個工作。
+- 歷史的重新下載與 Excel 資料路由對 ZIP 工作回 404。
+- 執行 `DocumentExportProcessor.maintain()` 後，四筆新類型紀錄整列與 ZIP 流程前完全相同，`typeTotals` 不變。
+
+變異檢查：以下三種改動都讓案例轉紅，還原後全綠。
+- 拿掉 `ExportJobRepository.maintenance()` 的快照條件：租約過期的 `pdf` 列被改為 `pending`。
+- 拿掉 `reusable()` 的類型與快照條件：申請重用了 `excel` 列。
+- 拿掉 `EsignExportService.find()` 的快照檢查：明細路由對 `excel` 列回 200。
+
+#### 契約對照與交接（T029、T030）
+
+- 路由、狀態碼、body 規則與回應形狀都與 contract 一致。
+- 契約範例值的差異、前端部門鍵／`scope` 長度的衝突，以及契約未明定的行為，都整理在 [implementation-notes.md](implementation-notes.md)「與契約的差異／未明定行為」，等待使用者決定，沒有修改契約語意。
+- contract「前端交接」改正與程式不符的描述，並補上 ZIP 面板型別、mock store 的其他引用、`buildExportXlsx` 型別與長度上限的注意事項：
+  - 下載路徑多了 `/downloads`；
+  - `getBlob` 只會發 GET；
+  - ZIP 查詢必須帶 `type=zip`。
+- `docs/agents/電子簽串接待辦清單.md` 的「匯出紀錄」改為後端已完成、待前端串接。

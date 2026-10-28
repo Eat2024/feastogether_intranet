@@ -196,12 +196,18 @@ export class EsignDocumentQueryService {
       )
         continue;
       if (!deliveryBySigner.has(log.signerId)) {
-        const result =
+        const result: EsignInvitationDelivery =
           log.result === 'delivered'
             ? 'delivered'
             : log.result === 'failed'
               ? 'failed'
-              : 'pending';
+              : log.result === 'skipped'
+                ? 'skipped'
+                : log.result === 'unknown'
+                  ? 'unknown'
+                  : log.result === 'processing'
+                    ? 'processing'
+                    : 'pending';
         deliveryBySigner.set(log.signerId, result);
       }
     }

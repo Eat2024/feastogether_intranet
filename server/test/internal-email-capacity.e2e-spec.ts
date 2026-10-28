@@ -1,6 +1,12 @@
+import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
+import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
+import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
+import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
+import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
+import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { HttpService } from '@nestjs/axios';
 import { getQueueToken } from '@nestjs/bullmq';
-import type { Queue } from 'bullmq';
+import type { Queue, Job } from 'bullmq';
 import { randomBytes } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { Observable } from 'rxjs';
@@ -25,7 +31,7 @@ import {
   type SecurityE2eContext,
 } from './security-e2e.helper';
 
-describe('Spec010 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來源）', () => {
+describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來源）', () => {
   let ctx: SecurityE2eContext;
   let cookie: string;
   let users: User[];
@@ -63,7 +69,7 @@ describe('Spec010 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
     const after = process.memoryUsage();
     // 僅彙總數據，不輸出員編、信箱、cookie 或邀請秘密；記憶體差含 GC，並非峰值。
     console.info(
-      'SPEC010_CAPACITY',
+      'SPEC016_CAPACITY',
       JSON.stringify({
         operation,
         count,
@@ -179,6 +185,13 @@ describe('Spec010 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         const jobId = await queue.getDeduplicationJobId(`invitation-${log.id}`);
         if (jobId) await (await queue.getJob(jobId))?.remove();
       }
+      const ownedBatches = await manager.query<Array<{ id: number }>>(
+        'SELECT id FROM esign_notification_batches WHERE document_id=?',
+        [documentId],
+      );
+      const ownedBatchIds = new Set(
+        ownedBatches.map((batch) => Number(batch.id)),
+      );
       const ownedLogIds = new Set(logs.map((log) => Number(log.id)));
       for (const job of await queue.getJobs([
         'waiting',
@@ -188,6 +201,12 @@ describe('Spec010 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         'completed',
       ])) {
         if (
+          ownedBatchIds.has(
+            Number(
+              (job.data as { notificationBatchId?: number })
+                .notificationBatchId,
+            ),
+          ) ||
           ownedLogIds.has(
             Number(
               (job.data as { notificationLogId: number }).notificationLogId,
@@ -229,12 +248,10 @@ describe('Spec010 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         ]);
       });
       for (const file of files)
-        await ctx.app
-          .get<PrivateFileStorage>(PRIVATE_FILE_STORAGE)
-          .delete({
-            objectKey: file.object_key,
-            objectVersion: file.object_version ?? undefined,
-          });
+        await ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE).delete({
+          objectKey: file.object_key,
+          objectVersion: file.object_version ?? undefined,
+        });
       for (let offset = 0; offset < users.length; offset += 500) {
         const ids = users.slice(offset, offset + 500).map((u) => u.id);
         await manager.query('DELETE FROM auth_sessions WHERE user_id IN (?)', [
@@ -327,21 +344,12 @@ describe('Spec010 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
       watermark: false,
       allowReject: true,
     });
-  it.each(['missing', 'source'] as const)(
+  it.each(['source'] as const)(
     '6000 人末批%s失敗整份仍為草稿，無指派／通知／發起稽核',
     async (mode) => {
       failure = mode;
       await measure(`initiation-${mode}`, 6000, async () => {
-        const response = await initiate().expect(
-          mode === 'missing' ? 422 : 502,
-        );
-        if (mode === 'missing')
-          expect(response.body).toMatchObject({
-            error: {
-              code: 'ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE',
-              details: { userIds: [String(users[5999].id)] },
-            },
-          });
+        await initiate().expect(502);
         const detail = apiData<{ status: string; signers: unknown[] }>(
           await request(ctx.server)
             .get(`/api/esign/documents/${documentId}`)
@@ -381,28 +389,62 @@ describe('Spec010 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
       expect(peak).toBe(4);
       const manager = ctx.app.get(MysqlService).getManager();
       const logs = await manager.query<
-        Array<{ id: number; generation: string; digest: string }>
+        Array<{
+          id: number;
+          batchId: number;
+          generation: string | null;
+          digest: string | null;
+        }>
       >(
-        'SELECT l.id,l.invitation_generation_sha256 generation,s.invitation_token_sha256 digest FROM esign_notification_logs l JOIN esign_signers s ON s.id=l.signer_id WHERE s.document_id=?',
+        'SELECT l.id,l.batch_id batchId,l.invitation_generation_sha256 generation,s.invitation_token_sha256 digest FROM esign_notification_logs l JOIN esign_signers s ON s.id=l.signer_id WHERE s.document_id=?',
         [documentId],
       );
       expect(logs).toHaveLength(6000);
-      expect(new Set(logs.map((l) => l.digest)).size).toBe(6000);
-      expect(logs.every((l) => l.generation && l.generation === l.digest)).toBe(
-        true,
-      );
+      expect(
+        logs.every((l) => l.generation === null && l.digest === null),
+      ).toBe(true);
       const queue = ctx.app.get<Queue>(
         getQueueToken(ESIGN_EXTERNAL_INVITATION_QUEUE),
       );
-      for (let offset = 0; offset < logs.length; offset += 100) {
-        const jobs = await Promise.all(
-          logs.slice(offset, offset + 100).map(async (l) => {
-            const id = await queue.getDeduplicationJobId(`invitation-${l.id}`);
-            return id ? queue.getJob(id) : undefined;
-          }),
-        );
-        expect(jobs.every((job) => job !== undefined)).toBe(true);
-      }
+      const batchId = Number(logs[0].batchId);
+      const jobId = await queue.getDeduplicationJobId(
+        `internal-invitation-${batchId}`,
+      );
+      expect(jobId).toBeTruthy();
+      expect((await queue.getJob(jobId!))?.data).toEqual({
+        notificationBatchId: batchId,
+      });
+      const mailer = new FakeInvitationMailSender();
+      const worker = new ExternalInvitationProcessor(
+        ctx.app.get(MysqlService),
+        ctx.app.get(NotificationRepository),
+        ctx.app.get(SignerRepository),
+        ctx.app.get(EsignTokenService),
+        ctx.app.get(EsignAuditService),
+        mailer,
+      );
+      await worker.process({ data: { notificationBatchId: batchId } } as Job<{
+        notificationBatchId: number;
+      }>);
+      expect(mailer.internalGroupDeliveries).toHaveLength(120);
+      expect(
+        mailer.internalGroupDeliveries.every(
+          (group) => group.recipientEmails.length === 50,
+        ),
+      ).toBe(true);
+      expect(
+        new Set(
+          mailer.internalGroupDeliveries.flatMap(
+            (group) => group.recipientEmails,
+          ),
+        ).size,
+      ).toBe(6000);
+      expect(mailer.deliveries).toEqual([]);
+      const [delivered] = await manager.query<Array<{ total: string }>>(
+        "SELECT COUNT(*) total FROM esign_notification_logs WHERE batch_id=? AND result='delivered'",
+        [batchId],
+      );
+      expect(Number(delivered.total)).toBe(6000);
       const [document] = await manager.query<
         Array<{ signing_payload_json: string | { signers: unknown[] } }>
       >('SELECT signing_payload_json FROM esign_documents WHERE id=?', [
@@ -429,7 +471,6 @@ describe('Spec010 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         users[0].empid,
         email(users[0].empid).toLowerCase(),
         cookie.split('=')[1],
-        logs[0].digest,
       ])
         expect(logged).not.toContain(secret);
     });

@@ -67,7 +67,7 @@ export default function ReopenDocumentButton({
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_NOTIFICATION_BATCHES, doc.id] });
       setOpen(false);
       showSnackbar(
-        `已開放「${doc.title}」補簽，將寄送新的邀請信給 ${result.pendingCount} 位未簽署者，可簽至 ${formatDateTime(result.signEndAt)}`,
+        `已開放「${doc.title}」補簽，${result.pendingCount} 位未簽署者可繼續簽署，有效信箱將收到通知，可簽至 ${formatDateTime(result.signEndAt)}`,
         'success',
       );
     },
@@ -126,7 +126,7 @@ export default function ReopenDocumentButton({
         open={open}
         icon={<EventRepeatRoundedIcon />}
         title={`重新開放「${doc.title}」補簽？`}
-        description={`目前尚有 ${doc.pendingCount} 位未簽署。補簽只會延後截止時間，原開始時間與已完成的簽署不變；確定後系統會寄送新的邀請信給這些未簽署者。`}
+        description={`目前尚有 ${doc.pendingCount} 位未簽署。補簽只會延後截止時間，原開始時間與已完成的簽署不變；確定後系統會通知有有效信箱的未簽署者；無信箱的內部員工請由人資另行通知自行登入入口網簽署。`}
         confirmLabel="確定補簽"
         loading={reopen.isPending}
         onConfirm={confirm}

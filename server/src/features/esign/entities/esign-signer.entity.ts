@@ -118,7 +118,7 @@ export class EsignSigner extends UserAuditableEntity {
     nullable: true,
     comment: '固定通知 Email',
   })
-  email?: string;
+  email?: string | null;
 
   @Column({
     name: 'external_email',

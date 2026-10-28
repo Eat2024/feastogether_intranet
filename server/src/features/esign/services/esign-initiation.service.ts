@@ -107,7 +107,7 @@ export class EsignInitiationService {
           : undefined;
         if (!fixed || fixed.empid !== signer.empidSnapshot)
           throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED);
-        signer.email = fixed.email!;
+        signer.email = fixed.email;
       }
       const { fields, sourceMetadata } = await this.fieldService.buildFields(
         document,
@@ -178,13 +178,6 @@ export class EsignInitiationService {
     if (!userIds.length) return [];
     const identities = await this.employeeEmails.resolveUsers(userIds);
     const emails = await this.employeeEmails.lookupEmails(identities);
-    const unavailable = emails
-      .filter((item) => !item.email)
-      .map((item) => String(item.userId));
-    if (unavailable.length)
-      throw new AppException(...AppErrors.ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE, {
-        userIds: unavailable,
-      });
     return emails;
   }
 
@@ -346,20 +339,23 @@ export class EsignInitiationService {
         manager,
       );
       const logs = await this.notifications.saveLogs(
-        invitationSigners.map((signer) =>
-          this.notifications.createLog(
+        invitationSigners.map((signer) => {
+          const unavailable = signer.signerType === 'user' && !signer.email;
+          return this.notifications.createLog(
             {
               batchId: batch.id,
               signerId: signer.id,
               channel: 'email',
-              result: 'pending',
+              result: unavailable ? 'skipped' : 'pending',
+              errorCode: unavailable ? 'RECIPIENT_UNAVAILABLE' : null,
+              completedAt: unavailable ? initiatedAt : undefined,
               attemptCount: 0,
               invitationGenerationSha256: signer.invitationTokenSha256,
-              nextAttemptAt: initiatedAt,
+              nextAttemptAt: unavailable ? null : initiatedAt,
             },
             manager,
-          ),
-        ),
+          );
+        }),
         manager,
       );
       const internalSignerIds = new Set(
@@ -369,10 +365,18 @@ export class EsignInitiationService {
       );
       notificationLogIds.push(
         ...logs
-          .filter((log) => !internalSignerIds.has(log.signerId))
+          .filter(
+            (log) =>
+              log.result === 'pending' && !internalSignerIds.has(log.signerId),
+          )
           .map((log) => log.id),
       );
-      if (logs.some((log) => internalSignerIds.has(log.signerId)))
+      if (
+        logs.some(
+          (log) =>
+            log.result === 'pending' && internalSignerIds.has(log.signerId),
+        )
+      )
         internalBatchIds.push(batch.id);
     }
 

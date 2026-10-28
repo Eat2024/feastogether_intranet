@@ -9,7 +9,13 @@ export type EsignDocumentStatus =
 export type EsignSignerType = 'user' | 'email';
 export type EsignSignerStatus = 'pending' | 'signed' | 'rejected';
 export type EsignFieldType = 'signature' | 'date';
-export type EsignInvitationDelivery = 'pending' | 'delivered' | 'failed';
+export type EsignInvitationDelivery =
+  | 'pending'
+  | 'processing'
+  | 'delivered'
+  | 'failed'
+  | 'skipped'
+  | 'unknown';
 
 export class EsignDocumentSummaryDto {
   id!: string;

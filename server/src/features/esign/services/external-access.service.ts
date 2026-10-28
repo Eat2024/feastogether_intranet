@@ -322,7 +322,7 @@ export class ExternalAccessService {
 }
 
 /** Email 通道存取檢查已確認固定有效信箱，無須依業務簽署人類型分流。 */
-function invitationEmail(signer: { email?: string }): string {
+function invitationEmail(signer: { email?: string | null }): string {
   if (!signer.email) throw new Error('unreachable');
   return signer.email;
 }

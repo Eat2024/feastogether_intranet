@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 共用簽署表單。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Tasks coverage:** T014–T016；T012/T013/T018/T019/T021/T023 的開啟、原檔、簽署、權限、狀態及重送部分。
 

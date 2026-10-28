@@ -4,7 +4,7 @@
 
 **Blocked by:** 無，可開始。
 
-**Status:** claimed
+**Status:** resolved
 
 **Tasks coverage:** T020；T001/T002 的電子簽工作區與規範檢查；T023 的外部表單回歸部分。
 
@@ -29,3 +29,8 @@
 - 窄螢幕 390×844：切換另一簽署人後重新同意且簽名進度 0/1；無水平溢出；拒簽模擬 503 後重試，requestId 保持一致，呈現拒簽結果。
 - 瀏覽器沒有 Runtime exception；截圖 `/tmp/ft016-desktop.png`、`/tmp/ft016-narrow.png`。這是前端 fixture 回歸，不代表正式 Portal／後端整合已驗收。
 - 實作 commit：`36536ca`；commit hooks 的 root lint 通過（206 個既有 server warnings），server 104 suites／948 tests 通過。等待 merger 整合後改為 resolved。
+
+### 整合紀錄
+
+- 已檢查變更範圍並將 `impl/016-02` 的 `d9a0f2c` fast-forward 合併至 `feat/016-internal-portal-signing`；實作與瀏覽器驗證紀錄均已整合。
+- 本票驗收完成，狀態改為 resolved；正式 Portal／後端完整旅程仍由後續票驗收。

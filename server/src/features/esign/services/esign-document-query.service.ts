@@ -63,8 +63,10 @@ export class EsignDocumentQueryService {
     const invitation = logs.find(
       (l) =>
         l.batch?.kind === 'invitation' &&
-        !!l.invitationGenerationSha256 &&
-        l.invitationGenerationSha256 === signer.invitationTokenSha256,
+        l.errorCode !== 'INVITATION_SUPERSEDED' &&
+        (signer.signerType === 'user' ||
+          (!!l.invitationGenerationSha256 &&
+            l.invitationGenerationSha256 === signer.invitationTokenSha256)),
     );
     const midnight = new Date(now.getTime() + 8 * 60 * 60_000);
     midnight.setUTCHours(24, 0, 0, 0);
@@ -182,11 +184,19 @@ export class EsignDocumentQueryService {
     const generationBySigner = new Map(
       signers.map((signer) => [signer.id, signer.invitationTokenSha256]),
     );
+    const internalSignerIds = new Set(
+      signers
+        .filter((signer) => signer.signerType === 'user')
+        .map((signer) => signer.id),
+    );
     for (const log of logs) {
+      if (log.errorCode === 'INVITATION_SUPERSEDED') continue;
       if (log.batch?.kind === 'reminder') continue;
       if (
-        !log.invitationGenerationSha256 ||
-        log.invitationGenerationSha256 !== generationBySigner.get(log.signerId)
+        !internalSignerIds.has(log.signerId) &&
+        (!log.invitationGenerationSha256 ||
+          log.invitationGenerationSha256 !==
+            generationBySigner.get(log.signerId))
       )
         continue;
       if (!deliveryBySigner.has(log.signerId)) {

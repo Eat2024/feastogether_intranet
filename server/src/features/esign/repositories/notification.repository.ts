@@ -164,6 +164,50 @@ export class NotificationRepository {
     return log;
   }
 
+  /** 文件 → 批次 → 所有明細 → 簽署人；同批不同 worker 不可拆開同一地址。 */
+  async findInternalBatchContextForUpdate(
+    batchId: number,
+    manager: EntityManager,
+  ) {
+    const candidate = await manager.findOne(EsignNotificationBatch, {
+      where: { id: batchId },
+    });
+    if (!candidate) return null;
+    const document = await this.lockDocument(candidate.documentId, manager);
+    if (!document) return null;
+    const batch = await manager.findOne(EsignNotificationBatch, {
+      where: { id: batchId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!batch) return null;
+    const logs = await manager.find(EsignNotificationLog, {
+      where: { batchId },
+      order: { id: 'ASC' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    const signerIds = [...new Set(logs.map((log) => log.signerId))].sort(
+      (a, b) => a - b,
+    );
+    const signers = signerIds.length
+      ? await manager.find(EsignSigner, {
+          where: { id: In(signerIds) },
+          order: { id: 'ASC' },
+          lock: { mode: 'pessimistic_write' },
+        })
+      : [];
+    const byId = new Map(signers.map((signer) => [signer.id, signer]));
+    const withCreator = await manager.findOne(EsignDocument, {
+      where: { id: document.id },
+      relations: { createdByUser: true },
+    });
+    document.createdByUser = withCreator?.createdByUser;
+    for (const log of logs) {
+      log.signer = byId.get(log.signerId);
+      log.batch = batch;
+    }
+    return { document, batch, logs };
+  }
+
   saveLog(log: EsignNotificationLog, manager: EntityManager) {
     return manager.save(log);
   }
@@ -195,12 +239,18 @@ export class NotificationRepository {
       .innerJoin('log.signer', 'signer')
       .innerJoin('signer.document', 'document')
       .select('log.id', 'id')
+      .addSelect('log.batchId', 'batchId')
+      .addSelect('signer.signerType', 'signerType')
       .where(
         `(
-        (batch.kind = 'reminder' AND (
+        (signer.signerType = 'user' AND (
+          (log.result = 'pending' AND log.attempt_count < 3 AND (log.next_attempt_at IS NULL OR log.next_attempt_at <= :now))
+          OR (log.result = 'failed' AND log.attempt_count < 3 AND log.next_attempt_at IS NOT NULL AND log.next_attempt_at <= :now)
+          OR (log.result = 'processing' AND log.processing_started_at < :staleBefore)))
+        OR (signer.signerType = 'email' AND batch.kind = 'reminder' AND (
           (log.result IN ('pending','failed') AND log.attempt_count < 3 AND log.reminder_token_ciphertext IS NOT NULL AND (log.next_attempt_at IS NULL OR log.next_attempt_at <= :now))
           OR (log.result = 'processing' AND log.processing_started_at < :staleBefore)))
-        OR (batch.kind = 'invitation' AND
+        OR (signer.signerType = 'email' AND batch.kind = 'invitation' AND
           ((log.result IN ('pending','failed') AND (log.next_attempt_at IS NULL OR log.next_attempt_at <= :now)) OR (log.result = 'processing' AND log.processing_started_at < :staleBefore))
           AND signer.status = 'pending' AND document.status = 'active'
           AND log.invitation_generation_sha256 = signer.invitation_token_sha256
@@ -214,7 +264,7 @@ export class NotificationRepository {
       .andWhere('log.id > :afterId', { afterId })
       .orderBy('log.id', 'ASC')
       .limit(100)
-      .getRawMany<{ id: string }>();
+      .getRawMany<{ id: string; batchId: string; signerType: string }>();
   }
 
   findBySignerIds(signerIds: number[], manager: EntityManager) {

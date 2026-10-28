@@ -17,7 +17,7 @@
 
 **前置**：T001–T002。完成後 US1／US2／US3 可分線開發，實際合併依下方依賴表。
 
-- [ ] T003 新增 `server/src/features/esign/esign.constants.ts` 的單一固定 Portal 登入網址及內部 BCC 上限 50 常數，供 worker／舊入口使用；值為 `http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine`，不新增環境變數、不改外部 origin，mail adapter 透過輸入接收網址以維持邊界。
+- [x] T003 新增 `server/src/features/esign/esign.constants.ts` 的單一固定 Portal 登入網址及內部 BCC 上限 50 常數，供 worker／舊入口使用；值為 `http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine`，不新增環境變數、不改外部 origin，mail adapter 透過輸入接收網址以維持邊界。
 - [ ] T004 在 `server/src/common/errors/app-error-code.ts`、`server/src/common/errors/app-errors.ts` 與 `client/src/api/errorCodes.ts` 定義 `ESIGN_INTERNAL_LOGIN_REQUIRED`（403）及繁體中文文案；錯誤 details 中的 `portalLoginUrl` 只能由 T003 固定值產生，不接受 caller 回跳 URL。
 
 ## Phase 3：US1 Portal 登入後自動到我的電子簽（P1）
@@ -26,12 +26,12 @@
 
 **獨立驗收**：即使本人簽署 UI 尚未完成，仍能驗證 Portal 登入→既有我的電子簽列表；失敗重試／改密碼／已登入／無參數／惡意參數各有明確結果。對應 FR-002～003b、驗收 1／11／14。
 
-- [ ] T005 [US1] 新增 `../portal/tests/esign-login-redirect.php` 可獨立執行的 PHP 測試 harness（不增套件），以 session/input stub 覆蓋清單允許值、缺參數、重複參數、陣列、外站、穿越、POST 保留、成功消費與改密碼待辦；注入測試專用第二頁映射，驗證不改 controller 即可回跳，移除映射後舊 session 失效；先確認現況不符契約的案例失敗。
-- [ ] T006 [US1] 新增 `../portal/application/config/login_redirect.php` 集中允許映射與薄的 `../portal/application/libraries/Login_redirect.php` 共用處理，初始 `hr/esign/mine → hr/esign/mine`；修改 `../portal/application/controllers/Login.php` 在已登入分支前呼叫共用驗證，保存 `login_redirect_target`，取用時再次確認映射有效後 base_url。新 GET 無值／非法值清除，POST／失敗重試保留，無目標回原首頁；登入程式不硬編碼電子簽目的地。
-- [ ] T007 [US1] 在 `../portal/application/controllers/Login.php` 設定 server 控制的 `login_password_change_pending`；需改預設密碼先走原頁，已登入再點 Email 仍先完成待辦，不用前端值判斷可否跳過。
-- [ ] T008 [US1] 修改 `../portal/application/controllers/Account.php`：DB 改密碼成功才清待辦並透過共用 Login_redirect 消費目標，在原 `{status,msg}` 成功回應追加安全 `redirectTo`；錯誤保留目標及待辦，無目標沿原首頁，不增加頁面專用判斷。
-- [ ] T009 [US1] 修改 `../portal/application/views/admin/account/modify_password.php` 成功分支使用 server 的 `redirectTo`，失敗不導頁；保留欄位、CSRF、既有密碼驗證及錯誤呈現。
-- [ ] T010 [US1] 修改 `../portal/application/core/WebController.php` 共用 Logout，透過 Login_redirect 重設目的地並清除改密碼待辦；不新增自動記住任何原網址功能，核對 `../portal/application/controllers/hr/Esign.php` 原選單 gate 仍有效。
+- [x] T005 [US1] 新增 `../portal/tests/esign-login-redirect.php` 可獨立執行的 PHP 測試 harness（不增套件），以 session/input stub 覆蓋清單允許值、缺參數、重複參數、陣列、外站、穿越、POST 保留、成功消費與改密碼待辦；注入測試專用第二頁映射，驗證不改 controller 即可回跳，移除映射後舊 session 失效；先確認現況不符契約的案例失敗。
+- [x] T006 [US1] 新增 `../portal/application/config/login_redirect.php` 集中允許映射與薄的 `../portal/application/libraries/Login_redirect.php` 共用處理，初始 `hr/esign/mine → hr/esign/mine`；修改 `../portal/application/controllers/Login.php` 在已登入分支前呼叫共用驗證，保存 `login_redirect_target`，取用時再次確認映射有效後 base_url。新 GET 無值／非法值清除，POST／失敗重試保留，無目標回原首頁；登入程式不硬編碼電子簽目的地。
+- [x] T007 [US1] 在 `../portal/application/controllers/Login.php` 設定 server 控制的 `login_password_change_pending`；需改預設密碼先走原頁，已登入再點 Email 仍先完成待辦，不用前端值判斷可否跳過。
+- [x] T008 [US1] 修改 `../portal/application/controllers/Account.php`：DB 改密碼成功才清待辦並透過共用 Login_redirect 消費目標，在原 `{status,msg}` 成功回應追加安全 `redirectTo`；錯誤保留目標及待辦，無目標沿原首頁，不增加頁面專用判斷。
+- [x] T009 [US1] 修改 `../portal/application/views/admin/account/modify_password.php` 成功分支使用 server 的 `redirectTo`，失敗不導頁；保留欄位、CSRF、既有密碼驗證及錯誤呈現。
+- [x] T010 [US1] 修改 `../portal/application/core/WebController.php` 共用 Logout，透過 Login_redirect 重設目的地並清除改密碼待辦；不新增自動記住任何原網址功能，核對 `../portal/application/controllers/hr/Esign.php` 原選單 gate 仍有效。
 - [ ] T011 [US1] 執行 PHP harness、所有變更 PHP 的 `php -l` 及 Portal 瀏覽器驗收，將結果記入 `specs/016-internal-portal-signing/quickstart.md`；驗證 `../portal/template/js/hr/esign_webview.js` ready/navigate/launch、權限不足、帳號切換、cookie 故障與一般登入回歸，不改固定首頁 launch 協定。
 
 ## Phase 4：US2 以員工身分完成本人文件流程（P1）
@@ -62,8 +62,8 @@
 - [ ] T024 [P] [US3] 擴充 `server/src/infrastructure/mail/invitation-mail-sender.spec.ts` 及 `mail-delivery-outcome.spec.ts`，先驗證 BCC MIME／envelope 隱私、單次多地址、固定正式 Portal 連結、accepted/rejected/unknown、永久／暫時拒收與外部逐人／OTP 不變。
 - [ ] T025 [P] [US3] 擴充 `server/test/internal-email-initiation.e2e-spec.ts`、`internal-email-capacity.e2e-spec.ts`、`esign-employee-email-checks.e2e-spec.ts`，驗證 mixed／全無信箱可發起、nullable 快照、身分無效及上游失敗仍阻擋；維持 6,000 人與每批 100 人查詢邊界，不把容量測試變成真實大量寄信。
 - [ ] T026 [P] [US3] 擴充 `server/src/worker/esign/external-invitation.processor.spec.ts`、`esign-maintenance.processor.spec.ts`（同目錄），先寫群組租約、舊單 log 轉批次、部分失敗、SMTP 後落庫失敗、stale processing、併發與 supersede 測試。
-- [ ] T027 [US3] 在 `server/src/infrastructure/mail/invitation-mail-sender.port.ts` 加 `sendInternalGroup`，輸入最多 50 個不同 BCC 地址、kind、文件資訊及可信固定 Portal URL，回逐地址結果；外部 send／sendOtp 保持單人契約，內部無 invitationToken。
-- [ ] T028 [US3] 修改 `server/src/infrastructure/mail/invitation-mail-content.ts`、`smtp-invitation-mail-sender.service.ts`、`fake-invitation-mail-sender.service.ts` 及 `mail-delivery-outcome.ts`：一次 sendMail 多 BCC，To/CC 不放員工，MIME 不保留 BCC；解析受理與拒收，不以 Promise resolve 推定全成功，不記原始收件名單／憑證至 log。
+- [x] T027 [US3] 在 `server/src/infrastructure/mail/invitation-mail-sender.port.ts` 加 `sendInternalGroup`，輸入最多 50 個不同 BCC 地址、kind、文件資訊及可信固定 Portal URL，回逐地址結果；外部 send／sendOtp 保持單人契約，內部無 invitationToken。
+- [x] T028 [US3] 修改 `server/src/infrastructure/mail/invitation-mail-content.ts`、`smtp-invitation-mail-sender.service.ts`、`fake-invitation-mail-sender.service.ts` 及 `mail-delivery-outcome.ts`：一次 sendMail 多 BCC，To/CC 不放員工，MIME 不保留 BCC；解析受理與拒收，不以 Promise resolve 推定全成功，不記原始收件名單／憑證至 log。
 - [ ] T029 [US3] 修改 `server/src/features/esign/services/esign-initiation.service.ts` 與 `esign-document-validation.service.ts`：內部「`email` 可以 NULL」，「`signerType=user` 必須有可信本機 `userId` 與員編快照」；缺信箱保留全部指派，外部仍需有效 Email，HR 故障不能當空值，既有快照不改寫。
 - [ ] T030 [US3] 修改 `server/src/features/esign/services/esign-initiation.service.ts` 的 token／通知建立：內部新 `invitationTokenSha256/invitationTokenCiphertext/invitationExpiresAt`「保持 NULL」，可寄者 pending、無有效地址「`skipped`，reasonCode 使用既有 `RECIPIENT_UNAVAILABLE`」，不入寄信佇列；保留逐人 log，不新增 schema。
 - [ ] T031 [US3] 修改 `server/src/features/esign/services/esign-reopening.service.ts`、`esign-reminder.service.ts`、`esign-reminder-policy.ts`，內部期間不依賴 invitation token；補簽同交易 supersede 舊通知、建立新批次，無 Email 仍可補簽，保留台北每日催簽限制及原有限重試，外部 token 世代照舊。
@@ -128,3 +128,7 @@ T001–T002 → T003–T004
 合計 47 項。最小示範先完成 US1（登入直達列表），再以 US2 展示本人簽署；正式 CR 交付必須包含 US3 BCC 與 US4 舊入口隔離，不能以示範完成取代安全切換。無 Email 的人資通知方式、Spec 014 實作與跨環境同步不在 tasks 範圍。
 
 每項完成後才勾選並追加驗證證據；若依賴環境無法驗收則保留未完成與原因。本 tasks 不建立 GitHub Issues，不代表已修改任何應用程式。
+
+## 邀請群寄整合進度（2026-10-28）
+
+Ticket 06 已整合（`e3ca0fa`／實作 `495abb0`），T003、T027、T028 完成。T032–T035 的新發起邀請、群組租約、首次／維護／舊工作分流及逐地址投遞恢復已通過單元與真實 MySQL／SMTP 驗證；這些共用任務保留未勾選，待 ticket 07 補齊催簽與補簽部分再結案。完整驗證證據見 ticket 06。

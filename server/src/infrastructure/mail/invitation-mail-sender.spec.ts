@@ -95,6 +95,125 @@ describe('Invitation mail sender', () => {
     expect(message).not.toHaveProperty('attachments');
   });
 
+  it('內部群寄只使用 BCC，部分受理分別回傳而不將全員記為成功', async () => {
+    const sender = new SmtpInvitationMailSender(
+      new ConfigService({
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: 1025,
+        SMTP_SECURE: 'false',
+        SMTP_FROM: 'no-reply@example.test',
+        EXTERNAL_SIGNING_ORIGIN: 'https://sign.example.test',
+      }),
+    );
+    const transport = jest
+      .mocked(nodemailer.createTransport)
+      .mock.results.at(-1)?.value as { sendMail: jest.Mock };
+    transport.sendMail.mockResolvedValue({
+      accepted: ['a@example.test'],
+      rejected: ['b@example.test'],
+      rejectedErrors: [{ recipient: 'b@example.test', responseCode: 450 }],
+    });
+    const result = await sender.sendInternalGroup({
+      recipientEmails: ['a@example.test', 'b@example.test'],
+      documentTitle: '聘僱合約',
+      creatorName: '人資',
+      signEndAt: base.signEndAt,
+      portalLoginUrl:
+        'http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine',
+    });
+    expect(result).toEqual([
+      {
+        recipientEmail: 'a@example.test',
+        status: 'accepted',
+        retryable: false,
+      },
+      { recipientEmail: 'b@example.test', status: 'rejected', retryable: true },
+    ]);
+    const [message] = transport.sendMail.mock.calls[0] as [
+      Record<string, unknown>,
+    ];
+    expect(message.bcc).toEqual(['a@example.test', 'b@example.test']);
+    expect(message).not.toHaveProperty('to');
+    expect(message).not.toHaveProperty('cc');
+    expect(message).not.toHaveProperty('keepBcc');
+    expect(message.text).toContain('我的電子簽');
+    expect(message.text).not.toContain('a@example.test');
+    expect(message.html).not.toContain('b@example.test');
+  });
+
+  it('SMTP 全部 RCPT 拒收時仍按各地址的 450/550 分類', async () => {
+    const sender = new SmtpInvitationMailSender(
+      new ConfigService({
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: 1025,
+        SMTP_SECURE: 'false',
+        SMTP_FROM: 'sender@example.test',
+        EXTERNAL_SIGNING_ORIGIN: 'https://sign.example.test',
+      }),
+    );
+    const transport = jest
+      .mocked(nodemailer.createTransport)
+      .mock.results.at(-1)?.value as { sendMail: jest.Mock };
+    transport.sendMail.mockRejectedValue({
+      code: 'EENVELOPE',
+      responseCode: 550,
+      rejectedErrors: [
+        { recipient: 'a@example.test', responseCode: 450 },
+        { recipient: 'b@example.test', responseCode: 550 },
+      ],
+    });
+    expect(
+      await sender.sendInternalGroup({
+        recipientEmails: ['a@example.test', 'b@example.test'],
+        documentTitle: '文件',
+        creatorName: '人資',
+        signEndAt: base.signEndAt,
+        portalLoginUrl:
+          'http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine',
+      }),
+    ).toEqual([
+      { recipientEmail: 'a@example.test', status: 'rejected', retryable: true },
+      {
+        recipientEmail: 'b@example.test',
+        status: 'rejected',
+        retryable: false,
+      },
+    ]);
+  });
+
+  it('ECONNECTION／CONN 不能證明 DATA 尚未送出，回 unknown 且不可重試', async () => {
+    const sender = new SmtpInvitationMailSender(
+      new ConfigService({
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: 1025,
+        SMTP_SECURE: 'false',
+        SMTP_FROM: 'sender@example.test',
+        EXTERNAL_SIGNING_ORIGIN: 'https://sign.example.test',
+      }),
+    );
+    const transport = jest
+      .mocked(nodemailer.createTransport)
+      .mock.results.at(-1)?.value as { sendMail: jest.Mock };
+    transport.sendMail.mockRejectedValue(
+      Object.assign(new Error('Connection closed unexpectedly'), {
+        code: 'ECONNECTION',
+        command: 'CONN',
+      }),
+    );
+    expect(
+      await sender.sendInternalGroup({
+        recipientEmails: ['a@example.test'],
+        documentTitle: '文件',
+        creatorName: '人資',
+        signEndAt: base.signEndAt,
+        portalLoginUrl:
+          'http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine',
+      }),
+    ).toEqual([
+      { recipientEmail: 'a@example.test', status: 'unknown', retryable: false },
+    ]);
+  });
+
   it.each([
     ['test', 'fake', FakeInvitationMailSender],
     ['development', 'smtp', SmtpInvitationMailSender],

@@ -141,7 +141,7 @@ export class EsignInitiationService {
         initiatedAt,
         manager,
       );
-      const notificationLogIds = await this.createInvitationNotifications(
+      const notificationJobs = await this.createInvitationNotifications(
         input,
         document.id,
         invitationSigners,
@@ -156,11 +156,11 @@ export class EsignInitiationService {
         initiatedAt,
         manager,
       );
-      return { document, notificationLogIds };
+      return { document, notificationJobs };
     });
 
     // 通知工作須在交易提交後才入列。
-    await this.jobs.enqueueInvitations(result.notificationLogIds);
+    await this.jobs.enqueueInvitations(...result.notificationJobs);
     return result.document;
   }
 
@@ -286,6 +286,13 @@ export class EsignInitiationService {
   ): Promise<EsignSigner[]> {
     const invitationSigners = signers;
     for (const signer of invitationSigners) {
+      if (signer.signerType === 'user') {
+        signer.invitationTokenSha256 = null;
+        signer.invitationTokenCiphertext = null;
+        signer.invitationExpiresAt = null;
+        signer.updatedByUserId = input.creatorUserId;
+        continue;
+      }
       const token = this.tokens.createInvitationToken();
       signer.invitationTokenSha256 = token.digest;
       signer.invitationTokenCiphertext = token.ciphertext;
@@ -322,8 +329,9 @@ export class EsignInitiationService {
     invitationSigners: EsignSigner[],
     initiatedAt: Date,
     manager: EntityManager,
-  ): Promise<number[]> {
+  ): Promise<[number[], number[]?]> {
     const notificationLogIds: number[] = [];
+    const internalBatchIds: number[] = [];
     if (invitationSigners.length > 0) {
       const batch = await this.notifications.saveBatch(
         this.notifications.createBatch(
@@ -354,10 +362,23 @@ export class EsignInitiationService {
         ),
         manager,
       );
-      notificationLogIds.push(...logs.map((log) => log.id));
+      const internalSignerIds = new Set(
+        invitationSigners
+          .filter((signer) => signer.signerType === 'user')
+          .map((signer) => signer.id),
+      );
+      notificationLogIds.push(
+        ...logs
+          .filter((log) => !internalSignerIds.has(log.signerId))
+          .map((log) => log.id),
+      );
+      if (logs.some((log) => internalSignerIds.has(log.signerId)))
+        internalBatchIds.push(batch.id);
     }
 
-    return notificationLogIds;
+    return internalBatchIds.length
+      ? [notificationLogIds, internalBatchIds]
+      : [notificationLogIds];
   }
 
   private async recordInitiationAudit(

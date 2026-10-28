@@ -2,7 +2,7 @@
 
 **Input**: [spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、[contracts/export-history-http-api.md](contracts/export-history-http-api.md)、[quickstart.md](quickstart.md)。
 
-**Status**: 0／30。
+**Status**: 6／30。
 
 **Base**: 以 016（PR #34）為基礎；PR #33 須在 PR #34 之後合併。
 
@@ -19,27 +19,27 @@
 
 ## Phase 1: Setup — 基準
 
-- [ ] T001 核對 root／server `AGENTS.md`、constitution 1.5.0、migration 次序（目前最新為 `1792454405000-InternalEmailInvitations`）與測試隔離設定。執行基準 `pnpm -C server test` 與 `pnpm -C server test:schema`，把 Node／pnpm 版本與結果記在 `specs/015-export-history/quickstart.md` 的「驗證紀錄」。
+- [x] T001 核對 root／server `AGENTS.md`、constitution 1.5.0、migration 次序（目前最新為 `1792454405000-InternalEmailInvitations`）與測試隔離設定。執行基準 `pnpm -C server test` 與 `pnpm -C server test:schema`，把 Node／pnpm 版本與結果記在 `specs/015-export-history/quickstart.md` 的「驗證紀錄」。
 
 ## Phase 2: Foundational — Schema
 
 **目的**：讓 `esign_export_jobs` 能存 Excel／PDF 紀錄與本人下載，所有故事都依賴這一步。
 
-- [ ] T002 [P] 在 `server/test/schema-constraints.e2e-spec.ts` 加入 `chk_esign_export_jobs_record_type` 案例：
+- [x] T002 [P] 在 `server/test/schema-constraints.e2e-spec.ts` 加入 `chk_esign_export_jobs_record_type` 案例：
   - 拒絕：`excel` 缺 `conditions_json` 或 `created_by_user_id`、或帶 `signer_id`；`pdf` 缺 `signer_id` 或帶 `conditions_json`；`signed_copies_zip` 缺 `created_by_user_id`、或帶任一新欄位。
   - 接受：合法 `excel`、`created_by_user_id` 有值或為 NULL 的 `pdf`、既有形狀的 ZIP。
   - `signer_id` 外鍵為 RESTRICT。（依賴 T001）
-- [ ] T003 [P] 在 `server/test/schema-migration.e2e-spec.ts` 驗證隔離庫 up→down→up：
+- [x] T003 [P] 在 `server/test/schema-migration.e2e-spec.ts` 驗證隔離庫 up→down→up：
   - 既有 ZIP 資料在 up 後仍通過 CHECK。
   - 已有 `excel`／`pdf` 紀錄時，down 在任何 DDL 前拒絕，資料不變。
   - 沒有新類型紀錄時，down 移除欄位、索引、外鍵與 CHECK，`created_by_user_id` 回到 NOT NULL。（依賴 T001）
-- [ ] T004 新增 `server/src/infrastructure/database/migrations/1792454406000-ExportHistory.ts`，依 data-model：`created_by_user_id` 改 NULL；新增 `signer_id`（外鍵＋索引）、`conditions_json`、三個複合索引 `idx_esign_export_jobs_type_created (export_type, created_at, id)`、`idx_esign_export_jobs_document_type_created (document_id, export_type, created_at, id)`、`idx_esign_export_jobs_signer_created (signer_id, created_at, id)` 與 CHECK；down 先檢查再回退。（依賴 T002、T003）
-- [ ] T005 修改 `server/src/features/esign/entities/esign-export-job.entity.ts`：
+- [x] T004 新增 `server/src/infrastructure/database/migrations/1792454406000-ExportHistory.ts`，依 data-model：`created_by_user_id` 改 NULL；新增 `signer_id`（外鍵＋索引）、`conditions_json`、三個複合索引 `idx_esign_export_jobs_type_created (export_type, created_at, id)`、`idx_esign_export_jobs_document_type_created (document_id, export_type, created_at, id)`、`idx_esign_export_jobs_signer_created (signer_id, created_at, id)` 與 CHECK；down 先檢查再回退。（依賴 T002、T003）
+- [x] T005 修改 `server/src/features/esign/entities/esign-export-job.entity.ts`：
   - `createdByUserId`／`createdByUser` 可為 NULL。
   - 新增 `signerId` 與 `signer`（`ManyToOne EsignSigner`，RESTRICT）。
   - 新增 `conditionsJson`，型別 `ExportConditions { statuses, depts, fields }`。
   - 新增 `@Index` 與 `@Check`；`server/src/features/esign/entities/schema-metadata.spec.ts` 通過。（依賴 T004）
-- [ ] T006 執行 `pnpm -C server schema:dump` 更新 `server/src/infrastructure/database/schema.sql`，同步 `doc/esign-db-schema.sql`；在隔離 MySQL 執行 `pnpm -C server test:schema`，T002、T003 轉綠，結果記入 quickstart。（依賴 T005）
+- [x] T006 執行 `pnpm -C server schema:dump` 更新 `server/src/infrastructure/database/schema.sql`，同步 `doc/esign-db-schema.sql`；在隔離 MySQL 執行 `pnpm -C server test:schema`，T002、T003 轉綠，結果記入 quickstart。（依賴 T005）
 
 **Checkpoint**：schema 可存三種紀錄；應用程式行為尚未改變。
 

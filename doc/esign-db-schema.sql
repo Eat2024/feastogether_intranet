@@ -142,8 +142,8 @@ CREATE TABLE `esign_documents` (
   KEY `idx_esign_documents_updated_at` (`updated_at`),
   KEY `idx_esign_documents_deleted_at` (`deleted_at`),
   CONSTRAINT `fk_esign_documents_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `chk_esign_documents_sign_period` CHECK ((((`sign_start_at` is null) and (`sign_end_at` is null)) or ((`sign_start_at` is not null) and (`sign_end_at` is not null) and (`sign_start_at` < `sign_end_at`)))),
-  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped')))
+  CONSTRAINT `chk_esign_documents_sign_period` CHECK ((((`status` = _utf8mb4'draft') and ((`sign_start_at` is null) or (`sign_end_at` is null) or (`sign_start_at` < `sign_end_at`))) or ((`status` <> _utf8mb4'draft') and (`sign_start_at` is not null) and (`sign_end_at` is not null) and (`sign_start_at` < `sign_end_at`)))),
+  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'expired',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='電子簽文件';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_export_jobs`;
@@ -153,7 +153,9 @@ CREATE TABLE `esign_export_jobs` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '匯出工作流水號',
   `export_type` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '匯出類型',
   `document_id` bigint DEFAULT NULL COMMENT '文件 ID',
-  `created_by_user_id` bigint NOT NULL COMMENT '建立員工 ID',
+  `created_by_user_id` bigint DEFAULT NULL COMMENT '建立員工 ID，NULL 為外部簽署人本人下載',
+  `signer_id` bigint DEFAULT NULL COMMENT '單人副本的簽署人',
+  `conditions_json` json DEFAULT NULL COMMENT 'Excel 匯出條件',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending' COMMENT '工作狀態',
   `scope_description` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '匯出範圍說明',
   `record_count` bigint unsigned DEFAULT NULL COMMENT '匯出筆數',
@@ -161,15 +163,40 @@ CREATE TABLE `esign_export_jobs` (
   `completed_at` datetime(6) DEFAULT NULL COMMENT '完成時間',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `public_id` char(36) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '公開工作 UUID',
+  `snapshot_at` datetime(6) DEFAULT NULL COMMENT '固定快照時間',
+  `snapshot_json` json DEFAULT NULL COMMENT '不可變簽署快照',
+  `snapshot_sha256` char(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '快照 SHA-256',
+  `resolved_files_json` json DEFAULT NULL COMMENT '已固定來源副本',
+  `processed_count` int unsigned DEFAULT NULL COMMENT '當次處理數',
+  `waiting_count` int unsigned DEFAULT NULL COMMENT '等待副本數',
+  `expires_at` datetime(6) DEFAULT NULL COMMENT '成果到期時間',
+  `lease_token` char(36) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '工作 generation',
+  `lease_expires_at` datetime(6) DEFAULT NULL COMMENT '租約到期時間',
+  `attempt_count` int unsigned DEFAULT NULL COMMENT '嘗試次數',
+  `next_attempt_at` datetime(6) DEFAULT NULL COMMENT '再次排入時間',
+  `staging_json` json DEFAULT NULL COMMENT '暫存成果位置',
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_esign_export_jobs_public_id` (`public_id`),
   KEY `idx_esign_export_jobs_document_id` (`document_id`),
   KEY `idx_esign_export_jobs_creator_status_created_id` (`created_by_user_id`,`status`,`created_at`,`id`),
   KEY `idx_esign_export_jobs_status` (`status`),
   KEY `idx_esign_export_jobs_created_at` (`created_at`),
   KEY `idx_esign_export_jobs_updated_at` (`updated_at`),
   KEY `idx_esign_export_jobs_completed_at` (`completed_at`),
+  KEY `idx_esign_exports_reuse` (`document_id`,`export_type`,`status`,`expires_at`,`id`),
+  KEY `idx_esign_exports_retry` (`status`,`next_attempt_at`,`id`),
+  KEY `idx_esign_export_jobs_lease_expires_at` (`lease_expires_at`),
+  KEY `idx_esign_export_jobs_snapshot_at` (`snapshot_at`),
+  KEY `idx_esign_export_jobs_expires_at` (`expires_at`),
+  KEY `idx_esign_export_jobs_next_attempt_at` (`next_attempt_at`),
+  KEY `idx_esign_export_jobs_type_created` (`export_type`,`created_at`,`id`),
+  KEY `idx_esign_export_jobs_document_type_created` (`document_id`,`export_type`,`created_at`,`id`),
+  KEY `idx_esign_export_jobs_signer_created` (`signer_id`,`created_at`,`id`),
   CONSTRAINT `fk_esign_export_jobs_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_esign_export_jobs_user` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+  CONSTRAINT `fk_esign_export_jobs_signer` FOREIGN KEY (`signer_id`) REFERENCES `esign_signers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_esign_export_jobs_user` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_export_jobs_record_type` CHECK ((((`export_type` <> _utf8mb4'excel') or ((`conditions_json` is not null) and (`created_by_user_id` is not null) and (`signer_id` is null))) and ((`export_type` <> _utf8mb4'pdf') or ((`signer_id` is not null) and (`conditions_json` is null))) and ((`export_type` in (_utf8mb4'excel',_utf8mb4'pdf')) or ((`created_by_user_id` is not null) and (`signer_id` is null) and (`conditions_json` is null)))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='匯出工作';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_file_objects`;
@@ -196,6 +223,7 @@ CREATE TABLE `esign_file_objects` (
   UNIQUE KEY `uq_esign_file_objects_object_key` (`object_key`),
   UNIQUE KEY `uq_esign_file_objects_document_purpose` (`document_id`,`file_purpose`),
   UNIQUE KEY `uq_esign_file_objects_signature_field_purpose` (`signature_record_id`,`document_field_id`,`file_purpose`),
+  UNIQUE KEY `uq_esign_files_export_purpose` (`export_job_id`,`file_purpose`),
   UNIQUE KEY `uq_esign_file_objects_completed_signature` (`completed_signature_record_id`),
   KEY `idx_esign_file_objects_document_id` (`document_id`),
   KEY `idx_esign_file_objects_signature_record_id` (`signature_record_id`),
@@ -214,7 +242,8 @@ CREATE TABLE `esign_file_objects` (
   CONSTRAINT `chk_esign_file_objects_completed_owner` CHECK (((`file_purpose` <> _utf8mb4'completed_pdf') or ((((`document_id` is not null) and (`signature_record_id` is null)) or ((`document_id` is null) and (`signature_record_id` is not null))) and (`document_field_id` is null) and (`verification_record_id` is null) and (`export_job_id` is null)))),
   CONSTRAINT `chk_esign_file_objects_owner` CHECK (((`document_id` is not null) or (`signature_record_id` is not null) or (`verification_record_id` is not null) or (`export_job_id` is not null))),
   CONSTRAINT `chk_esign_file_objects_signature_field` CHECK ((((`file_purpose` = _utf8mb4'signature_png') and (`signature_record_id` is not null) and (`document_field_id` is not null)) or ((`file_purpose` <> _utf8mb4'signature_png') and (`document_field_id` is null)))),
-  CONSTRAINT `chk_esign_file_objects_source_owner` CHECK (((`file_purpose` <> _utf8mb4'source_pdf') or ((`document_id` is not null) and (`signature_record_id` is null) and (`document_field_id` is null) and (`verification_record_id` is null) and (`export_job_id` is null))))
+  CONSTRAINT `chk_esign_file_objects_source_owner` CHECK (((`file_purpose` <> _utf8mb4'source_pdf') or ((`document_id` is not null) and (`signature_record_id` is null) and (`document_field_id` is null) and (`verification_record_id` is null) and (`export_job_id` is null)))),
+  CONSTRAINT `chk_esign_files_export_owner` CHECK (((`file_purpose` <> _utf8mb4'signed_copies_zip') or ((`export_job_id` is not null) and (`document_id` is null) and (`signature_record_id` is null) and (`verification_record_id` is null) and (`mime_type` = _utf8mb4'application/zip'))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='私有物件儲存 metadata';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_notification_batches`;
@@ -227,12 +256,19 @@ CREATE TABLE `esign_notification_batches` (
   `target_count` int unsigned NOT NULL COMMENT '目標數量',
   `notified_by_user_id` bigint DEFAULT NULL COMMENT '通知操作員工 ID',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `public_id` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT (uuid()) COMMENT '通知批次公開 UUID',
+  `kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'invitation' COMMENT '初邀或催簽',
+  `request_id` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '催簽請求 UUID',
+  `request_payload_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '正規化請求雜湊',
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_esign_notification_batches_public_id` (`public_id`),
+  UNIQUE KEY `uq_esign_notification_batches_request` (`document_id`,`notified_by_user_id`,`request_id`),
   KEY `idx_esign_notification_batches_document_id` (`document_id`),
   KEY `idx_esign_notification_batches_created_at` (`created_at`),
   KEY `fk_esign_notification_batches_user` (`notified_by_user_id`),
   CONSTRAINT `fk_esign_notification_batches_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_esign_notification_batches_user` FOREIGN KEY (`notified_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+  CONSTRAINT `fk_esign_notification_batches_user` FOREIGN KEY (`notified_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_notification_batches_kind` CHECK ((`kind` in (_utf8mb4'invitation',_utf8mb4'reminder')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知批次';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_notification_logs`;
@@ -250,8 +286,16 @@ CREATE TABLE `esign_notification_logs` (
   `processing_started_at` datetime(6) DEFAULT NULL COMMENT '本次處理開始時間',
   `completed_at` datetime(6) DEFAULT NULL COMMENT '完成時間',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `dispatch_date` date DEFAULT NULL COMMENT '台北寄送曆日',
+  `lease_token` char(36) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '寄送租約 UUID',
+  `attempt_history_json` json DEFAULT NULL COMMENT '有限次投遞狀態歷史，不含憑證',
+  `reminder_token_sha256` char(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '催簽憑證雜湊',
+  `reminder_token_ciphertext` text COLLATE utf8mb4_unicode_ci COMMENT '催簽憑證密文',
+  `invitation_generation_sha256` char(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '建立時邀請世代雜湊',
+  `reminder_expires_at` datetime(6) DEFAULT NULL COMMENT '待簽催簽憑證期限',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_notification_logs_batch_signer_channel` (`batch_id`,`signer_id`,`channel`),
+  UNIQUE KEY `uq_esign_notification_logs_reminder_token` (`reminder_token_sha256`),
   KEY `idx_esign_notification_logs_batch_id` (`batch_id`),
   KEY `idx_esign_notification_logs_signer_id` (`signer_id`),
   KEY `idx_esign_notification_logs_result` (`result`),
@@ -260,10 +304,13 @@ CREATE TABLE `esign_notification_logs` (
   KEY `idx_esign_notification_logs_next_attempt_at` (`next_attempt_at`),
   KEY `idx_esign_notification_logs_processing_started_at` (`processing_started_at`),
   KEY `idx_esign_notification_logs_result_next_attempt_id` (`result`,`next_attempt_at`,`id`),
+  KEY `idx_esign_notification_logs_dispatch_date` (`dispatch_date`),
+  KEY `idx_esign_notification_logs_reminder_expires_at` (`reminder_expires_at`),
+  KEY `idx_esign_notification_logs_signer_result_date` (`signer_id`,`result`,`dispatch_date`),
   CONSTRAINT `fk_esign_notification_logs_batch` FOREIGN KEY (`batch_id`) REFERENCES `esign_notification_batches` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_notification_logs_signer` FOREIGN KEY (`signer_id`) REFERENCES `esign_signers` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `chk_esign_notification_logs_channel` CHECK ((`channel` = _utf8mb4'email')),
-  CONSTRAINT `chk_esign_notification_logs_result` CHECK ((`result` in (_utf8mb4'pending',_utf8mb4'processing',_utf8mb4'delivered',_utf8mb4'failed')))
+  CONSTRAINT `chk_esign_notification_logs_result` CHECK ((`result` in (_utf8mb4'pending',_utf8mb4'processing',_utf8mb4'delivered',_utf8mb4'failed',_utf8mb4'skipped',_utf8mb4'unknown')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知明細';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_signature_records`;
@@ -301,7 +348,7 @@ CREATE TABLE `esign_signers` (
   `document_id` bigint NOT NULL COMMENT '文件 ID',
   `signer_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '簽署人類型',
   `user_id` bigint DEFAULT NULL COMMENT '員工 ID',
-  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '正規化外部 Email',
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '固定通知 Email',
   `empid_snapshot` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '員編快照',
   `name_snapshot` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '姓名快照',
   `department_snapshot` varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '部門快照',
@@ -324,11 +371,14 @@ CREATE TABLE `esign_signers` (
   `completion_lease_token` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '個人副本 worker lease UUID',
   `completion_lease_expires_at` datetime(6) DEFAULT NULL COMMENT '個人副本 worker lease 到期時間',
   `completion_ready_at` datetime(6) DEFAULT NULL COMMENT '個人副本完成時間',
+  `reject_request_id` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '拒簽冪等請求 UUID',
+  `note` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '建立人管理備註，不屬簽署證據',
+  `external_email` varchar(255) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((case when (`signer_type` = _utf8mb4'email') then `email` else NULL end)) STORED COMMENT '外部地址唯一性衍生欄位',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_signers_public_id` (`public_id`),
   UNIQUE KEY `uq_esign_signers_document_user` (`document_id`,`user_id`),
-  UNIQUE KEY `uq_esign_signers_document_email` (`document_id`,`email`),
   UNIQUE KEY `uq_esign_signers_invitation_token_sha256` (`invitation_token_sha256`),
+  UNIQUE KEY `uq_esign_signers_document_external_email` (`document_id`,`external_email`),
   KEY `idx_esign_signers_user_status_document` (`user_id`,`status`,`document_id`),
   KEY `idx_esign_signers_document_status_sort_id` (`document_id`,`status`,`sort_order`,`id`),
   KEY `idx_esign_signers_signed_at` (`signed_at`),
@@ -347,9 +397,10 @@ CREATE TABLE `esign_signers` (
   CONSTRAINT `fk_esign_signers_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `chk_esign_signers_completion` CHECK ((((`status` = _utf8mb4'pending') and (`completion_status` is null) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`status` = _utf8mb4'signed') and (`completion_status` is not null) and (((`completion_status` in (_utf8mb4'pending',_utf8mb4'failed')) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'processing') and (`completion_lease_token` is not null) and (`completion_lease_expires_at` is not null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'ready') and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is not null)))))),
-  CONSTRAINT `chk_esign_signers_identity` CHECK ((((`signer_type` = _utf8mb4'user') and (`user_id` is not null) and (`email` is null) and (`empid_snapshot` is not null) and (`invitation_token_sha256` is null) and (`invitation_token_ciphertext` is null) and (`invitation_expires_at` is null)) or ((`signer_type` = _utf8mb4'email') and (`user_id` is null) and (`email` is not null) and (`empid_snapshot` is null)))),
-  CONSTRAINT `chk_esign_signers_status` CHECK ((`status` in (_utf8mb4'pending',_utf8mb4'signed')))
+  CONSTRAINT `chk_esign_signers_completion` CHECK ((((`status` in (_utf8mb4'pending',_utf8mb4'rejected')) and (`completion_status` is null) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`status` = _utf8mb4'signed') and (`completion_status` is not null) and (((`completion_status` in (_utf8mb4'pending',_utf8mb4'failed')) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'processing') and (`completion_lease_token` is not null) and (`completion_lease_expires_at` is not null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'ready') and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is not null)))))),
+  CONSTRAINT `chk_esign_signers_identity` CHECK ((((`signer_type` = _utf8mb4'user') and (`user_id` is not null) and (`empid_snapshot` is not null)) or ((`signer_type` = _utf8mb4'email') and (`user_id` is null) and (`email` is not null) and (`empid_snapshot` is null)))),
+  CONSTRAINT `chk_esign_signers_status` CHECK ((`status` in (_utf8mb4'pending',_utf8mb4'signed',_utf8mb4'rejected'))),
+  CONSTRAINT `chk_esign_signers_terminal_times` CHECK ((((`signed_at` is null) or (`rejected_at` is null)) and ((`status` <> _utf8mb4'rejected') or ((`rejected_at` is not null) and (`reject_request_id` is not null) and (`reject_reason` is not null)))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件簽署人';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_verification_records`;

@@ -75,6 +75,7 @@ describe('buildMysqlOptions', () => {
       'LocalZipExports1792454403000',
       'SignerNote1792454404000',
       'InternalEmailInvitations1792454405000',
+      'ExportHistory1792454406000',
     ]);
   });
 

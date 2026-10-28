@@ -26,12 +26,12 @@
 
 **獨立驗收**：即使本人簽署 UI 尚未完成，仍能驗證 Portal 登入→既有我的電子簽列表；失敗重試／改密碼／已登入／無參數／惡意參數各有明確結果。對應 FR-002～003b、驗收 1／11／14。
 
-- [ ] T005 [US1] 新增 `../portal/tests/esign-login-redirect.php` 可獨立執行的 PHP 測試 harness（不增套件），以 session/input stub 覆蓋清單允許值、缺參數、重複參數、陣列、外站、穿越、POST 保留、成功消費與改密碼待辦；注入測試專用第二頁映射，驗證不改 controller 即可回跳，移除映射後舊 session 失效；先確認現況不符契約的案例失敗。
-- [ ] T006 [US1] 新增 `../portal/application/config/login_redirect.php` 集中允許映射與薄的 `../portal/application/libraries/Login_redirect.php` 共用處理，初始 `hr/esign/mine → hr/esign/mine`；修改 `../portal/application/controllers/Login.php` 在已登入分支前呼叫共用驗證，保存 `login_redirect_target`，取用時再次確認映射有效後 base_url。新 GET 無值／非法值清除，POST／失敗重試保留，無目標回原首頁；登入程式不硬編碼電子簽目的地。
-- [ ] T007 [US1] 在 `../portal/application/controllers/Login.php` 設定 server 控制的 `login_password_change_pending`；需改預設密碼先走原頁，已登入再點 Email 仍先完成待辦，不用前端值判斷可否跳過。
-- [ ] T008 [US1] 修改 `../portal/application/controllers/Account.php`：DB 改密碼成功才清待辦並透過共用 Login_redirect 消費目標，在原 `{status,msg}` 成功回應追加安全 `redirectTo`；錯誤保留目標及待辦，無目標沿原首頁，不增加頁面專用判斷。
-- [ ] T009 [US1] 修改 `../portal/application/views/admin/account/modify_password.php` 成功分支使用 server 的 `redirectTo`，失敗不導頁；保留欄位、CSRF、既有密碼驗證及錯誤呈現。
-- [ ] T010 [US1] 修改 `../portal/application/core/WebController.php` 共用 Logout，透過 Login_redirect 重設目的地並清除改密碼待辦；不新增自動記住任何原網址功能，核對 `../portal/application/controllers/hr/Esign.php` 原選單 gate 仍有效。
+- [x] T005 [US1] 新增 `../portal/tests/esign-login-redirect.php` 可獨立執行的 PHP 測試 harness（不增套件），以 session/input stub 覆蓋清單允許值、缺參數、重複參數、陣列、外站、穿越、POST 保留、成功消費與改密碼待辦；注入測試專用第二頁映射，驗證不改 controller 即可回跳，移除映射後舊 session 失效；先確認現況不符契約的案例失敗。
+- [x] T006 [US1] 新增 `../portal/application/config/login_redirect.php` 集中允許映射與薄的 `../portal/application/libraries/Login_redirect.php` 共用處理，初始 `hr/esign/mine → hr/esign/mine`；修改 `../portal/application/controllers/Login.php` 在已登入分支前呼叫共用驗證，保存 `login_redirect_target`，取用時再次確認映射有效後 base_url。新 GET 無值／非法值清除，POST／失敗重試保留，無目標回原首頁；登入程式不硬編碼電子簽目的地。
+- [x] T007 [US1] 在 `../portal/application/controllers/Login.php` 設定 server 控制的 `login_password_change_pending`；需改預設密碼先走原頁，已登入再點 Email 仍先完成待辦，不用前端值判斷可否跳過。
+- [x] T008 [US1] 修改 `../portal/application/controllers/Account.php`：DB 改密碼成功才清待辦並透過共用 Login_redirect 消費目標，在原 `{status,msg}` 成功回應追加安全 `redirectTo`；錯誤保留目標及待辦，無目標沿原首頁，不增加頁面專用判斷。
+- [x] T009 [US1] 修改 `../portal/application/views/admin/account/modify_password.php` 成功分支使用 server 的 `redirectTo`，失敗不導頁；保留欄位、CSRF、既有密碼驗證及錯誤呈現。
+- [x] T010 [US1] 修改 `../portal/application/core/WebController.php` 共用 Logout，透過 Login_redirect 重設目的地並清除改密碼待辦；不新增自動記住任何原網址功能，核對 `../portal/application/controllers/hr/Esign.php` 原選單 gate 仍有效。
 - [ ] T011 [US1] 執行 PHP harness、所有變更 PHP 的 `php -l` 及 Portal 瀏覽器驗收，將結果記入 `specs/016-internal-portal-signing/quickstart.md`；驗證 `../portal/template/js/hr/esign_webview.js` ready/navigate/launch、權限不足、帳號切換、cookie 故障與一般登入回歸，不改固定首頁 launch 協定。
 
 ## Phase 4：US2 以員工身分完成本人文件流程（P1）

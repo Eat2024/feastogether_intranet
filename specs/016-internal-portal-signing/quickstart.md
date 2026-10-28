@@ -76,3 +76,7 @@ pnpm lint
 - Portal 原工作區 `master` 的 `index.php` 保留；另以 `develop` 的 `0f814565` 建立 `feat/016-portal-login-return` 整合分支與獨立實作 worktree。
 - 已確認本機測試 MySQL／Redis 可連線；測試使用 `feastogether_intranet_test_spec016_*` 隔離 DB 與 `/tmp/feastogether-spec016-*` 檔案，不操作正式資料。
 - 不引入 Spec 014 另一分支程式；UAT／PRD 信件固定指向正式 Portal，無 Email 人員由人資通知的方式不在本次實作。
+
+- 實作前 API e2e：23 suites／209 tests 通過；security：9 suites／45 tests 通過（隔離 integration DB）。
+- Ticket 02：client lint/build、root hooks 104 suites／948 tests，以及 Chrome 合成 API fixture 桌面 1280×900／窄螢幕 390×844 通過。閱讀、鍵盤同意、真實筆畫、重送同 requestId、防連點、拒簽及換人狀態重置已驗證；這不代表真實 Portal/後端完整旅程。
+- Portal 本機整合 `961ed6a8`：兩個 PHP harness 與 8 檔語法檢查通過。真實 Portal／iframe/session 未驗收，ticket03 保留 ready-for-human；T011 及環境完整旅程仍未完成。

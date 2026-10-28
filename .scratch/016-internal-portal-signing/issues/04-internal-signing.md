@@ -24,3 +24,8 @@
 - Chrome CDP 合成 API/PDF，1280×900 完成閱讀、鍵盤同意、滑鼠簽名、503 同 requestId 重試與結果；390×844 嵌入版面（沿 Portal 的 data-embedded）驗證切換任務為 0/1、無水平溢出、手寫簽名及 401 後停止不重送。沒有 Runtime exception。腳本 `/tmp/ft04-browser.mjs`、截圖 `/tmp/ft04-desktop.png`／`ft04-narrow.png`，不是正式 Portal 整合驗收。
 - 窄版檢查發現短聲明在字型／版面改變後可能無法勾選，TermsStep 以 ResizeObserver 重新判斷並在卸載清理。既有 standalone 常駐側欄在手機仍占 240px，本次主要 Portal iframe 版面會隱藏側欄，未擴大改版導覽。
 - 舊內部 OTP 封鎖、Email 發起及正式部署驗收仍由後續 tickets 負責；未改歷史簽章、PDF 或稽核紀錄。
+
+### 與 ticket06 整合後
+
+- 實作 commit `f239ed4`；合併整合分支 commit `9b017b2` 保留兩個新增 e2e suite。合併 hooks 為 106 suites／973 tests 通過，root lint 無錯誤。
+- 重驗 internal-portal-signing 與 security-core-esign-flow 通過；esign-document-delivery-security 的 3 個舊案例在 `signInternal → external → decrypt(null)` 失敗，因 ticket06 已取消內部邀請 token。這是待 ticket09 遷移的舊內部 OTP fixture，未刪除安全覆蓋或恢復舊授權；整體安全套件尚未全綠。

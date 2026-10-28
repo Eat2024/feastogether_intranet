@@ -4,7 +4,7 @@
 
 **Blocked by:** 無。可獨立以測試信件驗證，不須等待 Portal 導頁部署。
 
-**Status:** claimed
+**Status:** resolved
 
 **Tasks coverage:** T003；T024/T026–T028/T030/T032–T035/T037 的新發起邀請、群寄、佇列、恢復及結果部分。
 
@@ -50,3 +50,8 @@
 ### 整合後檢查修正
 
 Nodemailer 10.1 的 `ECONNECTION` 也可能在 DATA 後連線中斷時出現，不能概括視為明確未寄出。新增真實 SMTP 斷線回歸並改為保守 unknown 後，再結案本票；07 暫緩。
+
+### SMTP 斷線修正整合
+
+- 修正 `ab98891` 已隨 `e5050c6` fast-forward 整合；DATA 後 ECONNECTION 不再重試，保守記 unknown。
+- 真實 SMTP 斷線測試先紅後綠，完整單元測試 106 suites／970 tests 通過；本票重新結案，07 可接續實作。

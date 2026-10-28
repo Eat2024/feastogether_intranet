@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 BCC 邀請與投遞機制。
 
-**Status:** claimed
+**Status:** ready-for-agent
 
 **Tasks coverage:** T031；T024/T026/T032–T035/T037 的催簽、補簽、每日額度與 supersede 部分。
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** 無。可獨立以測試信件驗證，不須等待 Portal 導頁部署。
 
-**Status:** resolved
+**Status:** claimed
 
 **Tasks coverage:** T003；T024/T026–T028/T030/T032–T035/T037 的新發起邀請、群寄、佇列、恢復及結果部分。
 
@@ -39,3 +39,7 @@
 
 - 已審查票單範圍，將 `impl/016-06` 的 `e3ca0fa` fast-forward 合併至 `feat/016-internal-portal-signing`；實作 commit `495abb0`。
 - 本票邀請群寄驗收完成；催簽、補簽、缺信箱與舊 OTP 回歸仍由 07／08／09 接續，未將整體端到端驗收視為完成。
+
+### 整合後檢查修正
+
+Nodemailer 10.1 的 `ECONNECTION` 也可能在 DATA 後連線中斷時出現，不能概括視為明確未寄出。新增真實 SMTP 斷線回歸並改為保守 unknown 後，再結案本票；07 暫緩。

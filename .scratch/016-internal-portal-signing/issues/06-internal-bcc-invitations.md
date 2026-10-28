@@ -47,3 +47,6 @@
 - 新增實際 SMTP server 收完 DATA 並關線、未回 250 的測試，先重現錯誤回傳 `rejected/retryable`，再移除 ECONNECTION 的肯定未寄出分類；現為 `unknown`、不重試。
 - 另補 mail adapter 單元 regression、worker 接到 unknown 後無 nextAttemptAt 且重複工作不再寄送。EAUTH、EDNS 與明確 4xx／5xx 拒收仍沿確定未受理分類。
 - 狀態暫改 claimed，等待修正合併整合分支後再次關閉。
+### 整合後檢查修正
+
+Nodemailer 10.1 的 `ECONNECTION` 也可能在 DATA 後連線中斷時出現，不能概括視為明確未寄出。新增真實 SMTP 斷線回歸並改為保守 unknown 後，再結案本票；07 暫緩。

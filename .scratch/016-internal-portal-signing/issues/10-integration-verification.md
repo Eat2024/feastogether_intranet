@@ -19,3 +19,7 @@
 本機必要檢查、FR 對應、雙向 review 與切換方案均已完成，詳見 specs/016-internal-portal-signing/{validation,review}.md 與 contracts/notifications-and-cutover.md。程式整合 `5abefa1`、Portal `961ed6a8`。
 
 03 的真實 Portal 環境仍未提供；缺少實際登入／改密碼、iframe origin、資料環境與完整旅程證據，故本票保留 ready-for-human，相關驗收不勾選、不標 resolved。使用者「請繼續」授權持續本機實作，不視為已取得環境或部署許可。未推送或部署。
+
+## 使用者交付決策
+
+使用者已確認 Portal 真實環境驗收於上線後執行，並授權發布 PR。本票保留 ready-for-human；環境驗收不阻擋本次 PR 發布，不代表已部署或驗收通過。

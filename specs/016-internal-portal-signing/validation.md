@@ -1,6 +1,6 @@
 # Spec 016 實作與驗證紀錄
 
-日期：2026-10-28。電子簽程式整合版本 `5abefa1`，分支 `feat/016-internal-portal-signing`；Portal 程式整合版本 `961ed6a8`，分支 `feat/016-portal-login-return`，保留工作區 `/Users/user/Documents/portal-016-integration`。未推送、未部署、未寄正式信件。
+日期：2026-10-28。電子簽程式整合版本 `5abefa1`，分支 `feat/016-internal-portal-signing`；Portal 程式整合版本 `961ed6a8`，分支 `feat/016-portal-login-return`，保留工作區 `/Users/user/Documents/portal-016-integration`。程式尚未部署，未寄正式信件。使用者已授權發布 PR；Portal 真實環境驗收依使用者決定於上線後執行。
 
 ## 本機驗證
 
@@ -40,3 +40,7 @@ client 沒有測試框架或 test script；以上瀏覽器操作不稱為既有 
 - 原 standalone 窄版永久側欄，以及建立人頁首同列 actions 擠壓標題為既有 UI 限制；本次簽署與建立人控制項的窄版驗證使用 Portal 的 embedded 版面，不宣稱整個既有網站的 standalone 響應式已全面通過。
 
 正式實作 tickets 02／04～09 已完成本機整合；03 與 10 保留 ready-for-human，由實際環境驗收收尾。規劃票 01 的歷史勾選與紀錄保留。本次未新增套件、DB table、migration、環境變數或排程；Portal 只新增版控的非機密回跳清單及共用 library。
+
+## PR 交付決策
+
+使用者確認「Portal 驗收要等上線才驗」。T011／T045 與 tickets 03／10 保留待上線後驗收，不將未執行項目標為通過，也不作為本次 PR 發布的阻擋。PR 發布不包含合併或部署。

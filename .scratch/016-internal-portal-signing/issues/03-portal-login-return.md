@@ -19,3 +19,7 @@
 Portal `feat/016-portal-login-return` 已整合 `961ed6a8`，工作區 `/Users/user/Documents/portal-016-integration`。兩個 PHP CLI harness（library 與真正 controller 的隔離邊界）及 8 個 PHP 檔語法檢查通過；原 master/index.php 變更保留。詳細證據與待驗收案例見 Portal `docs/testing/login-redirect.md`。
 
 通用清單、登入、改密碼、登出實作已完成；未提供可用的真實 Portal 服務與合成帳號，iframe/session 實際旅程尚未驗收，因此保留 `ready-for-human`，不虛報 resolved。無推送或部署。
+
+## 使用者交付決策
+
+使用者已確認 Portal 真實環境驗收於上線後執行，並授權發布 PR。本票保留 ready-for-human；環境驗收不阻擋本次 PR 發布，不代表已部署或驗收通過。

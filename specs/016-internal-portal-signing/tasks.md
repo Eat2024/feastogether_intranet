@@ -152,3 +152,5 @@ Ticket 08 已整合（`cf6da85`／實作 `5525979`），T025／T029／T030／T03
 ## 最終本機驗證（2026-10-28）
 
 45／47 項完成；T011、T045 需真實 Portal 環境。程式整合 `5abefa1`／Portal `961ed6a8`，完整 API 27／240、security 11／60、unit 106／964；build/lint/PHP 與合成瀏覽器案例見 [validation.md](validation.md)。審查的唯一 P2 已修正並覆核。未推送或部署，03／10 不標 resolved。
+
+使用者後續確認：T011／T045 於上線後驗收，不阻擋本次 PR 發布；未執行項目仍保持未勾選。

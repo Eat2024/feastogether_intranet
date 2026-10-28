@@ -9,12 +9,14 @@
 把歷史匯出紀錄統一放在 `esign_export_jobs`，以 `GET /api/esign/history/export?type=excel|pdf|zip` 提供頁碼分頁查詢，並取代 `GET /api/esign/exports`。
 
 - **Excel**：清單在瀏覽器產生，由前端以 `POST /api/esign/history/export` 回報紀錄。
-- **單人 PDF**：建立人下載、簽署人本人下載與從紀錄重新下載，都改為 POST 子資源，在回傳 PDF 的同一請求寫入紀錄，並移除原本的 GET 下載路由。
+- **單人 PDF**：建立人下載、內部員工本人下載（員工 session）、外部簽署人本人下載（Email OTP）與從紀錄重新下載，都改為 POST 子資源，在回傳 PDF 的同一請求寫入紀錄，並移除原本的 GET 下載路由。
 - **ZIP**：沿用 Spec 009，不變。
 
 Migration 只擴充既有表：`created_by_user_id` 改為可 NULL，新增 `signer_id`、`conditions_json`、一個索引與一個 CHECK。
 
 本 spec 只做後端；前端改動在後端完成後交給前端工程師，交接內容見 contract。
+
+以 016（PR #34）為基礎開發，PR #33 須在 PR #34 之後合併（research R13）。
 
 ## Technical Context
 
@@ -28,7 +30,7 @@ Migration 只擴充既有表：`created_by_user_id` 改為可 NULL，新增 `sig
 | Project Type | pnpm workspace Web 應用 |
 | Performance Goals | 歷史查詢單次兩條 SQL（列表＋分組計數），走 `(export_type, created_at, id)` 索引；ZIP 頁每筆仍查一次檔案，與現行 `/exports` 相同 |
 | Constraints | GET 不寫入；下載有檔案就有紀錄；不動 ZIP 流程；不新增 table、環境變數或角色機制 |
-| Scale/Scope | 4 個 user story、FR-001–014；6 條新路由、3 條移除 |
+| Scale/Scope | 4 個 user story、FR-001–014；7 條新路由、4 條移除 |
 
 ## Constitution Check
 
@@ -71,6 +73,7 @@ server/src/features/esign/
 ├── controllers/exports.controller.ts             # 移除 GET exports
 ├── controllers/documents.controller.ts           # GET …/completed-file → POST …/completed-file/downloads
 ├── controllers/external-signature.controller.ts  # GET external-signing-task/completed-file → POST …/downloads
+├── controllers/signing-tasks.controller.ts       # GET :signerPublicId/completed-file → POST …/completed-file/downloads
 └── esign.module.ts                               # 註冊 controller／service
 
 server/test/
@@ -93,7 +96,7 @@ server/test/
 1. **Schema**：migration、entity、schema dump、schema e2e。
 2. **查詢**：`GET history/export`（三類型、`documentId`、`typeTotals`），移除 `GET exports`；同步調整 `esign-export.e2e-spec`。
 3. **Excel**：`POST history/export` 與 `GET history/export/{id}/document`。
-4. **PDF**：三條 `…/downloads` POST、移除兩條 GET；同步調整相關 e2e。
+4. **PDF**：四條 `…/downloads` POST、移除三條 GET；同步調整相關 e2e。
 5. **驗收**：依 quickstart 執行 server lint:check／test／test:e2e。
 6. **交接**：把 contract「前端交接」交給前端工程師。
 
@@ -101,7 +104,7 @@ server/test/
 
 ## 風險與限制
 
-- **前後端要一起部署**：後端移除舊 GET 下載與 `/exports` 後，現有前端的 PDF 下載（檢視頁、外部簽署完成頁）與 ZIP 面板會失效，直到前端工程師改完。後端合併到 `dev` 後、前端改完前，這三處在 `dev` 上無法使用；部署到 UAT／正式環境時必須連同前端改動一起上。
+- **前後端要一起部署**：後端移除舊 GET 下載與 `/exports` 後，現有前端的 PDF 下載（檢視頁、「我的電子簽」、外部簽署完成頁）與 ZIP 面板會失效，直到前端工程師改完。後端合併到 `dev` 後、前端改完前，這四處在 `dev` 上無法使用；部署到 UAT／正式環境時必須連同前端改動一起上。
 - **Excel 紀錄由前端回報**：無法證明使用者真的下載了檔案，也無法驗證筆數。
 - **資料開放範圍**：由 Portal 決定；能進入電子簽的員工都能取得任一文件的簽署人清單與單人副本，電子簽加上 role／permission 後再限制。
 - **歷史頁尚未改串接**：串接完成前，`/export-history` 仍是 mock，不得描述為已完成。

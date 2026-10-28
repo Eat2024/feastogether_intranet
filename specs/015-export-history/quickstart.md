@@ -32,10 +32,10 @@ pnpm -C server test:e2e
 | 12 | Excel body 帶未知欄位、未知狀態／欄位、`fields` 為空、`scope` 為 256 字、`count=-1`、`type=pdf` | 400，不新增紀錄 |
 | 13 | 建立人 `POST …/completed-file/downloads` | 回 PDF；新增 `pdf` 紀錄，匯出人為建立人，範圍為該簽署人 |
 | 14 | 外部簽署人 `POST /api/external-signing-task/completed-file/downloads` | 回 PDF；新增 `pdf` 紀錄，匯出人為「姓名＋Email」 |
-| 15 | 內部簽署人經 Email OTP 下載本人副本 | 新增 `pdf` 紀錄，匯出人為「姓名＋員工編號」 |
+| 15 | 內部員工以員工 session `POST /api/esign/signing-tasks/{id}/completed-file/downloads` | 回 PDF；新增 `pdf` 紀錄，匯出人為該員工（姓名＋員工編號） |
 | 16 | 副本尚未產製完成或權限不符時下載 | 沿用原本錯誤，不新增紀錄 |
 | 17 | 模擬紀錄寫入失敗 | 500，不回傳 PDF |
-| 18 | 舊的兩條 GET 下載與 `GET /api/esign/exports` | 404 |
+| 18 | 舊的三條 GET 下載與 `GET /api/esign/exports` | 404 |
 | 19 | 任一員工對 `pdf` 紀錄 `POST …/{id}/downloads` | 回 PDF；新增一筆 `pdf` 紀錄，匯出人為目前使用者 |
 | 20 | 對 `excel` 或 `zip` 紀錄 `POST …/{id}/downloads`；對 `pdf` 或 `zip` 紀錄 `GET …/{id}/document` | 404 |
 | 21 | 任一員工對 `excel` 紀錄 `GET …/{id}/document` | 只回 contract 列出的欄位，不新增紀錄 |
@@ -46,8 +46,9 @@ pnpm -C server test:e2e
 
 1. 建立人在文件檢視頁下載某位簽署人的副本：成功下載，`GET /api/esign/history/export?type=pdf` 多一筆。
 2. 外部簽署人在簽署完成頁按「下載已簽署文件」：成功下載，歷史多一筆，匯出人為外部簽署人。
-3. 建立人匯出頁的 ZIP 面板：重新整理後帶回最近一次匯出，可產生、輪詢與下載。
-4. 匯出頁下載 Excel：先回報紀錄再下載，歷史多一筆 `excel`。
+3. 員工在「我的電子簽」下載本人副本：成功下載，歷史多一筆，匯出人為該員工。
+4. 建立人匯出頁的 ZIP 面板：重新整理後帶回最近一次匯出，可產生、輪詢與下載。
+5. 匯出頁下載 Excel：先回報紀錄再下載，歷史多一筆 `excel`。
 
 ## 驗證紀錄
 

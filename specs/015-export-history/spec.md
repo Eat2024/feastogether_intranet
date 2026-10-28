@@ -20,12 +20,14 @@
 - 使用者確認：所有有效員工 session 可查看全部匯出紀錄（沿用 Spec 009），不再以前端管理者名單 `ADMIN_EMPLOYEE_IDS` 限制。
 - 使用者確認：重新下載先不擋權限，所有有效員工都能重新下載任一紀錄；每次重新下載都產生一筆新的匯出紀錄，匯出人是重新下載的人。
 - 使用者確認：後端先支援 `zip` 類型；歷史頁要不要新增 ZIP 頁籤，由前端工程師評估。
-- 使用者確認：簽署人下載本人副本也要記錄。內部與外部簽署人都在 Email OTP 簽署頁下載本人副本（舊的內部副本入口已停用，一律回 403），所以只有這一個入口。
+- 使用者確認：簽署人下載本人副本也要記錄。
 - 使用者確認：ZIP 下載（含重新下載）不產生紀錄，維持「一個匯出工作一筆紀錄」。ZIP 下載支援 Range 續傳，逐請求記錄會讓一次下載變成多筆；七天重用與「最近一次匯出」也依這些紀錄判斷。
 - 使用者確認：會寫入匯出紀錄的 PDF 下載一律改用 POST 並直接回傳 PDF，移除原本的 GET 下載路由（constitution IV：GET 不得產生業務寫入）。
 - 使用者確認：本 spec 只做後端；後端完成後交給前端工程師串接。
 - 使用者確認：資料開放範圍由 Portal 決定，本專案不判斷；等電子簽加上 role／permission 後再限制。
 - 使用者確認：Excel 下載時，前端呼叫後端 API 回報這次匯出的資訊，由後端寫入紀錄。
+- 使用者確認：先保留 Excel 重新下載與 `conditions_json`。非建立人只能透過重新下載取得 Excel，現有歷史頁原型的 Excel 頁籤也有重新下載按鈕。
+- 使用者確認：015 以 016（PR #34）為基礎開發，PR #33 須在 PR #34 之後合併。016 之後，內部員工以員工 session 從 `/api/esign/signing-tasks/{signerPublicId}/completed-file` 下載本人副本，外部簽署頁的下載路由只剩外部簽署人使用；兩條都要記錄。
 
 ## User Scenarios & Testing
 
@@ -67,15 +69,16 @@
 
 **Why this priority**: 個人副本含簽名，誰在何時取得了哪位簽署人的副本需要可追查。
 
-**Independent Test**: 分別由建立人、內部簽署人本人、外部簽署人本人下載副本，歷史各出現一筆，匯出人與範圍正確；副本尚未產製完成時下載失敗，不留紀錄。
+**Independent Test**: 分別由建立人、內部員工本人（員工 session）、外部簽署人本人（Email OTP）下載副本，歷史各出現一筆，匯出人與範圍正確；副本尚未產製完成時下載失敗，不留紀錄。
 
 **Acceptance Scenarios**:
 
 1. **Given** 建立人在檢視頁下載某位簽署人的副本，**When** 後端回傳檔案，**Then** 新增一筆紀錄，匯出人為建立人，範圍為該簽署人，筆數為 1。
-2. **Given** 簽署人（內部或外部）完成 Email OTP 後在簽署頁下載本人副本，**When** 後端回傳檔案，**Then** 新增一筆紀錄，匯出人與範圍都是該簽署人。
-3. **Given** 原本的 GET 下載路由，**When** 呼叫，**Then** 回 404，不能繞過紀錄取得副本。
-4. **Given** 副本尚未產製完成或下載被拒，**Then** 不新增紀錄。
-5. **Given** 紀錄寫入失敗，**Then** 不回傳檔案，避免出現沒有紀錄的下載。
+2. **Given** 內部員工以員工 session 在「我的電子簽」下載本人副本，**When** 後端回傳檔案，**Then** 新增一筆紀錄，匯出人與範圍都是該員工（姓名、員工編號）。
+3. **Given** 外部簽署人完成 Email OTP 後在外部簽署頁下載本人副本，**When** 後端回傳檔案，**Then** 新增一筆紀錄，匯出人與範圍都是該外部簽署人（姓名、Email）。
+4. **Given** 原本的 GET 下載路由，**When** 呼叫，**Then** 回 404，不能繞過紀錄取得副本。
+5. **Given** 副本尚未產製完成或下載被拒，**Then** 不新增紀錄。
+6. **Given** 紀錄寫入失敗，**Then** 不回傳檔案，避免出現沒有紀錄的下載。
 
 範圍的顯示方式：員工為「姓名（員工編號）」，外部簽署人為「姓名（Email）」。
 
@@ -102,14 +105,15 @@
 - **FR-007**（前端交接）: 前端 MUST 在 Excel 記錄成功後才觸發下載；記錄失敗不下載。
 - **FR-008**: 下列下載成功時，後端 MUST 在同一請求中新增一筆 `pdf` 紀錄，寫入失敗則不回傳檔案：
   - 建立人下載簽署人副本。
-  - 簽署人在 Email OTP 簽署頁下載本人副本（內外部共用）。
+  - 內部員工以員工 session 下載本人副本。
+  - 外部簽署人在 Email OTP 簽署頁下載本人副本。
   - 從 `pdf` 紀錄重新下載。
 - **FR-009**: 系統 MUST 提供 Excel 重新下載所需的資料：依紀錄回傳文件目前的名稱、編號、建立人與全部簽署人，供所有有效員工使用。
 - **FR-010**: Excel 重新下載 MUST 透過 FR-006 新增紀錄。
 - **FR-011**: `GET /api/esign/exports` MUST 移除；ZIP 面板改用 FR-003。ZIP 的申請、查詢、重試與下載路由不變。
 - **FR-012**: `excel`、`pdf` 紀錄 MUST NOT 被 ZIP 背景工作、重試掃描、到期清理、七天重用或「最近一次匯出」判斷處理。
 - **FR-013**: 紀錄只新增，不提供修改或刪除。
-- **FR-014**: 會寫入紀錄的 PDF 下載 MUST 使用 POST 並直接回傳 PDF；原本的 `GET /api/esign/documents/{documentId}/signers/{signerPublicId}/completed-file` 與 `GET /api/external-signing-task/completed-file` MUST 移除，避免繞過紀錄下載。
+- **FR-014**: 會寫入紀錄的 PDF 下載 MUST 使用 POST 並直接回傳 PDF；原本的 `GET /api/esign/documents/{documentId}/signers/{signerPublicId}/completed-file`、`GET /api/esign/signing-tasks/{signerPublicId}/completed-file` 與 `GET /api/external-signing-task/completed-file` MUST 移除，避免繞過紀錄下載。
 
 ### Key Entities
 
@@ -125,7 +129,7 @@
 ## Assumptions
 
 - 沿用既有的 `esign_export_jobs`（匯出工作），以 `export_type` 區分類型，不新增 table。Excel 條件與單人 PDF 的簽署人如何保存、是否需要新欄位或索引，在 plan 階段決定。
-- `esign_export_jobs.created_by_user_id` 目前是 NOT NULL 且連到員工，外部簽署人不是員工。記錄外部簽署人下載需要 migration，例如改成可為 NULL 並改由簽署人識別匯出人，在 plan 階段決定。
+- `esign_export_jobs.created_by_user_id` 目前是 NOT NULL 且連到員工，外部簽署人不是員工。記錄外部簽署人下載需要 migration：改為可 NULL，NULL 代表外部簽署人本人下載，匯出人由簽署人推導。內部員工本人下載有員工 session，照常記錄員工。
 - 既有 ZIP 紀錄的 `export_type` 是 `signed_copies_zip`；DB 值要改成與 API 相同的 `zip`（需要 migration），或保留原值並在後端對應，在 plan 階段決定。ZIP 申請路由 body 的 `{ "type": "signed_copies_zip" }` 屬於 Spec 009 的既有契約，本次不變。
 - 資料開放範圍由 Portal 決定：能進入電子簽的有效員工都能查看紀錄、重新下載單人副本，並透過 Excel 重新下載取得任一文件的簽署人清單（含 Email、拒絕原因）。本專案不另判斷角色；電子簽加上 role／permission 後再限制。
 - Excel 紀錄由前端回報，後端只能驗證身分與文件，範圍說明與筆數以前端為準；不做冪等，網路重試造成的重複紀錄可接受。

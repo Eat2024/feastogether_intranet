@@ -31,29 +31,28 @@
 
 **Decision**：
 - 新增可為 NULL 的 `signer_id`（外鍵連到 `esign_signers`），記錄這份副本屬於哪位簽署人；只有 `pdf` 紀錄使用。
-- `created_by_user_id` 改為可為 NULL。NULL 代表「簽署人本人下載」，匯出人就是 `signer_id` 指向的簽署人。
+- `created_by_user_id` 改為可為 NULL。NULL 代表「外部簽署人本人下載」，匯出人就是 `signer_id` 指向的簽署人。
+- 016 之後，內部員工本人下載走員工 session，`created_by_user_id` 照常記錄員工。
 - 匯出人顯示：
-  - 員工：`users.name` 與 `users.empid`。
-  - 本人下載的內部簽署人：`name_snapshot` 與 `empid_snapshot`。
-  - 本人下載的外部簽署人：`name_snapshot` 與 `external_email`。
+  - 員工（含內部員工本人下載）：`users.name` 與 `users.empid`。
+  - 外部簽署人本人下載：`name_snapshot` 與 `external_email`。
 
 **Rationale**：
 - 外部簽署人不是員工，無法填 `created_by_user_id`。
-- 簽署人的姓名、員編與 Email 在發起時就已固定，不需要再另存匯出人快照。
-- 內部簽署人本人下載時，也一律用「NULL 代表本人」的規則，不必區分內外部兩種寫法。
+- 簽署人的姓名與 Email 在發起時就已固定，不需要再另存匯出人快照。
 
 **Alternatives**：
 - 新增匯出人姓名／Email 快照欄位：資料與簽署人快照重複，因此不採用。
-- 內部本人下載時填 `signer.user_id`：同一種情況要用兩種規則，因此不採用。
 
 ## R5 會寫入紀錄的下載改用 POST
 
 **Decision**（使用者決定）：
-- 新增三個 POST 子資源，直接回傳 PDF：
-  - `…/signers/{signerPublicId}/completed-file/downloads`
-  - `/api/external-signing-task/completed-file/downloads`
-  - `/api/esign/history/export/{id}/downloads`
-- 移除原本兩個 GET 下載路由。
+- 新增四個 POST 子資源，直接回傳 PDF：
+  - `…/signers/{signerPublicId}/completed-file/downloads`（建立人）
+  - `/api/esign/signing-tasks/{signerPublicId}/completed-file/downloads`（內部員工本人，016 之後）
+  - `/api/external-signing-task/completed-file/downloads`（外部簽署人本人）
+  - `/api/esign/history/export/{id}/downloads`（重新下載）
+- 移除原本三個 GET 下載路由。
 
 **Rationale**：constitution IV 規定 GET 不得產生業務寫入。專案也有先例：開啟外部任務會記錄稽核，所以用 POST，唯讀查詢則用 GET。保留舊 GET 等於留一條不記錄的下載路徑。
 
@@ -74,7 +73,8 @@
 **Decision**：
 - 列表：`WHERE export_type = ? [AND document_id = ?] ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`。
 - 總筆數：`SELECT export_type, COUNT(*) … GROUP BY export_type`，同時產生 `total` 與 `typeTotals`。
-- 新增索引 `(export_type, created_at, id)`；有帶 `documentId` 時，使用既有的 `document_id` 索引。
+- 新增索引 `(export_type, created_at, id)` 與 `(document_id, export_type, created_at, id)`，分別給依類型分頁與帶 `documentId` 的查詢；`signer_id` 的索引也帶上 `created_at, id`。
+- 依使用者偏好，日期欄位盡量有索引；既有 7 個日期欄位都已有單欄索引。
 - `zip` 類型沿用既有 ZIP 歷史的條件 `snapshot_json IS NOT NULL`，總筆數也套用同一條件。
 
 **Rationale**：匯出紀錄量級為數千到數萬筆，OFFSET 分頁的成本可接受，也符合現有畫面的頁碼分頁。
@@ -99,7 +99,7 @@
 
 **Decision**（使用者決定）：本 spec 只做後端，不改 `client/`；後端完成後把 contract 交給前端工程師。
 
-**影響**：移除 `GET /api/esign/exports` 與兩個 GET 下載路由後，現有的 ZIP 面板、檢視頁下載與外部簽署完成頁下載會失效，直到前端改完。部署時前後端必須一起上；contract 的「前端交接」已把這三處列為必須同時部署。
+**影響**：移除 `GET /api/esign/exports` 與三個 GET 下載路由後，現有的 ZIP 面板、檢視頁下載、「我的電子簽」本人副本下載與外部簽署完成頁下載會失效，直到前端改完。部署時前後端必須一起上；contract 的「前端交接」已把這四處列為必須同時部署。
 
 **Alternatives**：先保留舊路由，等前端改完再移除。舊 GET 下載是不記錄的路徑，與 FR-014 衝突，因此不採用。
 
@@ -120,3 +120,11 @@
 - 由 DB 保證「NULL 匯出人一定是本人下載的 PDF」。
 - 既有資料一定符合第三條，加上 CHECK 時不會失敗。
 - 專案已有 CHECK 先例，例如 `esign_file_objects`、`esign_document_fields`。
+
+## R13 以 016 為基礎開發
+
+**Decision**（使用者決定）：先把 `feat/016-internal-portal-signing` 合進 `feat/015-export-history`，015 在 016 之上實作；PR #33 須在 PR #34 之後合併。
+
+**Rationale**：016 已改變本人副本下載的入口（內部改用員工 session，外部簽署頁只剩外部），而且修改了 015 要動的同一批 controller、服務與 e2e。在 016 之上開發，015 可以直接記錄兩種本人下載，避免之後再解一輪衝突。
+
+**Alternatives**：維持以 `dev` 為基礎。後合併的一方要處理約 10 個檔案的衝突，並補上員工本人下載的紀錄，因此不採用。

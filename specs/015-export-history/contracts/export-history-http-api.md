@@ -114,7 +114,8 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 | 路由 | 身分與權限 | 匯出人 |
 |---|---|---|
 | `POST /api/esign/documents/{documentId}/signers/{signerPublicId}/completed-file/downloads` | 員工 session，只限建立人（同原本） | 建立人 |
-| `POST /api/external-signing-task/completed-file/downloads` | Email OTP 存取 cookie，內外部簽署人共用，只限已簽的本人（同原本） | 該簽署人 |
+| `POST /api/esign/signing-tasks/{signerPublicId}/completed-file/downloads` | 員工 session，只限已簽的本人（同 016） | 該員工 |
+| `POST /api/external-signing-task/completed-file/downloads` | Email OTP 存取 cookie，只限已簽的外部簽署人本人（同 016） | 該外部簽署人；`created_by_user_id` 為 NULL |
 | `POST /api/esign/history/export/{id}/downloads` | 員工 session，任何員工 | 目前使用者 |
 
 `POST /api/esign/history/export/{id}/downloads` 的補充規則：
@@ -157,6 +158,7 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 |---|---|
 | `GET /api/esign/exports` | `GET /api/esign/history/export?type=zip&documentId=…&pageSize=1` |
 | `GET /api/esign/documents/{documentId}/signers/{signerPublicId}/completed-file` | `POST …/completed-file/downloads` |
+| `GET /api/esign/signing-tasks/{signerPublicId}/completed-file` | `POST /api/esign/signing-tasks/{signerPublicId}/completed-file/downloads` |
 | `GET /api/external-signing-task/completed-file` | `POST /api/external-signing-task/completed-file/downloads` |
 
 移除後一律 404。
@@ -165,10 +167,13 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 
 本 spec 只做後端，以下由前端工程師在後端完成後處理。
 
-上線時必須跟後端一起部署（後端移除舊路由後，這三處會立刻失效）：
+上線時必須跟後端一起部署（後端移除舊路由後，這四處會立刻失效）：
 - `ZipExportPanel`：`useGetExportHistoryQuery({ documentId, limit: 1 })` 改為新路由的 `documentId` 加 `pageSize=1`。
-- `DocumentSignerTable`：`downloadSignerCompletedFile` 改用 POST 取得 blob。
-- `ExternalDone`：「下載已簽署文件」從一般連結改為 POST 取得 blob 後下載；移除 `externalCompletedFileUrl`。
+- `DocumentSignerTable`：`downloadSignerCompletedFile` 改用 POST。
+- 「我的電子簽」本人副本：`downloadSigningTaskCompletedFile` 改用 POST。
+- `ExternalDone`：`downloadExternalCompletedFile` 改用 POST；移除不再使用的 `externalCompletedFileUrl`。
+
+這三個下載函式在 016 之後都已經用 API 請求取得 blob，只需要把 method 改成 POST。
 
 新功能：
 - `/export-history`：改用 `GET /api/esign/history/export`。

@@ -4,6 +4,8 @@
 
 **Status**: 0／30。
 
+**Base**: 以 016（PR #34）為基礎；PR #33 須在 PR #34 之後合併。
+
 **Scope**: 只做 server、必要 migration 與契約文件。不改 client、不部署、不建立 GitHub Issues；前端改動依 contract「前端交接」交給前端工程師。
 
 **Tests**: 依 constitution V 與 quickstart 驗收矩陣，涵蓋 migration、CHECK、授權、GET 唯讀、紀錄寫入失敗與 ZIP 不受影響。每個故事先寫會失敗的測試，實作後轉綠。
@@ -31,7 +33,7 @@
   - 既有 ZIP 資料在 up 後仍通過 CHECK。
   - 已有 `excel`／`pdf` 紀錄時，down 在任何 DDL 前拒絕，資料不變。
   - 沒有新類型紀錄時，down 移除欄位、索引、外鍵與 CHECK，`created_by_user_id` 回到 NOT NULL。（依賴 T001）
-- [ ] T004 新增 `server/src/infrastructure/database/migrations/1792454406000-ExportHistory.ts`，依 data-model：`created_by_user_id` 改 NULL；新增 `signer_id`（外鍵＋索引）、`conditions_json`、`idx_esign_export_jobs_type_created (export_type, created_at, id)` 與 CHECK；down 先檢查再回退。（依賴 T002、T003）
+- [ ] T004 新增 `server/src/infrastructure/database/migrations/1792454406000-ExportHistory.ts`，依 data-model：`created_by_user_id` 改 NULL；新增 `signer_id`（外鍵＋索引）、`conditions_json`、三個複合索引 `idx_esign_export_jobs_type_created (export_type, created_at, id)`、`idx_esign_export_jobs_document_type_created (document_id, export_type, created_at, id)`、`idx_esign_export_jobs_signer_created (signer_id, created_at, id)` 與 CHECK；down 先檢查再回退。（依賴 T002、T003）
 - [ ] T005 修改 `server/src/features/esign/entities/esign-export-job.entity.ts`：
   - `createdByUserId`／`createdByUser` 可為 NULL。
   - 新增 `signerId` 與 `signer`（`ManyToOne EsignSigner`，RESTRICT）。
@@ -96,13 +98,16 @@
 - [ ] T018 [US3] 在 `server/test/esign-export-history.e2e-spec.ts` 加入下載紀錄案例：
   - 建立人呼叫 `POST …/signers/{signerPublicId}/completed-file/downloads`：PDF bytes 與標頭和原本 GET 相同，新增紀錄，匯出人為建立人、範圍為簽署人標籤。
   - 外部簽署人以存取 cookie 呼叫 `POST /api/external-signing-task/completed-file/downloads`：紀錄的 `created_by_user_id` 為 NULL，匯出人為「姓名＋Email」。
-  - 內部簽署人經 OTP 下載：匯出人為「姓名＋員工編號」。
+  - 內部員工以員工 session 呼叫 `POST /api/esign/signing-tasks/{signerPublicId}/completed-file/downloads`：匯出人為該員工（姓名＋員工編號）；非本人或未簽回原本的錯誤。
   - 副本未完成或權限不符：沿用原本錯誤，且不新增紀錄；缺 Origin 被拒。
   - 讓紀錄寫入失敗（例如以 spy 讓寫入拋錯）：回 500，回應不含 PDF。（依賴 T013）
-- [ ] T019 [P] [US3] 把既有 e2e 的兩條 GET 下載改為對應的 POST（帶 Origin）：`server/test/core-esign-flow.e2e-spec.ts`、`server/test/internal-email-copy.e2e-spec.ts`、`server/test/esign-rejection.e2e-spec.ts`、`server/test/esign-document-delivery-security.e2e-spec.ts`。並在 `server/test/api-coverage.e2e-spec.ts` 加入：舊的兩條 GET 回 404，新 POST 未登入回 401。（依賴 T013）
+- [ ] T019 [P] [US3] 把既有 e2e 的三條 GET 下載改為對應的 POST（帶 Origin）：`server/test/core-esign-flow.e2e-spec.ts`、`server/test/internal-email-copy.e2e-spec.ts`、`server/test/esign-rejection.e2e-spec.ts`、`server/test/esign-document-delivery-security.e2e-spec.ts`、`server/test/security-core-esign-flow.e2e-spec.ts`。並在 `server/test/api-coverage.e2e-spec.ts` 加入：舊的三條 GET 回 404，新 POST 未登入回 401。（依賴 T013）
 - [ ] T020 [US3] 在 `EsignExportHistoryService` 新增 `recordPdf(document, signer, exporterUserId | null)`：簽署人標籤依 data-model，超過 255 字時截斷；寫入 `pdf` 紀錄。（依賴 T018）
 - [ ] T021 [US3] 在 `server/src/features/esign/controllers/documents.controller.ts` 以 `POST :documentId/signers/:signerPublicId/completed-file/downloads`（`OriginGuard`）取代原本的 GET。讓 `EsignCompletionAccessService.creatorFile` 一併回傳記錄需要的文件與簽署人；先取得檔案，再記錄，最後送出。更新 Swagger。（依賴 T020）
-- [ ] T022 [US3] 在 `server/src/features/esign/controllers/external-signature.controller.ts` 以 `POST external-signing-task/completed-file/downloads`（`OriginGuard`）取代原本的 GET。讓 `ExternalAccessService.completedFile` 一併回傳文件與簽署人，匯出人為 NULL；Swagger 移除「一般連結直接下載」的串接說明。（依賴 T020）
+- [ ] T022 [US3] 本人下載兩條路由：
+  - `server/src/features/esign/controllers/signing-tasks.controller.ts` 以 `POST :signerPublicId/completed-file/downloads`（`OriginGuard`）取代原本的 GET；讓 `EsignCompletionAccessService.signerFile` 一併回傳文件與簽署人，匯出人為目前員工。
+  - `server/src/features/esign/controllers/external-signature.controller.ts` 以 `POST external-signing-task/completed-file/downloads`（`OriginGuard`）取代原本的 GET；讓 `ExternalAccessService.completedFile` 一併回傳文件與簽署人，匯出人為 NULL。
+  - 更新兩邊的 Swagger 說明。（依賴 T020）
 - [ ] T023 [US3] 執行 T018、T019 涉及的 e2e 全部轉綠。（依賴 T021、T022）
 
 ## Phase 6: US4 — 從紀錄重新下載（P2）

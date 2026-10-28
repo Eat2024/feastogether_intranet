@@ -2,7 +2,7 @@
 
 **輸入**：[spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、`contracts/`、[quickstart.md](quickstart.md)。
 
-**分支**：電子簽 `feat/016-internal-portal-signing`（PR #34）；Portal 是獨立 repository。以下路徑相對電子簽 root，`../portal/` 指本機 Portal。本次只產生任務，所有核取方塊均未執行。
+**分支**：電子簽 `feat/016-internal-portal-signing`（PR #34）；Portal 是獨立 repository。以下路徑相對電子簽 root，`../portal/` 指本機 Portal。已開始依正式 tickets 實作；核取方塊只標示已有證據的完成項目。
 
 **測試依據**：spec 的授權、重送、狀態、群寄及完整旅程驗收，以及憲章 V 要求相應測試；先補能重現差異的測試再改實作。不新增 client 測試框架，不使用正式個資／文件，不把環境受限寫成通過。
 
@@ -10,8 +10,8 @@
 
 ## Phase 1：Setup
 
-- [ ] T001 核對 `AGENTS.md`、`client/AGENTS.md`、`server/AGENTS.md`、`../portal/AGENTS.md` 與兩個 git 工作區；記錄分支、工具與測試前置到 `specs/016-internal-portal-signing/quickstart.md`，保留 Portal `index.php` 修改，後續 Portal 改動使用 develop 衍生分支或隔離 worktree，不重設既有工作。
-- [ ] T002 核對 `.specify/memory/constitution.md` 2.0.0 與 `specs/016-internal-portal-signing/contracts/`，確認本次包含內部 BCC、UAT／PRD 同導 Portal 正式機、無 Email 仍可簽署；以相鄰舊規格作歷史來源，Spec 014 跨分支衝突依 016，不引入另一功能程式。
+- [x] T001 核對 `AGENTS.md`、`client/AGENTS.md`、`server/AGENTS.md`、`../portal/AGENTS.md` 與兩個 git 工作區；記錄分支、工具與測試前置到 `specs/016-internal-portal-signing/quickstart.md`，保留 Portal `index.php` 修改，後續 Portal 改動使用 develop 衍生分支或隔離 worktree，不重設既有工作。
+- [x] T002 核對 `.specify/memory/constitution.md` 2.0.0 與 `specs/016-internal-portal-signing/contracts/`，確認本次包含內部 BCC、UAT／PRD 同導 Portal 正式機、無 Email 仍可簽署；以相鄰舊規格作歷史來源，Spec 014 跨分支衝突依 016，不引入另一功能程式。
 
 ## Phase 2：共用基礎
 
@@ -26,12 +26,12 @@
 
 **獨立驗收**：即使本人簽署 UI 尚未完成，仍能驗證 Portal 登入→既有我的電子簽列表；失敗重試／改密碼／已登入／無參數／惡意參數各有明確結果。對應 FR-002～003b、驗收 1／11／14。
 
-- [ ] T005 [US1] 新增 `../portal/tests/esign-login-redirect.php` 可獨立執行的 PHP 測試 harness（不增套件），以 session/input stub 覆蓋清單允許值、缺參數、重複參數、陣列、外站、穿越、POST 保留、成功消費與改密碼待辦；注入測試專用第二頁映射，驗證不改 controller 即可回跳，移除映射後舊 session 失效；先確認現況不符契約的案例失敗。
-- [ ] T006 [US1] 新增 `../portal/application/config/login_redirect.php` 集中允許映射與薄的 `../portal/application/libraries/Login_redirect.php` 共用處理，初始 `hr/esign/mine → hr/esign/mine`；修改 `../portal/application/controllers/Login.php` 在已登入分支前呼叫共用驗證，保存 `login_redirect_target`，取用時再次確認映射有效後 base_url。新 GET 無值／非法值清除，POST／失敗重試保留，無目標回原首頁；登入程式不硬編碼電子簽目的地。
-- [ ] T007 [US1] 在 `../portal/application/controllers/Login.php` 設定 server 控制的 `login_password_change_pending`；需改預設密碼先走原頁，已登入再點 Email 仍先完成待辦，不用前端值判斷可否跳過。
-- [ ] T008 [US1] 修改 `../portal/application/controllers/Account.php`：DB 改密碼成功才清待辦並透過共用 Login_redirect 消費目標，在原 `{status,msg}` 成功回應追加安全 `redirectTo`；錯誤保留目標及待辦，無目標沿原首頁，不增加頁面專用判斷。
-- [ ] T009 [US1] 修改 `../portal/application/views/admin/account/modify_password.php` 成功分支使用 server 的 `redirectTo`，失敗不導頁；保留欄位、CSRF、既有密碼驗證及錯誤呈現。
-- [ ] T010 [US1] 修改 `../portal/application/core/WebController.php` 共用 Logout，透過 Login_redirect 重設目的地並清除改密碼待辦；不新增自動記住任何原網址功能，核對 `../portal/application/controllers/hr/Esign.php` 原選單 gate 仍有效。
+- [x] T005 [US1] 新增 `../portal/tests/esign-login-redirect.php` 可獨立執行的 PHP 測試 harness（不增套件），以 session/input stub 覆蓋清單允許值、缺參數、重複參數、陣列、外站、穿越、POST 保留、成功消費與改密碼待辦；注入測試專用第二頁映射，驗證不改 controller 即可回跳，移除映射後舊 session 失效；先確認現況不符契約的案例失敗。
+- [x] T006 [US1] 新增 `../portal/application/config/login_redirect.php` 集中允許映射與薄的 `../portal/application/libraries/Login_redirect.php` 共用處理，初始 `hr/esign/mine → hr/esign/mine`；修改 `../portal/application/controllers/Login.php` 在已登入分支前呼叫共用驗證，保存 `login_redirect_target`，取用時再次確認映射有效後 base_url。新 GET 無值／非法值清除，POST／失敗重試保留，無目標回原首頁；登入程式不硬編碼電子簽目的地。
+- [x] T007 [US1] 在 `../portal/application/controllers/Login.php` 設定 server 控制的 `login_password_change_pending`；需改預設密碼先走原頁，已登入再點 Email 仍先完成待辦，不用前端值判斷可否跳過。
+- [x] T008 [US1] 修改 `../portal/application/controllers/Account.php`：DB 改密碼成功才清待辦並透過共用 Login_redirect 消費目標，在原 `{status,msg}` 成功回應追加安全 `redirectTo`；錯誤保留目標及待辦，無目標沿原首頁，不增加頁面專用判斷。
+- [x] T009 [US1] 修改 `../portal/application/views/admin/account/modify_password.php` 成功分支使用 server 的 `redirectTo`，失敗不導頁；保留欄位、CSRF、既有密碼驗證及錯誤呈現。
+- [x] T010 [US1] 修改 `../portal/application/core/WebController.php` 共用 Logout，透過 Login_redirect 重設目的地並清除改密碼待辦；不新增自動記住任何原網址功能，核對 `../portal/application/controllers/hr/Esign.php` 原選單 gate 仍有效。
 - [ ] T011 [US1] 執行 PHP harness、所有變更 PHP 的 `php -l` 及 Portal 瀏覽器驗收，將結果記入 `specs/016-internal-portal-signing/quickstart.md`；驗證 `../portal/template/js/hr/esign_webview.js` ready/navigate/launch、權限不足、帳號切換、cookie 故障與一般登入回歸，不改固定首頁 launch 協定。
 
 ## Phase 4：US2 以員工身分完成本人文件流程（P1）
@@ -48,7 +48,7 @@
 - [ ] T017 [US2] 修改 `server/src/features/esign/services/esign-rejection.service.ts` 與 `esign-completion-access.service.ts` 的本人入口，保留 allowReject、本人已簽資格與 personalCopy 完整性；副本沿「`pending → processing → ready|failed`」，到期後本人可讀、不授權重簽。
 - [ ] T018 [US2] 更新 `server/src/features/esign/controllers/signing-tasks.controller.ts` 契約／Swagger，保留 OriginGuard、首次 201／重送 200、PDF cache/frame headers；`SignatureSubmissionDto` 沿 requestId UUIDv4、accepted=true、1–200 筆簽名及每 PNG data URL 最長 400,000，拒簽 reason trim 後最多 200 code points，不新增身分輸入或單筆 GET。
 - [ ] T019 [US2] 在 `client/src/api/endpoints.ts`、`types/signingTasks.ts`、`requests/signingTasks.ts`、`queries/signingTasks.ts` 及各 barrel／query-key/options 補本人 open/sign/reject 與原檔／副本 URL；沿同源 cookie、既有 GET 列表及 mutation 失敗規則。
-- [ ] T020 [US2] 從 `client/src/features/external-signing/ExternalSignForm.tsx`、`taskForm.ts` 擷取實際重複的表單／轉換至 `client/src/features/my-signature/sign/SigningForm.tsx` 與 `signingTaskForm.ts`（新增）；共用現有 TermsStep、DocumentViewer、SignaturePadDialog、RejectDialog，內外容器各自注入提交 callback，不帶外部 cookie API 或 Email 文案進內部。
+- [x] T020 [US2] 從 `client/src/features/external-signing/ExternalSignForm.tsx`、`taskForm.ts` 擷取實際重複的表單／轉換至 `client/src/features/my-signature/sign/SigningForm.tsx` 與 `signingTaskForm.ts`（新增）；共用現有 TermsStep、DocumentViewer、SignaturePadDialog、RejectDialog，內外容器各自注入提交 callback，不帶外部 cookie API 或 Email 文案進內部。
 - [ ] T021 [US2] 改寫 `client/src/features/signing-tasks/SigningTaskView.tsx`：取代邀請信提示，進入 POST open、本人閱讀／同意／簽署／拒簽；換 signer 重置狀態、重試沿用 requestId、pending 防連點、401 提示 Portal 重登，不自動提交未完成簽名。
 - [ ] T022 [US2] 在 `client/src/features/signing-tasks/SigningTaskView.tsx` 接完成結果、GET 列表副本輪詢及 completed-file 下載；ready/failed 停止輪詢，卸載清理，成功 invalidate 本人列表，保留公開驗證連結，不再要求回 Email，不用 POST open 輪詢。
 - [ ] T023 [US2] 執行 T012／T013 與外部表單回歸，依 `specs/016-internal-portal-signing/quickstart.md` 記錄桌面／窄螢幕、鍵盤、session 失效、切換文件及副本流程；確認任一正式員工 session 同等授權，未實作 Spec 014 不宣稱測過。

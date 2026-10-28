@@ -1,6 +1,26 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional, PickType } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
+  Equals,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import {
+  EsignDocumentCreatorDto,
+  EsignSignerViewDto,
+} from './esign-common.dto';
 
 /** 歷史匯出文件頁的頁籤：簽署紀錄清單 Excel、單人已簽 PDF、已簽署副本 ZIP。 */
 export const EXPORT_HISTORY_TYPES = ['excel', 'pdf', 'zip'] as const;
@@ -41,11 +61,70 @@ export class ExportedByDto {
   email!: string | null;
 }
 
-/** Excel 匯出條件；空陣列表示全部。 */
+/** Excel 匯出條件可選的簽署狀態。 */
+export const EXPORT_CONDITION_STATUSES = ['pending', 'signed', 'rejected'];
+/** Excel 匯出條件可選的欄位。 */
+export const EXPORT_CONDITION_FIELDS = [
+  'name',
+  'employeeNo',
+  'dept',
+  'title',
+  'email',
+  'status',
+  'signedAt',
+  'rejectedAt',
+  'rejectReason',
+];
+
+/** Excel 匯出條件；記錄與查詢共用。 */
 export class ExportConditionsDto {
+  /** 簽署狀態，空陣列表示全部 */
+  @ApiProperty({ enum: EXPORT_CONDITION_STATUSES, isArray: true })
+  @IsArray()
+  @ArrayUnique()
+  @IsIn(EXPORT_CONDITION_STATUSES, { each: true })
   statuses!: string[];
+  /** 部門鍵，空陣列表示全部；每個鍵 1–255 字，最多 500 個 */
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @Length(1, 255, { each: true })
   depts!: string[];
+  /** 匯出欄位，至少一個 */
+  @ApiProperty({ enum: EXPORT_CONDITION_FIELDS, isArray: true, minItems: 1 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsIn(EXPORT_CONDITION_FIELDS, { each: true })
   fields!: string[];
+}
+
+/** 前端下載 Excel 前回報的匯出紀錄；匯出人取自 session。 */
+export class CreateExcelExportRecordDto {
+  /** 只接受 excel；PDF 與 ZIP 由後端自行記錄 */
+  @ApiProperty({ enum: ['excel'] })
+  @Equals('excel')
+  type!: 'excel';
+  /** 已發起且未刪除的文件 ID；不限建立人 */
+  @Matches(/^[1-9][0-9]{0,14}$/)
+  documentId!: string;
+  /** 畫面顯示用範圍說明，trim 後 1–255 字 */
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(1, 255)
+  scope!: string;
+  /** 匯出筆數，0 以上整數 */
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  count!: number;
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ExportConditionsDto)
+  conditions!: ExportConditionsDto;
 }
 
 export class ExportHistoryFileDto {
@@ -99,4 +178,34 @@ export class ExportHistoryPageDto {
   total!: number;
   /** 各類型的總筆數 */
   typeTotals!: ExportTypeTotalsDto;
+}
+
+/** Excel 用的簽署人：欄位名稱與文件詳情相同，不含 publicId、管理備註、通知結果與驗證網址。 */
+export class ExcelExportSignerDto extends PickType(EsignSignerViewDto, [
+  'type',
+  'name',
+  'employeeNo',
+  'department',
+  'title',
+  'email',
+  'status',
+  'signedAt',
+  'rejectedAt',
+  'rejectReason',
+] as const) {}
+
+/** Excel 重新下載資料：文件目前的資料，只含產生 Excel 需要的欄位。 */
+export class ExcelExportDocumentDto {
+  id!: string;
+  title!: string;
+  /** 文件 UUID */
+  docNumber!: string;
+  signStartAt!: string | null;
+  signEndAt!: string | null;
+  /** 發起時固定的截止時間；重新開放後與 signEndAt 不同 */
+  originalSignEndAt!: string | null;
+  isReopened!: boolean;
+  /** 建立人帳號不存在時為 null */
+  createdBy!: EsignDocumentCreatorDto | null;
+  signers!: ExcelExportSignerDto[];
 }

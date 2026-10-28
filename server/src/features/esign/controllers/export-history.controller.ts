@@ -1,11 +1,26 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiCookieAuth,
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiResponse,
 } from '@nestjs/swagger';
+import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
+import { OriginGuard } from '#app/framework/guards/origin.guard';
 import {
+  CreateExcelExportRecordDto,
+  ExcelExportDocumentDto,
+  ExportHistoryItemDto,
   ExportHistoryPageDto,
   ExportHistoryQueryDto,
 } from '../dto/export-history.dto';
@@ -34,5 +49,59 @@ export class ExportHistoryController {
   @ApiResponse({ status: 401, description: '需有效員工 session' })
   list(@Query() query: ExportHistoryQueryDto): Promise<ExportHistoryPageDto> {
     return this.history.list(query);
+  }
+
+  // 前端下載 Excel 前回報匯出，由後端寫入紀錄；首次匯出與重新下載共用。
+  @Post()
+  @UseGuards(OriginGuard)
+  @ApiOperation({
+    summary: '記錄 Excel 匯出',
+    description:
+      '需有效員工 session 與同源請求；不限建立人。type 只接受 excel；documentId 須為已發起且未刪除的文件，否則 404；scope trim 後 1–255 字；count 為 0 以上整數；conditions.statuses 為 pending／signed／rejected 的子集、conditions.depts 為部門鍵（每個 1–255 字、最多 500 個），兩者空陣列表示全部；conditions.fields 至少一個，為 name、employeeNo、dept、title、email、status、signedAt、rejectedAt、rejectReason 的子集。匯出人取自 session，不接受前端傳入；未知欄位回 400。成功回新紀錄，形狀與查詢的 item 相同。前端在記錄成功後才產生並下載 Excel。',
+  })
+  @ApiCreatedResponse({
+    type: ExportHistoryItemDto,
+    description: '新紀錄，包在全域回應 envelope 的 data',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'INVALID_REQUEST：欄位不合法或含未知欄位',
+  })
+  @ApiResponse({ status: 401, description: '需有效員工 session' })
+  @ApiResponse({
+    status: 403,
+    description: 'CSRF_ORIGIN_REJECTED：缺少或不允許的 Origin',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'ESIGN_RESOURCE_NOT_FOUND：文件不存在、已刪除或仍是草稿',
+  })
+  record(
+    @CurrentUserId() userId: number,
+    @Body() body: CreateExcelExportRecordDto,
+  ): Promise<ExportHistoryItemDto> {
+    return this.history.recordExcel(userId, body);
+  }
+
+  // 依 Excel 紀錄取得文件目前的資料，供前端重新產生 Excel；唯讀。
+  @Get(':id/document')
+  @ApiOperation({
+    summary: '取得 Excel 重新下載資料',
+    description:
+      '需有效員工 session，任何員工可用，不限建立人或原匯出人；外部簽署 session 拒絕。只接受 excel 紀錄，其他類型、紀錄不存在或文件已刪除回 404。唯讀，不新增紀錄。回文件目前的資料，只含產生 Excel 需要的欄位（id、title、docNumber、signStartAt、signEndAt、originalSignEndAt、isReopened、createdBy、signers），欄位名稱與文件詳情相同；signers 只含 type、name、employeeNo、department、title、email、status、signedAt、rejectedAt、rejectReason，不含簽署人 publicId、管理備註、通知結果與驗證網址。前端依原紀錄的 conditions 篩選，先以 POST /api/esign/history/export 記錄，成功後才產生並下載 Excel。',
+  })
+  @ApiParam({ name: 'id', description: 'excel 紀錄 UUID' })
+  @ApiOkResponse({
+    type: ExcelExportDocumentDto,
+    description: '包在全域回應 envelope 的 data',
+  })
+  @ApiResponse({ status: 401, description: '需有效員工 session' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'ESIGN_RESOURCE_NOT_FOUND：紀錄不存在、不是 excel 紀錄或文件已刪除',
+  })
+  excelDocument(@Param('id') id: string): Promise<ExcelExportDocumentDto> {
+    return this.history.excelDocument(id);
   }
 }

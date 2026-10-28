@@ -76,18 +76,18 @@
 
 **獨立驗收**：經 HTTP 回報 Excel 紀錄後，查詢看得到正確的匯出人、範圍、筆數與條件；不合法的請求不留紀錄。
 
-- [ ] T014 [US2] 在 `server/test/esign-export-history.e2e-spec.ts` 加入 Excel 紀錄案例：
+- [x] T014 [US2] 在 `server/test/esign-export-history.e2e-spec.ts` 加入 Excel 紀錄案例：
   - 非建立人也能記錄，回 201、item 形狀，匯出人取自 session。
   - 草稿、已刪除、不存在的文件回 404。
   - 以下回 400：未知欄位、未知狀態或欄位鍵、`fields` 為空、`scope` trim 後為 0 字或 256 字、`count` 為 -1 或小數、`type` 為 `pdf`／`zip`、`depts` 超過 500 個或單一鍵超過 255 字。
   - 缺 Origin 被拒；未登入與外部存取 cookie 回 401。
   - 每個失敗案例都確認沒有新增紀錄。（依賴 T013）
-- [ ] T015 [P] [US2] 在 `server/src/features/esign/dto/export-history.dto.ts` 新增 `CreateExcelExportRecordDto` 與巢狀 `ExportConditionsDto`，規則依 contract。（依賴 T013）
-- [ ] T016 [US2] 在 `EsignExportHistoryService` 新增 `recordExcel(userId, body)`：
+- [x] T015 [P] [US2] 在 `server/src/features/esign/dto/export-history.dto.ts` 新增 `CreateExcelExportRecordDto` 與巢狀 `ExportConditionsDto`，規則依 contract。（依賴 T013）
+- [x] T016 [US2] 在 `EsignExportHistoryService` 新增 `recordExcel(userId, body)`：
   - 文件必須存在、未刪除且已發起，否則拋 `ESIGN_RESOURCE_NOT_FOUND`。
   - 寫入 `excel` 紀錄：新的 `public_id`、`status=completed`、`completed_at`、`conditions_json`。
   - 回傳與查詢相同的 item。（依賴 T015）
-- [ ] T017 [US2] 在 `export-history.controller.ts` 新增 POST，套用 `OriginGuard`，回 201，加上 Swagger 說明；T014 轉綠。（依賴 T016）
+- [x] T017 [US2] 在 `export-history.controller.ts` 新增 POST，套用 `OriginGuard`，回 201，加上 Swagger 說明；T014 轉綠。（依賴 T016）
 
 ## Phase 5: US3 — 記錄單人 PDF 下載（P1）
 
@@ -120,10 +120,10 @@
   - 非建立人對 `pdf` 紀錄 `POST /api/esign/history/export/{id}/downloads`：取得 PDF，新增一筆紀錄，匯出人為目前使用者，文件、簽署人與範圍沿用原紀錄。
   - `excel`／`zip`／不存在的紀錄回 404；未登入與外部 cookie 回 401；缺 Origin 被拒。（依賴 T023）
 - [ ] T025 [US4] 在 `EsignExportHistoryService` 與 `export-history.controller.ts` 新增 `POST :id/downloads`（`OriginGuard`）：讀紀錄 → `personalCopy` → `recordPdf`（匯出人為目前使用者）→ 送出，加上 Swagger；T024 轉綠。（依賴 T024）
-- [ ] T026 [US4] 在 `server/test/esign-export-history.e2e-spec.ts` 加入 Excel 重新下載資料案例：
+- [x] T026 [US4] 在 `server/test/esign-export-history.e2e-spec.ts` 加入 Excel 重新下載資料案例：
   - 任何員工對 `excel` 紀錄 `GET /api/esign/history/export/{id}/document`：只回 contract 列出的欄位，不含管理備註、通知結果、驗證網址與簽署人 publicId，也不新增紀錄。
   - `pdf`／`zip`／不存在、文件已刪除時回 404。（依賴 T017）
-- [ ] T027 [US4] 在 `EsignExportHistoryService` 與 `export-history.controller.ts` 新增 `GET :id/document`。在 `server/src/features/esign/services/esign-view.mapper.ts` 新增 Excel 用的窄簽署人 view，欄位名稱與文件詳情相同；加上 Swagger；T026 轉綠。（依賴 T026）
+- [x] T027 [US4] 在 `EsignExportHistoryService` 與 `export-history.controller.ts` 新增 `GET :id/document`。在 `server/src/features/esign/services/esign-view.mapper.ts` 新增 Excel 用的窄簽署人 view，欄位名稱與文件詳情相同；加上 Swagger；T026 轉綠。（依賴 T026）
 
 ## Phase 7: Polish — 回歸與交接
 

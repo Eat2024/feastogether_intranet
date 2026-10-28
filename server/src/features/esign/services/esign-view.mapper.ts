@@ -19,6 +19,10 @@ import {
   EsignSignerViewDto,
   EsignSourceFileDto,
 } from '../dto/esign-common.dto';
+import type {
+  ExcelExportDocumentDto,
+  ExcelExportSignerDto,
+} from '../dto/export-history.dto';
 import { effectiveDocumentStatus } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
 
@@ -75,6 +79,27 @@ export class EsignViewMapper {
     counts: EsignSignerCounts,
     now = new Date(),
   ): EsignDocumentSummaryDto {
+    return {
+      ...this.signingEnd(document),
+      id: String(document.id),
+      docNumber: document.docNumber,
+      title: document.title,
+      status: effectiveDocumentStatus(
+        document,
+        counts.pendingCount,
+        now,
+      ) as EsignDocumentStatus,
+      createdAt: document.createdAt.toISOString(),
+      initiatedAt: document.initiatedAt?.toISOString() ?? null,
+      completedAt: document.completedAt?.toISOString() ?? null,
+      stoppedAt: document.stoppedAt?.toISOString() ?? null,
+      pendingCount: counts.pendingCount,
+      signedCount: counts.signedCount,
+    };
+  }
+
+  /** 截止時間；重新開放後與發起時固定的 originalSignEndAt 不同 */
+  private signingEnd(document: EsignDocument) {
     const period = document.signingPayloadJson?.period;
     const originalSignEndAt =
       document.status !== 'draft' &&
@@ -92,20 +117,6 @@ export class EsignViewMapper {
         originalSignEndAt !== null &&
         signEndAt !== null &&
         signEndAt !== originalSignEndAt,
-      id: String(document.id),
-      docNumber: document.docNumber,
-      title: document.title,
-      status: effectiveDocumentStatus(
-        document,
-        counts.pendingCount,
-        now,
-      ) as EsignDocumentStatus,
-      createdAt: document.createdAt.toISOString(),
-      initiatedAt: document.initiatedAt?.toISOString() ?? null,
-      completedAt: document.completedAt?.toISOString() ?? null,
-      stoppedAt: document.stoppedAt?.toISOString() ?? null,
-      pendingCount: counts.pendingCount,
-      signedCount: counts.signedCount,
     };
   }
 
@@ -146,6 +157,36 @@ export class EsignViewMapper {
   ): EsignSignerViewDto {
     return {
       publicId: signer.publicId,
+      ...this.signerResult(signer),
+      completion: {
+        status: signer.completionStatus ?? null,
+        readyAt: signer.completionReadyAt?.toISOString() ?? null,
+      },
+      invitationDelivery,
+      verificationUrl: this.tokens.verificationUrl(verificationCode),
+    };
+  }
+
+  /** Excel 重新下載資料：文件目前的期間、建立人與簽署結果。 */
+  excelExportDocument(
+    document: EsignDocument,
+    creator: User | null,
+    signers: EsignSigner[],
+  ): ExcelExportDocumentDto {
+    return {
+      id: String(document.id),
+      title: document.title,
+      docNumber: document.docNumber,
+      signStartAt: document.signStartAt?.toISOString() ?? null,
+      ...this.signingEnd(document),
+      createdBy: this.creator(creator),
+      signers: signers.map((signer) => this.signerResult(signer)),
+    };
+  }
+
+  /** 簽署人身分快照與簽署結果；Excel 只需要這些欄位。 */
+  private signerResult(signer: EsignSigner): ExcelExportSignerDto {
+    return {
       type: signer.signerType as EsignSignerType,
       name: signer.nameSnapshot,
       employeeNo: signer.empidSnapshot ?? null,
@@ -156,12 +197,6 @@ export class EsignViewMapper {
       signedAt: signer.signedAt?.toISOString() ?? null,
       rejectedAt: signer.rejectedAt?.toISOString() ?? null,
       rejectReason: signer.rejectReason ?? null,
-      completion: {
-        status: signer.completionStatus ?? null,
-        readyAt: signer.completionReadyAt?.toISOString() ?? null,
-      },
-      invitationDelivery,
-      verificationUrl: this.tokens.verificationUrl(verificationCode),
     };
   }
 

@@ -470,4 +470,401 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       expect(page.items[0]).not.toHaveProperty('requesterName');
     });
   });
+
+  describe('Excel 紀錄', () => {
+    const origin = 'http://localhost:3000';
+    const conditions = {
+      statuses: ['signed'],
+      depts: ['營運部'],
+      fields: ['name', 'employeeNo', 'dept', 'status', 'signedAt'],
+    };
+    let recorder: User;
+    let recorderCookie: string;
+    let excelDoc: EsignDocument;
+
+    beforeAll(async () => {
+      recorder = await manager.save(
+        User,
+        manager.create(User, {
+          empid: `R${randomBytes(4).toString('hex')}`,
+          name: '合成記錄員工',
+          isActive: true,
+        }),
+      );
+      recorderCookie = await employeeCookie(recorder);
+      excelDoc = await createDocument('合成 Excel 記錄文件');
+    });
+
+    function record(body: Record<string, unknown>, cookie = recorderCookie) {
+      return request(ctx.server)
+        .post(historyPath)
+        .set('Origin', origin)
+        .set('Cookie', cookie)
+        .send(body);
+    }
+
+    function validBody(document: EsignDocument = excelDoc) {
+      return {
+        type: 'excel',
+        documentId: String(document.id),
+        scope: '狀態：已簽署；部門：營運部',
+        count: 120,
+        conditions,
+      };
+    }
+
+    /** 失敗的請求不得留下任何紀錄。 */
+    async function expectNoNewRecord(send: () => Promise<unknown>) {
+      const before = await manager.count(EsignExportJob);
+      await send();
+      expect(await manager.count(EsignExportJob)).toBe(before);
+    }
+
+    describe('記錄 Excel 匯出', () => {
+      it('非建立人可記錄，匯出人取自 session，回 201 與查詢相同的 item', async () => {
+        const response = await record(validBody()).expect(201);
+        const item = apiData<HistoryItem>(response);
+        expect(item).toEqual({
+          id: expect.stringMatching(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+          ) as string,
+          type: 'excel',
+          document: documentView(excelDoc),
+          exportedBy: {
+            name: recorder.name,
+            employeeNo: recorder.empid,
+            email: null,
+          },
+          exportedAt: expect.any(String) as string,
+          scope: '狀態：已簽署；部門：營運部',
+          count: 120,
+          conditions,
+        });
+        const listed = await history(`type=excel&documentId=${excelDoc.id}`);
+        expect(listed.total).toBe(1);
+        expect(listed.items).toEqual([item]);
+      });
+
+      it('文件為草稿、已刪除或不存在時回 404，不新增紀錄', async () => {
+        const draft = await manager.save(
+          EsignDocument,
+          manager.create(EsignDocument, {
+            docNumber: randomUUID(),
+            title: '合成 Excel 草稿',
+            status: 'draft',
+            createdByUserId: creator.id,
+          }),
+        );
+        const deleted = await createDocument('合成 Excel 已刪除文件');
+        await manager.update(
+          EsignDocument,
+          { id: deleted.id },
+          { deletedAt: new Date() },
+        );
+        for (const documentId of [
+          String(draft.id),
+          String(deleted.id),
+          '999999999999999',
+        ])
+          await expectNoNewRecord(async () => {
+            const response = await record({
+              ...validBody(),
+              documentId,
+            }).expect(404);
+            expect(apiError(response).code).toBe('ESIGN_RESOURCE_NOT_FOUND');
+          });
+      });
+
+      const withConditions = (patch: Record<string, unknown>) => ({
+        conditions: { ...conditions, ...patch },
+      });
+      it.each([
+        ['未知欄位（前端傳入匯出人）', { createdByUserId: 1 }],
+        ['conditions 內的未知欄位', withConditions({ signers: [] })],
+        ['缺 conditions', { conditions: undefined }],
+        ['conditions 為陣列', { conditions: [] }],
+        ['未知狀態', withConditions({ statuses: ['signed', 'expired'] })],
+        ['未知欄位鍵', withConditions({ fields: ['name', 'phone'] })],
+        ['fields 為空', withConditions({ fields: [] })],
+        ['重複的欄位鍵', withConditions({ fields: ['name', 'name'] })],
+        ['depts 超過 500 個', withConditions({ depts: deptKeys(501, 3) })],
+        ['部門鍵超過 255 字', withConditions({ depts: ['部'.repeat(256)] })],
+        ['部門鍵為空字串', withConditions({ depts: [''] })],
+        ['scope trim 後為空', { scope: '   ' }],
+        ['scope 256 字', { scope: '範'.repeat(256) }],
+        ['count 為 -1', { count: -1 }],
+        ['count 為小數', { count: 1.5 }],
+        ['count 為字串', { count: '120' }],
+        ['type 為 pdf', { type: 'pdf' }],
+        ['type 為 zip', { type: 'zip' }],
+        ['documentId 格式錯誤', { documentId: 'abc' }],
+      ])('%s 回 400 INVALID_REQUEST，不新增紀錄', async (_name, patch) => {
+        await expectNoNewRecord(async () => {
+          const response = await record({ ...validBody(), ...patch }).expect(
+            400,
+          );
+          expect(apiError(response).code).toBe('INVALID_REQUEST');
+        });
+      });
+
+      it('邊界值可記錄：scope trim 後 255 字、count 0、500 個 255 字部門鍵、全部狀態與欄位', async () => {
+        const boundary = {
+          statuses: ['pending', 'signed', 'rejected'],
+          depts: deptKeys(500, 255),
+          fields: [
+            'name',
+            'employeeNo',
+            'dept',
+            'title',
+            'email',
+            'status',
+            'signedAt',
+            'rejectedAt',
+            'rejectReason',
+          ],
+        };
+        const item = apiData<HistoryItem>(
+          await record({
+            ...validBody(),
+            scope: ` ${'範'.repeat(255)} `,
+            count: 0,
+            conditions: boundary,
+          }).expect(201),
+        );
+        expect(item).toMatchObject({
+          scope: '範'.repeat(255),
+          count: 0,
+          conditions: boundary,
+        });
+      });
+
+      it('缺 Origin 回 403，不新增紀錄', async () => {
+        await expectNoNewRecord(async () => {
+          const response = await request(ctx.server)
+            .post(historyPath)
+            .set('Cookie', recorderCookie)
+            .send(validBody())
+            .expect(403);
+          expect(apiError(response).code).toBe('CSRF_ORIGIN_REJECTED');
+        });
+      });
+
+      it('未登入與外部存取 cookie 回 401，不新增紀錄', async () => {
+        await expectNoNewRecord(async () => {
+          await request(ctx.server)
+            .post(historyPath)
+            .set('Origin', origin)
+            .send(validBody())
+            .expect(401);
+          const response = await record(validBody(), externalCookie).expect(
+            401,
+          );
+          expect(apiError(response).code).toBe('UNAUTHORIZED');
+        });
+      });
+    });
+
+    describe('Excel 重新下載資料', () => {
+      const originalEndAt = new Date(Date.now() + 86_400_000);
+      let sourceDoc: EsignDocument;
+      let signedSigner: EsignSigner;
+      let rejectedSigner: EsignSigner;
+      let pendingSigner: EsignSigner;
+      let excelRecordId: string;
+
+      beforeAll(async () => {
+        sourceDoc = await manager.save(
+          EsignDocument,
+          manager.create(EsignDocument, {
+            docNumber: randomUUID(),
+            title: '合成 Excel 重新下載文件',
+            status: 'active',
+            createdByUserId: creator.id,
+            signStartAt: new Date(Date.now() - 86_400_000),
+            // 重新開放後的截止時間晚於發起時固定的截止時間。
+            signEndAt: new Date(originalEndAt.getTime() + 86_400_000),
+            signingPayloadJson: {
+              period: { endAt: originalEndAt.toISOString() },
+            },
+          }),
+        );
+        const prefix = randomBytes(4).toString('hex');
+        const signer = (fields: Partial<EsignSigner>) =>
+          manager.save(
+            EsignSigner,
+            manager.create(EsignSigner, {
+              publicId: randomUUID(),
+              documentId: sourceDoc.id,
+              note: '合成管理備註',
+              ...fields,
+            }),
+          );
+        signedSigner = await signer({
+          signerType: 'user',
+          userId: internalUser.id,
+          empidSnapshot: internalUser.empid,
+          nameSnapshot: '合成內部已簽',
+          departmentSnapshot: '營運部',
+          titleSnapshot: '專員',
+          email: `in-${prefix}@example.test`,
+          status: 'signed',
+          signedAt: new Date(Date.now() - 3_600_000),
+          completionStatus: 'pending',
+          sortOrder: 0,
+        });
+        rejectedSigner = await signer({
+          signerType: 'email',
+          email: `rejected-${prefix}@example.test`,
+          nameSnapshot: '合成外部拒簽',
+          status: 'rejected',
+          rejectedAt: new Date(Date.now() - 1_800_000),
+          rejectRequestId: randomUUID(),
+          rejectReason: '條款不同意',
+          sortOrder: 1,
+        });
+        pendingSigner = await signer({
+          signerType: 'email',
+          email: `pending-${prefix}@example.test`,
+          nameSnapshot: '合成外部待簽',
+          status: 'pending',
+          sortOrder: 2,
+        });
+        await signer({
+          signerType: 'email',
+          email: `removed-${prefix}@example.test`,
+          nameSnapshot: '合成已移除',
+          status: 'pending',
+          sortOrder: 3,
+          deletedAt: new Date(),
+        });
+        excelRecordId = apiData<HistoryItem>(
+          await record(validBody(sourceDoc)).expect(201),
+        ).id;
+      });
+
+      function redownload(id: string, cookie?: string) {
+        const call = request(ctx.server).get(`${historyPath}/${id}/document`);
+        return cookie ? call.set('Cookie', cookie) : call;
+      }
+
+      it('任何員工可取得文件目前資料，只含產生 Excel 需要的欄位，不新增紀錄', async () => {
+        // 非建立人、也不是原匯出人。
+        const cookie = await employeeCookie(exporter);
+        await expectNoNewRecord(async () => {
+          const document = apiData<unknown>(
+            await redownload(excelRecordId, cookie).expect(200),
+          );
+          expect(document).toEqual({
+            id: String(sourceDoc.id),
+            title: '合成 Excel 重新下載文件',
+            docNumber: sourceDoc.docNumber,
+            signStartAt: sourceDoc.signStartAt!.toISOString(),
+            signEndAt: sourceDoc.signEndAt!.toISOString(),
+            originalSignEndAt: originalEndAt.toISOString(),
+            isReopened: true,
+            createdBy: { name: creator.name, employeeNo: creator.empid },
+            signers: [
+              {
+                type: 'user',
+                name: '合成內部已簽',
+                employeeNo: internalUser.empid,
+                department: '營運部',
+                title: '專員',
+                email: signedSigner.email,
+                status: 'signed',
+                signedAt: signedSigner.signedAt!.toISOString(),
+                rejectedAt: null,
+                rejectReason: null,
+              },
+              {
+                type: 'email',
+                name: '合成外部拒簽',
+                employeeNo: null,
+                department: null,
+                title: null,
+                email: rejectedSigner.email,
+                status: 'rejected',
+                signedAt: null,
+                rejectedAt: rejectedSigner.rejectedAt!.toISOString(),
+                rejectReason: '條款不同意',
+              },
+              {
+                type: 'email',
+                name: '合成外部待簽',
+                employeeNo: null,
+                department: null,
+                title: null,
+                email: pendingSigner.email,
+                status: 'pending',
+                signedAt: null,
+                rejectedAt: null,
+                rejectReason: null,
+              },
+            ],
+          });
+        });
+      });
+
+      it('pdf／zip 紀錄、不存在的紀錄與文件已刪除時回 404', async () => {
+        const pdf = await insertRecord(
+          {
+            exportType: 'pdf',
+            documentId: sourceDoc.id,
+            createdByUserId: creator.id,
+            signerId: signedSigner.id,
+            scopeDescription: `合成內部已簽（${internalUser.empid}）`,
+            recordCount: 1,
+          },
+          new Date(),
+        );
+        const zip = await insertRecord(
+          {
+            exportType: 'signed_copies_zip',
+            documentId: sourceDoc.id,
+            createdByUserId: creator.id,
+            scopeDescription: '此次簽署的所有已簽副本',
+            recordCount: 1,
+            snapshotAt: new Date(),
+            snapshotJson: [],
+            snapshotSha256: 'f'.repeat(64),
+          },
+          new Date(),
+        );
+        const removedDoc = await createDocument('合成 Excel 之後刪除的文件');
+        const orphanId = apiData<HistoryItem>(
+          await record(validBody(removedDoc)).expect(201),
+        ).id;
+        await manager.update(
+          EsignDocument,
+          { id: removedDoc.id },
+          { deletedAt: new Date() },
+        );
+        for (const id of [
+          pdf.publicId!,
+          zip.publicId!,
+          randomUUID(),
+          'not-a-record',
+          orphanId,
+        ]) {
+          const response = await redownload(id, viewerCookie).expect(404);
+          expect(apiError(response).code).toBe('ESIGN_RESOURCE_NOT_FOUND');
+        }
+      });
+
+      it('未登入與外部存取 cookie 回 401', async () => {
+        await redownload(excelRecordId).expect(401);
+        const response = await redownload(excelRecordId, externalCookie).expect(
+          401,
+        );
+        expect(apiError(response).code).toBe('UNAUTHORIZED');
+      });
+    });
+  });
 });
+
+/** 產生不重複、指定長度的部門鍵。 */
+function deptKeys(count: number, length: number) {
+  return Array.from({ length: count }, (_, index) =>
+    String(index).padStart(length, '部'),
+  );
+}

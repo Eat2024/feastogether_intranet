@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** 015 — data-model、research R1–R4、R11、R12；對應 T001–T006。
 
@@ -50,3 +50,23 @@
 - `test:schema` 的 DB 名稱不可用 `feastogether_intranet_test_015_NN`：加上 33 字元亂數後超過 MySQL 64 字元上限。本票以 `DB_MYSQL_DB=feastogether_intranet_test1501` 執行。
 - `pnpm schema:dump` 預設讀 `.env`（開發庫）。本票改讀 `.env.test` 執行同一支腳本，沒有碰開發庫。
 - constitution 目前為 2.0.0（016 修訂），驗收條件寫的 1.5.0 已過時；本票沒有牴觸。
+
+## 整合驗收紀錄（2026-10-28，`feat/015-export-history`）
+
+- 審查 `impl/015-01`（54592b7）：
+  - CHECK 與 data-model 一致。
+  - `down` 在任何 DDL 前檢查 `excel`／`pdf` 紀錄。
+  - 沒有修改 client。
+  - `schema.sql` 與 `doc/esign-db-schema.sql` 內容相同，不含 `AUTO_INCREMENT=` 或 `DEFINER`。
+- 合併：`git merge --no-ff impl/015-01`，merge commit `88253172ffebf33f54dd3484f35aa9d3e66b1c14`，無衝突。
+- 在合併後的工作樹以環境變數 `DB_MYSQL_DB=feastogether_intranet_test15m`、`REDIS_DB=10` 隔離執行：
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors；265 warnings 都不在本票變更的檔案 |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e --testRegex 'esign-export.e2e-spec.ts$'` | 1 suite／4 tests 通過 |
+
+狀態改為 `resolved`。

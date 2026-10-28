@@ -40,6 +40,7 @@ export class EsignMaintenanceProcessor extends WorkerHost {
     const staleBefore = new Date(now.getTime() - 5 * 60_000);
     const manager = this.mysql.getManager();
     let afterId = 0;
+    const queuedInternalBatches = new Set<number>();
     while (true) {
       const rows = await this.notifications.findEligibleInvitationLogIds(
         now,
@@ -49,18 +50,33 @@ export class EsignMaintenanceProcessor extends WorkerHost {
       );
       if (rows.length === 0) break;
       await Promise.all(
-        rows.map((row) =>
-          this.invitationQueue.add(
-            ESIGN_EXTERNAL_INVITATION_JOB,
-            { notificationLogId: Number(row.id) },
-            {
-              attempts: 1,
-              removeOnComplete: 1000,
-              removeOnFail: 1000,
-              deduplication: { id: `invitation-${Number(row.id)}` },
-            },
+        rows
+          .filter((row) => {
+            if (row.signerType !== 'user') return true;
+            const batchId = Number(row.batchId);
+            if (queuedInternalBatches.has(batchId)) return false;
+            queuedInternalBatches.add(batchId);
+            return true;
+          })
+          .map((row) =>
+            this.invitationQueue.add(
+              ESIGN_EXTERNAL_INVITATION_JOB,
+              row.signerType === 'user'
+                ? { notificationBatchId: Number(row.batchId) }
+                : { notificationLogId: Number(row.id) },
+              {
+                attempts: 1,
+                removeOnComplete: 1000,
+                removeOnFail: 1000,
+                deduplication: {
+                  id:
+                    row.signerType === 'user'
+                      ? `internal-invitation-${Number(row.batchId)}`
+                      : `invitation-${Number(row.id)}`,
+                },
+              },
+            ),
           ),
-        ),
       );
       afterId = Number(rows[rows.length - 1].id);
     }

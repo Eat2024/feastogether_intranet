@@ -296,8 +296,8 @@ describe('EsignInitiationService', () => {
     ).rejects.toThrow('簽署開始時間必須早於截止時間');
   });
 
-  it('純內部簽署人亦建立 invitation batch', async () => {
-    const { service, notifications, jobs } = setup({
+  it('純內部簽署人建立 invitation batch，但不產個人 token 而只排批次', async () => {
+    const { service, notifications, jobs, tokens } = setup({
       signers: [
         {
           id: 11,
@@ -333,6 +333,10 @@ describe('EsignInitiationService', () => {
       allowReject: false,
     });
     expect(notifications.saveBatch).toHaveBeenCalledTimes(1);
-    expect(jobs.enqueueInvitations).toHaveBeenCalledWith([51]);
+    expect(jobs.enqueueInvitations).toHaveBeenCalledWith([], [41]);
+    expect(tokens.createInvitationToken).not.toHaveBeenCalled();
+    expect(notifications.saveLogs.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ invitationGenerationSha256: null }),
+    ]);
   });
 });

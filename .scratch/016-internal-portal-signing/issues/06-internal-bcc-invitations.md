@@ -14,3 +14,23 @@
 - [ ] 首次排入、維護補列與歷史單 log 工作都進批次處理，共用租約原子領取；並行 worker 不重寄已處理地址，SMTP 不放長交易內。
 - [ ] 部分 accepted 只記相應人員成功；明確暫時未寄出者最多 3 次含首次、30／60 秒退避；永久拒收停止，未知／寄送後落庫失敗／過期 processing 不自動整組重寄。
 - [ ] transport、worker 與建立文件到通知結果的整合測試通過，保留原外部與 OTP 流程。此票不以「群寄 adapter 寫好」取代實際批次路徑完成。
+
+
+## 實作紀錄（2026-10-28）
+
+- 內部新發起不產 token；同批只排 batch ID，外部保留逐 log 工作。維護補列與歷史內部單 log 工作同樣走批次路徑。
+- 依文件 → 批次 → log → signer 鎖定，以共同 lease 領取最多 50 個不同地址；同信箱多明細同步更新，SMTP 在交易外。
+- 新 mail port 回逐地址受理／拒收／未知，BCC MIME 不留名單；部分拒收獨立追蹤、明確暫時失敗最多三次並退避 30／60 秒；stale processing 與寄後落庫失敗不自動重寄。
+- 歷史同地址已受理／未知旁的 pending 標示 skipped；退避中的同地址一起等待，不留下無限維護補列。
+- 固定正式 Portal URL 集中常數；新邀請通知查詢不再依賴內部 token generation。未變更 schema／env。
+
+驗證：
+- TDD：SMTP 部分受理／全拒收分類、worker 共用信箱群寄、發起分流、maintenance 分流、歷史混合地址結果均先確認失敗再通過。
+- 真實本機 SMTP：擷取實際 DATA/MIME，確認 To／Cc／Bcc 均不含員工名單，envelope 不加入寄件人；450／550 逐地址分類通過。
+- 真實 MySQL e2e 新增 5 案通過：混合內外部與雙 worker 併發、50／51 地址拆批、同信箱去重、stale processing 復原；使用獨立 feastogether_intranet_test_spec016_t06 DB。
+- worker 單元另涵蓋 1／2／50／51 人、30／60 秒三次重試、部分接受不重寄、未對應結果、SMTP 後 DB 失敗、租約退休、歷史單 log。
+- 後續票單 07／08 負責催簽補簽 policy／無 Email 發起；09 更新既有內部 OTP e2e。此票未操作實際公司 SMTP 或正式 Portal。
+
+狀態維持 claimed，等待整合分支合併後關閉。
+
+- Server build、lint:check（0 errors）通過。擴跑 core-esign-flow 與新群寄共 30 案：26 通過、4 失敗；4 案為既有內部 OTP helper 仍要求 token（3 案）及補簽 policy 尚要求 token（1 案），屬後續 07／09 範圍，未宣稱完整 e2e 已通過。

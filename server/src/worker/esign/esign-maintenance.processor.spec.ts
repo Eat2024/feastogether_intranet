@@ -76,6 +76,36 @@ describe('Esign maintenance', () => {
     );
   });
 
+  it('內部同批僅補一個批次工作，外部仍排單 log', async () => {
+    const add = jest.fn();
+    const processor = new EsignMaintenanceProcessor(
+      { getManager: () => ({}) } as never,
+      {
+        findEligibleInvitationLogIds: jest.fn(async (_n, _s, _m, after) =>
+          after
+            ? []
+            : [
+                { id: '1', batchId: '8', signerType: 'user' },
+                { id: '2', batchId: '8', signerType: 'user' },
+                { id: '3', batchId: '8', signerType: 'email' },
+              ],
+        ),
+      } as never,
+      { findFinalizationCandidates: jest.fn(async () => []) } as never,
+      { reconcile: jest.fn() } as never,
+      { add } as never,
+      {} as never,
+      { findCompletionCandidates: jest.fn(async () => []) } as never,
+      {} as never,
+      { maintain: jest.fn() } as never,
+    );
+    await processor.process({ data: {} } as Job);
+    expect(add.mock.calls.map((call) => call[1])).toEqual([
+      { notificationBatchId: 8 },
+      { notificationLogId: 3 },
+    ]);
+  });
+
   it('Redis enqueue 失敗向外拋出，讓 BullMQ 重試而不偽裝完成', async () => {
     const processor = new EsignMaintenanceProcessor(
       { getManager: () => ({}) } as never,

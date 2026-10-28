@@ -17,7 +17,7 @@
 
 **前置**：T001–T002。完成後 US1／US2／US3 可分線開發，實際合併依下方依賴表。
 
-- [ ] T003 新增 `server/src/features/esign/esign.constants.ts` 的單一固定 Portal 登入網址及內部 BCC 上限 50 常數，供 worker／舊入口使用；值為 `http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine`，不新增環境變數、不改外部 origin，mail adapter 透過輸入接收網址以維持邊界。
+- [x] T003 新增 `server/src/features/esign/esign.constants.ts` 的單一固定 Portal 登入網址及內部 BCC 上限 50 常數，供 worker／舊入口使用；值為 `http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine`，不新增環境變數、不改外部 origin，mail adapter 透過輸入接收網址以維持邊界。
 - [ ] T004 在 `server/src/common/errors/app-error-code.ts`、`server/src/common/errors/app-errors.ts` 與 `client/src/api/errorCodes.ts` 定義 `ESIGN_INTERNAL_LOGIN_REQUIRED`（403）及繁體中文文案；錯誤 details 中的 `portalLoginUrl` 只能由 T003 固定值產生，不接受 caller 回跳 URL。
 
 ## Phase 3：US1 Portal 登入後自動到我的電子簽（P1）
@@ -62,8 +62,8 @@
 - [ ] T024 [P] [US3] 擴充 `server/src/infrastructure/mail/invitation-mail-sender.spec.ts` 及 `mail-delivery-outcome.spec.ts`，先驗證 BCC MIME／envelope 隱私、單次多地址、固定正式 Portal 連結、accepted/rejected/unknown、永久／暫時拒收與外部逐人／OTP 不變。
 - [ ] T025 [P] [US3] 擴充 `server/test/internal-email-initiation.e2e-spec.ts`、`internal-email-capacity.e2e-spec.ts`、`esign-employee-email-checks.e2e-spec.ts`，驗證 mixed／全無信箱可發起、nullable 快照、身分無效及上游失敗仍阻擋；維持 6,000 人與每批 100 人查詢邊界，不把容量測試變成真實大量寄信。
 - [ ] T026 [P] [US3] 擴充 `server/src/worker/esign/external-invitation.processor.spec.ts`、`esign-maintenance.processor.spec.ts`（同目錄），先寫群組租約、舊單 log 轉批次、部分失敗、SMTP 後落庫失敗、stale processing、併發與 supersede 測試。
-- [ ] T027 [US3] 在 `server/src/infrastructure/mail/invitation-mail-sender.port.ts` 加 `sendInternalGroup`，輸入最多 50 個不同 BCC 地址、kind、文件資訊及可信固定 Portal URL，回逐地址結果；外部 send／sendOtp 保持單人契約，內部無 invitationToken。
-- [ ] T028 [US3] 修改 `server/src/infrastructure/mail/invitation-mail-content.ts`、`smtp-invitation-mail-sender.service.ts`、`fake-invitation-mail-sender.service.ts` 及 `mail-delivery-outcome.ts`：一次 sendMail 多 BCC，To/CC 不放員工，MIME 不保留 BCC；解析受理與拒收，不以 Promise resolve 推定全成功，不記原始收件名單／憑證至 log。
+- [x] T027 [US3] 在 `server/src/infrastructure/mail/invitation-mail-sender.port.ts` 加 `sendInternalGroup`，輸入最多 50 個不同 BCC 地址、kind、文件資訊及可信固定 Portal URL，回逐地址結果；外部 send／sendOtp 保持單人契約，內部無 invitationToken。
+- [x] T028 [US3] 修改 `server/src/infrastructure/mail/invitation-mail-content.ts`、`smtp-invitation-mail-sender.service.ts`、`fake-invitation-mail-sender.service.ts` 及 `mail-delivery-outcome.ts`：一次 sendMail 多 BCC，To/CC 不放員工，MIME 不保留 BCC；解析受理與拒收，不以 Promise resolve 推定全成功，不記原始收件名單／憑證至 log。
 - [ ] T029 [US3] 修改 `server/src/features/esign/services/esign-initiation.service.ts` 與 `esign-document-validation.service.ts`：內部「`email` 可以 NULL」，「`signerType=user` 必須有可信本機 `userId` 與員編快照」；缺信箱保留全部指派，外部仍需有效 Email，HR 故障不能當空值，既有快照不改寫。
 - [ ] T030 [US3] 修改 `server/src/features/esign/services/esign-initiation.service.ts` 的 token／通知建立：內部新 `invitationTokenSha256/invitationTokenCiphertext/invitationExpiresAt`「保持 NULL」，可寄者 pending、無有效地址「`skipped`，reasonCode 使用既有 `RECIPIENT_UNAVAILABLE`」，不入寄信佇列；保留逐人 log，不新增 schema。
 - [ ] T031 [US3] 修改 `server/src/features/esign/services/esign-reopening.service.ts`、`esign-reminder.service.ts`、`esign-reminder-policy.ts`，內部期間不依賴 invitation token；補簽同交易 supersede 舊通知、建立新批次，無 Email 仍可補簽，保留台北每日催簽限制及原有限重試，外部 token 世代照舊。
@@ -128,3 +128,7 @@ T001–T002 → T003–T004
 合計 47 項。最小示範先完成 US1（登入直達列表），再以 US2 展示本人簽署；正式 CR 交付必須包含 US3 BCC 與 US4 舊入口隔離，不能以示範完成取代安全切換。無 Email 的人資通知方式、Spec 014 實作與跨環境同步不在 tasks 範圍。
 
 每項完成後才勾選並追加驗證證據；若依賴環境無法驗收則保留未完成與原因。本 tasks 不建立 GitHub Issues，不代表已修改任何應用程式。
+
+## 邀請群寄整合進度（2026-10-28）
+
+Ticket 06 已整合（`e3ca0fa`／實作 `495abb0`），T003、T027、T028 完成。T032–T035 的新發起邀請、群組租約、首次／維護／舊工作分流及逐地址投遞恢復已通過單元與真實 MySQL／SMTP 驗證；這些共用任務保留未勾選，待 ticket 07 補齊催簽與補簽部分再結案。完整驗證證據見 ticket 06。

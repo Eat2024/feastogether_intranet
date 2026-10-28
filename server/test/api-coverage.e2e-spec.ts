@@ -116,6 +116,17 @@ describe('runtime API coverage', () => {
       .expect(404);
   });
 
+  it('匯出歷程改由 history/export 提供，舊路由不再提供存取', async () => {
+    await request(ctx.server).get('/api/esign/exports').expect(404);
+    const response = await request(ctx.server)
+      .get('/api/esign/history/export?type=zip')
+      .expect(401);
+    expect(response.body).toMatchObject({
+      success: false,
+      error: { code: 'UNAUTHORIZED' },
+    });
+  });
+
   it('公開簽章驗證已註冊、不需 session，無效 token 回統一 404 envelope', async () => {
     const response = await getSignatureVerification(ctx.server, 'A'.repeat(22))
       .expect(404)

@@ -2,7 +2,7 @@
 
 **Input**: [spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、[contracts/export-history-http-api.md](contracts/export-history-http-api.md)、[quickstart.md](quickstart.md)。
 
-**Status**: 6／30。
+**Status**: 13／30。
 
 **Base**: 以 016（PR #34）為基礎；PR #33 須在 PR #34 之後合併。
 
@@ -49,7 +49,7 @@
 
 **獨立驗收**：以合成資料建立三類型紀錄，經 HTTP 驗證分頁、排序、總數、匯出人與授權。
 
-- [ ] T007 [US1] 新增 `server/test/esign-export-history.e2e-spec.ts`，並加進 `server/test/jest-e2e.json` 的 `testRegex`。查詢案例：
+- [x] T007 [US1] 新增 `server/test/esign-export-history.e2e-spec.ts`，並加進 `server/test/jest-e2e.json` 的 `testRegex`。查詢案例：
   - 參數錯誤回 400：缺 `type`、`type=sheet`、`page=0`、`pageSize=101`、`documentId` 格式錯誤。
   - 23 筆 `excel` 以 `pageSize=10` 翻頁得 10／10／3，依 `created_at`、`id` 由新到舊，不漏不重。
   - 帶與不帶 `documentId` 時，`total` 與 `typeTotals` 都正確。
@@ -57,16 +57,16 @@
   - `exportedBy` 三種形狀都正確：員工、本人下載的內部簽署人、外部簽署人。
   - `zip` 項目包含既有工作欄位、只計 `snapshot_json IS NOT NULL` 的工作，且不含 `requesterName`。
   - Excel／PDF 合成紀錄以 repository 直接寫入，不依賴後續故事。（依賴 T006）
-- [ ] T008 [P] [US1] 在 `server/test/esign-document-delivery-security.e2e-spec.ts` 把讀取清單中的 `/api/esign/exports` 改為 `/api/esign/history/export?type=zip`；在 `server/test/api-coverage.e2e-spec.ts` 加入 `GET /api/esign/exports` 回 404、新路由未登入回 401。（依賴 T006）
-- [ ] T009 [P] [US1] 新增 `server/src/features/esign/dto/export-history.dto.ts` 的 `ExportHistoryQueryDto`：`type` 限 `excel|pdf|zip`、`page` 預設 1、`pageSize` 為 1–100 且預設 10、`documentId` 沿用既有正整數字串規則。（依賴 T006）
-- [ ] T010 [US1] 在 `server/src/features/esign/repositories/export-job.repository.ts` 新增頁碼列表（join 文件、匯出員工、簽署人）與依類型分組計數；`signed_copies_zip` 加上 `snapshot_json IS NOT NULL`；移除舊的 cursor `history()`。（依賴 T009）
-- [ ] T011 [US1] 新增 `server/src/features/esign/services/esign-export-history.service.ts`：
+- [x] T008 [P] [US1] 在 `server/test/esign-document-delivery-security.e2e-spec.ts` 把讀取清單中的 `/api/esign/exports` 改為 `/api/esign/history/export?type=zip`；在 `server/test/api-coverage.e2e-spec.ts` 加入 `GET /api/esign/exports` 回 404、新路由未登入回 401。（依賴 T006）
+- [x] T009 [P] [US1] 新增 `server/src/features/esign/dto/export-history.dto.ts` 的 `ExportHistoryQueryDto`：`type` 限 `excel|pdf|zip`、`page` 預設 1、`pageSize` 為 1–100 且預設 10、`documentId` 沿用既有正整數字串規則。（依賴 T006）
+- [x] T010 [US1] 在 `server/src/features/esign/repositories/export-job.repository.ts` 新增頁碼列表（join 文件、匯出員工、簽署人）與依類型分組計數；`signed_copies_zip` 加上 `snapshot_json IS NOT NULL`；移除舊的 cursor `history()`。（依賴 T009）
+- [x] T011 [US1] 新增 `server/src/features/esign/services/esign-export-history.service.ts`：
   - API `type` 與 DB `export_type` 的對應只放這裡。
   - 列表 item：共同欄位、`exportedBy` 推導、`excel` 的 `conditions`、`pdf` 的 `signerPublicId`、`zip` 沿用 `EsignExportService.view()`。
   - 回傳 `total` 與 `typeTotals`。
   - 移除 `server/src/features/esign/services/esign-export.service.ts` 的 `history()`。（依賴 T010）
-- [ ] T012 [US1] 新增 `server/src/features/esign/controllers/export-history.controller.ts`（`@Controller('esign/history/export')`）的 GET 與 Swagger 說明；在 `server/src/features/esign/esign.module.ts` 註冊；移除 `server/src/features/esign/controllers/exports.controller.ts` 的 `@Get('exports')`。（依賴 T011）
-- [ ] T013 [US1] 執行 `esign-export-history`、`esign-export`、`esign-document-delivery-security`、`api-coverage` e2e，T007、T008 轉綠，ZIP 既有案例不變。（依賴 T012）
+- [x] T012 [US1] 新增 `server/src/features/esign/controllers/export-history.controller.ts`（`@Controller('esign/history/export')`）的 GET 與 Swagger 說明；在 `server/src/features/esign/esign.module.ts` 註冊；移除 `server/src/features/esign/controllers/exports.controller.ts` 的 `@Get('exports')`。（依賴 T011）
+- [x] T013 [US1] 執行 `esign-export-history`、`esign-export`、`esign-document-delivery-security`、`api-coverage` e2e，T007、T008 轉綠，ZIP 既有案例不變。（依賴 T012）
 
 **Checkpoint**：歷史查詢可用；`GET /api/esign/exports` 已移除。
 

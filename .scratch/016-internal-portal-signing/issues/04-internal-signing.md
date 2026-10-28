@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 共用簽署表單。
 
-**Status:** claimed
+**Status:** resolved
 
 **Tasks coverage:** T014–T016；T012/T013/T018/T019/T021/T023 的開啟、原檔、簽署、權限、狀態及重送部分。
 
@@ -29,3 +29,8 @@
 
 - 實作 commit `f239ed4`；合併整合分支 commit `9b017b2` 保留兩個新增 e2e suite。合併 hooks 為 106 suites／973 tests 通過，root lint 無錯誤。
 - 重驗 internal-portal-signing 與 security-core-esign-flow 通過；esign-document-delivery-security 的 3 個舊案例在 `signInternal → external → decrypt(null)` 失敗，因 ticket06 已取消內部邀請 token。這是待 ticket09 遷移的舊內部 OTP fixture，未刪除安全覆蓋或恢復舊授權；整體安全套件尚未全綠。
+
+### 整合紀錄
+
+- 實作 `f239ed4` 已隨 `impl/016-04` 的 `69ee7cc` fast-forward 整合至 `feat/016-internal-portal-signing`；本人閱讀／簽署的局部 API、安全與桌面／窄螢幕驗收完成。
+- Ticket 05 接續拒簽與副本；因 06 取消內部 token 而失效的舊安全 fixture 保留給 09 遷移，不降低授權或刪除覆蓋。

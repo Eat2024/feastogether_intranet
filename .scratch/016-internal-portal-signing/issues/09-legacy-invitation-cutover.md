@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 拒簽與本人副本、07 催簽與補簽。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Tasks coverage:** T004/T038–T043；歷史佇列分流由 06／07 提供，本票整合驗證。
 

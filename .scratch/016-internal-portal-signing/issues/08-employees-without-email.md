@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 員工簽署、07 催簽與補簽。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Tasks coverage:** T025/T029/T036；T030/T031/T037 的缺信箱、跳過紀錄與容量部分。
 

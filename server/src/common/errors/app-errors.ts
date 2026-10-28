@@ -261,6 +261,11 @@ export const AppErrors = {
     '外部簽署存取已失效',
     HttpStatus.UNAUTHORIZED,
   ],
+  ESIGN_INTERNAL_LOGIN_REQUIRED: [
+    AppErrorCode.ESIGN_INTERNAL_LOGIN_REQUIRED,
+    '請登入入口網，至我的電子簽完成操作',
+    HttpStatus.FORBIDDEN,
+  ],
   ESIGN_EMAIL_OTP_REQUIRED: [
     AppErrorCode.ESIGN_EMAIL_OTP_REQUIRED,
     '請從邀請信開啟文件並完成驗證碼驗證',

@@ -80,6 +80,7 @@ describe('EsignSigningService', () => {
     );
     return {
       service,
+      document,
       signer,
       signers,
       records,
@@ -115,6 +116,51 @@ describe('EsignSigningService', () => {
     signerId: 8,
   };
 
+  it.each([false, true])(
+    '舊內部 external principal 新簽或重送（%s）皆要求 Portal',
+    async (isRepeated) => {
+      const { service, signer, access, storage } = setup(
+        isRepeated ? { signerId: 8, signedAtUtc: signedAt } : undefined,
+      );
+      signer.signerType = 'user';
+      useRealExternalPolicy(access);
+      await expect(
+        service.sign(signerPublicId, externalPrincipal, submission, {}),
+      ).rejects.toMatchObject({
+        status: 403,
+        code: 'ESIGN_INTERNAL_LOGIN_REQUIRED',
+      });
+      expect(storage.store).not.toHaveBeenCalled();
+    },
+  );
+
+  it('鎖內同 request 簽章重送仍禁止內部指派使用 external principal', async () => {
+    const record = { signerId: 8, signedAtUtc: signedAt };
+    const { service, document, signer, signers, records, access, storage } =
+      setup(record);
+    Object.assign(document, {
+      status: 'active',
+      signStartAt: new Date(Date.now() - 60000),
+      signEndAt: new Date(Date.now() + 60000),
+    });
+    Object.assign(signer, {
+      status: 'pending',
+      invitationExpiresAt: new Date(Date.now() + 60000),
+    });
+    records.findByAuthenticationEventId.mockResolvedValueOnce(undefined);
+    signers.findByPublicIdForUpdate.mockResolvedValue({
+      ...signer,
+      signerType: 'user',
+    });
+    useRealExternalPolicy(access);
+    await expect(
+      service.sign(signerPublicId, externalPrincipal, submission, {}),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'ESIGN_INTERNAL_LOGIN_REQUIRED',
+    });
+    expect(storage.store).not.toHaveBeenCalled();
+  });
   it('補簽邀請世代改變後拒絕舊 session 簽署', async () => {
     const { service, signer } = setup();
     signer.invitationTokenSha256 = 'b'.repeat(64);

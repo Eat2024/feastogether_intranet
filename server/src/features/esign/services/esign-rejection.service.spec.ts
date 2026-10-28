@@ -12,7 +12,7 @@ import { EsignJobProducerService } from './esign-job-producer.service';
 import { EsignRejectionService } from './esign-rejection.service';
 
 const requestId = 'd94d7587-6fb7-4c06-8ebf-79a608ea23e3';
-function fixture() {
+function fixture(lockAsInternal = false) {
   const document = Object.assign(new EsignDocument(), {
     id: 4,
     status: 'active',
@@ -63,7 +63,10 @@ function fixture() {
   const service = new EsignRejectionService(
     {
       getManager: () => manager,
-      transaction: async (run: (m: EntityManager) => unknown) => run(manager),
+      transaction: async (run: (m: EntityManager) => unknown) => {
+        if (lockAsInternal) signer.signerType = 'user';
+        return run(manager);
+      },
     } as never,
     documents,
     new SignerRepository(),
@@ -79,6 +82,34 @@ function fixture() {
   return { service, document, signer, events };
 }
 describe('本人拒簽', () => {
+  it.each([false, true])(
+    '舊內部 external 拒簽重送在鎖外與鎖內都要求 Portal（鎖內=%s）',
+    async (locked) => {
+      const { service, signer, events } = fixture(locked);
+      Object.assign(signer, {
+        signerType: locked ? 'email' : 'user',
+        status: 'rejected',
+        rejectRequestId: requestId,
+        rejectReason: '',
+        rejectedAt: new Date(),
+      });
+      await expect(
+        service.reject(
+          signer.publicId,
+          {
+            kind: 'external',
+            signerId: 8,
+            invitationGenerationSha256: 'a'.repeat(64),
+          },
+          { requestId },
+        ),
+      ).rejects.toMatchObject({
+        status: 403,
+        code: 'ESIGN_INTERNAL_LOGIN_REQUIRED',
+      });
+      expect(events).toHaveLength(0);
+    },
+  );
   it.each(['pending', 'rejected'])(
     '本人登入可提交或重送 %s 拒簽，跨人仍不可操作',
     async (status) => {

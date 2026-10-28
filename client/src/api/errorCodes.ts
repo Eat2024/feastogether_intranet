@@ -23,6 +23,7 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   // --- 電子簽 ---
   ESIGN_INVALID_PDF: 'PDF 格式、大小或頁數不符合規格',
   ESIGN_RESOURCE_NOT_FOUND: '找不到此文件，或您沒有權限存取',
+  ESIGN_INTERNAL_LOGIN_REQUIRED: '請登入入口網，至我的電子簽完成操作',
   ESIGN_EXTERNAL_UNAUTHORIZED: '簽署連結無效或已過期',
   ESIGN_STATE_CONFLICT: '文件目前的狀態不允許此操作，請重新整理後再試',
   ESIGN_INTEGRITY_FAILED: '文件驗證失敗，請重新整理後再試',

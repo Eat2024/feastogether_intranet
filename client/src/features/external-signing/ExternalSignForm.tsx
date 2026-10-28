@@ -3,7 +3,7 @@
 import { rejectExternalSigningTask, submitExternalSignatures } from '@/api/requests';
 import type { ExternalRejectionResult, ExternalSignatureResult, ExternalSigningTask } from '@/api/types';
 import SigningForm from '@/features/my-signature/sign/SigningForm';
-import { isExternalAccessLost } from '@/lib/apiError';
+import { getInternalPortalLoginUrl, isExternalAccessLost } from '@/lib/apiError';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 type ExternalSignFormProps = {
@@ -12,10 +12,11 @@ type ExternalSignFormProps = {
   onSigned: (result: ExternalSignatureResult) => void;
   onRejected: (result: ExternalRejectionResult) => void;
   onAccessLost: () => void;
+  onInternalLoginRequired: (url: string) => void;
 };
 
 /** 外部容器保留 cookie API、簽署人核對與邀請失效處理。 */
-export default function ExternalSignForm({ task, pdf, onSigned, onRejected, onAccessLost }: ExternalSignFormProps) {
+export default function ExternalSignForm({ task, pdf, onSigned, onRejected, onAccessLost, onInternalLoginRequired }: ExternalSignFormProps) {
   return (
     <SigningForm
       task={task}
@@ -29,7 +30,9 @@ export default function ExternalSignForm({ task, pdf, onSigned, onRejected, onAc
         onRejected(result);
       }}
       onError={(error) => {
-        if (isExternalAccessLost(error)) onAccessLost();
+        const portalUrl = getInternalPortalLoginUrl(error);
+        if (portalUrl) onInternalLoginRequired(portalUrl);
+        else if (isExternalAccessLost(error)) onAccessLost();
       }}
     />
   );

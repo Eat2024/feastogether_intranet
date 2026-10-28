@@ -43,3 +43,15 @@ export interface SigningTaskSignatureResult {
   verificationUrl: string | null;
   completion: EsignSignerView['completion'];
 }
+
+export interface RejectSigningTaskBody {
+  requestId: string;
+  reason?: string;
+}
+
+export interface SigningTaskRejectionResult {
+  signerPublicId: string;
+  status: 'rejected';
+  rejectedAt: string;
+  reason: string;
+}

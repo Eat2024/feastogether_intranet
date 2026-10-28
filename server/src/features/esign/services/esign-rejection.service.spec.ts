@@ -80,13 +80,14 @@ function fixture() {
 }
 describe('本人拒簽', () => {
   it.each(['pending', 'rejected'])(
-    '一般登入不可提交或重送 %s 拒簽',
+    '本人登入可提交或重送 %s 拒簽，跨人仍不可操作',
     async (status) => {
       const { service, signer } = fixture();
       Object.assign(signer, {
         status,
         rejectRequestId: requestId,
         rejectReason: '',
+        rejectedAt: new Date(),
       });
       await expect(
         service.reject(
@@ -94,9 +95,9 @@ describe('本人拒簽', () => {
           { kind: 'internal', userId: 20 },
           { requestId },
         ),
-      ).rejects.toMatchObject({
-        status: 403,
-        code: 'ESIGN_EMAIL_OTP_REQUIRED',
+      ).resolves.toMatchObject({
+        status: 'rejected',
+        repeated: status === 'rejected',
       });
       await expect(
         service.reject(
@@ -111,11 +112,7 @@ describe('本人拒簽', () => {
     const { service, signer } = fixture();
     const first = await service.reject(
       signer.publicId,
-      {
-        kind: 'external',
-        signerId: 8,
-        invitationGenerationSha256: 'a'.repeat(64),
-      },
+      { kind: 'internal', userId: 20 },
       { requestId, reason: ' 不同意 ' },
     );
     expect(first).toMatchObject({
@@ -126,22 +123,14 @@ describe('本人拒簽', () => {
     expect(
       await service.reject(
         signer.publicId,
-        {
-          kind: 'external',
-          signerId: 8,
-          invitationGenerationSha256: 'a'.repeat(64),
-        },
+        { kind: 'internal', userId: 20 },
         { requestId, reason: '不同意' },
       ),
     ).toEqual({ ...first, repeated: true });
     await expect(
       service.reject(
         signer.publicId,
-        {
-          kind: 'external',
-          signerId: 8,
-          invitationGenerationSha256: 'a'.repeat(64),
-        },
+        { kind: 'internal', userId: 20 },
         { requestId, reason: '改寫' },
       ),
     ).rejects.toThrow();

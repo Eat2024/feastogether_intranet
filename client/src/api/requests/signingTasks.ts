@@ -1,6 +1,6 @@
 import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
-import type { EsignSigningTask, GetSigningTasksParams, SubmitSigningTaskBody, SigningTaskSignatureResult } from '@/api/types';
+import type { EsignSigningTask, GetSigningTasksParams, SubmitSigningTaskBody, SigningTaskSignatureResult, RejectSigningTaskBody, SigningTaskRejectionResult } from '@/api/types';
 
 /**
  * @name 列出本人的簽署任務
@@ -27,3 +27,11 @@ export const submitSigningTaskSignatures = async (
 
 export const signingTaskSourceFileUrl = (signerPublicId: string) =>
   `${api.defaults.baseURL}/${endpoints.ESIGN_SIGNING_TASK_SOURCE_FILE(signerPublicId)}`;
+
+export const rejectSigningTask = async (signerPublicId: string, body: RejectSigningTaskBody): Promise<SigningTaskRejectionResult> => {
+  const res = await api<SigningTaskRejectionResult>({ method: 'POST', url: endpoints.ESIGN_SIGNING_TASK_REJECTION(signerPublicId), data: body });
+  return res.data;
+};
+
+export const signingTaskCompletedFileUrl = (signerPublicId: string) =>
+  `${api.defaults.baseURL}/${endpoints.ESIGN_SIGNING_TASK_COMPLETED_FILE(signerPublicId)}`;

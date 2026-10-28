@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 員工閱讀與簽署。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Tasks coverage:** T017/T022；T012/T013/T018/T019/T021/T023 的拒簽、副本與完成頁部分。
 

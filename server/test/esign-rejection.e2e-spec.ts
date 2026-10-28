@@ -28,7 +28,7 @@ import {
 } from './security-e2e.helper';
 import {
   openExternalSession,
-  openInternalEmailSession,
+  openInternalEmployeeSession,
 } from './external-session.helper';
 
 function launchJwt(empid: string) {
@@ -134,7 +134,7 @@ describe('拒簽 HTTP 與結案', () => {
       }
     if (ctx) await closeSecurityE2eApp(ctx);
   });
-  const emailCookies = new Map<string, string>();
+  const employeeCookies = new Map<string, string>();
   async function create(signers: object[], allowReject = true) {
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -176,19 +176,21 @@ describe('拒簽 HTTP 與結案', () => {
         })
         .expect(201),
     );
-    for (const signer of result.signers)
-      emailCookies.set(
+    for (const [index, signer] of result.signers.entries()) {
+      if (!('userId' in signers[index])) continue;
+      employeeCookies.set(
         signer.publicId,
-        await openInternalEmailSession(ctx, signer.publicId),
+        await openInternalEmployeeSession(ctx, signer.publicId),
       );
+    }
     return result;
   }
   const reject = (id: string, body: object) =>
     request(ctx.server)
-      .post('/api/external-signing-task/rejection')
-      .set('Cookie', emailCookies.get(id)!)
+      .post(`/api/esign/signing-tasks/${id}/rejection`)
+      .set('Cookie', employeeCookies.get(id)!)
       .set('Origin', 'http://localhost:3000')
-      .send({ ...body, signerPublicId: id });
+      .send(body);
   it('內部拒簽重送不改證據、本人可讀但不可讀來源，全拒可結案', async () => {
     const doc = await create([{ type: 'user', userId }]);
     const id = doc.signers[0].publicId;
@@ -220,10 +222,10 @@ describe('拒簽 HTTP 與結案', () => {
     await request(ctx.server)
       .get(`/api/esign/signing-tasks/${id}/source-file`)
       .set('Cookie', cookie)
-      .expect(403);
+      .expect(409);
     await request(ctx.server)
       .get('/api/external-signing-task/source-file')
-      .set('Cookie', emailCookies.get(id)!)
+      .set('Cookie', employeeCookies.get(id)!)
       .expect(401);
     const worker = await NestFactory.createApplicationContext(WorkerModule, {
       logger: false,
@@ -406,13 +408,12 @@ describe('拒簽 HTTP 與結案', () => {
       fields: Array<{ id: string; type: string }>;
     }>(
       await request(ctx.server)
-        .post('/api/external-signing-task')
-        .set('Cookie', emailCookies.get(id)!)
+        .post(`/api/esign/signing-tasks/${id}`)
+        .set('Cookie', employeeCookies.get(id)!)
         .set('Origin', 'http://localhost:3000')
-        .expect(200),
+        .expect(201),
     );
     return {
-      signerPublicId: id,
       requestId: randomUUID(),
       consentVersion: task.consent.version,
       accepted: true,
@@ -431,13 +432,13 @@ describe('拒簽 HTTP 與結案', () => {
     const results = await Promise.all([
       reject(id, { requestId: randomUUID() }),
       request(ctx.server)
-        .post('/api/external-signing-task/signatures')
-        .set('Cookie', emailCookies.get(id)!)
+        .post(`/api/esign/signing-tasks/${id}/signatures`)
+        .set('Cookie', employeeCookies.get(id)!)
         .set('Origin', 'http://localhost:3000')
         .send(input),
     ]);
     expect(results.filter((r) => r.status === 201)).toHaveLength(1);
-    expect(results.some((r) => [401, 409].includes(r.status))).toBe(true);
+    expect(results.filter((r) => r.status === 409)).toHaveLength(1);
     const final = apiData<Detail>(
       await request(ctx.server)
         .get(`/api/esign/documents/${doc.id}`)
@@ -456,8 +457,8 @@ describe('拒簽 HTTP 與結案', () => {
     const input = await signatureInput(id);
     const signed = apiData<{ verificationUrl: string }>(
       await request(ctx.server)
-        .post('/api/external-signing-task/signatures')
-        .set('Cookie', emailCookies.get(id)!)
+        .post(`/api/esign/signing-tasks/${id}/signatures`)
+        .set('Cookie', employeeCookies.get(id)!)
         .set('Origin', 'http://localhost:3000')
         .send(input)
         .expect(201),

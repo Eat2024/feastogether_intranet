@@ -5,7 +5,7 @@ import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
 import { apiData } from './api-response.helper';
-import { openInternalEmailSession } from './external-session.helper';
+import { openInternalEmployeeSession } from './external-session.helper';
 import {
   createSecurityE2eApp,
   closeSecurityE2eApp,
@@ -255,29 +255,31 @@ describe('Spec009 管理備註與歷程 API', () => {
       .set('Origin', origin)
       .send({ note: '僅管理可見' })
       .expect(200);
-    const emailCookie = await openInternalEmailSession(ctx, signer.publicId);
+    const employeeCookie = await openInternalEmployeeSession(
+      ctx,
+      signer.publicId,
+    );
     await request(ctx.server)
       .post(`/api/esign/signing-tasks/${signer.publicId}`)
-      .set('Cookie', other)
+      .set('Cookie', cookie)
       .set('Origin', origin)
       .send({})
-      .expect(403);
+      .expect(404);
     const task = apiData<{ signer: Record<string, unknown> }>(
       await request(ctx.server)
-        .post('/api/external-signing-task')
-        .set('Cookie', emailCookie)
+        .post(`/api/esign/signing-tasks/${signer.publicId}`)
+        .set('Cookie', employeeCookie)
         .set('Origin', origin)
         .send({})
-        .expect(200),
+        .expect(201),
     );
     expect(task.signer).not.toHaveProperty('note');
     const result = apiData<{ rejectedAt: string }>(
       await request(ctx.server)
-        .post('/api/external-signing-task/rejection')
-        .set('Cookie', emailCookie)
+        .post(`/api/esign/signing-tasks/${signer.publicId}/rejection`)
+        .set('Cookie', employeeCookie)
         .set('Origin', origin)
         .send({
-          signerPublicId: signer.publicId,
           requestId: randomUUID(),
           reason: '不接受',
         })

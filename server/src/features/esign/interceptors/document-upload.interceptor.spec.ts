@@ -23,6 +23,7 @@ import { EsignFieldService } from '../services/esign-field.service';
 import { EsignInitiationService } from '../services/esign-initiation.service';
 import { EsignStoppageService } from '../services/esign-stoppage.service';
 import { EsignCompletionAccessService } from '../services/esign-completion-access.service';
+import { EsignExportHistoryService } from '../services/esign-export-history.service';
 
 type Part = { name: string; value: string; filename?: string };
 function multipart(parts: Part[]) {
@@ -64,6 +65,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
           EsignStoppageService,
           EsignCompletionAccessService,
           EsignEmployeeEmailService,
+          EsignExportHistoryService,
         ].map((provide) => ({ provide, useValue: {} })),
       ],
     }).compile();

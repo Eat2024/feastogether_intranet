@@ -398,7 +398,8 @@ describe('拒簽 HTTP 與結案', () => {
       .set('Cookie', external)
       .expect(401);
     await request(ctx.server)
-      .get('/api/external-signing-task/completed-file')
+      .post('/api/external-signing-task/completed-file/downloads')
+      .set('Origin', 'http://localhost:3000')
       .set('Cookie', external)
       .expect(401);
   });

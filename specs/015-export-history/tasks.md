@@ -2,7 +2,7 @@
 
 **Input**: [spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、[contracts/export-history-http-api.md](contracts/export-history-http-api.md)、[quickstart.md](quickstart.md)。
 
-**Status**: 13／30。
+**Status**: 27／30。
 
 **Base**: 以 016（PR #34）為基礎；PR #33 須在 PR #34 之後合併。
 
@@ -95,20 +95,20 @@
 
 **獨立驗收**：建立人、內部簽署人本人、外部簽署人本人各下載一次，歷史各多一筆且匯出人正確；舊 GET 回 404。
 
-- [ ] T018 [US3] 在 `server/test/esign-export-history.e2e-spec.ts` 加入下載紀錄案例：
+- [x] T018 [US3] 在 `server/test/esign-export-history.e2e-spec.ts` 加入下載紀錄案例：
   - 建立人呼叫 `POST …/signers/{signerPublicId}/completed-file/downloads`：PDF bytes 與標頭和原本 GET 相同，新增紀錄，匯出人為建立人、範圍為簽署人標籤。
   - 外部簽署人以存取 cookie 呼叫 `POST /api/external-signing-task/completed-file/downloads`：紀錄的 `created_by_user_id` 為 NULL，匯出人為「姓名＋Email」。
   - 內部員工以員工 session 呼叫 `POST /api/esign/signing-tasks/{signerPublicId}/completed-file/downloads`：匯出人為該員工（姓名＋員工編號）；非本人或未簽回原本的錯誤。
   - 副本未完成或權限不符：沿用原本錯誤，且不新增紀錄；缺 Origin 被拒。
   - 讓紀錄寫入失敗（例如以 spy 讓寫入拋錯）：回 500，回應不含 PDF。（依賴 T013）
-- [ ] T019 [P] [US3] 把既有 e2e 的三條 GET 下載改為對應的 POST（帶 Origin）：`server/test/core-esign-flow.e2e-spec.ts`、`server/test/internal-email-copy.e2e-spec.ts`、`server/test/esign-rejection.e2e-spec.ts`、`server/test/esign-document-delivery-security.e2e-spec.ts`、`server/test/security-core-esign-flow.e2e-spec.ts`。並在 `server/test/api-coverage.e2e-spec.ts` 加入：舊的三條 GET 回 404，新 POST 未登入回 401。（依賴 T013）
-- [ ] T020 [US3] 在 `EsignExportHistoryService` 新增 `recordPdf(document, signer, exporterUserId | null)`：簽署人標籤依 data-model，超過 255 字時截斷；寫入 `pdf` 紀錄。（依賴 T018）
-- [ ] T021 [US3] 在 `server/src/features/esign/controllers/documents.controller.ts` 以 `POST :documentId/signers/:signerPublicId/completed-file/downloads`（`OriginGuard`）取代原本的 GET。讓 `EsignCompletionAccessService.creatorFile` 一併回傳記錄需要的文件與簽署人；先取得檔案，再記錄，最後送出。更新 Swagger。（依賴 T020）
-- [ ] T022 [US3] 本人下載兩條路由：
+- [x] T019 [P] [US3] 把既有 e2e 的三條 GET 下載改為對應的 POST（帶 Origin）：`server/test/core-esign-flow.e2e-spec.ts`、`server/test/internal-email-copy.e2e-spec.ts`、`server/test/esign-rejection.e2e-spec.ts`、`server/test/esign-document-delivery-security.e2e-spec.ts`、`server/test/security-core-esign-flow.e2e-spec.ts`。並在 `server/test/api-coverage.e2e-spec.ts` 加入：舊的三條 GET 回 404，新 POST 未登入回 401。（依賴 T013）
+- [x] T020 [US3] 在 `EsignExportHistoryService` 新增 `recordPdf(document, signer, exporterUserId | null)`：簽署人標籤依 data-model，超過 255 字時截斷；寫入 `pdf` 紀錄。（依賴 T018）
+- [x] T021 [US3] 在 `server/src/features/esign/controllers/documents.controller.ts` 以 `POST :documentId/signers/:signerPublicId/completed-file/downloads`（`OriginGuard`）取代原本的 GET。讓 `EsignCompletionAccessService.creatorFile` 一併回傳記錄需要的文件與簽署人；先取得檔案，再記錄，最後送出。更新 Swagger。（依賴 T020）
+- [x] T022 [US3] 本人下載兩條路由：
   - `server/src/features/esign/controllers/signing-tasks.controller.ts` 以 `POST :signerPublicId/completed-file/downloads`（`OriginGuard`）取代原本的 GET；讓 `EsignCompletionAccessService.signerFile` 一併回傳文件與簽署人，匯出人為目前員工。
   - `server/src/features/esign/controllers/external-signature.controller.ts` 以 `POST external-signing-task/completed-file/downloads`（`OriginGuard`）取代原本的 GET；讓 `ExternalAccessService.completedFile` 一併回傳文件與簽署人，匯出人為 NULL。
   - 更新兩邊的 Swagger 說明。（依賴 T020）
-- [ ] T023 [US3] 執行 T018、T019 涉及的 e2e 全部轉綠。（依賴 T021、T022）
+- [x] T023 [US3] 執行 T018、T019 涉及的 e2e 全部轉綠。（依賴 T021、T022）
 
 ## Phase 6: US4 — 從紀錄重新下載（P2）
 
@@ -116,10 +116,10 @@
 
 **獨立驗收**：以非建立人身分對 PDF 紀錄重新下載得到副本且多一筆紀錄；對 Excel 紀錄取得窄資料且不新增紀錄。
 
-- [ ] T024 [US4] 在 `server/test/esign-export-history.e2e-spec.ts` 加入 PDF 重新下載案例：
+- [x] T024 [US4] 在 `server/test/esign-export-history.e2e-spec.ts` 加入 PDF 重新下載案例：
   - 非建立人對 `pdf` 紀錄 `POST /api/esign/history/export/{id}/downloads`：取得 PDF，新增一筆紀錄，匯出人為目前使用者，文件、簽署人與範圍沿用原紀錄。
   - `excel`／`zip`／不存在的紀錄回 404；未登入與外部 cookie 回 401；缺 Origin 被拒。（依賴 T023）
-- [ ] T025 [US4] 在 `EsignExportHistoryService` 與 `export-history.controller.ts` 新增 `POST :id/downloads`（`OriginGuard`）：讀紀錄 → `personalCopy` → `recordPdf`（匯出人為目前使用者）→ 送出，加上 Swagger；T024 轉綠。（依賴 T024）
+- [x] T025 [US4] 在 `EsignExportHistoryService` 與 `export-history.controller.ts` 新增 `POST :id/downloads`（`OriginGuard`）：讀紀錄 → `personalCopy` → `recordPdf`（匯出人為目前使用者）→ 送出，加上 Swagger；T024 轉綠。（依賴 T024）
 - [x] T026 [US4] 在 `server/test/esign-export-history.e2e-spec.ts` 加入 Excel 重新下載資料案例：
   - 任何員工對 `excel` 紀錄 `GET /api/esign/history/export/{id}/document`：只回 contract 列出的欄位，不含管理備註、通知結果、驗證網址與簽署人 publicId，也不新增紀錄。
   - `pdf`／`zip`／不存在、文件已刪除時回 404。（依賴 T017）

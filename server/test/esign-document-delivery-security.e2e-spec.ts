@@ -361,7 +361,10 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       expect((await read(doc.id)).status).toBe('active');
       const personal = bytes(
         await request(ctx.server)
-          .get(`/api/esign/signing-tasks/${internal.publicId}/completed-file`)
+          .post(
+            `/api/esign/signing-tasks/${internal.publicId}/completed-file/downloads`,
+          )
+          .set('Origin', origin)
           .set('Cookie', internalCookies.get(internal.publicId)!)
           .buffer(true)
           .parse(binary)
@@ -434,7 +437,10 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       expect(
         bytes(
           await request(ctx.server)
-            .get(`/api/esign/signing-tasks/${internal.publicId}/completed-file`)
+            .post(
+              `/api/esign/signing-tasks/${internal.publicId}/completed-file/downloads`,
+            )
+            .set('Origin', origin)
             .set('Cookie', internalCookies.get(internal.publicId)!)
             .buffer(true)
             .parse(binary)

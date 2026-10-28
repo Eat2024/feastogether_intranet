@@ -135,3 +135,34 @@ Swagger：以 build 產物產生文件確認 `GET /api/esign/history/export` 的
 紅燈：成功記錄與三個重新下載資料案例在路由實作前失敗（404）。404、400、Origin 案例在 POST 實作後才補，改以變異檢查確認會失敗：拿掉草稿檢查（1 案轉紅）、拿掉 `ArrayMaxSize`／`IsObject`／`ArrayUnique`／部門鍵長度與 `Min(0)`（7 案轉紅）、拿掉 `OriginGuard`（1 案轉紅）、拿掉重新下載的 `excel` 類型檢查（1 案轉紅）；還原後全綠。
 
 Swagger：以 build 產物產生文件確認 `POST /api/esign/history/export`（201／400／401／403／404，body 為 `CreateExcelExportRecordDto`：`type` enum `excel`、`documentId` pattern、`scope` 1–255、`count` ≥ 0、`conditions` 的 enum、`uniqueItems`、`minItems`／`maxItems` 與部門鍵長度）與 `GET /api/esign/history/export/{id}/document`（200／401／404，回應 `ExcelExportDocumentDto`，簽署人 schema 只有 contract 列出的 10 個欄位）。
+
+### 04 PDF 下載紀錄（T018–T025，2026-10-29）
+
+環境：Node v26.4.0、pnpm 11.9.0。基準為整合分支 `feat/015-export-history`（f08e454），實作分支 `impl/015-04`。
+
+測試隔離：worktree 的 `server/.env.test` 改為 `DB_MYSQL_DB=feastogether_intranet_test1504`、`REDIS_DB=14`。第一次跑 `core-esign-flow` 時 afterAll 因新紀錄的外鍵中斷、留下殘留資料，已刪除這個由本票建立的隔離庫，由 e2e global setup 重建後重跑。
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors（265 個既有 warnings，總數不變） |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e --testRegex '(core-esign-flow\|internal-email-copy\|internal-email-signing\|internal-portal-completion\|esign-rejection\|esign-document-delivery-security\|api-coverage\|esign-export-history\|esign-export)\.e2e-spec\.ts$'` | 9 suites／134 tests 通過（`esign-export-history` 44＝02 的 14＋本票 30；`api-coverage` 35） |
+| `pnpm -C server test:e2e:security`（含 `security-core-esign-flow`） | 11 suites／60 tests 通過 |
+| `pnpm -C server test:e2e`（全套，額外回歸） | 28 suites／286 tests 通過（02 合併後為 28／255，新增本票 31 個） |
+
+驗收矩陣 #13–#19 與 #20（`POST …/{id}/downloads` 部分）已由 `esign-export-history` 的「單人 PDF 下載紀錄」區塊自動化，使用本區塊自建的文件：已簽且副本已產製的內部／外部簽署人（證據與檔案摘要一致，經真實的副本讀取與完整性驗證）、未簽的內部／外部簽署人，以及既有的 `pdf`／`excel`／`zip` 紀錄。
+- 建立人、內部員工本人（員工 session）、外部簽署人本人（存取 cookie）各下載一次：回 200，`Content-Type: application/pdf`、`Content-Disposition: attachment; filename="completed.pdf"; filename*=UTF-8''…`（文件編號＿文件名稱＿簽署人姓名）、`Cache-Control: private, no-store`、`X-Content-Type-Options: nosniff`，內容與存入的副本 bytes 相同；歷史多一筆，匯出人分別為建立人、該員工（姓名＋員工編號）、外部簽署人（姓名＋Email，`employeeNo` 為 null，即 `created_by_user_id` 為 NULL），範圍為簽署人標籤。
+- 簽署人標籤超過 255 字時截斷為 255 字。
+- 任何員工（非建立人、非原匯出人）從 `pdf` 紀錄重新下載：回同一份 PDF，新紀錄的文件、簽署人與範圍沿用原紀錄（以自訂範圍說明驗證不是重新計算），匯出人為目前使用者。
+- 不新增紀錄的錯誤（21 案）：非建立人 404、建立人下載未簽者 409、其他員工以本人路由 404、本人未簽 409、外部簽署人未簽 401、外部存取失效 401、未登入 401（建立人／本人／重新下載）、外部存取 cookie 呼叫本人路由與重新下載 401、沒有外部存取 cookie 401、四條路由缺 Origin 403、重新下載 `excel`／`zip`／不存在／非 UUID 的紀錄 404、副本未產生的 `pdf` 紀錄 409。
+- 四條路由在紀錄寫入失敗時（spy 讓 `ExportJobRepository.save` 拋錯）回 500 JSON，沒有 `Content-Disposition`，也沒有新增紀錄。
+- 舊的三條 GET 回 404，新 POST 未登入回 401（`api-coverage`；`specs/003-core-esign-flow/contracts/openapi.yaml` 的兩條下載改為 POST 子資源，api-coverage 依此驗證 session gate）。
+- 既有 e2e 改用 POST（帶 Origin）：`core-esign-flow`、`internal-email-copy`、`internal-email-signing`、`internal-portal-completion`、`esign-rejection`、`esign-document-delivery-security`、`security-core-esign-flow`、`api-coverage`；`core-esign-flow` 的 afterAll 另外清除本 suite 文件的匯出紀錄（新紀錄以 RESTRICT 外鍵引用文件與簽署人）。
+
+紅燈：建立人、本人、外部、重新下載四個成功案例在路由實作前都因 404 失敗。錯誤、截斷與寫入失敗案例在路由完成後才補，改以變異檢查確認會失敗：建立人路由改為先記錄再檢查副本（1 案轉紅）、拿掉標籤截斷（1 案轉紅）、重新下載改為重新計算範圍（1 案轉紅）；還原後全綠。拿掉重新下載的 `pdf` 類型條件不會轉紅：`excel`／`zip` 紀錄依 DB CHECK 沒有 `signer_id`，仍回 404，類型條件保留為明確檢查。
+
+Swagger：以 build 產物產生文件確認四條 `POST …/downloads` 都是 200 `application/pdf`（binary），重新下載另列 401／403／404／409／500；三條舊 GET 不在文件中；外部下載說明已改為「以 POST 取得 blob 後下載」。
+
+合併整合分支（含 03，c922db8）後重跑：`lint:check` 0 errors（265 warnings）、`build` 通過、`test` 106／964、`test:schema` 2／12、全套 `test:e2e` 28 suites／313 tests（`esign-export-history` 71＝02 的 14＋03 的 27＋04 的 30）、`test:e2e:security` 11／60，全部通過。重新下載改用 03 的 `ExportJobRepository.historyRecord`，移除重複的查詢方法。

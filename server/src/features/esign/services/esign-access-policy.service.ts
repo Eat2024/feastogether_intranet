@@ -76,6 +76,7 @@ export class EsignAccessPolicyService {
     userId: number,
   ): void {
     if (
+      document.status === 'draft' ||
       signer.signerType !== 'user' ||
       signer.userId !== userId ||
       signer.documentId !== document.id ||

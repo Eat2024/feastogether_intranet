@@ -1,6 +1,4 @@
-import { Injectable } from '@nestjs/common';
-import { AppErrors } from '#app/common/errors/app-errors';
-import { AppException } from '#app/common/errors/app.exception';
+import { Inject, Injectable } from '@nestjs/common';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
@@ -10,6 +8,15 @@ import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignViewMapper } from './esign-view.mapper';
+import { EsignAuditService } from './esign-audit.service';
+import { EsignDocumentValidationService } from './esign-document-validation.service';
+import { PdfValidationService } from './pdf-validation.service';
+import { FileObjectRepository } from '../repositories/file-object.repository';
+import {
+  PRIVATE_FILE_STORAGE,
+  type PrivateFileStorage,
+} from '#app/infrastructure/file-storage/private-file-storage.port';
+import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 
 @Injectable()
 export class EsignSigningTaskService {
@@ -23,6 +30,11 @@ export class EsignSigningTaskService {
     private readonly mapper: EsignViewMapper,
     private readonly users: UserRepository,
     private readonly records: SignatureRecordRepository,
+    private readonly validation: EsignDocumentValidationService,
+    private readonly audit: EsignAuditService,
+    private readonly files: FileObjectRepository,
+    private readonly pdf: PdfValidationService,
+    @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
   ) {}
 
   async list(userId: number, status?: 'pending' | 'signed' | 'rejected') {
@@ -62,7 +74,18 @@ export class EsignSigningTaskService {
         throw new Error('unreachable');
       }
       this.access.assertInternalSigner(document, signer, userId);
-      throw new AppException(...AppErrors.ESIGN_EMAIL_OTP_REQUIRED);
+      if (signer.status === 'pending')
+        this.validation.assertActiveSigningWindow(document, new Date());
+      await this.audit.append(
+        {
+          documentId: document.id,
+          signerId: signer.id,
+          eventType: 'document.opened',
+          occurredAt: new Date(),
+        },
+        manager,
+      );
+      return this.toTask(document, signer, manager);
     });
   }
 
@@ -80,7 +103,17 @@ export class EsignSigningTaskService {
       throw new Error('unreachable');
     }
     this.access.assertInternalSigner(document, signer, userId);
-    throw new AppException(...AppErrors.ESIGN_EMAIL_OTP_REQUIRED);
+    this.validation.assertSignerCanReadSource(document, signer, new Date());
+    const source = await this.files.findDocumentFile(
+      document.id,
+      'source_pdf',
+      manager,
+    );
+    if (!source) return null;
+    const bytes = await readPrivateFile(this.storage, source);
+    const metadata = await this.pdf.validatePersistedPdf(bytes);
+    this.validation.assertSourceIntegrity(document, source, metadata.sha256);
+    return { bytes, fileName: source.originalFileName ?? 'document.pdf' };
   }
 
   private async toTask(

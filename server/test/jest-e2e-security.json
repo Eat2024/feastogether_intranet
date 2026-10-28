@@ -2,7 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "(?:^|/)(?:internal-email-copy|internal-email-signing|esign-document-delivery-security|security-headers|security-harness|security-oauth-login|security-webview-session|security-core-esign-flow|security-signature-verification)\\.e2e-spec\\.ts$",
+  "testRegex": "(?:^|/)(?:internal-portal-signing|internal-email-copy|internal-email-signing|esign-document-delivery-security|security-headers|security-harness|security-oauth-login|security-webview-session|security-core-esign-flow|security-signature-verification)\\.e2e-spec\\.ts$",
   "globalSetup": "<rootDir>/test/global-setup.ts",
   "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
   "transform": {

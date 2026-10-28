@@ -76,7 +76,12 @@ export default function TermsStep({
         <Box
           // 內容不足以捲動時，掛載後即視為已讀到底
           ref={(el: HTMLDivElement | null) => {
-            if (el) checkBottom(el);
+            if (!el) return;
+            checkBottom(el);
+            // 字型或嵌入版面改變尺寸後重新判斷，短聲明不可卡在無法捲動的狀態。
+            const observer = new ResizeObserver(() => checkBottom(el));
+            observer.observe(el);
+            return () => observer.disconnect();
           }}
           onScroll={(e) => checkBottom(e.currentTarget)}
           tabIndex={0}

@@ -25,7 +25,7 @@ export type SigningFormProps = {
   /** 已讀取的原始 PDF（頁數與頁面內容） */
   pdf: PDFDocumentProxy;
   onSubmit: (body: SignatureSubmission) => Promise<unknown>;
-  onReject: (body: RejectionSubmission) => Promise<unknown>;
+  onReject?: (body: RejectionSubmission) => Promise<unknown>;
   onError: (error: Error) => void;
 };
 
@@ -127,7 +127,7 @@ function SigningFormContent({ task, pdf, onSubmit, onReject, onError: reportErro
           onFieldClick={openPad}
           onConfirm={() => setConfirmOpen(true)}
           // 建立人發起時可關閉拒絕簽署；送出時後端會再檢查
-          onReject={task.allowReject ? () => setRejectOpen(true) : undefined}
+          onReject={task.allowReject && onReject ? () => setRejectOpen(true) : undefined}
           fixedOnMobile
         />
       </Box>

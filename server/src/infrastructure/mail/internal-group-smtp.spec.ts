@@ -104,3 +104,70 @@ it('BCC 真實 MIME 不含收件名單，SMTP 部分 RCPT 拒收保留逐地址�
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+it('SMTP 已完整收到 DATA 但未回250就關線：結果為 unknown，不能自動重試', async () => {
+  let dataReceived = false;
+  let message = '';
+  const sockets = new Set<Socket>();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+    socket.write('220 local.test ESMTP\r\n');
+    let pending = '';
+    let data = false;
+    socket.on('data', (chunk) => {
+      pending += chunk.toString();
+      while (pending.includes('\r\n')) {
+        const index = pending.indexOf('\r\n');
+        const line = pending.slice(0, index);
+        pending = pending.slice(index + 2);
+        if (data) {
+          if (line === '.') {
+            dataReceived = true;
+            // 模擬服務端可能已接受文件，但250回應遺失。
+            socket.destroy();
+          } else message += line + '\r\n';
+        } else if (line === 'DATA') {
+          data = true;
+          socket.write('354 continue\r\n');
+        } else socket.write('250 local.test\r\n');
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('測試 SMTP 未啟動');
+    const sender = new SmtpInvitationMailSender(
+      new ConfigService({
+        NODE_ENV: 'test',
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: address.port,
+        SMTP_SECURE: 'false',
+        SMTP_FROM: 'sender@example.test',
+        EXTERNAL_SIGNING_ORIGIN: 'http://localhost:3000',
+      }),
+    );
+    const result = await sender.sendInternalGroup({
+      recipientEmails: ['employee@example.test'],
+      documentTitle: '合成文件',
+      creatorName: '人資',
+      signEndAt: new Date('2027-01-01'),
+      portalLoginUrl:
+        'http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine',
+    });
+    expect(dataReceived).toBe(true);
+    expect(message).toContain('portal.feastogether.com.tw');
+    expect(result).toEqual([
+      {
+        recipientEmail: 'employee@example.test',
+        status: 'unknown',
+        retryable: false,
+      },
+    ]);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

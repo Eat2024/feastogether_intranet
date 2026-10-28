@@ -310,4 +310,15 @@ describe('內部通知群寄', () => {
       '@example.test',
     );
   });
+  it('adapter 回 DATA 斷線 unknown 後沒有 retry time，重複工作不會再發信', async () => {
+    const { processor, logs, mailer, job } = setup(['a@example.test']);
+    mailer.sendInternalGroup.mockResolvedValue([
+      { recipientEmail: 'a@example.test', status: 'unknown', retryable: false },
+    ]);
+    await processor.process(job);
+    expect(logs[0].result).toBe('unknown');
+    expect(logs[0].nextAttemptAt).toBeNull();
+    await processor.process(job);
+    expect(mailer.sendInternalGroup).toHaveBeenCalledTimes(1);
+  });
 });

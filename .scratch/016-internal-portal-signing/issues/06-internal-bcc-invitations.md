@@ -4,7 +4,7 @@
 
 **Blocked by:** 無。可獨立以測試信件驗證，不須等待 Portal 導頁部署。
 
-**Status:** resolved
+**Status:** claimed
 
 **Tasks coverage:** T003；T024/T026–T028/T030/T032–T035/T037 的新發起邀請、群寄、佇列、恢復及結果部分。
 
@@ -39,3 +39,11 @@
 
 - 已審查票單範圍，將 `impl/016-06` 的 `e3ca0fa` fast-forward 合併至 `feat/016-internal-portal-signing`；實作 commit `495abb0`。
 - 本票邀請群寄驗收完成；催簽、補簽、缺信箱與舊 OTP 回歸仍由 07／08／09 接續，未將整體端到端驗收視為完成。
+
+
+## SMTP DATA 後斷線修正（2026-10-28）
+
+- 檢查已安裝 Nodemailer 10.1.0 的 `dist/cjs/smtp-connection/index.js::_onClose`：DATA 後失去最終回應仍會使用 `ECONNECTION`／`CONN`，無法用這兩欄判定尚未寄送。
+- 新增實際 SMTP server 收完 DATA 並關線、未回 250 的測試，先重現錯誤回傳 `rejected/retryable`，再移除 ECONNECTION 的肯定未寄出分類；現為 `unknown`、不重試。
+- 另補 mail adapter 單元 regression、worker 接到 unknown 後無 nextAttemptAt 且重複工作不再寄送。EAUTH、EDNS 與明確 4xx／5xx 拒收仍沿確定未受理分類。
+- 狀態暫改 claimed，等待修正合併整合分支後再次關閉。

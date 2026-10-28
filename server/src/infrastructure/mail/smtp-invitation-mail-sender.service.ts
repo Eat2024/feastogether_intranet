@@ -77,11 +77,12 @@ export class SmtpInvitationMailSender implements InvitationMailSender {
         return { recipientEmail, status: 'unknown', retryable: false };
       });
     } catch (error) {
-      // DATA 後斷線無法確認投遞；只有明確未接受才可分類為拒收。
+      // Nodemailer 10 的 _onClose 在 DATA 後也會回 ECONNECTION／CONN；
+      // 不能用錯誤碼或 command 推論尚未寄送，沒有明確拒收回應就維持 unknown。
       const code = value(error, 'responseCode');
       const definitelyUnsent =
         (typeof code === 'number' && code >= 400 && code < 600) ||
-        ['EAUTH', 'EDNS', 'ECONNECTION'].includes(String(value(error, 'code')));
+        ['EAUTH', 'EDNS'].includes(String(value(error, 'code')));
       return input.recipientEmails.map((recipientEmail) => {
         const errors = value(error, 'rejectedErrors');
         const recipientError = Array.isArray(errors)
@@ -130,5 +131,5 @@ function addresses(info: unknown, key: string): string[] {
 function temporaryFailure(error: unknown): boolean {
   const code = value(error, 'responseCode');
   if (typeof code === 'number') return code >= 400 && code < 500;
-  return ['EDNS', 'ECONNECTION'].includes(String(value(error, 'code')));
+  return value(error, 'code') === 'EDNS';
 }

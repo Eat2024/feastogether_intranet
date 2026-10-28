@@ -181,6 +181,39 @@ describe('Invitation mail sender', () => {
     ]);
   });
 
+  it('ECONNECTION／CONN 不能證明 DATA 尚未送出，回 unknown 且不可重試', async () => {
+    const sender = new SmtpInvitationMailSender(
+      new ConfigService({
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: 1025,
+        SMTP_SECURE: 'false',
+        SMTP_FROM: 'sender@example.test',
+        EXTERNAL_SIGNING_ORIGIN: 'https://sign.example.test',
+      }),
+    );
+    const transport = jest
+      .mocked(nodemailer.createTransport)
+      .mock.results.at(-1)?.value as { sendMail: jest.Mock };
+    transport.sendMail.mockRejectedValue(
+      Object.assign(new Error('Connection closed unexpectedly'), {
+        code: 'ECONNECTION',
+        command: 'CONN',
+      }),
+    );
+    expect(
+      await sender.sendInternalGroup({
+        recipientEmails: ['a@example.test'],
+        documentTitle: '文件',
+        creatorName: '人資',
+        signEndAt: base.signEndAt,
+        portalLoginUrl:
+          'http://portal.feastogether.com.tw/portal/login?redirect_to=hr/esign/mine',
+      }),
+    ).toEqual([
+      { recipientEmail: 'a@example.test', status: 'unknown', retryable: false },
+    ]);
+  });
+
   it.each([
     ['test', 'fake', FakeInvitationMailSender],
     ['development', 'smtp', SmtpInvitationMailSender],

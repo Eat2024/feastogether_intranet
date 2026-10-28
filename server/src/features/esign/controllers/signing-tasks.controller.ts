@@ -40,12 +40,12 @@ export class SigningTasksController {
     private readonly completions: EsignCompletionAccessService,
   ) {}
 
-  // 舊員工拒簽入口：本人回 403，須改走 Email OTP 流程。
+  // 員工本人拒簽，沿用文件規則與同次重送。
   @UseGuards(OriginGuard)
   @ApiOperation({
-    summary: '舊內部拒簽入口（需 Email OTP）',
+    summary: '拒絕本人簽署任務',
     description:
-      '舊個人操作入口不再提供操作。本人指派回 403 ESIGN_EMAIL_OTP_REQUIRED，請從邀請信完成 OTP 並改用 /api/external-signing-task；非本人回 404、未登入回 401。',
+      '本人 session 授權；文件須允許拒簽。首次回 201，同 requestId 與原因重送回 200；非本人回 404、未登入回 401。',
   })
   @Post(':signerPublicId/rejection')
   async reject(
@@ -77,12 +77,12 @@ export class SigningTasksController {
     return this.tasks.list(userId, query.status);
   }
 
-  // 舊員工開啟入口：本人回 403，須改走 Email OTP 流程。
+  // 員工 session 授權；不需要 Email OTP。
   @UseGuards(OriginGuard)
   @ApiOperation({
-    summary: '開啟並確認本人簽署任務（舊入口，需 Email OTP）',
+    summary: '開啟本人簽署任務',
     description:
-      '舊個人操作入口不再提供操作。本人指派回 403 ESIGN_EMAIL_OTP_REQUIRED，請從邀請信完成 OTP 並改用 /api/external-signing-task；非本人回 404、未登入回 401。',
+      '以員工 session 開啟本人任務並記錄開啟事件；非本人或外部指派回 404、未登入回 401。',
   })
   @Post(':signerPublicId')
   open(
@@ -92,11 +92,11 @@ export class SigningTasksController {
     return this.tasks.open(signerPublicId, userId);
   }
 
-  // 舊員工原檔入口：本人回 403，須改走 Email OTP 流程。
+  // 員工 session 授權；不需要 Email OTP。
   @ApiOperation({
-    summary: '讀取內部簽署任務的原始 PDF（舊入口，需 Email OTP）',
+    summary: '讀取本人簽署任務的原始 PDF',
     description:
-      '舊個人操作入口不再提供操作。本人指派回 403 ESIGN_EMAIL_OTP_REQUIRED，請從邀請信完成 OTP 並改用 /api/external-signing-task；非本人回 404、未登入回 401。',
+      '以員工 session 讀取本人 PDF；保留期間與完整性驗證。非本人回 404、未登入回 401。',
   })
   @Get(':signerPublicId/source-file')
   @Header('Cache-Control', 'private, no-store')
@@ -118,12 +118,12 @@ export class SigningTasksController {
       .send(file.bytes);
   }
 
-  // 舊員工簽名入口：本人回 403，須改走 Email OTP 流程。
+  // 員工 session 授權；不需要 Email OTP。
   @UseGuards(OriginGuard)
   @ApiOperation({
-    summary: '送出內部員工簽名（舊入口，需 Email OTP）',
+    summary: '送出內部員工簽名',
     description:
-      '舊個人操作入口不再提供操作。本人指派回 403 ESIGN_EMAIL_OTP_REQUIRED，請從邀請信完成 OTP 並改用 /api/external-signing-task；非本人回 404、未登入回 401。',
+      '以員工 session 提交本人簽名；首次回 201，同 requestId 重送回 200。非本人回 404、未登入回 401。',
   })
   @Post(':signerPublicId/signatures')
   sign(
@@ -144,11 +144,11 @@ export class SigningTasksController {
       });
   }
 
-  // 舊員工副本入口：本人回 403，須改走 Email OTP 流程。
+  // 已簽者下載本人副本；完成後不受原簽署期限影響。
   @ApiOperation({
-    summary: '舊內部副本入口（需 Email OTP）',
+    summary: '下載本人已簽署副本',
     description:
-      '舊個人操作入口不再提供操作。本人指派回 403 ESIGN_EMAIL_OTP_REQUIRED，請從邀請信完成 OTP 並改用 /api/external-signing-task；非本人回 404、未登入回 401。',
+      '以員工 session 下載本人已簽署且產製完成的 PDF，保留證據與檔案完整性驗證。未產製完成回 409、非本人回 404、未登入回 401。',
   })
   @Get(':signerPublicId/completed-file')
   @Header('Cache-Control', 'private, no-store')

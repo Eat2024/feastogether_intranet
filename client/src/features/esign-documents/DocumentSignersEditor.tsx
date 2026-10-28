@@ -4,8 +4,8 @@
 // 暫存以 PATCH .../draft-settings 保存同樣的設定，再次進入時帶回。
 // 第一步放的欄位是所有簽署人共用的位置，後端會替每位簽署人各產生一份個人副本。
 // 同仁從後端的正式員工組織架構（GET /api/esign/signer-candidates/org-chart）選取，
-// 送出前以 POST .../resolutions 將員編換成後端 userId（本機沒有帳號時後端會自動建立）；
-// 發起前以 POST .../employee-email-checks 確認內部同仁的人事資料都有收件信箱（也可先手動檢查）。
+// 送出前以 POST .../resolutions 將員編換成後端已存在且有效的 userId；
+// 發起前以 POST .../employee-email-checks 查詢可通知的內部員工信箱（也可先手動檢查）。
 import { useGetDocumentQuery, useGetSignerOrgChartQuery } from "@/api/queries";
 import { queryKeys } from "@/api/query-keys";
 import {
@@ -161,11 +161,11 @@ async function checkSignerEmails(
 // 檢查通過時列出的人數上限
 const EMAIL_PREVIEW_COUNT = 5;
 
-/** 沒有收件信箱的同仁無法收到簽署通知，後端也會拒絕發起 */
+/** 沒有收件信箱的同仁無法收到簽署通知，仍可登入入口網簽署 */
 const missingEmailMessage = (missing: EmailCheckResult[]) =>
   `以下同仁的人事資料沒有收件信箱，無法寄送簽署通知：${missing
     .map((m) => m.label)
-    .join("、")}。請聯絡人事單位補上信箱，或先將他們移出簽署名單。`;
+    .join("、")}。仍可發起及簽署，請人資另行通知他們自行登入入口網的「我的電子簽」。`;
 
 /**
  * 草稿已暫存的簽署人帶回畫面：內部員工以員編對回組織架構的 id；不在目前組織架構中的另外列出（無法在樹狀選單中顯示）。
@@ -347,11 +347,9 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
   const initiate = useMutation({
     mutationFn: async (): Promise<number> => {
       const userIds = await resolveUserIds(signers);
-      // 先確認內部同仁都有收件信箱，有人沒有時列出是哪幾位
-      const missing = (await checkSignerEmails(doc.id, signers, userIds)).filter(
-        (r) => !r.maskedEmail,
-      );
-      if (missing.length) throw new Error(missingEmailMessage(missing));
+      // 查詢失敗仍阻止發起；確認沒有信箱則保留警告並允許簽署。
+      const results = await checkSignerEmails(doc.id, signers, userIds);
+      setEmailCheck({ selection: userSelection, results });
       const body: InitiateDocumentBody = {
         signers: toSignerInputs(signers, userIds),
         // 共用欄位：所有簽署人簽同一組位置，照草稿原樣送出
@@ -680,7 +678,7 @@ function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
             loading={busy}
             disabled={!hasSignatureField}
           >
-            發起簽署，通知所有簽署人
+            發起簽署
           </Button>
         </Box>
       </Box>

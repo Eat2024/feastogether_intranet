@@ -1,5 +1,6 @@
 # 饗賓內部電子簽署系統 Constitution
 
+
 ## Core Principles
 
 ### I. KISS 與 YAGNI（不可妥協）
@@ -29,13 +30,16 @@
 - API 回應與 Client props MUST 只包含完成當前操作必要的資料。
 - JWT、access token、session token、cookie、OTP、簽名圖、文件內容與未遮罩個資
   MUST NOT 進入 URL、log、錯誤訊息或非必要的 Client payload。
-- 唯一 URL 憑證例外是 feature spec 明確要求的內部或外部 Email 簽署邀請。該邀請 MUST
+- 第一個 URL 憑證例外是 feature spec 明確要求的外部 Email 簽署邀請。該邀請 MUST
   使用不可預測且不含身分或文件內容的 opaque credential，MUST 綁定單一簽署人與
   單一文件；用於簽署時 MUST 具有期限且可撤銷，並在簽署完成、文件停止或期限到達後
   不得再授權簽署。邀請原值 MUST NOT 寫入 access log、application log、analytics、
   錯誤訊息或 Referrer。
 - 邀請連結本身 MUST NOT 視為已完成信箱驗證；MUST 依 feature spec 通過寄往該指派
-  固定信箱的 OTP 才建立受限存取。一般員工 session MUST NOT 替代此簽署／拒簽驗證。
+  固定信箱的 OTP 才建立受限存取。員工 session MUST NOT 取得外部指派權限。
+- 內部員工簽署、拒簽與本人副本存取 MUST 以有效員工 session 及本人指派授權，
+  不依正式登入入口區分，不要求 Email OTP 或曾點擊通知。舊內部邀請及 OTP
+  MUST NOT 單獨授權；既有簽章、證據及驗證結果保持不可變。
 - 簽署完成後，Email 簽署邀請 MAY 依 feature spec 繼續授權該簽署人讀取本人簽署結果與
   下載本人個人副本，以保障簽署雙方留存已簽署文件：此存取 MUST 唯讀、MUST NOT 授權
   再次簽署或存取其他簽署人資料；不設期限，且不因文件停止、到期或完成而撤銷，只在
@@ -117,4 +121,4 @@
   進入實作或交付。
 - Sync Impact Report 是修訂審查資料，commit 前 MUST 由審查者確認並移除。
 
-**Version**: 1.5.0 | **Ratified**: 2026-10-12 | **Last Amended**: 2026-10-21
+**Version**: 2.0.0 | **Ratified**: 2026-10-12 | **Last Amended**: 2026-10-28

@@ -29,15 +29,20 @@ describe('內外部催簽資格', () => {
       ).toBe('RECIPIENT_UNAVAILABLE');
     },
   );
-  it('缺邀請世代的歷史員工不可催簽', () => {
+  it('員工不需要邀請世代或 token 期限，文件期間內可催簽', () => {
     expect(
       reminderEligibility(
         document,
-        { ...signer, signerType: 'user', invitationTokenSha256: null },
+        {
+          ...signer,
+          signerType: 'user',
+          invitationTokenSha256: null,
+          invitationExpiresAt: null,
+        },
         [],
         new Date('2026-10-20T12:00:00Z'),
       ),
-    ).toBe('RECIPIENT_UNAVAILABLE');
+    ).toBeNull();
   });
   it('台北午夜重置，跨日排隊仍阻擋；初邀不佔額度', () => {
     const before = new Date('2026-10-20T15:59:59Z');

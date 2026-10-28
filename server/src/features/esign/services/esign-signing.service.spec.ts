@@ -30,8 +30,12 @@ describe('EsignSigningService', () => {
     };
     const signers = {
       findByPublicId: jest.fn(async () => signer),
+      findByPublicIdForUpdate: jest.fn(() => Promise.resolve(signer)),
     };
-    const documents = { findById: jest.fn(async () => document) };
+    const documents = {
+      findById: jest.fn(async () => document),
+      findByIdForUpdate: jest.fn(() => Promise.resolve(document)),
+    };
     const records = {
       findByAuthenticationEventId: jest.fn(async () => repeated),
     };
@@ -42,11 +46,17 @@ describe('EsignSigningService', () => {
     };
     const validation = {
       assertActiveSigningWindow: jest.fn(),
+      assertPendingSigner: jest.fn(),
       assertFieldsBelongToDocument: jest.fn(),
     };
     const fields = { findByDocument: jest.fn(async () => [] as object[]) };
     const storage = { store: jest.fn(), delete: jest.fn() };
-    const mysql = { getManager: jest.fn(() => manager) };
+    const mysql = {
+      getManager: jest.fn(() => manager),
+      transaction: jest.fn(async (run: (tx: never) => Promise<unknown>) =>
+        run(manager),
+      ),
+    };
     const tokens = {
       verificationUrl: jest.fn((code?: string) =>
         code ? `https://esign.example.internal/verify/${code}` : null,
@@ -68,7 +78,18 @@ describe('EsignSigningService', () => {
       {} as never,
       storage as never,
     );
-    return { service, signer, access, storage, fields, mysql, tokens };
+    return {
+      service,
+      document,
+      signer,
+      signers,
+      records,
+      access,
+      storage,
+      fields,
+      mysql,
+      tokens,
+    };
   }
 
   /** 外部存取改用真實規則，避免 mock 掩蓋已簽者與待簽者的差異 */
@@ -76,6 +97,10 @@ describe('EsignSigningService', () => {
     const policy = new EsignAccessPolicyService(
       new EsignDocumentValidationService(),
       {} as never,
+    );
+    access.assertInternalSigner.mockImplementation(
+      (...args: Parameters<EsignAccessPolicyService['assertInternalSigner']>) =>
+        policy.assertInternalSigner(...args),
     );
     access.assertExternalAccess.mockImplementation(
       policy.assertExternalAccess.bind(policy),
@@ -91,6 +116,51 @@ describe('EsignSigningService', () => {
     signerId: 8,
   };
 
+  it.each([false, true])(
+    '舊內部 external principal 新簽或重送（%s）皆要求 Portal',
+    async (isRepeated) => {
+      const { service, signer, access, storage } = setup(
+        isRepeated ? { signerId: 8, signedAtUtc: signedAt } : undefined,
+      );
+      signer.signerType = 'user';
+      useRealExternalPolicy(access);
+      await expect(
+        service.sign(signerPublicId, externalPrincipal, submission, {}),
+      ).rejects.toMatchObject({
+        status: 403,
+        code: 'ESIGN_INTERNAL_LOGIN_REQUIRED',
+      });
+      expect(storage.store).not.toHaveBeenCalled();
+    },
+  );
+
+  it('鎖內同 request 簽章重送仍禁止內部指派使用 external principal', async () => {
+    const record = { signerId: 8, signedAtUtc: signedAt };
+    const { service, document, signer, signers, records, access, storage } =
+      setup(record);
+    Object.assign(document, {
+      status: 'active',
+      signStartAt: new Date(Date.now() - 60000),
+      signEndAt: new Date(Date.now() + 60000),
+    });
+    Object.assign(signer, {
+      status: 'pending',
+      invitationExpiresAt: new Date(Date.now() + 60000),
+    });
+    records.findByAuthenticationEventId.mockResolvedValueOnce(undefined);
+    signers.findByPublicIdForUpdate.mockResolvedValue({
+      ...signer,
+      signerType: 'user',
+    });
+    useRealExternalPolicy(access);
+    await expect(
+      service.sign(signerPublicId, externalPrincipal, submission, {}),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'ESIGN_INTERNAL_LOGIN_REQUIRED',
+    });
+    expect(storage.store).not.toHaveBeenCalled();
+  });
   it('補簽邀請世代改變後拒絕舊 session 簽署', async () => {
     const { service, signer } = setup();
     signer.invitationTokenSha256 = 'b'.repeat(64);
@@ -114,10 +184,73 @@ describe('EsignSigningService', () => {
     signatures: [],
   };
 
-  it('同一內部 request 在文件結案後仍須 OTP，不洩漏既有結果', async () => {
-    const { service, access, storage } = setup({
+  it('同一內部 request 在文件結案後仍以本人 session 讀取結果，不依賴 OTP', async () => {
+    const { service, signer, access, storage } = setup({
       signerId: 8,
       signedAtUtc: signedAt,
+    });
+    signer.signerType = 'user';
+    signer.invitationTokenSha256 = '';
+    useRealExternalPolicy(access);
+    await expect(
+      service.sign(
+        signerPublicId,
+        { kind: 'internal', userId: 20 },
+        submission,
+        {},
+      ),
+    ).resolves.toMatchObject({ signerPublicId, signedAt, repeated: true });
+    expect(access.assertInternalSigner).toHaveBeenCalled();
+    expect(storage.store).not.toHaveBeenCalled();
+  });
+
+  it('內部重送先確認本人，不可取得別人的既有結果', async () => {
+    const { service, signer, access } = setup({
+      signerId: 8,
+      signedAtUtc: signedAt,
+    });
+    signer.signerType = 'user';
+    useRealExternalPolicy(access);
+    await expect(
+      service.sign(
+        signerPublicId,
+        { kind: 'internal', userId: 99 },
+        submission,
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'ESIGN_RESOURCE_NOT_FOUND' });
+  });
+
+  it('鎖內發現同一內部 request 已完成時回傳原結果，不再套用外部邀請規則', async () => {
+    const record = { signerId: 8, signedAtUtc: signedAt };
+    const { service, signer, records, access } = setup(record);
+    signer.signerType = 'user';
+    signer.status = 'pending';
+    useRealExternalPolicy(access);
+    records.findByAuthenticationEventId.mockResolvedValueOnce(undefined);
+    await expect(
+      service.sign(
+        signerPublicId,
+        { kind: 'internal', userId: 20 },
+        submission,
+        {},
+      ),
+    ).resolves.toMatchObject({ signedAt, repeated: true });
+    expect(access.assertExternalAccess).not.toHaveBeenCalled();
+  });
+
+  it('鎖內重送仍重新核對本人，身分已變更不能回傳既有簽章', async () => {
+    const { service, signer, signers, records, access } = setup({
+      signerId: 8,
+      signedAtUtc: signedAt,
+    });
+    signer.signerType = 'user';
+    signer.status = 'pending';
+    useRealExternalPolicy(access);
+    records.findByAuthenticationEventId.mockResolvedValueOnce(undefined);
+    signers.findByPublicIdForUpdate.mockResolvedValue({
+      ...signer,
+      userId: 99,
     });
     await expect(
       service.sign(
@@ -126,9 +259,7 @@ describe('EsignSigningService', () => {
         submission,
         {},
       ),
-    ).rejects.toMatchObject({ status: 403, code: 'ESIGN_EMAIL_OTP_REQUIRED' });
-    expect(access.assertInternalSigner).toHaveBeenCalled();
-    expect(storage.store).not.toHaveBeenCalled();
+    ).rejects.toMatchObject({ code: 'ESIGN_RESOURCE_NOT_FOUND' });
   });
 
   it('外部簽署人重送同一次簽名，在文件結案後仍回既有結果且不重存 PNG', async () => {

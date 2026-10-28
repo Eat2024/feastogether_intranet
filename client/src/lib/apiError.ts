@@ -1,6 +1,6 @@
 // 後端 API 錯誤（axios）轉成使用者看得懂的訊息
 import { ERROR_CODE_MAP } from '@/api/errorCodes';
-import type { ApiErrorResponse } from '@/api/types';
+import type { ApiErrorResponse, InternalLoginRequiredResponse } from '@/api/types';
 import axios from 'axios';
 
 const DEFAULT_MESSAGE = '發生錯誤，請稍後再試';
@@ -28,3 +28,17 @@ export const getErrorCode = (error: unknown): string | undefined =>
 
 /** 外部簽署存取失效（邀請無效、過期或 cookie 已不存在），一律 401；不是員工登入過期 */
 export const isExternalAccessLost = (error: unknown): boolean => getErrorCode(error) === 'ESIGN_EXTERNAL_UNAUTHORIZED';
+
+/** 只接受該專用錯誤與 server 契約中的固定 Portal 目的地，避免一般錯誤變成任意導頁。 */
+export const getInternalPortalLoginUrl = (error: unknown): string | null => {
+  if (!axios.isAxiosError<InternalLoginRequiredResponse>(error) || error.response?.status !== 403 ||
+    error.response.data?.error?.code !== 'ESIGN_INTERNAL_LOGIN_REQUIRED') return null;
+  const value = error.response.data.error.details?.portalLoginUrl;
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value);
+    return url.origin === 'http://portal.feastogether.com.tw' && url.pathname === '/portal/login' &&
+      !url.username && !url.password && !url.hash && url.searchParams.size === 1 &&
+      url.searchParams.get('redirect_to') === 'hr/esign/mine' ? url.href : null;
+  } catch { return null; }
+};

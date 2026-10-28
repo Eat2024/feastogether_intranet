@@ -237,17 +237,18 @@ export class ExternalAccessService {
 
   /**
    * 送出簽名的身分：存取憑證對應的簽署人；憑證不存在或已過期回 401。
-   * 頁面所屬簽署人是否相符與存取檢查由簽署服務進行。
+   * 先套用外部指派存取政策，簽署服務仍於交易與重送時再次驗證。
    */
   async signingPrincipal(credential: string): Promise<SigningPrincipal> {
-    const session = await this.credentials.read(credential);
-    const signer = await this.findSigner(
+    const { signer } = await this.checkedAccess(
       { credential },
       this.mysql.getManager(),
     );
-    if (!session || !signer)
-      throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
-    return { kind: 'external', ...session };
+    return {
+      kind: 'external',
+      signerId: signer.id,
+      invitationGenerationSha256: signer.invitationTokenSha256!,
+    };
   }
 
   /** 結束外部存取：刪除存取憑證，之後以同一 cookie 存取一律 401 */
@@ -295,6 +296,8 @@ export class ExternalAccessService {
         manager,
       );
       const signer = reminder?.signer;
+      // 舊內部催簽 token 只用來識別 Portal 引導，不因舊期限或世代授權任何操作。
+      if (signer?.signerType === 'user' && !signer.deletedAt) return signer;
       if (
         !reminder ||
         !signer ||
@@ -321,8 +324,8 @@ export class ExternalAccessService {
   }
 }
 
-/** Email 通道存取檢查已確認固定有效信箱，無須依業務簽署人類型分流。 */
-function invitationEmail(signer: { email?: string }): string {
+/** 外部指派的存取檢查已確認固定有效信箱。 */
+function invitationEmail(signer: { email?: string | null }): string {
   if (!signer.email) throw new Error('unreachable');
   return signer.email;
 }

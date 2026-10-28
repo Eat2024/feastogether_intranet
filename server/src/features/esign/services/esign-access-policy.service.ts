@@ -3,6 +3,7 @@ import type { EntityManager } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { isEmail } from 'class-validator';
 import { AppException } from '#app/common/errors/app.exception';
+import { INTERNAL_PORTAL_LOGIN_URL } from '../esign.constants';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
 import { DocumentRepository } from '../repositories/document.repository';
@@ -76,6 +77,7 @@ export class EsignAccessPolicyService {
     userId: number,
   ): void {
     if (
+      document.status === 'draft' ||
       signer.signerType !== 'user' ||
       signer.userId !== userId ||
       signer.documentId !== document.id ||
@@ -118,10 +120,22 @@ export class EsignAccessPolicyService {
     now: Date,
   ): asserts access is CheckedExternalAccess {
     const { document, signer } = access;
+    // 憑證已定位到尚存在的內部指派，只提供固定入口；不授權 OTP 讀檔或操作。
+    if (
+      signer?.signerType === 'user' &&
+      document &&
+      signer.documentId === document.id &&
+      !signer.deletedAt &&
+      !document.deletedAt
+    ) {
+      throw new AppException(...AppErrors.ESIGN_INTERNAL_LOGIN_REQUIRED, {
+        portalLoginUrl: INTERNAL_PORTAL_LOGIN_URL,
+      });
+    }
     const valid =
       signer !== null &&
       document !== null &&
-      ['user', 'email'].includes(signer.signerType) &&
+      signer.signerType === 'email' &&
       typeof signer.email === 'string' &&
       isEmail(signer.email) &&
       typeof signer.invitationTokenSha256 === 'string' &&

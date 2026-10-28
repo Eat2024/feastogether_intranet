@@ -63,6 +63,7 @@ export class EsignReminderService {
         return {
           view: await this.view(previous, manager),
           logIds: [] as number[],
+          batchIds: [] as number[],
         };
       }
       const all = await this.signers.findByDocument(documentId, manager);
@@ -102,7 +103,14 @@ export class EsignReminderService {
           ),
         });
       }
-      if (!targets.some((t) => t.reason === null))
+      const allInternalWithoutEmail =
+        targets.length > 0 &&
+        targets.every(
+          (target) =>
+            target.signer.signerType === 'user' &&
+            target.reason === 'RECIPIENT_UNAVAILABLE',
+        );
+      if (!targets.some((t) => t.reason === null) && !allInternalWithoutEmail)
         throw new AppException(
           ...AppErrors.ESIGN_NO_ELIGIBLE_REMINDER_RECIPIENTS,
           {
@@ -130,7 +138,10 @@ export class EsignReminderService {
       );
       const logs = await this.notifications.saveLogs(
         targets.map(({ signer, reason }) => {
-          const token = reason ? null : this.tokens.createInvitationToken();
+          const token =
+            reason || signer.signerType === 'user'
+              ? null
+              : this.tokens.createInvitationToken();
           return this.notifications.createLog(
             {
               batchId: batch.id,
@@ -139,10 +150,15 @@ export class EsignReminderService {
               result: reason ? 'skipped' : 'pending',
               errorCode: reason,
               attemptCount: 0,
-              reminderTokenSha256: token?.digest,
-              reminderTokenCiphertext: token?.ciphertext,
-              invitationGenerationSha256: signer.invitationTokenSha256,
-              reminderExpiresAt: document.signEndAt,
+              reminderTokenSha256: token?.digest ?? null,
+              reminderTokenCiphertext: token?.ciphertext ?? null,
+              invitationGenerationSha256:
+                signer.signerType === 'email'
+                  ? signer.invitationTokenSha256
+                  : null,
+              reminderExpiresAt:
+                signer.signerType === 'email' ? document.signEndAt : null,
+              completedAt: reason ? now : undefined,
               attemptHistoryJson: [
                 {
                   status: reason ? 'skipped' : 'pending',
@@ -156,12 +172,28 @@ export class EsignReminderService {
         }),
         manager,
       );
+      const internalSignerIds = new Set(
+        targets
+          .filter((target) => target.signer.signerType === 'user')
+          .map((target) => target.signer.id),
+      );
       return {
         view: await this.view(batch, manager),
-        logIds: logs.filter((l) => l.result === 'pending').map((l) => l.id),
+        logIds: logs
+          .filter(
+            (log) =>
+              log.result === 'pending' && !internalSignerIds.has(log.signerId),
+          )
+          .map((log) => log.id),
+        batchIds: logs.some(
+          (log) =>
+            log.result === 'pending' && internalSignerIds.has(log.signerId),
+        )
+          ? [batch.id]
+          : [],
       };
     });
-    await this.jobs.enqueueInvitations(result.logIds);
+    await this.jobs.enqueueInvitations(result.logIds, result.batchIds);
     return result.view;
   }
 

@@ -2,6 +2,7 @@ import { formatInTaipei } from '#app/common/date-time.helper';
 import { escapeHtml } from '#app/common/escape-html';
 import type {
   SendInvitationMailInput,
+  SendInternalGroupMailInput,
   SendOtpMailInput,
 } from './invitation-mail-sender.port';
 
@@ -48,5 +49,26 @@ export function buildOtpMail(input: SendOtpMailInput): InvitationMailContent {
     subject: '電子簽署驗證碼',
     text: lines.join('\n'),
     html: lines.map((line) => `<p>${escapeHtml(line)}</p>`).join(''),
+  };
+}
+
+export function buildInternalGroupMail(
+  input: SendInternalGroupMailInput,
+): InvitationMailContent {
+  const deadline = formatInTaipei(input.signEndAt, 'yyyy/M/d HH:mm');
+  const lines = [
+    input.kind === 'reminder'
+      ? '提醒您尚有文件待簽署，請於期限前完成。'
+      : `您收到 ${input.creatorName} 發起的電子簽署邀請。`,
+    `文件：${input.documentTitle}`,
+    `簽署期限（台北時間）：${deadline}`,
+    '請登入公司入口網，至「我的電子簽」完成文件簽署。',
+  ];
+  return {
+    subject: `${input.kind === 'reminder' ? '電子簽署提醒' : '電子簽署邀請'}：${input.documentTitle}`,
+    text: [...lines, `登入入口網：${input.portalLoginUrl}`].join('\n'),
+    html:
+      lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('') +
+      `<p><a href="${escapeHtml(input.portalLoginUrl)}">登入入口網</a></p>`,
   };
 }

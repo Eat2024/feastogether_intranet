@@ -27,3 +27,31 @@ export interface EsignSigningTask {
 export interface GetSigningTasksParams {
   status?: 'pending' | 'signed' | 'rejected';
 }
+
+/** 員工身分由 session 決定，簽署人 publicId 只放路徑。 */
+export interface SubmitSigningTaskBody {
+  requestId: string;
+  consentVersion: string;
+  accepted: true;
+  signatures: { fieldId: string; pngDataUrl: string }[];
+}
+
+export interface SigningTaskSignatureResult {
+  signerPublicId: string;
+  signedAt: string;
+  documentStatus: EsignDocumentListItem['status'];
+  verificationUrl: string | null;
+  completion: EsignSignerView['completion'];
+}
+
+export interface RejectSigningTaskBody {
+  requestId: string;
+  reason?: string;
+}
+
+export interface SigningTaskRejectionResult {
+  signerPublicId: string;
+  status: 'rejected';
+  rejectedAt: string;
+  reason: string;
+}

@@ -249,12 +249,11 @@ export class DocumentsController {
   @ApiOperation({
     summary: '發起文件簽署',
     description:
-      '在交易外批次核對員工信箱；同一交易再次驗證帳號並固定地址、儲存名單、欄位與期間。內外部逐人建立邀請，提交後入列；缺信箱 422、來源失敗 502、員工身分異動 409，整份保持草稿。',
+      '在交易外批次核對員工信箱；同一交易再次驗證帳號並固定地址、儲存名單、欄位與期間。內部以共用入口群寄，無有效信箱保留指派並記錄略過通知；外部逐人建立邀請。來源失敗 502、員工身分異動 409，整份保持草稿。',
   })
   @ApiResponse({
     status: 422,
-    description:
-      'ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE，details.userIds 列出無有效信箱的所選帳號',
+    description: '所選員工身分無效或無法解析',
   })
   @ApiResponse({
     status: 502,
@@ -289,7 +288,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '重新開放已到期文件補簽',
     description:
-      '僅建立人可設定新期限及原因；舊期限不符或任一待簽者缺固定信箱／原邀請回 409。成功後自動寄送內外部待簽者的新邀請，保留已簽及已拒證據。',
+      '僅建立人可設定新期限及原因；舊期限不符或任一外部待簽者缺固定信箱／原邀請回 409。內部無信箱仍可補簽；成功後有信箱者依內部群寄、外部逐人方式通知，保留已簽及已拒證據。',
   })
   @ApiBody({ type: ReopenDocumentDto })
   @Post(':documentId/reopenings')

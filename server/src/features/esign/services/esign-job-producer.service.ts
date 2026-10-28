@@ -19,22 +19,33 @@ export class EsignJobProducerService {
     private readonly logger: AppLoggerService,
   ) {}
 
-  async enqueueInvitations(notificationLogIds: number[]): Promise<void> {
-    for (let offset = 0; offset < notificationLogIds.length; offset += 100) {
+  async enqueueInvitations(
+    notificationLogIds: number[],
+    notificationBatchIds: number[] = [],
+  ): Promise<void> {
+    const jobs = [
+      ...[...new Set(notificationBatchIds)].map((notificationBatchId) => ({
+        data: { notificationBatchId },
+        id: `internal-invitation-${notificationBatchId}`,
+      })),
+      ...notificationLogIds.map((notificationLogId) => ({
+        data: { notificationLogId },
+        id: `invitation-${notificationLogId}`,
+      })),
+    ];
+    for (let offset = 0; offset < jobs.length; offset += 100) {
       try {
         await this.invitationQueue.addBulk(
-          notificationLogIds
-            .slice(offset, offset + 100)
-            .map((notificationLogId) => ({
-              name: ESIGN_EXTERNAL_INVITATION_JOB,
-              data: { notificationLogId },
-              opts: {
-                attempts: 1,
-                removeOnComplete: 1000,
-                removeOnFail: 1000,
-                deduplication: { id: `invitation-${notificationLogId}` },
-              },
-            })),
+          jobs.slice(offset, offset + 100).map((job) => ({
+            name: ESIGN_EXTERNAL_INVITATION_JOB,
+            data: job.data,
+            opts: {
+              attempts: 1,
+              removeOnComplete: 1000,
+              removeOnFail: 1000,
+              deduplication: { id: job.id },
+            },
+          })),
         );
       } catch {
         this.logger.warn({

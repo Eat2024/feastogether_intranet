@@ -1,3 +1,8 @@
+import {
+  INTERNAL_PORTAL_LOGIN_URL,
+  INTERNAL_NOTIFICATION_RECIPIENT_LIMIT,
+} from '#app/features/esign/esign.constants';
+import type { InternalMailRecipientResult } from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { randomUUID } from 'node:crypto';
 import { isDefinitelyUnsent } from '#app/infrastructure/mail/mail-delivery-outcome';
 import { EsignNotificationLog } from '#app/features/esign/entities/esign-notification-log.entity';
@@ -20,7 +25,8 @@ import { EsignTokenService } from '#app/features/esign/services/esign-token.serv
 import { ESIGN_EXTERNAL_INVITATION_QUEUE } from '#app/features/esign/esign-queue.constants';
 
 interface InvitationJobData {
-  notificationLogId: number;
+  notificationLogId?: number;
+  notificationBatchId?: number;
 }
 
 interface ClaimedInvitation {
@@ -53,10 +59,19 @@ export class ExternalInvitationProcessor extends WorkerHost {
   async process(job: Job<InvitationJobData>): Promise<void> {
     // 只合併等待中的重複通知；開始處理後仍由 DB lease 與證據唯一約束決定結果。
     if (job.opts?.deduplication) await job.removeDeduplicationKey();
+    const batchId = job.data?.notificationBatchId;
+    if (
+      typeof batchId === 'number' &&
+      Number.isSafeInteger(batchId) &&
+      batchId > 0
+    )
+      return this.processInternalBatch(batchId);
     const id = job.data?.notificationLogId;
-    if (!Number.isSafeInteger(id) || id < 1) return;
+    if (typeof id !== 'number' || !Number.isSafeInteger(id) || id < 1) return;
     const claim = await this.claimInvitation(id);
     if (!claim) return;
+    if ('internalBatchId' in claim)
+      return this.processInternalBatch(claim.internalBatchId);
     if ('reminder' in claim) return this.processReminder(id);
 
     try {
@@ -69,9 +84,261 @@ export class ExternalInvitationProcessor extends WorkerHost {
     await this.finishDelivered(id, claim);
   }
 
+  private async processInternalBatch(batchId: number): Promise<void> {
+    while (true) {
+      const claim = await this.claimInternalGroup(batchId);
+      if (!claim) return;
+      let results: InternalMailRecipientResult[];
+      try {
+        results = await this.mailer.sendInternalGroup({
+          recipientEmails: claim.emails,
+          documentTitle: claim.documentTitle,
+          creatorName: claim.creatorName,
+          signEndAt: claim.signEndAt,
+          kind: claim.kind,
+          portalLoginUrl: INTERNAL_PORTAL_LOGIN_URL,
+        });
+      } catch {
+        // adapter 無法確定結果時不盲目重寄。
+        results = [];
+      }
+      // SMTP 後寫入失敗保留 processing；維護復原為 unknown，不能再發信。
+      await this.mysql.transaction(async (manager) => {
+        const context =
+          await this.notifications.findInternalBatchContextForUpdate(
+            batchId,
+            manager,
+          );
+        if (!context) return;
+        const now = new Date();
+        const resultEmails = results.map((item) =>
+          item.recipientEmail.trim().toLowerCase(),
+        );
+        if (
+          resultEmails.some((email) => !claim.emails.includes(email)) ||
+          claim.emails.some(
+            (email) =>
+              resultEmails.filter((value) => value === email).length !== 1,
+          )
+        ) {
+          await this.audit.append(
+            {
+              documentId: context.document.id,
+              eventType: 'internal_notification.protocol_error',
+              occurredAt: now,
+              metadata: { errorCode: 'MAIL_RESULT_MISMATCH' },
+            },
+            manager,
+          );
+        }
+        for (const log of context.logs) {
+          if (
+            log.result !== 'processing' ||
+            log.leaseToken !== claim.lease ||
+            log.errorCode === 'INVITATION_SUPERSEDED'
+          )
+            continue;
+          const email = log.signer?.email?.trim().toLowerCase();
+          const matches = results.filter(
+            (item) => item.recipientEmail.trim().toLowerCase() === email,
+          );
+          const result = matches.length === 1 ? matches[0] : undefined;
+          log.result =
+            result?.status === 'accepted'
+              ? 'delivered'
+              : result?.status === 'rejected'
+                ? 'failed'
+                : 'unknown';
+          log.errorCode =
+            log.result === 'delivered'
+              ? null
+              : log.result === 'failed'
+                ? 'MAIL_NOT_ACCEPTED'
+                : 'DELIVERY_OUTCOME_UNKNOWN';
+          log.completedAt = now;
+          log.processingStartedAt = null;
+          log.leaseToken = null;
+          log.nextAttemptAt =
+            log.result === 'failed' && result?.retryable && log.attemptCount < 3
+              ? new Date(now.getTime() + 30_000 * 2 ** (log.attemptCount - 1))
+              : null;
+          log.reminderTokenCiphertext = null;
+          this.recordAttempt(log, now);
+          await this.notifications.saveLog(log, manager);
+          if (log.result === 'delivered' && log.signer) {
+            log.signer.invitationDeliveredAt = now;
+            await this.signers.save(log.signer, manager);
+            await this.audit.append(
+              {
+                documentId: context.document.id,
+                signerId: log.signerId,
+                eventType:
+                  context.batch.kind === 'reminder'
+                    ? 'internal_reminder.delivered'
+                    : 'internal_invitation.delivered',
+                occurredAt: now,
+              },
+              manager,
+            );
+          }
+        }
+      });
+    }
+  }
+
+  private async claimInternalGroup(batchId: number) {
+    return this.mysql.transaction(async (manager) => {
+      const context =
+        await this.notifications.findInternalBatchContextForUpdate(
+          batchId,
+          manager,
+        );
+      if (!context) return null;
+      const { document, batch, logs } = context;
+      const now = new Date();
+      const internal = logs.filter((log) => log.signer?.signerType === 'user');
+      for (const log of internal) {
+        if (log.errorCode === 'INVITATION_SUPERSEDED') continue;
+        if (
+          log.result === 'processing' &&
+          log.processingStartedAt &&
+          log.processingStartedAt.getTime() < now.getTime() - 5 * 60_000
+        ) {
+          log.result = 'unknown';
+          log.errorCode = 'DELIVERY_OUTCOME_UNKNOWN';
+          log.completedAt = now;
+          log.processingStartedAt = null;
+          log.leaseToken = null;
+          log.nextAttemptAt = null;
+          log.reminderTokenCiphertext = null;
+          this.recordAttempt(log, now);
+          await this.notifications.saveLog(log, manager);
+        }
+      }
+      // 文件鎖內重新以 locking read 讀催簽歷史，避免等待鎖前建立的快照漏掉另一批已送達結果。
+      const history =
+        batch.kind === 'reminder'
+          ? await this.notifications.findBySignerIds(
+              internal.map((log) => log.signerId),
+              manager,
+              true,
+            )
+          : [];
+      const groups = new Map<string, EsignNotificationLog[]>();
+      for (const log of internal) {
+        if (
+          log.errorCode === 'INVITATION_SUPERSEDED' ||
+          !['pending', 'failed'].includes(log.result) ||
+          log.attemptCount >= 3 ||
+          (log.result === 'failed' && !log.nextAttemptAt) ||
+          (log.nextAttemptAt && log.nextAttemptAt > now)
+        )
+          continue;
+        const email = log.signer?.email?.trim().toLowerCase();
+        const reason =
+          batch.kind === 'reminder' && log.signer
+            ? reminderEligibility(
+                document,
+                log.signer,
+                history.filter(
+                  (other) =>
+                    other.signerId === log.signerId && other.id !== log.id,
+                ),
+                now,
+              )
+            : !email
+              ? 'RECIPIENT_UNAVAILABLE'
+              : document.status !== 'active' ||
+                  !document.signEndAt ||
+                  now >= document.signEndAt ||
+                  log.signer?.status !== 'pending'
+                ? 'INVITATION_NO_LONGER_ACTIVE'
+                : null;
+        if (reason) {
+          log.result = 'skipped';
+          log.errorCode = reason;
+          log.completedAt = now;
+          log.nextAttemptAt = null;
+          this.recordAttempt(log, now);
+          await this.notifications.saveLog(log, manager);
+          continue;
+        }
+        const group = groups.get(email!) ?? [];
+        group.push(log);
+        groups.set(email!, group);
+      }
+      // 歷史逐人工作可能留下同地址的不同狀態，已寄／未知者不可再次投遞。
+      // 尚未投遞的明細誠實記為 skipped，避免 maintenance 永遠補入 pending。
+      const blocked = new Set<string>();
+      for (const [email, group] of groups) {
+        const siblings = internal.filter(
+          (log) => log.signer?.email?.trim().toLowerCase() === email,
+        );
+        const settled = siblings.find((log) =>
+          ['delivered', 'unknown'].includes(log.result),
+        );
+        if (settled) {
+          for (const log of group) {
+            log.result = 'skipped';
+            log.errorCode =
+              settled.result === 'unknown'
+                ? 'DELIVERY_OUTCOME_UNKNOWN'
+                : 'RECIPIENT_ALREADY_NOTIFIED';
+            log.completedAt = now;
+            log.nextAttemptAt = null;
+            this.recordAttempt(log, now);
+            await this.notifications.saveLog(log, manager);
+          }
+          blocked.add(email);
+        } else if (
+          siblings.some(
+            (log) =>
+              log.result === 'processing' ||
+              (log.result === 'failed' &&
+                log.nextAttemptAt &&
+                log.nextAttemptAt > now),
+          )
+        ) {
+          blocked.add(email);
+        }
+      }
+      // Map 插入順序沿明細 id；同地址全部一起領取。
+      const emails = [...groups.keys()]
+        .filter((email) => !blocked.has(email))
+        .slice(0, INTERNAL_NOTIFICATION_RECIPIENT_LIMIT);
+      if (!emails.length || !document.signEndAt) return null;
+      const lease = randomUUID();
+      for (const email of emails)
+        for (const log of groups.get(email)!) {
+          log.result = 'processing';
+          log.attemptCount += 1;
+          log.processingStartedAt = now;
+          log.leaseToken = lease;
+          log.errorCode = null;
+          log.nextAttemptAt = null;
+          log.dispatchDate = taipeiDispatchDate(now);
+          this.recordAttempt(log, now);
+          await this.notifications.saveLog(log, manager);
+        }
+      return {
+        lease,
+        emails,
+        documentTitle: document.title,
+        creatorName: document.createdByUser?.name ?? '',
+        signEndAt: document.signEndAt,
+        kind:
+          batch.kind === 'reminder'
+            ? ('reminder' as const)
+            : ('invitation' as const),
+      };
+    });
+  }
+
   private async claimInvitation(
     id: number,
-  ): Promise<ClaimedInvitation | { reminder: true } | null> {
+  ): Promise<
+    ClaimedInvitation | { reminder: true } | { internalBatchId: number } | null
+  > {
     const now = new Date();
     return this.mysql.transaction(async (manager) => {
       const log = await this.notifications.findInvitationContextForUpdate(
@@ -79,6 +346,8 @@ export class ExternalInvitationProcessor extends WorkerHost {
         manager,
       );
       if (log?.errorCode === 'INVITATION_SUPERSEDED') return null;
+      if (log?.signer?.signerType === 'user')
+        return { internalBatchId: log.batchId };
       if (log?.batch?.kind === 'reminder') return { reminder: true } as const;
       const stale =
         log?.result === 'processing' &&
@@ -98,7 +367,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
         !signer ||
         !document ||
         !creator ||
-        !['user', 'email'].includes(signer.signerType) ||
+        signer.signerType !== 'email' ||
         !signer.email ||
         !signer.invitationTokenSha256 ||
         log.invitationGenerationSha256 !== signer.invitationTokenSha256 ||

@@ -146,7 +146,7 @@ describe('EsignAccessPolicyService', () => {
 
   describe('assertExternalAccess', () => {
     it.each(['pending', 'signed', 'rejected'])(
-      '內部 %s 指派須有固定有效信箱及邀請世代',
+      '舊內部 %s 指派一律要求 Portal 登入，即使邀請仍有效',
       (status) => {
         const signer = Object.assign(new EsignSigner(), {
           signerType: 'user',
@@ -159,16 +159,7 @@ describe('EsignAccessPolicyService', () => {
         });
         expect(() =>
           policy.assertExternalAccess({ document: document(), signer }, now),
-        ).not.toThrow();
-        signer.email = 'invalid';
-        expect(() =>
-          policy.assertExternalAccess({ document: document(), signer }, now),
-        ).toThrow('外部簽署存取已失效');
-        signer.email = 'employee@example.test';
-        signer.invitationTokenSha256 = null;
-        expect(() =>
-          policy.assertExternalAccess({ document: document(), signer }, now),
-        ).toThrow('外部簽署存取已失效');
+        ).toThrow('請登入入口網，至我的電子簽完成操作');
       },
     );
     const emailSigner = (status: 'pending' | 'signed') =>
@@ -243,9 +234,8 @@ describe('EsignAccessPolicyService', () => {
 
     it.each([
       {
-        name: '缺固定 email 的內部簽署人',
+        name: '缺固定 email 的外部簽署人',
         tamper: (signer: EsignSigner) => {
-          signer.signerType = 'user';
           signer.email = undefined;
         },
       },

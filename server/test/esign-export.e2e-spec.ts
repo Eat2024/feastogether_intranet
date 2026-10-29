@@ -126,6 +126,11 @@ describe('Spec009 匯出 API', () => {
       .get('/api/esign/exportable-documents?limit=101')
       .set('Cookie', other)
       .expect(400);
+    // Spec 015 移除只供舊 /exports 使用的 documentId，帶這個未知參數回 400。
+    await request(ctx.server)
+      .get(`/api/esign/exportable-documents?documentId=${id}`)
+      .set('Cookie', other)
+      .expect(400);
   });
 
   it('兩員工共用固定快照，worker 完成 ZIP 後可原生續傳', async () => {

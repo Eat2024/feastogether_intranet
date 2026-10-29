@@ -176,10 +176,14 @@ export class ExportJobRepository {
     );
   }
 
-  /** 歷史紀錄共同條件：文件未刪除；ZIP 只計有快照的匯出工作。 */
+  /**
+   * 歷史紀錄共同條件：文件未刪除；ZIP 只計有快照的匯出工作。
+   * 匯出員工與簽署人已軟刪除時仍要顯示，因此關閉 join 的自動軟刪除條件，只明確排除已刪除的文件。
+   */
   private historyQuery(documentId: number | undefined, manager: EntityManager) {
     const query = manager
       .createQueryBuilder(EsignExportJob, 'job')
+      .withDeleted()
       .innerJoin('job.document', 'document', 'document.deletedAt IS NULL')
       .where(
         "(job.exportType <> 'signed_copies_zip' OR job.snapshotJson IS NOT NULL)",

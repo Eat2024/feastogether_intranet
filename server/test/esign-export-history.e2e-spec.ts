@@ -442,6 +442,58 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       ]);
     });
 
+    it('匯出員工已軟刪除時，excel 與 pdf 紀錄仍以該員工為匯出人', async () => {
+      const document = await createDocument('合成已刪除匯出員工文件');
+      const signer = await createSigner({
+        documentId: document.id,
+        signerType: 'email',
+        email: `deleted-${randomBytes(4).toString('hex')}@example.test`,
+        nameSnapshot: '外部簽署人',
+      });
+      const leaver = await manager.save(
+        User,
+        manager.create(User, {
+          empid: `D${randomBytes(4).toString('hex')}`,
+          name: '合成已刪除員工',
+          isActive: true,
+        }),
+      );
+      const exportedAt = new Date(Date.now() - 60_000);
+      await insertRecord(
+        {
+          exportType: 'excel',
+          documentId: document.id,
+          createdByUserId: leaver.id,
+          scopeDescription: '狀態：全部',
+          recordCount: 1,
+          conditionsJson: conditions,
+        },
+        exportedAt,
+      );
+      await insertRecord(
+        {
+          exportType: 'pdf',
+          documentId: document.id,
+          createdByUserId: leaver.id,
+          signerId: signer.id,
+          scopeDescription: '外部簽署人',
+          recordCount: 1,
+        },
+        exportedAt,
+      );
+      await manager.softDelete(User, { id: leaver.id });
+      const exportedBy = {
+        name: leaver.name,
+        employeeNo: leaver.empid,
+        email: null,
+      };
+      for (const type of ['excel', 'pdf'] as const) {
+        const page = await history(`type=${type}&documentId=${document.id}`);
+        expect(page.items).toHaveLength(1);
+        expect(page.items[0]).toMatchObject({ type, exportedBy });
+      }
+    });
+
     it('zip 只列有快照的匯出工作，沿用既有工作欄位且不含 requesterName', async () => {
       const page = await history(`type=zip&documentId=${docA.id}&pageSize=1`);
       expect(page.items.map((item) => item.id)).not.toContain(
@@ -1120,10 +1172,10 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         ['fields 為空', withConditions({ fields: [] })],
         ['重複的欄位鍵', withConditions({ fields: ['name', 'name'] })],
         ['depts 超過 500 個', withConditions({ depts: deptKeys(501, 3) })],
-        ['部門鍵超過 255 字', withConditions({ depts: ['部'.repeat(256)] })],
+        ['部門鍵超過 1000 字', withConditions({ depts: ['部'.repeat(1001)] })],
         ['部門鍵為空字串', withConditions({ depts: [''] })],
         ['scope trim 後為空', { scope: '   ' }],
-        ['scope 256 字', { scope: '範'.repeat(256) }],
+        ['scope 2001 字', { scope: '範'.repeat(2001) }],
         ['count 為 -1', { count: -1 }],
         ['count 為小數', { count: 1.5 }],
         ['count 為字串', { count: '120' }],
@@ -1139,10 +1191,11 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         });
       });
 
-      it('邊界值可記錄：scope trim 後 255 字、count 0、500 個 255 字部門鍵、全部狀態與欄位', async () => {
+      it('邊界值可記錄：scope trim 後 255 字、count 0、500 個 1000 字部門鍵、全部狀態與欄位', async () => {
         const boundary = {
           statuses: ['pending', 'signed', 'rejected'],
-          depts: deptKeys(500, 255),
+          // 前端部門鍵是 encodeURIComponent 的 ASCII；另放一個 1000 個中文字的鍵，確認依字元計算。
+          depts: [...deptKeys(499, 1000), '部'.repeat(1000)],
           fields: [
             'name',
             'employeeNo',
@@ -1169,6 +1222,26 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           conditions: boundary,
         });
       });
+
+      it.each([
+        ['2000 個中文字', ` ${'範'.repeat(2000)} `, `${'範'.repeat(254)}…`],
+        ['256 個字', '範'.repeat(256), `${'範'.repeat(254)}…`],
+        // 依字元截斷：不可把 4 位元組的字元切成一半。
+        ['256 個 emoji', '😀'.repeat(256), `${'😀'.repeat(254)}…`],
+      ])(
+        'scope 超過 255 字（%s）時存成前 254 字加「…」，回應與查詢都是儲存的值',
+        async (_name, scope, stored) => {
+          const item = apiData<HistoryItem>(
+            await record({ ...validBody(), scope }).expect(201),
+          );
+          expect(Array.from(item.scope)).toHaveLength(255);
+          expect(item.scope).toBe(stored);
+          const listed = await history(
+            `type=excel&documentId=${excelDoc.id}&pageSize=1`,
+          );
+          expect(listed.items[0]).toEqual(item);
+        },
+      );
 
       it('缺 Origin 回 403，不新增紀錄', async () => {
         await expectNoNewRecord(async () => {
@@ -1546,6 +1619,6 @@ describe('Spec015 歷史匯出紀錄 API', () => {
 /** 產生不重複、指定長度的部門鍵。 */
 function deptKeys(count: number, length: number) {
   return Array.from({ length: count }, (_, index) =>
-    String(index).padStart(length, '部'),
+    String(index).padStart(length, 'd'),
   );
 }

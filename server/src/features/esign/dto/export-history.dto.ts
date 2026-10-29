@@ -84,12 +84,12 @@ export class ExportConditionsDto {
   @ArrayUnique()
   @IsIn(EXPORT_CONDITION_STATUSES, { each: true })
   statuses!: string[];
-  /** 部門鍵，空陣列表示全部；每個鍵 1–255 字，最多 500 個 */
+  /** 部門鍵，空陣列表示全部；每個鍵 1–1000 字，最多 500 個 */
   @IsArray()
   @ArrayMaxSize(500)
   @ArrayUnique()
   @IsString({ each: true })
-  @Length(1, 255, { each: true })
+  @Length(1, 1000, { each: true })
   depts!: string[];
   /** 匯出欄位，至少一個 */
   @ApiProperty({ enum: EXPORT_CONDITION_FIELDS, isArray: true, minItems: 1 })
@@ -109,12 +109,12 @@ export class CreateExcelExportRecordDto {
   /** 已發起且未刪除的文件 ID；不限建立人 */
   @Matches(/^[1-9][0-9]{0,14}$/)
   documentId!: string;
-  /** 畫面顯示用範圍說明，trim 後 1–255 字 */
+  /** 畫面顯示用範圍說明，trim 後 1–2000 字；超過 255 字時存成前 254 字加「…」 */
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @Length(1, 255)
+  @Length(1, 2000)
   scope!: string;
   /** 匯出筆數，0 以上整數 */
   @IsInt()

@@ -103,7 +103,7 @@ export class EsignExportHistoryService {
           documentId: document.id,
           createdByUserId: userId,
           status: 'completed',
-          scopeDescription: body.scope,
+          scopeDescription: fitScope(body.scope, '…'),
           recordCount: body.count,
           conditionsJson: { statuses, depts, fields },
           completedAt: new Date(),
@@ -224,22 +224,29 @@ export class EsignExportHistoryService {
 function signerLabel(signer: EsignSigner): string {
   const identity =
     signer.signerType === 'email' ? signer.email : signer.empidSnapshot;
-  return Array.from(`${signer.nameSnapshot}（${identity}）`)
-    .slice(0, SCOPE_MAX_LENGTH)
-    .join('');
+  return fitScope(`${signer.nameSnapshot}（${identity}）`);
 }
 
-/** 有匯出員工時顯示員工；NULL 代表外部簽署人本人下載，改以簽署人姓名與 Email 顯示。 */
+/** 依字元（code point）截斷到範圍欄位長度；有截斷時以 marker 結尾，總長仍不超過欄位長度。 */
+function fitScope(scope: string, marker = ''): string {
+  const characters = Array.from(scope);
+  if (characters.length <= SCOPE_MAX_LENGTH) return scope;
+  return (
+    characters.slice(0, SCOPE_MAX_LENGTH - marker.length).join('') + marker
+  );
+}
+
+/** 匯出員工為 NULL 代表外部簽署人本人下載，以簽署人姓名與 Email 顯示；其餘顯示匯出員工。 */
 function exportedBy(job: EsignExportJob): ExportedByDto {
-  if (job.createdByUser)
+  if (job.createdByUserId === null)
     return {
-      name: job.createdByUser.name,
-      employeeNo: job.createdByUser.empid,
-      email: null,
+      name: job.signer!.nameSnapshot,
+      employeeNo: null,
+      email: job.signer!.email ?? null,
     };
   return {
-    name: job.signer!.nameSnapshot,
-    employeeNo: null,
-    email: job.signer!.email ?? null,
+    name: job.createdByUser!.name,
+    employeeNo: job.createdByUser!.empid,
+    email: null,
   };
 }

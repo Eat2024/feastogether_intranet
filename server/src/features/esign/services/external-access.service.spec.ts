@@ -5,10 +5,10 @@ import { ExternalAccessCredentialService } from './external-access-credential.se
 import { ExternalAccessService } from './external-access.service';
 import { ExternalOtpService } from './external-otp.service';
 
-describe.each(['user', 'email'])('%s Email 存取', (signerType) => {
+describe('外部 Email 存取與舊內部憑證切換', () => {
   const manager = {} as never;
 
-  function setup() {
+  function setup(signerType = 'email') {
     const signer = {
       id: 3,
       publicId: 'c854d925-1d70-49dc-9c81-abf18409ae42',
@@ -63,6 +63,7 @@ describe.each(['user', 'email'])('%s Email 存取', (signerType) => {
       },
     };
     const mailer = new FakeInvitationMailSender();
+    const credentials = new ExternalAccessCredentialService(redis as never);
     const service = new ExternalAccessService(
       {
         getManager: () => manager,
@@ -101,10 +102,11 @@ describe.each(['user', 'email'])('%s Email 存取', (signerType) => {
       completions as never,
       new ExternalOtpService(redis as never),
       mailer,
-      new ExternalAccessCredentialService(redis as never),
+      credentials,
     );
     return {
       service,
+      credentials,
       signer,
       document,
       access,
@@ -146,6 +148,45 @@ describe.each(['user', 'email'])('%s Email 存取', (signerType) => {
     signer.invitationExpiresAt = new Date(Date.now() + 60_000);
     document.status = 'active';
   }
+
+  it.each(['pending', 'signed', 'rejected'])(
+    '舊內部 %s token/cookie 只回入口提示，沒有 OTP、session 或文件副作用',
+    async (status) => {
+      const context = setup('user');
+      context.signer.status = status;
+      const credential = await context.credentials.issue(
+        context.signer.id,
+        context.signer.invitationTokenSha256,
+      );
+      const expected = { status: 403, code: 'ESIGN_INTERNAL_LOGIN_REQUIRED' };
+      await expect(context.service.sendOtp(token)).rejects.toMatchObject(
+        expected,
+      );
+      await expect(
+        context.service.createSession(token, '123456'),
+      ).rejects.toMatchObject(expected);
+      await expect(
+        context.service.task(credential, true),
+      ).rejects.toMatchObject(expected);
+      await expect(
+        context.service.task(credential, false),
+      ).rejects.toMatchObject(expected);
+      await expect(context.service.source(credential)).rejects.toMatchObject(
+        expected,
+      );
+      await expect(
+        context.service.completedFile(credential),
+      ).rejects.toMatchObject(expected);
+      await expect(
+        context.service.signingPrincipal(credential),
+      ).rejects.toMatchObject(expected);
+      expect(context.mailer.otpDeliveries).toEqual([]);
+      expect(context.audit.append).not.toHaveBeenCalled();
+      expect(context.files.findDocumentFile).not.toHaveBeenCalled();
+      expect(context.completions.personalCopy).not.toHaveBeenCalled();
+      expect(context.store.size).toBe(1);
+    },
+  );
 
   it('只接受 32-byte base64url、固定 43 字元 invitation token', () => {
     const { service } = setup();

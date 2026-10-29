@@ -1,4 +1,5 @@
 import api from '@/api/config';
+import axios from 'axios';
 import { endpoints } from '@/api/endpoints';
 import type {
   ExternalRejectionResult,
@@ -58,3 +59,19 @@ export const externalSourceFileUrl = () => `${api.defaults.baseURL}/${endpoints.
 /** 本人副本的下載網址（一般連結直接下載附件，同源請求會帶上外部存取 cookie） */
 export const externalCompletedFileUrl = () =>
   `${api.defaults.baseURL}/${endpoints.EXTERNAL_SIGNING_TASK_COMPLETED_FILE}`;
+
+/** 下載時保留 JSON 授權錯誤，讓切換中的舊內部 cookie 顯示 Portal 引導。 */
+export const downloadExternalCompletedFile = async (): Promise<{ bytes: Blob; fileName: string }> => {
+  try {
+    const res = await api<Blob>({ method: 'GET', url: endpoints.EXTERNAL_SIGNING_TASK_COMPLETED_FILE, responseType: 'blob' });
+    const disposition: unknown = res.headers['content-disposition'];
+    const encoded = typeof disposition === 'string' ? /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1] : undefined;
+    if (!encoded) throw new Error('下載檔名格式不正確');
+    return { bytes: res.data, fileName: decodeURIComponent(encoded) };
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.data instanceof Blob && error.response.data.type.includes('json')) {
+      try { error.response.data = JSON.parse(await error.response.data.text()); } catch { /* 非 JSON 錯誤仍交給既有通用訊息。 */ }
+    }
+    throw error;
+  }
+};

@@ -167,13 +167,38 @@ describe('EsignReopeningService', () => {
       response: { details: { signerPublicIds: ['synthetic-signer'] } },
     });
   });
-  it('內部待簽者補簽亦輪替邀請世代並保留固定信箱', async () => {
-    const { service, signer, input, next } = setup();
+  it('內部補簽保留歷史 token 供舊入口識別，不輪替、不用它授權', async () => {
+    const { service, signer, input, end, queued } = setup();
     signer.signerType = 'user';
     await service.reopen(1, 2, input);
-    expect(signer.invitationTokenSha256).not.toBe('a'.repeat(64));
+    expect(signer.invitationTokenSha256).toBe('a'.repeat(64));
     expect(signer.email).toBe('employee@example.test');
-    expect(signer.invitationExpiresAt).toEqual(next);
+    expect(signer.invitationExpiresAt).toEqual(end);
+    expect(queued).toEqual([
+      expect.objectContaining({
+        data: { notificationBatchId: expect.any(Number) },
+      }),
+    ]);
+  });
+  it('沒有 Email 與 token 的內部待簽者仍可補簽，通知記 skipped 不入列', async () => {
+    const { service, signer, input, persisted, queued } = setup();
+    signer.signerType = 'user';
+    signer.email = null;
+    signer.invitationTokenSha256 = null;
+    signer.invitationExpiresAt = null;
+    const result = await service.reopen(1, 2, input);
+    expect(result.status).toBe('active');
+    expect(queued).toEqual([]);
+    expect(
+      persisted.flat().filter((row) => row instanceof EsignNotificationLog),
+    ).toEqual([
+      expect.objectContaining({
+        result: 'skipped',
+        errorCode: 'RECIPIENT_UNAVAILABLE',
+        invitationGenerationSha256: null,
+        completedAt: expect.any(Date),
+      }),
+    ]);
   });
   it('補簽提交後會建立可追蹤的逐人邀請並入列', async () => {
     const { service, input, persisted, queued } = setup();

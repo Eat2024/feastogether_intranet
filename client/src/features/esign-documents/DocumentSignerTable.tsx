@@ -44,7 +44,10 @@ const STATUS_META: Record<EsignSignerStatus, { label: string; color: ChipProps['
 
 /** 邀請信寄送結果 */
 const DELIVERY_LABEL: Record<NonNullable<EsignSignerView['invitationDelivery']>, string> = {
-  pending: '邀請信寄送中',
+  pending: '邀請通知排隊中',
+  processing: '邀請通知寄送中',
+  skipped: '邀請通知未寄出',
+  unknown: '邀請通知寄送結果未確認',
   delivered: '邀請信已寄出',
   failed: '邀請信寄送失敗',
 };

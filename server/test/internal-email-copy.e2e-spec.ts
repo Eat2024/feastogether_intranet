@@ -14,6 +14,9 @@ import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
+import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
+import { EsignSignatureRecord } from '#app/features/esign/entities/esign-signature-record.entity';
+import { INTERNAL_PORTAL_LOGIN_URL } from '#app/features/esign/esign.constants';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
 import {
@@ -48,7 +51,7 @@ interface Task {
   fields: Array<{ id: string }>;
 }
 
-describe('Spec010 內部員工本人副本 HTTP／真實 PDF worker', () => {
+describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
   let ctx: SecurityE2eContext;
   let worker: INestApplicationContext;
   let users: User[];
@@ -126,9 +129,11 @@ describe('Spec010 內部員工本人副本 HTTP／真實 PDF worker', () => {
         .set('Cookie', creatorCookie)
         .set('Origin', origin)
         .send({
-          signers: users
-            .slice(1, 1 + signerCount)
-            .map((user) => ({ type: 'user', userId: String(user.id) })),
+          signers: users.slice(1, 1 + signerCount).map((user, index) => ({
+            type: 'email',
+            name: user.name,
+            email: `copy${index}@example.test`,
+          })),
           fields: [
             {
               type: 'signature',
@@ -201,6 +206,69 @@ describe('Spec010 內部員工本人副本 HTTP／真實 PDF worker', () => {
       data: { documentId: Number(f.document.id), signerId: f.signers[0].id },
     } as Job<{ documentId: number; signerId: number }>);
   }
+  it('歷史 email_invitation 員工證據與已產製 PDF 維持不變，舊 cookie 全面封鎖而本人登入可下載', async () => {
+    const f = await fixture();
+    const signed = await sign(f);
+    await finish(f);
+    const original = await get('/completed-file', f.cookie).expect(200);
+    const manager = ctx.app.get(MysqlService).getManager();
+    // 明確建立切換前 fixture：保留真實 OTP 簽署證據、token 與 PDF，將指派關聯設為歷史員工。
+    await manager.update(EsignSigner, f.signers[0].id, {
+      signerType: 'user',
+      userId: users[1].id,
+      empidSnapshot: users[1].empid,
+    });
+    const before = await manager.findOneByOrFail(EsignSignatureRecord, {
+      signerId: f.signers[0].id,
+    });
+    expect(before.authenticationMethod).toBe('email_invitation');
+    const evidence = apiData<SignatureVerification>(
+      await getSignatureVerification(ctx.server, signed.verificationUrl).expect(
+        200,
+      ),
+    );
+    const redirect = await requestOtp(ctx, f.signers[0].token).expect(303);
+    expect(redirect.headers.location).toBe(INTERNAL_PORTAL_LOGIN_URL);
+    expect(redirect.headers['set-cookie']).toBeUndefined();
+    for (const suffix of ['', '/source-file', '/completed-file']) {
+      const denied = await get(suffix, f.cookie).expect(403);
+      expect(denied.body.error.code).toBe('ESIGN_INTERNAL_LOGIN_REQUIRED');
+      expect(denied.headers['content-type']).toContain('application/json');
+    }
+    await request(ctx.server)
+      .post('/api/external-signing-task/signatures')
+      .set('Cookie', f.cookie)
+      .set('Origin', origin)
+      .send(signed.body)
+      .expect(403);
+    const employeeCookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[1].id)).token}`;
+    await manager.query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
+      new Date(Date.now() - 1000),
+      f.document.id,
+    ]);
+    await ctx.app
+      .get(EsignExpiryService)
+      .expireByDeadline(Number(f.document.id));
+    const copy = await request(ctx.server)
+      .get(`/api/esign/signing-tasks/${f.signers[0].publicId}/completed-file`)
+      .set('Cookie', employeeCookie)
+      .expect(200);
+    expect(copy.body).toEqual(original.body);
+    expect(
+      await manager.findOneByOrFail(EsignSignatureRecord, {
+        signerId: f.signers[0].id,
+      }),
+    ).toEqual(before);
+    const after = apiData<SignatureVerification>(
+      await getSignatureVerification(ctx.server, signed.verificationUrl).expect(
+        200,
+      ),
+    );
+    expect(after.signature).toEqual(evidence.signature);
+    expect(after.document.signedSourceSha256).toBe(
+      evidence.document.signedSourceSha256,
+    );
+  });
   it('補簽只輪替待簽者；已簽者原邀請重新 OTP 取得相同 PDF 與不可變證據', async () => {
     const f = await fixture();
     const signed = await sign(f);

@@ -14,6 +14,9 @@ import dayjs from 'dayjs';
 
 /** 後端事件類型（server/src/features/esign/services 的 audit eventType）對照的中文說明；未列出的直接顯示類型 */
 const EVENT_LABEL: Record<string, string> = {
+  'internal_invitation.delivered': '已寄出內部簽署邀請通知',
+  'internal_reminder.delivered': '已寄出內部催簽通知',
+  'internal_notification.protocol_error': '內部通知寄送結果異常',
   'document.created': '建立草稿',
   'document.draft_updated': '更新草稿',
   'document.initiated': '發起簽署',

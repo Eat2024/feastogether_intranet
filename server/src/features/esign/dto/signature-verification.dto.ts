@@ -1,6 +1,9 @@
 import type { EsignDocumentStatus } from './esign-common.dto';
 
-export type EsignAuthenticationMethod = 'employee_session' | 'email_invitation';
+export type EsignAuthenticationMethod =
+  | 'employee_session'
+  | 'internal_session'
+  | 'email_invitation';
 
 /** 公開驗證只揭露的簽章欄位（spec FR-009 白名單） */
 export class SignatureVerificationSignatureDto {

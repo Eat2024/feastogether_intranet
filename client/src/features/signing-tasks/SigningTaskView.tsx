@@ -1,23 +1,29 @@
 'use client';
 
-// 簽署頁（後端文件）：從 GET /api/esign/signing-tasks 找出指定 signerPublicId 的任務。
-// 內部員工須從 Email 邀請並通過驗證碼才能簽署、拒簽或下載本人副本（Spec 010），
-// 舊的個人操作 API 一律回 403 ESIGN_EMAIL_OTP_REQUIRED，此頁只顯示狀態並引導從邀請信開啟。
+// 本人簽署：員工 session 授權，開啟事件使用 POST，狀態刷新使用 GET 列表。
 import { useGetSigningTasksQuery } from '@/api/queries';
-import type { EsignSigningTask } from '@/api/types';
+import type { EsignSigningTask, SigningTaskSignatureResult, SigningTaskRejectionResult } from '@/api/types';
 import PageHeader from '@/components/PageHeader';
 import { formatDate } from '@/features/esign-documents/listQuery';
 import { getErrorMessage } from '@/lib/apiError';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
-import MarkEmailReadRoundedIcon from '@mui/icons-material/MarkEmailReadRounded';
 import VerifiedRoundedIcon from '@mui/icons-material/VerifiedRounded';
+import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
+import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
-import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/api/query-keys';
+import { openSigningTask, signingTaskSourceFileUrl, submitSigningTaskSignatures, rejectSigningTask, downloadSigningTaskCompletedFile } from '@/api/requests';
+import { usePdfDocument } from '@/features/forms/pdf/usePdf';
+import SigningForm from '@/features/my-signature/sign/SigningForm';
+import TermsStep from '@/features/my-signature/sign/TermsStep';
+import SignSteps from '@/features/my-signature/sign/SignSteps';
+import { taipeiDateTime } from '@/features/my-signature/sign/signingTaskForm';
 import { backHref, signBlock } from './taskQuery';
 
 function BackButton({ href }: { href: string }) {
@@ -40,7 +46,13 @@ function Loading() {
 }
 
 export default function SigningTaskView({ signerPublicId }: { signerPublicId: string }) {
-  const { data, isPending, isError, error, refetch, isFetching } = useGetSigningTasksQuery();
+  const { data, isPending, isError, error, refetch, isFetching } = useGetSigningTasksQuery({}, {
+    refetchInterval: (query) => {
+      if (query.state.status === 'error') return false;
+      const current = query.state.data?.find((task) => task.signerPublicId === signerPublicId);
+      return current?.signer.status === 'signed' && ['pending', 'processing'].includes(current.signer.completion.status ?? '') ? 2000 : false;
+    },
+  });
 
   if (isPending) return <Loading />;
   if (isError) {
@@ -76,97 +88,117 @@ export default function SigningTaskView({ signerPublicId }: { signerPublicId: st
   return <Task key={task.signerPublicId} task={task} />;
 }
 
-function Task({ task }: { task: EsignSigningTask }) {
+function Task({ task: listedTask }: { task: EsignSigningTask }) {
+  const queryClient = useQueryClient();
+  const open = useMutation({
+    mutationFn: openSigningTask,
+    meta: { suppressGlobalErrorToast: true },
+    onSuccess: (openedTask) => {
+      // open 只記一次事件；把回應合入列表快取，後續以 GET 的新狀態為準。
+      queryClient.setQueriesData<EsignSigningTask[]>({ queryKey: [queryKeys.ESIGN_SIGNING_TASKS] },
+        (current) => current?.map((item) => item.signerPublicId === openedTask.signerPublicId ? openedTask : item));
+    },
+  });
+  const download = useMutation({
+    mutationFn: downloadSigningTaskCompletedFile,
+    onSuccess: ({ bytes, fileName }) => {
+      const url = URL.createObjectURL(bytes);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    },
+  });
+  const { mutate: openTask } = open;
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    openTask(listedTask.signerPublicId);
+  }, [openTask, listedTask.signerPublicId]);
+  const [consented, setConsented] = useState(false);
+  const [result, setResult] = useState<SigningTaskSignatureResult | null>(null);
+  const [rejection, setRejection] = useState<SigningTaskRejectionResult | null>(null);
+  const task = listedTask;
   const { document: doc, signer } = task;
-  // 以進入頁面的時間判斷目前狀態（已簽署、已到期、尚未開始等）
-  const [now] = useState(() => new Date());
-  const block = signBlock(task, now);
-  const creator = doc.createdBy ? `建立人 ${doc.createdBy.name}` : '建立人';
+  const signedAt = result?.signedAt ?? signer.signedAt;
+  const rejectedAt = rejection?.rejectedAt ?? signer.rejectedAt;
+  const copyStatus = signer.status === 'signed' ? signer.completion.status : result?.completion.status;
+  const verificationUrl = result?.verificationUrl ?? signer.verificationUrl;
+  const pdf = usePdfDocument(open.data && signer.status === 'pending' && !signedAt && !rejectedAt ? signingTaskSourceFileUrl(task.signerPublicId) : null);
+  const block = signBlock(task, new Date());
 
   return (
     <>
-      <BackButton href={backHref(task)} />
+      <BackButton href={signedAt ? '/my-signature?tab=signed' : rejectedAt ? '/my-signature?tab=rejected' : backHref(task)} />
       <PageHeader
         title={doc.title}
         description={[
           doc.docNumber,
           doc.createdBy && `建立人 ${doc.createdBy.name}（${doc.createdBy.employeeNo}）`,
           `${doc.isReopened ? '補簽期限' : '簽署期限'} ${formatDate(doc.signEndAt) ?? '不限'}`,
-        ]
-          .filter(Boolean)
-          .join('・')}
+        ].filter(Boolean).join('・')}
       />
-      {signer.status === 'signed' ? (
-        <Alert
-          severity="success"
-          variant="outlined"
-          action={
-            // 與已簽署文件上 QR Code 相同的公開驗證網址（Spec 04 FR-003）
-            signer.verificationUrl && (
-              <Button
-                size="large"
-                variant="outlined"
-                startIcon={<VerifiedRoundedIcon />}
-                href={signer.verificationUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                查看簽章驗證
+      {open.error ? (
+        <Alert severity="error" action={<Button color="inherit" onClick={() => openTask(task.signerPublicId)}>重新載入</Button>}>
+          無法開啟文件：{getErrorMessage(open.error)}
+        </Alert>
+      ) : !open.data ? <Loading /> : signedAt ? (
+        <Stack spacing={2}>
+          <Alert severity="success" variant="outlined" action={verificationUrl && (
+            <Button variant="outlined" startIcon={<VerifiedRoundedIcon />} href={verificationUrl} target="_blank" rel="noopener noreferrer">
+              查看簽章驗證
+            </Button>
+          )}>
+            已於 {taipeiDateTime(signedAt)} 完成簽署。
+          </Alert>
+          {copyStatus === 'failed' ? (
+            <Alert severity="error">已簽署文件暫時無法產生，您的簽署已完成並保存，請聯絡文件發起人。</Alert>
+          ) : (
+            <Box>
+              <Button variant="contained" disabled={copyStatus !== 'ready' || download.isPending}
+                loading={download.isPending} aria-busy={copyStatus !== 'ready' || download.isPending}
+                onClick={() => download.mutate(task.signerPublicId)}
+                startIcon={copyStatus === 'ready' ? <DownloadRoundedIcon /> : <CircularProgress size={20} color="inherit" />}>
+                下載已簽署文件
               </Button>
-            )
-          }
-        >
-          {block}
-          <Typography variant="helper" component="div" sx={{ mt: 0.5 }}>
-            如需下載已簽署文件，請從原邀請信開啟並完成 Email 驗證碼驗證後下載。
-          </Typography>
+              <Typography variant="helper" component="div" sx={{ mt: 1 }}>
+                {copyStatus === 'ready' ? '下載您的個人簽署副本（PDF）。' : '文件產生中，完成後即可下載。'}
+              </Typography>
+            </Box>
+          )}
+        </Stack>
+      ) : rejectedAt ? (
+        <Alert severity="info" variant="outlined">
+          已於 {taipeiDateTime(rejectedAt)} 拒絕簽署。
+          <Typography variant="content" component="div">拒絕原因：{(rejection?.reason ?? signer.rejectReason) || '未填寫'}</Typography>
         </Alert>
       ) : block ? (
-        // 已拒絕、已停止、已到期、尚未開始等
-        <Alert severity="info" variant="outlined">
-          {block}
-        </Alert>
-      ) : (
-        <InvitationGuide creator={creator} />
-      )}
+        <Alert severity="info" variant="outlined">{block}</Alert>
+      ) : !consented ? (
+        <>
+          <SignSteps activeIndex={0} />
+          <TermsStep kind="consent" docName={doc.title} terms={[task.consent.text]} version={task.consent.version}
+            backHref="/my-signature" onAgree={() => { setConsented(true); window.scrollTo({ top: 0 }); }} />
+        </>
+      ) : pdf.error ? (
+        <Alert severity="error">文件載入失敗，請重新整理頁面；若登入已過期，請從入口網重新進入。</Alert>
+      ) : pdf.doc ? (
+        <SigningForm task={task} pdf={pdf.doc}
+          onSubmit={async (body) => {
+            const signed = await submitSigningTaskSignatures(task.signerPublicId, body);
+            setResult(signed);
+            void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_SIGNING_TASKS] });
+          }}
+          onReject={async (body) => {
+            const rejected = await rejectSigningTask(task.signerPublicId, body);
+            setRejection(rejected);
+            void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_SIGNING_TASKS] });
+          }}
+          onError={() => { /* API 錯誤及 session 過期交由全域 provider 顯示，不自動重新提交。 */ }}
+        />
+      ) : <Loading />}
     </>
-  );
-}
-
-/**
- * 待簽署：內部員工也須從 Email 邀請並通過驗證碼才能簽署或拒簽（Spec 010 FR-011），
- * 一般員工登入不能直接簽署，此頁只說明簽署方式。
- */
-function InvitationGuide({ creator }: { creator: string }) {
-  return (
-    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-        <Box sx={{ display: 'flex', color: 'primary.main', '& svg': { fontSize: 32 } }}>
-          <MarkEmailReadRoundedIcon />
-        </Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="sectionTitle" component="h2" sx={{ mb: 1 }}>
-            請從邀請信開啟文件簽署
-          </Typography>
-          <Typography variant="description" component="div">
-            為確認是本人簽署，電子簽署須透過寄到你信箱的邀請信進行：
-          </Typography>
-          <Box component="ol" sx={{ m: 0, mt: 1, pl: 2.5 }}>
-            {[
-              '開啟系統寄出的「電子簽署邀請」信件，點擊信中的連結。',
-              '依畫面指示寄送並輸入 Email 驗證碼（6 位數字，10 分鐘內有效）。',
-              '驗證通過後即可閱讀文件並簽署；如需拒絕簽署也在同一頁操作。',
-            ].map((step) => (
-              <Typography key={step} component="li" variant="content" sx={{ display: 'list-item', mb: 0.5 }}>
-                {step}
-              </Typography>
-            ))}
-          </Box>
-          <Typography variant="helper" component="div" sx={{ mt: 1 }}>
-            找不到邀請信時，請先檢查垃圾郵件匣，或聯絡{creator}重新寄送簽署通知。
-          </Typography>
-        </Box>
-      </Box>
-    </Paper>
   );
 }

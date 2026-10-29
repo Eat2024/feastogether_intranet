@@ -8,6 +8,10 @@ import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
+import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
+import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
+import { ExternalAccessCredentialService } from '#app/features/esign/services/external-access-credential.service';
+import { INTERNAL_PORTAL_LOGIN_URL } from '#app/features/esign/esign.constants';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { EsignSigningService } from '#app/features/esign/services/esign-signing.service';
 import { apiData } from './api-response.helper';
@@ -19,7 +23,7 @@ import {
   type SecurityE2eContext,
 } from './security-e2e.helper';
 
-describe('Spec010 內部 Email OTP 簽署授權', () => {
+describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
   let ctx: SecurityE2eContext;
   let users: User[];
   let cookies: string[];
@@ -63,7 +67,7 @@ describe('Spec010 內部 Email OTP 簽署授權', () => {
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
   });
-  async function fixture() {
+  async function fixture(external = false) {
     const pdf = await PDFDocument.create();
     pdf.addPage();
     const created = apiData<{ id: string }>(
@@ -90,7 +94,15 @@ describe('Spec010 內部 Email OTP 簽署授權', () => {
         .send({
           signers: users
             .slice(0, 2)
-            .map((user) => ({ type: 'user', userId: String(user.id) })),
+            .map((user, index) =>
+              external
+                ? {
+                    type: 'email',
+                    name: user.name,
+                    email: `shared${index}@example.test`,
+                  }
+                : { type: 'user', userId: String(user.id) },
+            ),
           fields: [
             {
               type: 'signature',
@@ -119,12 +131,30 @@ describe('Spec010 內部 Email OTP 簽署授權', () => {
           ),
       ),
     );
-    const tokens = signers.map((signer) =>
-      ctx.app
-        .get(EsignTokenService)
-        .decrypt(signer!.invitationTokenCiphertext!),
-    );
-    return { document, signers, tokens };
+    const tokens: string[] = [];
+    const legacyCookies: string[] = [];
+    for (const signer of signers) {
+      if (!signer) throw new Error('合成簽署人不存在');
+      if (!external) {
+        // 明確建立切換前既存 token 與 Redis cookie；新發起流程不再建立這些憑證。
+        const legacy = ctx.app.get(EsignTokenService).createInvitationToken();
+        Object.assign(signer, {
+          invitationTokenSha256: legacy.digest,
+          invitationTokenCiphertext: legacy.ciphertext,
+          invitationExpiresAt: new Date(Date.now() + 86400000),
+        });
+        await ctx.app.get(MysqlService).getManager().save(EsignSigner, signer);
+        legacyCookies.push(
+          `FT_ESIGN_EXTERNAL_ACCESS=${await ctx.app.get(ExternalAccessCredentialService).issue(signer.id, legacy.digest)}`,
+        );
+      }
+      tokens.push(
+        ctx.app
+          .get(EsignTokenService)
+          .decrypt(signer.invitationTokenCiphertext!),
+      );
+    }
+    return { document, signers, tokens, legacyCookies };
   }
   async function verify(token: string) {
     await requestOtp(ctx, token).expect(200);
@@ -135,8 +165,8 @@ describe('Spec010 內部 Email OTP 簽署授權', () => {
     await submitOtp(ctx, token, code).expect(401);
     return String(result.headers['set-cookie'][0]);
   }
-  it('同信箱逐人 OTP 隔離；只持邀請不能看檔，驗證後可簽署及寬等重送', async () => {
-    const f = await fixture();
+  it('外部逐人 OTP 隔離；只持邀請不能看檔，驗證後可簽署及寬等重送', async () => {
+    const f = await fixture(true);
     const before = otpMails(ctx).length;
     await request(ctx.server)
       .get(`/api/external-signature-invitations/${f.tokens[0]}`)
@@ -160,7 +190,7 @@ describe('Spec010 內部 Email OTP 簽署授權', () => {
         .expect(200),
     );
     expect(task.signer).toMatchObject({
-      type: 'user',
+      type: 'email',
       employeeNo: null,
       department: null,
       title: null,
@@ -218,7 +248,7 @@ describe('Spec010 內部 Email OTP 簽署授權', () => {
           body,
           {},
         ),
-    ).rejects.toMatchObject({ code: 'ESIGN_EMAIL_OTP_REQUIRED' });
+    ).rejects.toMatchObject({ code: 'ESIGN_RESOURCE_NOT_FOUND' });
     const otherCookie = await verify(f.tokens[1]);
     await request(ctx.server)
       .post('/api/external-signing-task/rejection')
@@ -235,10 +265,34 @@ describe('Spec010 內部 Email OTP 簽署授權', () => {
       .set('Cookie', otherCookie)
       .expect(401);
   });
-  it('舊五入口本人403、他人404、匿名401；列表及建立人權限仍保留', async () => {
+  it('舊內部 GET 無副作用，POST 固定 Portal；有效舊 cookie 所有入口403而本人 session 可簽', async () => {
     const f = await fixture();
     const publicId = f.signers[0]!.publicId;
+    const manager = ctx.app.get(MysqlService).getManager();
+    const before = await manager.count(EsignAuditEvent, {
+      where: { documentId: Number(f.document.id) },
+    });
+    const mails = otpMails(ctx).length;
+    await request(ctx.server)
+      .get(`/api/external-signature-invitations/${f.tokens[0]}`)
+      .expect(200);
+    for (const response of [
+      await requestOtp(ctx, f.tokens[0]).expect(303),
+      await submitOtp(ctx, f.tokens[0], '123456').expect(303),
+    ]) {
+      expect(response.headers.location).toBe(INTERNAL_PORTAL_LOGIN_URL);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.text).not.toContain('合成內部驗證文件');
+    }
+    expect(otpMails(ctx)).toHaveLength(mails);
+    expect(
+      await manager.count(EsignAuditEvent, {
+        where: { documentId: Number(f.document.id) },
+      }),
+    ).toBe(before);
+    await requestOtp(ctx, 'Z'.repeat(43)).expect(401);
     const body = {
+      signerPublicId: publicId,
       requestId: randomUUID(),
       consentVersion: 'esign-consent-v1',
       accepted: true,
@@ -250,33 +304,59 @@ describe('Spec010 內部 Email OTP 簽署授權', () => {
       ],
     };
     for (const [method, suffix, payload] of [
+      ['get', '', {}],
       ['post', '', {}],
       ['get', '/source-file', {}],
       ['post', '/signatures', body],
-      ['post', '/rejection', { requestId: randomUUID() }],
+      [
+        'post',
+        '/rejection',
+        { signerPublicId: publicId, requestId: randomUUID() },
+      ],
       ['get', '/completed-file', {}],
     ] as const) {
-      for (const [cookie, expected] of [
-        [cookies[0], 403],
-        [cookies[2], 404],
-        ['', 401],
-      ] as const) {
-        const response = await request(ctx.server)
-          [method](`/api/esign/signing-tasks/${publicId}${suffix}`)
-          .set('Cookie', cookie)
-          .set('Origin', origin)
-          .send(payload)
-          .expect(expected);
-        if (expected === 403)
-          expect(JSON.stringify(response.body)).toContain(
-            'ESIGN_EMAIL_OTP_REQUIRED',
-          );
-      }
+      const response = await request(ctx.server)
+        [method]('/api/external-signing-task' + suffix)
+        .set('Cookie', f.legacyCookies[0])
+        .set('Origin', origin)
+        .send(payload)
+        .expect(403);
+      expect(response.headers['content-type']).toContain('application/json');
+      expect(response.text).not.toContain('<html');
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'ESIGN_INTERNAL_LOGIN_REQUIRED',
+          details: { portalLoginUrl: INTERNAL_PORTAL_LOGIN_URL },
+        },
+      });
     }
+    const task = apiData<{ consent: { version: string } }>(
+      await request(ctx.server)
+        .post('/api/esign/signing-tasks/' + publicId)
+        .set('Cookie', cookies[0])
+        .set('Origin', origin)
+        .expect(201),
+    );
+    const { signerPublicId: _, ...internalBody } = body;
+    internalBody.consentVersion = task.consent.version;
     await request(ctx.server)
-      .get('/api/esign/signing-tasks')
+      .post(`/api/esign/signing-tasks/${publicId}/signatures`)
       .set('Cookie', cookies[0])
-      .expect(200);
+      .set('Origin', origin)
+      .send(internalBody)
+      .expect(201);
+    await request(ctx.server)
+      .post('/api/external-signing-task/signatures')
+      .set('Cookie', f.legacyCookies[0])
+      .set('Origin', origin)
+      .send(body)
+      .expect(403);
+    await request(ctx.server)
+      .post(`/api/esign/signing-tasks/${publicId}/signatures`)
+      .set('Cookie', cookies[2])
+      .set('Origin', origin)
+      .send(internalBody)
+      .expect(404);
     await request(ctx.server)
       .get(`/api/esign/documents/${f.document.id}/source-file`)
       .set('Cookie', cookies[0])
@@ -284,7 +364,9 @@ describe('Spec010 內部 Email OTP 簽署授權', () => {
   });
 
   it('共用信箱不共用 OTP，錯滿五次失效；並發驗證只建立一次存取', async () => {
-    const f = await fixture();
+    const first = await fixture(true);
+    const second = await fixture(true);
+    const f = { tokens: [first.tokens[0], second.tokens[0]] };
     await requestOtp(ctx, f.tokens[0]).expect(200);
     const firstCode = otpMails(ctx).at(-1)!.code;
     // 另一指派還沒寄碼，不能使用同信箱已收到的碼。

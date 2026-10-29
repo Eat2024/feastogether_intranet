@@ -11,9 +11,10 @@ import PageHeader from '@/components/PageHeader';
 import { usePdfDocument } from '@/features/forms/pdf/usePdf';
 import { SIGN_STEPS } from '@/features/my-signature/sign/steps';
 import TermsStep from '@/features/my-signature/sign/TermsStep';
-import { getErrorMessage, isExternalAccessLost } from '@/lib/apiError';
+import { getErrorMessage, getInternalPortalLoginUrl, isExternalAccessLost } from '@/lib/apiError';
 import { dialog, radius } from '@/theme/tokens';
 import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
+import InfoRoundedIcon from '@mui/icons-material/InfoRounded';
 import LinkOffRoundedIcon from '@mui/icons-material/LinkOffRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -55,12 +56,16 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
   const [result, setResult] = useState<ExternalSignatureResult | null>(null);
   const [rejection, setRejection] = useState<ExternalRejectionResult | null>(null);
   const [accessLost, setAccessLost] = useState(false);
+  const [portalLoginUrl, setPortalLoginUrl] = useState<string | null>(null);
   // 剛送出成功，或任務本身已是已簽署（依 signer.status 決定流程，見 contracts/http-api.md）
   const signedAt = result?.signedAt ?? task?.signer.signedAt ?? null;
   // 剛拒絕成功，或任務本身已是已拒絕（已拒絕的人不能再讀原始 PDF 或簽署）
   const rejectedAt = rejection?.rejectedAt ?? task?.signer.rejectedAt ?? null;
   // 簽署完成後以唯讀查詢取得本人副本的最新狀態（產生中時自動輪詢，不記錄開啟）
-  const latest = useGetExternalSigningTaskQuery({ enabled: signedAt !== null });
+  const latest = useGetExternalSigningTaskQuery({ enabled: signedAt !== null || pdf.error });
+
+  const portalUrl = portalLoginUrl ?? getInternalPortalLoginUrl(open.error) ?? getInternalPortalLoginUrl(latest.error);
+  if (portalUrl) return <PortalLoginNotice url={portalUrl} />;
 
   if (
     accessLost ||
@@ -80,6 +85,11 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
         task={task}
         signedAt={signedAt}
         copyStatus={(latest.data?.signer ?? result ?? task.signer).completion.status}
+        onError={(error) => {
+          const url = getInternalPortalLoginUrl(error);
+          if (url) setPortalLoginUrl(url);
+          else if (isExternalAccessLost(error)) setAccessLost(true);
+        }}
       />
     </>
   ) : rejectedAt ? (
@@ -105,6 +115,7 @@ export default function ExternalSigning({ signerPublicId }: { signerPublicId: st
       onSigned={setResult}
       onRejected={setRejection}
       onAccessLost={() => setAccessLost(true)}
+      onInternalLoginRequired={setPortalLoginUrl}
     />
   ) : (
     // 看不到文件時不能簽名：載入失敗只提供重新整理
@@ -145,6 +156,17 @@ function SignerLine({ task, withDeadline }: { task: ExternalSigningTask; withDea
       </Box>
       {withDeadline && `・簽署期限 ${task.document.signEndAt ? taipeiDate(task.document.signEndAt) : '不限'}`}
     </>
+  );
+}
+
+function PortalLoginNotice({ url }: { url: string }) {
+  return (
+    <NoticeCard icon={<InfoRoundedIcon />} color="warning" title="請從入口網登入簽署">
+      <Typography variant="description">請登入入口網，至「我的電子簽」完成文件簽署或下載本人副本。</Typography>
+      <Button component="a" fullWidth size="large" variant="contained" href={url} target="_top" sx={{ mt: 2 }}>
+        登入入口網，前往我的電子簽
+      </Button>
+    </NoticeCard>
   );
 }
 

@@ -21,4 +21,23 @@ export interface SendOtpMailInput {
 export interface InvitationMailSender {
   send(input: SendInvitationMailInput): Promise<void>;
   sendOtp(input: SendOtpMailInput): Promise<void>;
+  sendInternalGroup(
+    input: SendInternalGroupMailInput,
+  ): Promise<InternalMailRecipientResult[]>;
+}
+
+/** 內部通知只使用共用入口，不攜帶個人邀請憑證。 */
+export interface SendInternalGroupMailInput {
+  kind?: 'invitation' | 'reminder';
+  recipientEmails: string[];
+  documentTitle: string;
+  creatorName: string;
+  signEndAt: Date;
+  portalLoginUrl: string;
+}
+
+export interface InternalMailRecipientResult {
+  recipientEmail: string;
+  status: 'accepted' | 'rejected' | 'unknown';
+  retryable: boolean;
 }

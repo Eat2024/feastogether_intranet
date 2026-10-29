@@ -26,7 +26,7 @@ iframe 導向主平台 launch（簽 JWT）
 
 | 方向 | `type` | 欄位 | 說明 |
 | --- | --- | --- | --- |
-| 主平台 → 電子簽 | `esign:navigate` | `target`、`empid` | `target` 只接受 `forms-new`、`forms`、`my-signature`；`empid` 為 1–32 個英數字 |
+| 主平台 → 電子簽 | `esign:navigate` | `target`、`empid` | `target` 只接受 `forms-new`、`forms`、`my-signature`、`export-history`（入口網「歷史匯出文件」，2026-10-29 新增）；`empid` 為 1–32 個英數字 |
 | 電子簽 → 主平台 | `esign:ready` | — | 電子簽頁面可接收指令；Portal 必須先掛 message listener 再載入 iframe |
 | 電子簽 → 主平台 | `esign:navigated` | `target` | session 與 `empid` 相同，已換到該頁 |
 | 電子簽 → 主平台 | `esign:launch-required` | `target` | 沒有 session，或 session 不是同一人（已撤銷）；主平台應改走 launch |

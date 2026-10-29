@@ -54,3 +54,13 @@ export interface ExternalRejectionResult {
   rejectedAt: string;
   reason: string;
 }
+
+/** 舊內部邀請的固定 Portal 引導錯誤；只提供登入目的地，不回任務資料。 */
+export interface InternalLoginRequiredResponse {
+  success: false;
+  error: {
+    code: 'ESIGN_INTERNAL_LOGIN_REQUIRED';
+    message: string;
+    details: { portalLoginUrl: string };
+  };
+}

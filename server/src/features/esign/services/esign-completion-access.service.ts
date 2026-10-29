@@ -56,7 +56,7 @@ export class EsignCompletionAccessService {
       : null;
     if (!signer || !document) throw this.notFound();
     this.access.assertInternalSigner(document, signer, userId);
-    throw new AppException(...AppErrors.ESIGN_EMAIL_OTP_REQUIRED);
+    return this.personalCopy(document, signer);
   }
 
   /**

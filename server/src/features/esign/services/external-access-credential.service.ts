@@ -28,7 +28,7 @@ export class ExternalAccessCredentialService {
     return credential;
   }
 
-  /** 舊格式未綁定邀請世代的 session 失效，須重新 OTP。 */
+  /** 只解析憑證，不授予文件權限；呼叫端須重驗 signerType 與存取政策。舊無世代格式失效。 */
   async read(credential: string): Promise<{
     signerId: number;
     invitationGenerationSha256: string;

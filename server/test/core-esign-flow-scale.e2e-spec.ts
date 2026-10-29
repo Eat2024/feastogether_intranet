@@ -259,10 +259,9 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
         id: number;
         public_id: string;
         user_id: number;
-        invitation_token_sha256: string;
       }>
     >(
-      'SELECT id, public_id, user_id, invitation_token_sha256 FROM esign_signers WHERE document_id=? ORDER BY sort_order',
+      'SELECT id, public_id, user_id FROM esign_signers WHERE document_id=? ORDER BY sort_order',
       [documentId],
     );
     const savedFields = await db.query<
@@ -286,9 +285,8 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       await signing.sign(
         signer.public_id,
         {
-          kind: 'external',
-          signerId: Number(signer.id),
-          invitationGenerationSha256: signer.invitation_token_sha256,
+          kind: 'internal',
+          userId: Number(signer.user_id),
         },
         {
           requestId: randomUUID(),

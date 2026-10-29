@@ -104,10 +104,10 @@ export default function SigningTasksTable({
       initiator,
       {
         header: '操作',
-        // 須從 Email 邀請簽署（Spec 010），此處只連到說明簽署方式與狀態的頁面
+        // 以員工本人 session 進入閱讀與簽署。
         cell: (task) => (
           <TooltipIconButton
-            label="檢視簽署方式"
+            label="前往簽署"
             icon={<VisibilityRoundedIcon />}
             color="info"
             href={`/my-signature/${task.signerPublicId}`}
@@ -135,7 +135,7 @@ export default function SigningTasksTable({
       {
         header: '操作',
         cell: (task) => (
-          // 檢視：顯示簽署狀態與簽章驗證連結；本人副本須從原邀請信驗證後下載（Spec 010 FR-013）
+          // 檢視簽署結果、簽章驗證與本人副本。
           <TooltipIconButton
             label="檢視"
             icon={<VisibilityRoundedIcon />}

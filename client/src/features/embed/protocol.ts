@@ -14,6 +14,7 @@ export const EMBED_TARGET_PATHS = {
   "forms-new": "/forms/new",
   forms: "/forms",
   "my-signature": "/my-signature",
+  "export-history": "/export-history",
 } as const;
 
 export type EmbedTarget = keyof typeof EMBED_TARGET_PATHS;

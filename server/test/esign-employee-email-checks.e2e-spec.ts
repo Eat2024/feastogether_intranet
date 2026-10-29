@@ -164,6 +164,20 @@ describe('Spec010 草稿員工信箱檢查 API', () => {
     expect(failed.text).not.toContain('private-data');
   });
 
+  it('來源成功但信箱格式無效回 unavailable，與來源故障區分', async () => {
+    http.post.mockReturnValue(
+      of({
+        data: {
+          success: true,
+          data: [{ person_empid: `${empid}1`, email: 'invalid-address' }],
+        },
+      }),
+    );
+    expect(apiData(await check({ userIds: [userId] }).expect(200))).toEqual({
+      items: [{ userId, status: 'unavailable', maskedEmail: null }],
+    });
+  });
+
   it('空來源為 unavailable；重新查詢不使用 Email 快取', async () => {
     http.post.mockReturnValue(of({ data: { success: true, data: [] } }));
     expect(

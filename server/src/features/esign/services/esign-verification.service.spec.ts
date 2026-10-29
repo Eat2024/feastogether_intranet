@@ -289,6 +289,14 @@ describe('EsignVerificationService.saveSnapshot', () => {
 });
 
 describe('EsignVerificationService.verify', () => {
+  it('新的 internal_session 簽章驗證保留驗證方式，不改寫歷史紀錄', async () => {
+    const { service, record, saveSnapshot } = setup();
+    record.authenticationMethod = 'internal_session';
+    await saveSnapshot();
+    const result = await service.verify(verificationCode);
+    expect(result.signature.authenticationMethod).toBe('internal_session');
+    expect(record.authenticationMethod).toBe('internal_session');
+  });
   it('完成文件回傳白名單欄位與完成文件摘要', async () => {
     const { service, saveSnapshot } = setup();
     await saveSnapshot();

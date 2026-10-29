@@ -596,6 +596,7 @@ describe('內外部催簽 API', () => {
       INVITATION_MAIL_SENDER,
     );
     const before = mailer.deliveries.length;
+    const beforeGroups = mailer.internalGroupDeliveries.length;
     for (const row of rows)
       await worker().process({ data: { notificationLogId: row.id } } as Job<{
         notificationLogId: number;
@@ -603,9 +604,14 @@ describe('內外部催簽 API', () => {
     const sent = mailer.deliveries.slice(before);
     expect(sent.map((mail) => mail.recipientEmail)).toEqual([
       'e2e00905@example.test',
-      'e2e00905@example.test',
     ]);
-    expect(new Set(sent.map((mail) => mail.invitationToken)).size).toBe(2);
+    expect(new Set(sent.map((mail) => mail.invitationToken)).size).toBe(1);
+    expect(mailer.internalGroupDeliveries.slice(beforeGroups)).toEqual([
+      expect.objectContaining({
+        kind: 'reminder',
+        recipientEmails: ['e2e00905@example.test'],
+      }),
+    ]);
     const limited = await post(doc.id, {
       requestId: randomUUID(),
       selection: 'all_pending',
@@ -617,7 +623,7 @@ describe('內外部催簽 API', () => {
       })),
     });
   });
-  it('歷史內部缺固定信箱或邀請時回逐人原因，不查 HR 補登或寄出', async () => {
+  it('歷史內部缺固定信箱保留逐人略過紀錄，不查 HR 補登或寄出', async () => {
     const [user] = await db.query<Array<{ id: number }>>(
       'SELECT id FROM users WHERE empid=?',
       ['E2E00905'],
@@ -627,27 +633,78 @@ describe('內外部催簽 API', () => {
     await db.query('UPDATE esign_signers SET email=NULL WHERE document_id=?', [
       doc.id,
     ]);
-    const unavailable = await post(doc.id, {
-      requestId: randomUUID(),
-      selection: 'all_pending',
-    }).expect(409);
-    expect(apiError(unavailable).details).toEqual({
-      items: [
-        {
-          signerPublicId: doc.signers[0].publicId,
-          reasonCode: 'RECIPIENT_UNAVAILABLE',
-        },
-      ],
-    });
-    const batches = apiData<{ items: unknown[] }>(
-      await request(ctx.server)
-        .get(
-          `/api/esign/documents/${doc.id}/notification-batches?kind=reminder`,
-        )
-        .set('Cookie', cookie)
-        .expect(200),
+    const snapshot = () =>
+      db.query<Array<{ signing_payload_json: unknown }>>(
+        'SELECT signing_payload_json FROM esign_documents WHERE id=?',
+        [doc.id],
+      );
+    const originalSnapshot = await snapshot();
+    const hr = jest.spyOn(ctx.app.get(FeastogetherHrService), 'getStaffEmails');
+    const mailer = ctx.app.get<FakeInvitationMailSender>(
+      INVITATION_MAIL_SENDER,
     );
-    expect(batches.items).toEqual([]);
+    const sent = {
+      external: mailer.deliveries.length,
+      internal: mailer.internalGroupDeliveries.length,
+    };
+    try {
+      const body = { requestId: randomUUID(), selection: 'all_pending' };
+      const skipped = apiData<Batch>(await post(doc.id, body).expect(202));
+      expect(skipped).toMatchObject({
+        selectedCount: 1,
+        queuedCount: 0,
+        notSentCount: 1,
+        items: [
+          {
+            signerPublicId: doc.signers[0].publicId,
+            status: 'skipped',
+            reasonCode: 'RECIPIENT_UNAVAILABLE',
+          },
+        ],
+      });
+      expect(apiData<Batch>(await post(doc.id, body).expect(202))).toEqual(
+        skipped,
+      );
+      const batches = apiData<{ items: Array<{ batchId: string }> }>(
+        await request(ctx.server)
+          .get(
+            `/api/esign/documents/${doc.id}/notification-batches?kind=reminder`,
+          )
+          .set('Cookie', cookie)
+          .expect(200),
+      );
+      expect(batches.items.map((batch) => batch.batchId)).toEqual([
+        skipped.batchId,
+      ]);
+      const logs = await db.query<
+        Array<{
+          id: number;
+          result: string;
+          error_code: string;
+          attempt_count: number;
+        }>
+      >(
+        'SELECT l.id,l.result,l.error_code,l.attempt_count FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.public_id=?',
+        [skipped.batchId],
+      );
+      expect(logs).toEqual([
+        expect.objectContaining({
+          result: 'skipped',
+          error_code: 'RECIPIENT_UNAVAILABLE',
+          attempt_count: 0,
+        }),
+      ]);
+      for (const log of logs)
+        await worker().process({ data: { notificationLogId: log.id } } as Job<{
+          notificationLogId: number;
+        }>);
+      expect(hr).not.toHaveBeenCalled();
+      expect(mailer.deliveries).toHaveLength(sent.external);
+      expect(mailer.internalGroupDeliveries).toHaveLength(sent.internal);
+      expect(await snapshot()).toEqual(originalSnapshot);
+    } finally {
+      hr.mockRestore();
+    }
   });
   it('selected 去重，混合內部均受理；跨批併發僅寄一次且可追查初邀/催簽摘要', async () => {
     const [user] = await db.query<Array<{ id: number }>>(
@@ -684,11 +741,17 @@ describe('內外部催簽 API', () => {
       INVITATION_MAIL_SENDER,
     );
     const before = mailer.deliveries.length;
+    const beforeGroups = mailer.internalGroupDeliveries.length;
     for (const row of rows)
       await worker().process({ data: { notificationLogId: row.id } } as Job<{
         notificationLogId: number;
       }>);
-    expect(mailer.deliveries.slice(before)).toHaveLength(6);
+    expect(mailer.deliveries.slice(before)).toHaveLength(4);
+    expect(
+      mailer.internalGroupDeliveries
+        .slice(beforeGroups)
+        .map((mail) => mail.kind),
+    ).toEqual(['invitation', 'reminder']);
     const detail = apiData<{
       signers: Array<{
         type: string;
@@ -719,7 +782,8 @@ describe('內外部催簽 API', () => {
       }),
     ]);
     expect(responses.map((r) => r.status)).toEqual([409, 409]);
-    expect(mailer.deliveries.slice(before)).toHaveLength(6);
+    expect(mailer.deliveries.slice(before)).toHaveLength(4);
+    expect(mailer.internalGroupDeliveries.slice(beforeGroups)).toHaveLength(2);
   });
   it('明確失敗仍待重試時不能另建批次，原明細成功後只寄出一次', async () => {
     const doc = await create();

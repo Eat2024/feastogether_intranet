@@ -7,6 +7,7 @@ import RejectDialog from '@/features/my-signature/sign/RejectDialog';
 import SignaturePadDialog from '@/features/my-signature/sign/SignaturePadDialog';
 import SignProgressPanel from '@/features/my-signature/sign/SignProgressPanel';
 import { useSignaturePad } from '@/features/my-signature/sign/useSignaturePad';
+import { randomUUID } from '@/lib/uuid';
 import DrawRoundedIcon from '@mui/icons-material/DrawRounded';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
@@ -55,7 +56,7 @@ function SigningFormContent({ task, pdf, onSubmit, onReject, onError: reportErro
   // 日期欄位顯示開始簽署當天的日期；實際寫入 PDF 的日期以後端簽署時間為準
   const [today] = useState(() => taipeiDate(new Date()));
   // 這次簽署的識別：送出失敗後重試沿用同一個，後端據此辨識重送，不會重複簽署
-  const [requestId] = useState(() => crypto.randomUUID());
+  const [requestId] = useState(() => randomUUID());
   // ref 同步攔截連點，state 負責更新送出中的畫面。
   const [busy, setBusy] = useState<'sign' | 'reject' | null>(null);
   const submitting = useRef(false);
@@ -84,7 +85,7 @@ function SigningFormContent({ task, pdf, onSubmit, onReject, onError: reportErro
     setBusy('reject');
     const reason = input.trim();
     if (lastRejection.current?.reason !== reason) {
-      lastRejection.current = { reason, requestId: crypto.randomUUID() };
+      lastRejection.current = { reason, requestId: randomUUID() };
     }
     reject.mutate({ requestId: lastRejection.current.requestId, reason });
   };

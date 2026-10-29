@@ -13,7 +13,13 @@ export const metadata: Metadata = { title: "新增電子簽文件" };
 // TODO: 後端完成簽到表後改為串接 API，並拿掉「尚未完成」標示與提示
 const TYPES = [
   { value: "upload", label: "一般文件（上傳）", href: "/forms/new" },
-  { value: "sheet", label: "簽到表（尚未完成）", href: "/forms/new?type=sheet" },
+  {
+    value: "sheet",
+    label: "簽到表（尚未完成）",
+    href: "/forms/new?type=sheet",
+    // 後端尚未支援簽到表，先停用此分頁
+    disabled: true,
+  },
 ];
 
 export default async function NewFormPage({

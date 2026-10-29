@@ -1,7 +1,7 @@
 'use client';
 
 // 匯出簽署紀錄（後端文件）：畫面與 mock 版 /forms/[id]/export 相同，條件記在網址上。
-// 後端沒有匯出 API，以 GET /api/esign/documents/:id 的簽署人在瀏覽器端產生 Excel。
+// Excel 以 GET /api/esign/documents/:id 的簽署人在瀏覽器端產生，產生前先記錄到歷史匯出（Spec 015）。
 import { useGetDocumentQuery } from '@/api/queries';
 import type { EsignDocumentDetail, EsignSignerStatus } from '@/api/types';
 import LinkPagination from '@/components/LinkPagination';
@@ -37,7 +37,6 @@ import {
   exportRows,
   FIELDS,
   parseExportQuery,
-  selectedDeptNames,
   STATUS_OPTIONS,
   type ExportQuery,
   type FieldKey,
@@ -134,17 +133,11 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
   const download = useMutation({
     mutationFn: async () => {
       // exceljs 較大，點擊時才載入
-      const { buildExportXlsx } = await import('./buildExportXlsx');
-      const { blob, fileName } = await buildExportXlsx(doc, query, rows, selectedDeptNames(query.depts, deptOptions));
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
+      const { recordAndDownloadExcel } = await import('./buildExportXlsx');
+      await recordAndDownloadExcel(doc, query);
     },
     meta: { suppressGlobalErrorToast: true },
-    onError: () => showSnackbar('匯出失敗，請稍後再試', 'error'),
+    onError: (err) => showSnackbar(getErrorMessage(err, '匯出失敗，請稍後再試'), 'error'),
   });
 
   return (

@@ -1,19 +1,34 @@
 // 在瀏覽器端產生簽署紀錄清單 Excel（格式與 mock 版 features/forms/export/buildXlsx.ts 相同）。
 // exceljs 套件較大，由呼叫端在點擊匯出時以 dynamic import 載入本檔。
-import type { EsignDocumentDetail, EsignSignerView } from '@/api/types';
+import { createExcelExportRecord } from '@/api/requests';
+import type { EsignDocumentDetail } from '@/api/types';
 import { color } from '@/theme/tokens';
 import dayjs from 'dayjs';
 import ExcelJS from 'exceljs';
 import { periodText } from './listQuery';
-import { describeScope, FIELDS, type ExportQuery } from './exportQuery';
+import {
+  buildDeptOptions,
+  describeScope,
+  exportRows,
+  FIELDS,
+  selectedDeptNames,
+  type ExportQuery,
+  type ExportSigner,
+} from './exportQuery';
+
+/** 產生 Excel 用到的文件欄位（文件詳情與歷史匯出的重新下載資料都有） */
+export type ExportDocument = Pick<
+  EsignDocumentDetail,
+  'title' | 'docNumber' | 'createdBy' | 'signStartAt' | 'signEndAt' | 'originalSignEndAt' | 'isReopened'
+> & { signers: ExportSigner[] };
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const argb = (hex: string) => `FF${hex.replace('#', '').toUpperCase()}`;
 
 export async function buildExportXlsx(
-  doc: EsignDocumentDetail,
+  doc: ExportDocument,
   query: ExportQuery,
-  rows: EsignSignerView[],
+  rows: ExportSigner[],
   /** 勾選部門的名稱（空陣列表示全部部門） */
   deptNames: string[],
 ): Promise<{ blob: Blob; fileName: string }> {
@@ -41,7 +56,7 @@ export async function buildExportXlsx(
   if (rows.length) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: fields.length } };
 
   // 工作表 2：文件資訊（匯出條件與摘要，方便日後對照）
-  const count = (st: EsignSignerView['status']) => doc.signers.filter((s) => s.status === st).length;
+  const count = (st: ExportSigner['status']) => doc.signers.filter((s) => s.status === st).length;
   const info = wb.addWorksheet('文件資訊');
   info.columns = [
     { key: 'k', width: 16 },
@@ -68,4 +83,27 @@ export async function buildExportXlsx(
     blob: new Blob([buffer], { type: XLSX_MIME }),
     fileName: `${doc.docNumber}_簽署紀錄_${now.format('YYYYMMDD')}.xlsx`,
   };
+}
+
+/**
+ * 匯出簽署紀錄 Excel：先以 POST /api/esign/history/export 記錄匯出，成功後才產生並下載。
+ * 匯出頁與歷史匯出的重新下載共用；範圍與筆數依文件目前的資料計算。
+ */
+export async function recordAndDownloadExcel(doc: ExportDocument & { id: string }, query: ExportQuery) {
+  const rows = exportRows(doc.signers, query);
+  const deptNames = selectedDeptNames(query.depts, buildDeptOptions(doc.signers));
+  await createExcelExportRecord({
+    type: 'excel',
+    documentId: doc.id,
+    scope: describeScope(query, deptNames),
+    count: rows.length,
+    conditions: { statuses: query.statuses, depts: query.depts, fields: query.fields },
+  });
+  const { blob, fileName } = await buildExportXlsx(doc, query, rows, deptNames);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
 }

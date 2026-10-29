@@ -1,6 +1,6 @@
 import api from '@/api/config';
-import axios from 'axios';
 import { endpoints } from '@/api/endpoints';
+import { downloadNamedFile } from './blob';
 import type {
   ExternalRejectionResult,
   ExternalSignatureResult,
@@ -56,22 +56,9 @@ export const rejectExternalSigningTask = async (body: RejectExternalSigningTaskB
 /** 外部簽署人讀取原始 PDF 的網址（pdf.js 直接讀取，同源請求會帶上外部存取 cookie） */
 export const externalSourceFileUrl = () => `${api.defaults.baseURL}/${endpoints.EXTERNAL_SIGNING_TASK_SOURCE_FILE}`;
 
-/** 本人副本的下載網址（一般連結直接下載附件，同源請求會帶上外部存取 cookie） */
-export const externalCompletedFileUrl = () =>
-  `${api.defaults.baseURL}/${endpoints.EXTERNAL_SIGNING_TASK_COMPLETED_FILE}`;
-
-/** 下載時保留 JSON 授權錯誤，讓切換中的舊內部 cookie 顯示 Portal 引導。 */
-export const downloadExternalCompletedFile = async (): Promise<{ bytes: Blob; fileName: string }> => {
-  try {
-    const res = await api<Blob>({ method: 'GET', url: endpoints.EXTERNAL_SIGNING_TASK_COMPLETED_FILE, responseType: 'blob' });
-    const disposition: unknown = res.headers['content-disposition'];
-    const encoded = typeof disposition === 'string' ? /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1] : undefined;
-    if (!encoded) throw new Error('下載檔名格式不正確');
-    return { bytes: res.data, fileName: decodeURIComponent(encoded) };
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.data instanceof Blob && error.response.data.type.includes('json')) {
-      try { error.response.data = JSON.parse(await error.response.data.text()); } catch { /* 非 JSON 錯誤仍交給既有通用訊息。 */ }
-    }
-    throw error;
-  }
-};
+/**
+ * 下載本人副本；保留 JSON 授權錯誤，讓切換中的舊內部 cookie 顯示 Portal 引導。
+ * POST：後端在送出檔案的同一請求寫入一筆「單人 PDF」匯出紀錄（Spec 015）
+ */
+export const downloadExternalCompletedFile = (): Promise<{ bytes: Blob; fileName: string }> =>
+  downloadNamedFile(endpoints.EXTERNAL_SIGNING_TASK_COMPLETED_FILE, 'POST');

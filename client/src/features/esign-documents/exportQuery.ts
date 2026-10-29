@@ -1,6 +1,7 @@
 // 匯出簽署紀錄（後端文件）的條件、欄位與資料整理；條件記在網址上（格式與 mock 版相同），預覽與 Excel 共用。
-// 後端沒有匯出 API，資料來自 GET /api/esign/documents/:id 的簽署人，在瀏覽器端產生 Excel。
-import type { EsignSignerStatus, EsignSignerView } from '@/api/types';
+// Excel 在瀏覽器端產生：匯出頁的資料來自文件詳情；歷史匯出的重新下載來自 GET /api/esign/history/export/:id/document。
+// 產生前先以 POST /api/esign/history/export 記錄匯出（Spec 015）。
+import type { EsignSignerStatus, EsignSignerView, ExcelExportField } from '@/api/types';
 import dayjs from 'dayjs';
 
 export const STATUS_OPTIONS = [
@@ -13,12 +14,18 @@ const STATUS_LABEL: Record<EsignSignerStatus, string> = { pending: '待簽署', 
 
 const formatTime = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD HH:mm') : '');
 
+/** 產生 Excel 用到的簽署人欄位（文件詳情與歷史匯出的重新下載資料共有的欄位） */
+export type ExportSigner = Pick<
+  EsignSignerView,
+  'type' | 'name' | 'employeeNo' | 'department' | 'title' | 'email' | 'status' | 'signedAt' | 'rejectedAt' | 'rejectReason'
+>;
+
 type FieldDef = {
-  key: string;
+  key: ExcelExportField;
   label: string;
   /** Excel 欄寬（字元數） */
   width: number;
-  value: (s: EsignSignerView) => string;
+  value: (s: ExportSigner) => string;
 };
 
 /** 可匯出的欄位（順序即 Excel 欄位順序）；與 mock 版相同，簽到表專用的欄位除外 */
@@ -72,7 +79,7 @@ const deptKey = (name: string) => `d:${encodeURIComponent(name)}`;
 const deptNameOf = (key: string) => decodeURIComponent(key.slice(2));
 
 /** 簽署人歸屬的部門鍵 */
-export function signerDeptKey(s: EsignSignerView): string {
+export function signerDeptKey(s: ExportSigner): string {
   if (s.type === 'email') return EMAIL_GROUP;
   return s.department ? deptKey(s.department) : NO_DEPT;
 }
@@ -80,7 +87,7 @@ export function signerDeptKey(s: EsignSignerView): string {
 const collator = new Intl.Collator('zh-Hant-TW');
 
 /** 這份文件簽署人所屬的部門（依名稱排序；以 Email 加入、沒有部門資料的分在最後） */
-export function buildDeptOptions(signers: EsignSignerView[]): DeptNode[] {
+export function buildDeptOptions(signers: ExportSigner[]): DeptNode[] {
   const counts = new Map<string, number>();
   for (const s of signers) counts.set(signerDeptKey(s), (counts.get(signerDeptKey(s)) ?? 0) + 1);
   const depts = [...counts.entries()]
@@ -108,7 +115,7 @@ export function selectedDeptNames(ids: string[], options: DeptNode[]): string[] 
 }
 
 /** 套用匯出範圍，回傳要匯出的簽署人（維持後端順序） */
-export function exportRows(signers: EsignSignerView[], query: ExportQuery): EsignSignerView[] {
+export function exportRows<T extends ExportSigner>(signers: T[], query: ExportQuery): T[] {
   const depts = new Set(query.depts);
   return signers.filter(
     (s) =>
@@ -117,11 +124,16 @@ export function exportRows(signers: EsignSignerView[], query: ExportQuery): Esig
   );
 }
 
-/** 匯出範圍的文字說明 */
+// 匯出紀錄的範圍說明上限（後端 trim 後最多 2,000 字）
+const SCOPE_MAX = 2000;
+
+/** 匯出範圍的文字說明；部門很多時截斷，不超過後端上限 */
 export function describeScope(query: ExportQuery, deptNames: string[]) {
   const statusText = query.statuses.length ? query.statuses.map((s) => STATUS_LABEL[s]).join('、') : '全部';
   const deptText = deptNames.length ? deptNames.join('、') : '全部';
-  return `狀態：${statusText}；部門：${deptText}`;
+  const text = `狀態：${statusText}；部門：${deptText}`;
+  const chars = Array.from(text);
+  return chars.length > SCOPE_MAX ? `${chars.slice(0, SCOPE_MAX - 1).join('')}…` : text;
 }
 
 /** 匯出頁網址；條件改變時不帶頁碼（回到預覽第 1 頁） */

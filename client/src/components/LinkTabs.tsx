@@ -10,12 +10,21 @@ export default function LinkTabs({
   tabs,
 }: {
   value: string;
-  tabs: { value: string; label: string; href: string }[];
+  /** disabled：停用此分頁（由頁面決定，例如尚未完成的功能） */
+  tabs: { value: string; label: string; href: string; disabled?: boolean }[];
 }) {
   return (
     <Tabs value={value} sx={{ borderBottom: 1, borderColor: "divider" }}>
       {tabs.map((t) => (
-        <Tab key={t.value} value={t.value} label={t.label} component={Link} href={t.href} scroll={false} />
+        <Tab
+          key={t.value}
+          value={t.value}
+          label={t.label}
+          component={Link}
+          href={t.href}
+          scroll={false}
+          disabled={t.disabled}
+        />
       ))}
     </Tabs>
   );

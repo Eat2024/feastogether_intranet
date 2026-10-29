@@ -75,6 +75,24 @@ export class EsignSignerViewDto {
   verificationUrl!: string | null;
 }
 
+/** 簽署人身分快照與簽署結果的欄位；不含 publicId、完成狀態、通知結果與驗證網址。 */
+export const ESIGN_SIGNER_RESULT_FIELDS = [
+  'type',
+  'name',
+  'employeeNo',
+  'department',
+  'title',
+  'email',
+  'status',
+  'signedAt',
+  'rejectedAt',
+  'rejectReason',
+] as const;
+export type EsignSignerResult = Pick<
+  EsignSignerViewDto,
+  (typeof ESIGN_SIGNER_RESULT_FIELDS)[number]
+>;
+
 export class EsignFieldViewDto {
   id!: string;
   type!: EsignFieldType;

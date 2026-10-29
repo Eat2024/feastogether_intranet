@@ -38,7 +38,7 @@ CONSTRAINT chk_esign_export_jobs_record_type CHECK (
 | `signer_id` | NULL | 副本所屬簽署人 | NULL |
 | `conditions_json` | `{ statuses, depts, fields }` | NULL | NULL |
 | `status` | `completed` | `completed` | 工作狀態 |
-| `scope_description` | 前端傳入的範圍說明 | 簽署人標籤，超過 255 字截斷 | 既有 |
+| `scope_description` | 前端傳入的範圍說明；超過 255 字時存成前 254 字加「…」 | 簽署人標籤，超過 255 字截斷 | 既有 |
 | `record_count` | 前端傳入的筆數 | 1 | 既有 |
 | `completed_at` | 寫入時間 | 寫入時間 | 完成時間 |
 | ZIP 專用欄位 | NULL | NULL | 既有 |
@@ -46,7 +46,7 @@ CONSTRAINT chk_esign_export_jobs_record_type CHECK (
 ### 衍生欄位
 
 - **匯出人 `exportedBy`**：
-  - `created_by_user_id` 有值：`{ name: users.name, employeeNo: users.empid, email: null }`。
+  - `created_by_user_id` 有值：`{ name: users.name, employeeNo: users.empid, email: null }`，員工已軟刪除也照常顯示。
   - `created_by_user_id` 為 NULL：外部簽署人本人下載，取 `signer_id` 對應簽署人的 `{ name: name_snapshot, employeeNo: null, email: external_email }`。
 - **PDF 簽署人標籤**：內部為 `name_snapshot（empid_snapshot）`，外部為 `name_snapshot（external_email）`。
 - **文件**：`{ id, title, docNumber }` 取自 `esign_documents` 目前的資料。

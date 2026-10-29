@@ -15,14 +15,12 @@ import {
   EsignFieldViewDto,
   type EsignInvitationDelivery,
   type EsignSignerStatus,
+  type EsignSignerResult,
   type EsignSignerType,
   EsignSignerViewDto,
   EsignSourceFileDto,
 } from '../dto/esign-common.dto';
-import type {
-  ExcelExportDocumentDto,
-  ExcelExportSignerDto,
-} from '../dto/export-history.dto';
+import type { ExcelExportDocumentDto } from '../dto/export-history.dto';
 import { effectiveDocumentStatus } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
 
@@ -185,7 +183,7 @@ export class EsignViewMapper {
   }
 
   /** 簽署人身分快照與簽署結果；Excel 只需要這些欄位。 */
-  private signerResult(signer: EsignSigner): ExcelExportSignerDto {
+  private signerResult(signer: EsignSigner): EsignSignerResult {
     return {
       type: signer.signerType as EsignSignerType,
       name: signer.nameSnapshot,

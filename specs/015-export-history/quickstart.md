@@ -29,7 +29,7 @@ pnpm -C server test:e2e
 | 9 | 未登入或只有外部存取 cookie | 查詢、記錄、重新下載都被拒，且不留紀錄 |
 | 10 | 非建立人 `POST` Excel 紀錄到已發起文件 | 201，匯出人為目前使用者 |
 | 11 | `POST` Excel 紀錄到草稿、已刪除或不存在的文件 | 404，不新增紀錄 |
-| 12 | Excel body 帶未知欄位、未知狀態／欄位、`fields` 為空、`scope` 為 256 字、`count=-1`、`type=pdf` | 400，不新增紀錄 |
+| 12 | Excel body 帶未知欄位、未知狀態／欄位、`fields` 為空、`scope` trim 後 2,001 字、部門鍵 1,001 字、`count=-1`、`type=pdf` | 400，不新增紀錄 |
 | 13 | 建立人 `POST …/completed-file/downloads` | 回 PDF；新增 `pdf` 紀錄，匯出人為建立人，範圍為該簽署人 |
 | 14 | 外部簽署人 `POST /api/external-signing-task/completed-file/downloads` | 回 PDF；新增 `pdf` 紀錄，匯出人為「姓名＋Email」 |
 | 15 | 內部員工以員工 session `POST /api/esign/signing-tasks/{id}/completed-file/downloads` | 回 PDF；新增 `pdf` 紀錄，匯出人為該員工（姓名＋員工編號） |
@@ -41,6 +41,9 @@ pnpm -C server test:e2e
 | 21 | 任一員工對 `excel` 紀錄 `GET …/{id}/document` | 只回 contract 列出的欄位，不新增紀錄 |
 | 22 | 申請、重用、重試與下載 ZIP | 行為與 Spec 009 相同；下載不新增紀錄；`zip` 只依匯出工作計數 |
 | 23 | 存在 `excel`／`pdf` 紀錄時執行 ZIP worker 與維護掃描 | 新類型不被選中或更新 |
+| 24 | Excel `scope` trim 後 256–2,000 字（含 4 位元組字元） | 201；依字元存成前 254 字加「…」，回應與查詢都是儲存的值 |
+| 25 | `excel`／`pdf` 紀錄的匯出員工已軟刪除 | 查詢照常回 200，匯出人仍是該員工 |
+| 26 | `GET /api/esign/exportable-documents?documentId=…` | 400（移除 `ExportQueryDto.documentId` 的刻意副作用） |
 
 ## 前端串接後（由前端工程師驗收）
 
@@ -267,3 +270,42 @@ Swagger：以 build 產物產生文件確認四條 `POST …/downloads` 都是 2
   - `getBlob` 只會發 GET；
   - ZIP 查詢必須帶 `type=zip`。
 - `docs/agents/電子簽串接待辦清單.md` 的「匯出紀錄」改為後端已完成、待前端串接。
+
+### Code review 修正（2026-10-29）
+
+環境：Node v26.4.0、pnpm 11.9.0。基準為整合分支 `feat/015-export-history`（d2abcea），實作分支 `impl/015-review-fixes`。
+
+測試隔離：worktree 的 `server/.env.test` 改為 `DB_MYSQL_DB=feastogether_intranet_test15r`、`REDIS_DB=9`。
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors（265 個既有 warnings，總數不變） |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e`（全套） | 28 suites／318 tests，316 通過、2 失敗（`internal-group-reminders`，見下方） |
+| `pnpm -C server test:e2e --testRegex '(core-esign-flow\|internal-email-copy\|internal-email-signing\|internal-portal-completion\|esign-rejection\|esign-document-delivery-security\|api-coverage\|esign-export-history\|esign-export)\.e2e-spec\.ts$'` | 10 suites／179 tests 通過（`esign-export-history` 76＝原 72＋本次 4；含 `security-core-esign-flow`） |
+| `pnpm -C server test:e2e:security` | 11 suites／60 tests 通過 |
+
+全套 e2e 的 2 個失敗是 Spec 016 `internal-group-reminders` 的「同日受理阻擋重複催簽，台北跨日後可再群寄…」與「跨午夜重試只寄本批暫時拒收地址…」：
+- 錯誤：建立文件時回 401。
+- 原因：案例把假時鐘設為當天 15:59:50 UTC，session 在真實時間核發，有效 8 小時。在 UTC 00:00–08:00 之間執行時，假時鐘已超過 session 期限。
+- 把 `server/src`、`server/test` 暫時換回基準 d2abcea 單獨執行，同樣是這 2 個失敗；換回本分支後單獨執行結果相同。與 Spec 015 無關，未在本次處理。
+- 已知的 `core-esign-flow` 並行 flake 本次沒有出現。
+
+新增與調整的自動化案例（`esign-export-history`，除非另外註明）：
+- #12：400 案例的 `scope` 改為 2,001 字、部門鍵改為 1,001 字。
+- 邊界值：499 個 1,000 字的 ASCII 部門鍵加 1 個 1,000 個中文字的部門鍵可記錄。
+- #24「scope 超過 255 字（…）時存成前 254 字加「…」，回應與查詢都是儲存的值」：2,000 個中文字（含前後空白）、256 個字、256 個 emoji 三案。
+- #25「查詢紀錄 › 匯出員工已軟刪除時，excel 與 pdf 紀錄仍以該員工為匯出人」。
+- #26：`esign-export`「員工可跨建立人查找，但空文件不能匯出」補上 `exportable-documents?documentId=…` 回 400。
+- #16：建立人、本人與重新下載的副本未產生案例補上錯誤訊息比對，固定原本的錯誤定義。
+
+紅燈與變異檢查：
+- 部門鍵 1,000 字邊界與三個 `scope` 截斷案例在改 DTO／service 前失敗。
+- 軟刪除匯出員工案例在修正前失敗（excel 查詢回 500）。拿掉 `withDeleted()` 會再次轉紅。
+- 把建立人的未產生錯誤換成 `ESIGN_PERSONAL_COPY_NOT_READY` 會讓 #16 轉紅。
+- 重構（下載移入 service、decorator、型別、命名）前後，上述 10 個 suites 都全綠。
+
+Swagger：以 build 產物產生文件確認四條 `POST …/downloads` 仍是 200 `application/pdf`（binary）；`CreateExcelExportRecordDto.scope` 為 1–2000，`ExportConditionsDto.depts` 的項目為 1–1000、`maxItems` 500，`statuses`／`fields` 的 enum 不變；`ExcelExportSignerDto` 仍只有 10 個欄位。
+

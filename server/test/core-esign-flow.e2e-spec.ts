@@ -1154,11 +1154,10 @@ describe('核心電子簽 US1', () => {
     });
     expect(await auditCount()).toBe(auditsBeforePolling);
     // 副本尚未產生：下載回 409，不回傳檔案
-    const notReady = await request(ctx.server)
-      .post('/api/external-signing-task/completed-file/downloads')
-      .set('Origin', 'http://localhost:3000')
-      .set('Cookie', externalCookie)
-      .expect(409);
+    const notReady = await downloadCopy(
+      '/api/external-signing-task',
+      externalCookie,
+    ).expect(409);
     expect(apiError(notReady)).toMatchObject({
       code: 'ESIGN_STATE_CONFLICT',
       message: '個人副本尚未產生',
@@ -1224,12 +1223,10 @@ describe('核心電子簽 US1', () => {
       [documentId],
     );
     expect(completed[0]?.status).toBe('completed');
-    const creatorCopy = await request(ctx.server)
-      .post(
-        `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/completed-file/downloads`,
-      )
-      .set('Origin', 'http://localhost:3000')
-      .set('Cookie', creatorCookie)
+    const creatorCopy = await downloadCopy(
+      `/api/esign/documents/${documentId}/signers/${signers[0].publicId}`,
+      creatorCookie,
+    )
       .expect(200)
       .expect('Content-Type', /application\/pdf/);
     // 副本產生後外部簽署人下載本人副本，內容與建立人下載的同一人副本相同
@@ -1242,10 +1239,10 @@ describe('核心電子簽 US1', () => {
       ).signer.completion.status,
     ).toBe('ready');
     const auditsBeforeDownload = await auditCount();
-    const externalCopy = await request(ctx.server)
-      .post('/api/external-signing-task/completed-file/downloads')
-      .set('Origin', 'http://localhost:3000')
-      .set('Cookie', externalCookie)
+    const externalCopy = await downloadCopy(
+      '/api/external-signing-task',
+      externalCookie,
+    )
       .expect(200)
       .expect('Content-Type', /application\/pdf/)
       .expect(
@@ -1258,13 +1255,10 @@ describe('核心電子簽 US1', () => {
       Buffer.compare(externalCopy.body as Buffer, creatorCopy.body as Buffer),
     ).toBe(0);
     expect(await auditCount()).toBe(auditsBeforeDownload);
-    await request(ctx.server)
-      .post(
-        `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/completed-file/downloads`,
-      )
-      .set('Origin', 'http://localhost:3000')
-      .set('Cookie', outsiderCookie)
-      .expect(404);
+    await downloadCopy(
+      `/api/esign/documents/${documentId}/signers/${signers[0].publicId}`,
+      outsiderCookie,
+    ).expect(404);
     await request(ctx.server)
       .get(`/api/external-completions/${signers[0].publicId}`)
       .expect(404);
@@ -1319,13 +1313,10 @@ describe('核心電子簽 US1', () => {
         .expect(200),
     );
     expect(externalAfterNote.signer).not.toHaveProperty('note');
-    const repeatedCopy = await request(ctx.server)
-      .post(
-        `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/completed-file/downloads`,
-      )
-      .set('Origin', 'http://localhost:3000')
-      .set('Cookie', creatorCookie)
-      .expect(200);
+    const repeatedCopy = await downloadCopy(
+      `/api/esign/documents/${documentId}/signers/${signers[0].publicId}`,
+      creatorCookie,
+    ).expect(200);
     expect(repeatedCopy.body).toEqual(creatorCopy.body);
     const completedFiles = await db.query<Array<{ sha256: string }>>(
       `SELECT f.sha256 FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id
@@ -2456,13 +2447,10 @@ describe('核心電子簽 US1', () => {
       await worker.get(DocumentFinalizationProcessor).process({
         data: { documentId: Number(id), signerId: Number(owner.id) },
       } as Job<{ documentId: number; signerId: number }>);
-      await request(ctx.server)
-        .post(
-          `/api/esign/signing-tasks/${active.signers[0].publicId}/completed-file/downloads`,
-        )
-        .set('Origin', 'http://localhost:3000')
-        .set('Cookie', signedAccess)
-        .expect(200);
+      await downloadCopy(
+        `/api/esign/signing-tasks/${active.signers[0].publicId}`,
+        signedAccess,
+      ).expect(200);
       expect(
         apiData<{ status: string }>(
           await request(ctx.server)
@@ -2476,13 +2464,10 @@ describe('核心電子簽 US1', () => {
       await queue.resume();
     }
     const completedBefore = (
-      await request(ctx.server)
-        .post(
-          `/api/esign/signing-tasks/${active.signers[0].publicId}/completed-file/downloads`,
-        )
-        .set('Origin', 'http://localhost:3000')
-        .set('Cookie', signedAccess)
-        .expect(200)
+      await downloadCopy(
+        `/api/esign/signing-tasks/${active.signers[0].publicId}`,
+        signedAccess,
+      ).expect(200)
     ).body as Buffer;
     const reopen = (expectedSignEndAt: string, signEndAt: string) =>
       request(ctx.server)
@@ -2515,13 +2500,10 @@ describe('核心電子簽 US1', () => {
       expect(await snapshot()).toEqual(beforeSnapshot);
       expect(await evidence()).toEqual(beforeEvidence);
       const completedAfter = (
-        await request(ctx.server)
-          .post(
-            `/api/esign/signing-tasks/${active.signers[0].publicId}/completed-file/downloads`,
-          )
-          .set('Origin', 'http://localhost:3000')
-          .set('Cookie', signedAccess)
-          .expect(200)
+        await downloadCopy(
+          `/api/esign/signing-tasks/${active.signers[0].publicId}`,
+          signedAccess,
+        ).expect(200)
       ).body as Buffer;
       expect(completedAfter).toEqual(completedBefore);
       expect(
@@ -3032,24 +3014,14 @@ describe('核心電子簽 US1', () => {
         [id],
       );
       expect(progress.status).toBe('active');
-      const ownPath =
-        '/api/esign/signing-tasks/' +
-        owners[0].public_id +
-        '/completed-file/downloads';
-      const downloadOwn = () =>
-        request(ctx.server)
-          .post(ownPath)
-          .set('Origin', 'http://localhost:3000');
-      await downloadOwn().set('Cookie', cookies[0]).expect(200);
-      await downloadOwn().expect(401);
-      await downloadOwn().set('Cookie', cookies[1]).expect(404);
-      await request(ctx.server)
-        .post(
-          `/api/esign/signing-tasks/${active.signers[1].publicId}/completed-file/downloads`,
-        )
-        .set('Origin', 'http://localhost:3000')
-        .set('Cookie', cookies[1])
-        .expect(409);
+      const ownPath = `/api/esign/signing-tasks/${owners[0].public_id}`;
+      await downloadCopy(ownPath, cookies[0]).expect(200);
+      await downloadCopy(ownPath).expect(401);
+      await downloadCopy(ownPath, cookies[1]).expect(404);
+      await downloadCopy(
+        `/api/esign/signing-tasks/${active.signers[1].publicId}`,
+        cookies[1],
+      ).expect(409);
       for (let i = 1; i < 8; i += 1) {
         await sign(i);
         await process(i);
@@ -3079,17 +3051,10 @@ describe('核心電子簽 US1', () => {
       for (let i = 0; i < files.length; i += 1) {
         expect(files[i].document_id).toBeNull();
         expect(Number(files[i].signer_id)).toBe(Number(owners[i].id));
-        const response = await request(ctx.server)
-          .post(
-            '/api/esign/documents/' +
-              id +
-              '/signers/' +
-              files[i].public_id +
-              '/completed-file/downloads',
-          )
-          .set('Origin', 'http://localhost:3000')
-          .set('Cookie', creatorCookie)
-          .expect(200);
+        const response = await downloadCopy(
+          `/api/esign/documents/${id}/signers/${files[i].public_id}`,
+          creatorCookie,
+        ).expect(200);
         expect(
           createHash('sha256')
             .update(response.body as Buffer)
@@ -3372,12 +3337,8 @@ describe('核心電子簽 US1', () => {
       ).status,
       readTask: (await get('/api/external-signing-task')).status,
       sourceFile: (await get('/api/external-signing-task/source-file')).status,
-      completedFile: (
-        await request(ctx.server)
-          .post('/api/external-signing-task/completed-file/downloads')
-          .set('Cookie', cookie)
-          .set('Origin', origin)
-      ).status,
+      completedFile: (await downloadCopy('/api/external-signing-task', cookie))
+        .status,
       signature: (
         await request(ctx.server)
           .post('/api/external-signing-task/signatures')
@@ -3426,11 +3387,16 @@ describe('核心電子簽 US1', () => {
     }
   }
 
+  /** 以 POST 下載已簽副本（Spec 015）：base 為 completed-file 的上層路徑，帶同源 Origin。 */
+  function downloadCopy(base: string, cookie?: string) {
+    const pending = request(ctx.server)
+      .post(`${base}/completed-file/downloads`)
+      .set('Origin', 'http://localhost:3000');
+    return cookie ? pending.set('Cookie', cookie) : pending;
+  }
+
   async function downloadPersonalCopy(accessCookie: string): Promise<Buffer> {
-    const copy = await request(ctx.server)
-      .post('/api/external-signing-task/completed-file/downloads')
-      .set('Origin', 'http://localhost:3000')
-      .set('Cookie', accessCookie)
+    const copy = await downloadCopy('/api/external-signing-task', accessCookie)
       .expect(200)
       .expect('Content-Type', /application\/pdf/);
     return copy.body as Buffer;

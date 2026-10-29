@@ -54,7 +54,7 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
       "document": { "id": "123", "title": "…", "docNumber": "…" },
       "exportedBy": { "name": "…", "employeeNo": "…", "email": null },
       "exportedAt": "…",
-      "scope": "全部已簽署副本",
+      "scope": "此次簽署的所有已簽副本",
       "count": 6000,
       "documentId": "123",
       "status": "completed",
@@ -95,13 +95,13 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 |---|---|
 | `type` | 只接受 `excel`；其他類型由後端自行記錄 |
 | `documentId` | 文件存在、未刪除且已發起，否則 404 `ESIGN_RESOURCE_NOT_FOUND`；不檢查建立人 |
-| `scope` | 畫面顯示用範圍說明，trim 後 1–255 字 |
+| `scope` | 畫面顯示用範圍說明，trim 後 1–2,000 字；超過 255 字時依字元存成前 254 字加「…」 |
 | `count` | 匯出筆數，0 以上整數 |
 | `conditions.statuses` | `pending`／`signed`／`rejected` 的子集，空陣列表示全部 |
-| `conditions.depts` | 部門鍵陣列，空陣列表示全部；每個鍵 1–255 字，最多 500 個 |
+| `conditions.depts` | 部門鍵陣列，空陣列表示全部；每個鍵 1–1,000 字，最多 500 個 |
 | `conditions.fields` | 至少一個；`name`、`employeeNo`、`dept`、`title`、`email`、`status`、`signedAt`、`rejectedAt`、`rejectReason` 的子集 |
 
-- 成功回 201，內容為新紀錄（與查詢的 item 形狀相同）。
+- 成功回 201，內容為新紀錄（與查詢的 item 形狀相同）；`scope` 為儲存後的值（可能已截斷）。
 - 匯出人取自 session，不接受前端傳入。
 - 未知欄位回 400（全域 `forbidNonWhitelisted`）。
 
@@ -199,8 +199,6 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
     - `scope`：畫面上的範圍說明
     - `count`：匯出列數
     - `conditions`：目前的 `statuses`、`depts`、`fields`
-  - `scope` trim 後最多 255 字，`depts` 每個鍵最多 255 字。目前的寫法可能超過上限而回 400：
-    - `describeScope` 會列出所有選取的部門名稱。
-    - 部門鍵是 `d:` 加 `encodeURIComponent(部門名稱)`，一個中文字編碼後是 9 個字元。
-
-    選很多部門或部門名稱超過 28 個中文字時就會超過；處理方式待確認（見 implementation-notes）。
+  - 長度上限：
+    - `scope` trim 後最多 2,000 字，超過回 400。256–2,000 字時後端存成前 254 字加「…」，歷史頁顯示的是截斷後的值。`describeScope` 列出的部門名稱合計超過 2,000 字時仍需前端縮短。
+    - `depts` 每個鍵最多 1,000 字。部門鍵是 `d:` 加 `encodeURIComponent(部門名稱)`，一個中文字編碼後是 9 個字元，部門名稱在 110 個中文字以內都不會超過。

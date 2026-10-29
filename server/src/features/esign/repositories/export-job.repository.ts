@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { type EntityManager, IsNull, In } from 'typeorm';
-import { EsignExportJob } from '../entities/esign-export-job.entity';
+import {
+  EsignExportJob,
+  type EsignExportType,
+  EXPORT_TYPE_COLUMN,
+} from '../entities/esign-export-job.entity';
 import { EsignFileObject } from '../entities/esign-file-object.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSignatureRecord } from '../entities/esign-signature-record.entity';
@@ -99,14 +103,14 @@ export class ExportJobRepository {
   /** 依匯出時間、流水號由新到舊列出一頁紀錄，帶出文件、匯出員工與簽署人。 */
   historyPage(
     q: {
-      exportType: string;
+      exportType: EsignExportType;
       documentId?: number;
       offset: number;
       limit: number;
     },
     manager: EntityManager,
   ) {
-    return this.historyItems(q.documentId, manager)
+    return this.historyRecordsQuery(q.documentId, manager)
       .andWhere('job.exportType = :exportType', { exportType: q.exportType })
       .orderBy('job.createdAt', 'DESC')
       .addOrderBy('job.id', 'DESC')
@@ -115,32 +119,40 @@ export class ExportJobRepository {
       .getMany();
   }
 
-  /** 依紀錄 UUID 讀取一筆紀錄，欄位與條件同 historyPage。 */
-  historyRecord(publicId: string, manager: EntityManager) {
-    return this.historyItems(undefined, manager)
+  /** 依紀錄 UUID 讀取指定類型的一筆紀錄，欄位與條件同 historyPage；類型不符視為不存在。 */
+  historyRecord(
+    publicId: string,
+    exportType: EsignExportType,
+    manager: EntityManager,
+  ) {
+    return this.historyRecordsQuery(undefined, manager)
       .andWhere('job.publicId = :publicId', { publicId })
+      .andWhere('job.exportType = :exportType', { exportType })
       .getOne();
   }
 
   /** 依匯出類型分組計數，條件與 historyPage 相同。 */
   async historyCounts(
-    exportTypes: string[],
+    exportTypes: EsignExportType[],
     documentId: number | undefined,
     manager: EntityManager,
   ) {
-    const rows = await this.historyQuery(documentId, manager)
+    const rows = await this.visibleHistoryQuery(documentId, manager)
       .andWhere('job.exportType IN (:...exportTypes)', { exportTypes })
       .select('job.exportType', 'exportType')
       .addSelect('COUNT(*)', 'count')
       .groupBy('job.exportType')
-      .getRawMany<{ exportType: string; count: number | string }>();
+      .getRawMany<{ exportType: EsignExportType; count: number | string }>();
     return new Map(rows.map((row) => [row.exportType, Number(row.count)]));
   }
 
-  /** 紀錄列表項目需要的欄位：文件、匯出員工與簽署人。 */
-  private historyItems(documentId: number | undefined, manager: EntityManager) {
+  /** 列表與單筆紀錄共用的查詢：可見的紀錄，帶出文件、匯出員工與簽署人的顯示欄位。 */
+  private historyRecordsQuery(
+    documentId: number | undefined,
+    manager: EntityManager,
+  ) {
     return (
-      this.historyQuery(documentId, manager)
+      this.visibleHistoryQuery(documentId, manager)
         // 不載入 ZIP 快照與已固定副本清單，單筆可達數千項。
         .select([
           'job.id',
@@ -176,14 +188,21 @@ export class ExportJobRepository {
     );
   }
 
-  /** 歷史紀錄共同條件：文件未刪除；ZIP 只計有快照的匯出工作。 */
-  private historyQuery(documentId: number | undefined, manager: EntityManager) {
+  /**
+   * 可見的歷史紀錄：文件未刪除；ZIP 只計有快照的匯出工作。
+   * 匯出員工與簽署人已軟刪除時仍要顯示，因此關閉 join 的自動軟刪除條件，只明確排除已刪除的文件。
+   */
+  private visibleHistoryQuery(
+    documentId: number | undefined,
+    manager: EntityManager,
+  ) {
     const query = manager
       .createQueryBuilder(EsignExportJob, 'job')
+      .withDeleted()
       .innerJoin('job.document', 'document', 'document.deletedAt IS NULL')
-      .where(
-        "(job.exportType <> 'signed_copies_zip' OR job.snapshotJson IS NOT NULL)",
-      );
+      .where('(job.exportType <> :zipType OR job.snapshotJson IS NOT NULL)', {
+        zipType: EXPORT_TYPE_COLUMN.zip,
+      });
     if (documentId)
       query.andWhere('job.documentId = :documentId', { documentId });
     return query;

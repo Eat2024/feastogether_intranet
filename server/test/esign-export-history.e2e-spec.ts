@@ -1180,7 +1180,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         ['fields 為空', withConditions({ fields: [] })],
         ['重複的欄位鍵', withConditions({ fields: ['name', 'name'] })],
         ['depts 超過 500 個', withConditions({ depts: deptKeys(501, 3) })],
-        ['部門鍵超過 1000 字', withConditions({ depts: ['部'.repeat(1001)] })],
+        ['部門鍵超過 1400 字', withConditions({ depts: ['部'.repeat(1401)] })],
         ['部門鍵為空字串', withConditions({ depts: [''] })],
         ['scope trim 後為空', { scope: '   ' }],
         ['scope 2001 字', { scope: '範'.repeat(2001) }],
@@ -1199,11 +1199,16 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         });
       });
 
-      it('邊界值可記錄：scope trim 後 255 字、count 0、500 個 1000 字部門鍵、全部狀態與欄位', async () => {
+      it('邊界值可記錄：scope trim 後 255 字、count 0、500 個 1400 字部門鍵、全部狀態與欄位', async () => {
         const boundary = {
           statuses: ['pending', 'signed', 'rejected'],
-          // 前端部門鍵是 encodeURIComponent 的 ASCII；另放一個 1000 個中文字的鍵，確認依字元計算。
-          depts: [...deptKeys(499, 1000), '部'.repeat(1000)],
+          // 前端部門鍵是 encodeURIComponent 的 ASCII；部門快照最長 150 字，編碼後為 2 + 150 × 9 = 1352 字。
+          // 另放一個 1400 個中文字的鍵，確認依字元計算。
+          depts: [
+            ...deptKeys(498, 1400),
+            `d:${encodeURIComponent('部'.repeat(150))}`,
+            '部'.repeat(1400),
+          ],
           fields: [
             'name',
             'employeeNo',

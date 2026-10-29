@@ -98,7 +98,7 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 | `scope` | 畫面顯示用範圍說明，trim 後 1–2,000 字；超過 255 字時依字元存成前 254 字加「…」 |
 | `count` | 匯出筆數，0 以上整數 |
 | `conditions.statuses` | `pending`／`signed`／`rejected` 的子集，空陣列表示全部 |
-| `conditions.depts` | 部門鍵陣列，空陣列表示全部；每個鍵 1–1,000 字，最多 500 個 |
+| `conditions.depts` | 部門鍵陣列，空陣列表示全部；每個鍵 1–1,400 字，最多 500 個 |
 | `conditions.fields` | 至少一個；`name`、`employeeNo`、`dept`、`title`、`email`、`status`、`signedAt`、`rejectedAt`、`rejectReason` 的子集 |
 
 - 成功回 201，內容為新紀錄（與查詢的 item 形狀相同）；`scope` 為儲存後的值（可能已截斷）。
@@ -201,4 +201,4 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
     - `conditions`：目前的 `statuses`、`depts`、`fields`
   - 長度上限：
     - `scope` trim 後最多 2,000 字，超過回 400。256–2,000 字時後端存成前 254 字加「…」，歷史頁顯示的是截斷後的值。`describeScope` 列出的部門名稱合計超過 2,000 字時仍需前端縮短。
-    - `depts` 每個鍵最多 1,000 字。部門鍵是 `d:` 加 `encodeURIComponent(部門名稱)`，一個中文字編碼後是 9 個字元，部門名稱在 110 個中文字以內都不會超過。
+    - `depts` 每個鍵最多 1,400 字。部門鍵是 `d:` 加 `encodeURIComponent(部門名稱)`，一個中文字編碼後是 9 個字元；部門快照最長 150 字，編碼後最多 1,352 字，不會超過。

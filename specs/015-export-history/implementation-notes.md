@@ -51,7 +51,7 @@
 
 ### 行為變更（契約已更新）
 
-- `conditions.depts` 每個鍵 1–1,000 字（原 255），陣列仍最多 500 個。
+- `conditions.depts` 每個鍵 1–1,400 字（原 255，2026-10-29 前端實測後再由 1,000 提高），陣列仍最多 500 個。
 - `scope` 接受 trim 後 1–2,000 字（原 255）；超過 255 字時依字元存成前 254 字加「…」，回應與查詢回傳儲存的值。PDF 簽署人標籤維持原本的截斷方式（不加「…」），兩者共用同一個依字元截斷的函式。
 - `exportedBy` 依 data-model 以 `created_by_user_id` 是否為 NULL 判斷，不再看員工 join 有沒有資料。
 - 歷史查詢關閉 TypeORM join 的自動軟刪除條件（`withDeleted()`），已軟刪除的匯出員工與簽署人照常顯示；已刪除的文件仍以明確條件排除。原本匯出員工被軟刪除時，`excel`／`zip` 整頁回 500、`pdf` 把簽署人顯示成匯出人，現已修正（e2e 以 excel 與 pdf 驗證）。
@@ -88,7 +88,7 @@ ticket 05 只記錄並回報，沒有修改契約語意；契約「前端交接�
 1. **部門鍵長度上限與前端部門鍵格式衝突**：
    - 原本：`conditions.depts` 每個鍵 1–255 字。前端部門鍵是 `d:` 加 `encodeURIComponent(部門名稱)`（`client/src/features/esign-documents/exportQuery.ts`），每個中文字編碼後是 9 個字元，部門名稱超過 28 個中文字就回 400。
    - 決定：每個鍵放寬為 1–1,000 字，陣列仍最多 500 個。
-   - 剩餘限制：部門名稱超過 110 個中文字時仍會超過（`esign_signers.department_snapshot` 最長 150 字）。請求 body 仍受 Fastify 預設 1 MiB 上限限制；500 個 1,000 字的 ASCII 部門鍵約 0.5 MB，可以通過。
+   - 前端實測後再提高到 1–1,400 字，對齊 `esign_signers.department_snapshot` 最長 150 字（編碼後 1,352 字）。請求 body 仍受 Fastify 預設 1 MiB 上限限制；500 個 1,400 字的 ASCII 部門鍵約 0.7 MB，可以通過。
 2. **`scope` 上限與前端範圍說明可能衝突**：
    - 原本：`scope` trim 後 1–255 字；`describeScope` 列出所有選取的部門名稱時會超過而回 400。
    - 決定：接受 trim 後 1–2,000 字；超過 255 字時依字元（code point）存成前 254 字加「…」，共 255 字。回應與查詢都回傳儲存的值。前端只有在說明超過 2,000 字時才需要縮短。
@@ -176,3 +176,12 @@ Excel 重新下載資料 `GET /api/esign/history/export/{id}/document`：
 - **Migration 回退**：一旦有 `excel`／`pdf` 紀錄，`down` 會拒絕，需要人工處理資料後才能回退。
 - **既有測試偶發失敗**：第一次全套 e2e 時，`core-esign-flow`「10 人共用 3 欄位各產一份 PDF，先簽先下載、跨人拒絕、全 ready 才結案」失敗一次。錯誤是兩個 finalization 並行時，`EsignVerificationService.saveSnapshot` 回報完整性錯誤。單獨重跑與第二次全套都通過。Spec 015 沒有修改 finalization 與 verification，研判是既有的並行時序問題，沒有在本票處理。
 - **既有測試與執行時段有關**：Spec 016 `internal-group-reminders` 有 2 個案例把假時鐘設為當天 15:59:50 UTC，session 卻以真實時間核發（有效 8 小時），在 UTC 00:00–08:00 執行時會因 session 過期回 401。code review 修正時在基準 d2abcea 上也重現，與 Spec 015 無關。
+
+## 前端串接實測（2026-10-29）
+
+以未 commit 的前端串接在本機瀏覽器實測文件 34／41，測後由使用者自行刪除前端改動。
+
+- 通過：歷史頁 Excel／PDF 頁籤與筆數、匯出頁 Excel 回報紀錄後下載、檢視頁建立人下載兩位簽署人 PDF、外部簽署人本人下載、從紀錄重新下載 PDF 與 Excel、ZIP 面板的最近一次匯出查詢。API 欄位足以填滿現有畫面。
+- 修正：部門鍵上限提高到 1,400 字（見上）。
+- 本機環境：匯出時間顯示多 8 小時。`created_at` 由 MySQL `CURRENT_TIMESTAMP` 寫入，本機 MySQL 時區為系統時間（台北），而 server 以 `+00:00` 讀取。使用者決定把本機 MySQL 全域時區設為 `+00:00`（`SET PERSIST time_zone`），之後新寫入的時間正確；之前寫入的本機資料仍偏 8 小時。UAT／正式站需確認 RDS 的 `time_zone` 為 UTC。
+- 前端交接補充：重新下載 Excel 時，若「沒有部門資料」或「以 Email 加入」群組已無人，範圍說明會顯示 `g:none`／`g:email`；`scope` 超過 2,000 字的 400 錯誤目前只顯示固定的「匯出失敗」；檢視頁下載的 PDF 檔名由前端組成，與重新下載時伺服器給的檔名不同。

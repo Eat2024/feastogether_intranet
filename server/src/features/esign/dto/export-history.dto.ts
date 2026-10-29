@@ -76,12 +76,12 @@ export class ExportConditionsDto implements ExportConditions {
   @ArrayUnique()
   @IsIn(EXPORT_CONDITION_STATUSES, { each: true })
   statuses!: ExportConditions['statuses'];
-  /** 部門鍵，空陣列表示全部；每個鍵 1–1000 字，最多 500 個 */
+  /** 部門鍵，空陣列表示全部；每個鍵 1–1400 字（部門快照最長 150 字，編碼後 1352 字），最多 500 個 */
   @IsArray()
   @ArrayMaxSize(500)
   @ArrayUnique()
   @IsString({ each: true })
-  @Length(1, 1000, { each: true })
+  @Length(1, 1400, { each: true })
   depts!: string[];
   /** 匯出欄位，至少一個 */
   @ApiProperty({ enum: EXPORT_CONDITION_FIELDS, isArray: true, minItems: 1 })

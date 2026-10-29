@@ -309,3 +309,6 @@ Swagger：以 build 產物產生文件確認四條 `POST …/downloads` 都是 2
 
 Swagger：以 build 產物產生文件確認四條 `POST …/downloads` 仍是 200 `application/pdf`（binary）；`CreateExcelExportRecordDto.scope` 為 1–2000，`ExportConditionsDto.depts` 的項目為 1–1000、`maxItems` 500，`statuses`／`fields` 的 enum 不變；`ExcelExportSignerDto` 仍只有 10 個欄位。
 
+### 前端實測後修正（2026-10-29）
+
+- 部門鍵上限 1,000 → 1,400：先把邊界案例改為 1,400 字可記錄、1,401 字回 400，在舊上限下 1 失敗 1 通過；改 DTO 後 `esign-export-history` 76 tests 全過（`DB_MYSQL_DB=feastogether_intranet_test15m`、`REDIS_DB=10`、`DB_MYSQL_PASS` 以環境變數覆蓋）。

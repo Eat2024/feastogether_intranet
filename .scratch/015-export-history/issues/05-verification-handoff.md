@@ -81,3 +81,29 @@
 | `pnpm -C server test:e2e:security` | 11 suites／60 tests 通過 |
 
 狀態改為 `resolved`。
+
+## Code review 修正整合紀錄（2026-10-29，`feat/015-export-history`）
+
+- 審查 `impl/015-review-fixes`（75f10e9，基準為整合分支 d2abcea）：
+  - 下載流程移入 `EsignExportHistoryService`：`downloadCreatorCopy`／`downloadOwnCopy`／`downloadExternalCopy`／`redownloadPdf` 都經 `recordPdf`，先寫紀錄再回傳檔案；寫入失敗拋錯，controller 不送出檔案（500）。權限與未產生的錯誤沿用原定義且不記錄：建立人路由仍回「完成文件尚未產生」，本人、外部與重新下載回「個人副本尚未產生」，e2e 已補訊息比對。
+  - 四條 `POST …/downloads` 改用 `CompletedPdfDownload()`：`OriginGuard`、200、`application/pdf` binary、`Cache-Control: private, no-store`、`nosniff`，與原本逐一宣告的設定相同。
+  - `exportedBy` 改依 `created_by_user_id` 是否為 NULL 判斷；查詢加 `withDeleted()`，已刪除文件仍由 join 條件 `document.deletedAt IS NULL` 排除。單筆查詢 `historyRecord` 加上類型條件，取代 service 的類型比對。
+  - `conditions.depts` 每個鍵 1–1,000 字（最多 500 個）；`scope` trim 後 1–2,000 字，超過 255 字依字元存成前 254 字加「…」。`conditions_json` 為 JSON 欄位，`scope_description` 長度不變，沒有 migration。
+  - contract 只改上述兩個上限、回應 `scope` 為儲存值、ZIP 範例 `scope` 文字與前端交接的長度說明；spec 與 data-model 記錄同樣的使用者決定。沒有 client 或 migration 變更。
+  - 備註（未處理）：Fastify 預設 body 上限 1 MB。500 個 1,000 字的部門鍵若全是中文，body 會超過上限回 413；前端部門鍵是 `encodeURIComponent` 的 ASCII，500 個 1,000 字約 0.5 MB，不受影響。
+- 合併：`git merge --no-ff impl/015-review-fixes`，merge commit `f5e40fc4ff3b679bd2070666b2c4f42053f48e1d`，無衝突（合併後樹與 75f10e9 相同）。
+- 在合併後的工作樹以環境變數 `DB_MYSQL_DB=feastogether_intranet_test15m`、`REDIS_DB=10` 隔離執行（UTC 00:50 前後）：
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors；265 warnings，總數不變 |
+| `pnpm -C server build` | 通過 |
+| `pnpm -C server test` | 106 suites／964 tests 通過 |
+| `pnpm -C server test:schema` | 2 suites／12 tests 通過 |
+| `pnpm -C server test:e2e`（全套） | 28 suites／318 tests，316 通過、2 失敗（Spec 016 `internal-group-reminders`，見下方） |
+| `pnpm -C server test:e2e:security` | 11 suites／60 tests 通過 |
+
+- 2 個失敗是「同日受理阻擋重複催簽，台北跨日後可再群寄…」與「跨午夜重試只寄本批暫時拒收地址…」，建立文件時回 401（假時鐘超過真實 session 期限，UTC 00:00–08:00 執行時發生）。在 d2abcea 的暫時 worktree 單獨執行該 suite，同樣是這 2 個失敗（8 tests，6 通過）。與 Spec 015 無關。
+- 已知的 `core-esign-flow` 並行 flake 本次沒有出現。
+
+狀態維持 `resolved`。

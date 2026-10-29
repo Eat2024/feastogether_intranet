@@ -39,7 +39,19 @@ export interface ExportHistoryParams {
   limit?: number;
 }
 
+/** GET esign/exports 的一筆匯出紀錄 */
+export interface EsignExportHistoryItem extends EsignExportJob {
+  /** 申請匯出的員工姓名 */
+  requesterName: string;
+  /**
+   * 文件名稱與文件編號。
+   * TODO: 後端補上後改為必填；補上前畫面以文件 id 代替
+   */
+  documentTitle?: string;
+  docNumber?: string;
+}
+
 export interface EsignExportHistory {
-  items: (EsignExportJob & { requesterName: string })[];
+  items: EsignExportHistoryItem[];
   nextCursor: string | null;
 }

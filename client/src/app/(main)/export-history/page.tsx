@@ -5,6 +5,7 @@ import { isAdmin } from "@/features/export-history/admin";
 import RedownloadButton from "@/features/export-history/RedownloadButton";
 import { listExportRecords } from "@/features/export-history/store";
 import type { ExportKind } from "@/features/export-history/types";
+import ZipExportHistory from "@/features/export-history/ZipExportHistory";
 import { PAGE_SIZE, pageHrefs, paginate, parsePage } from "@/lib/paginate";
 import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
@@ -22,14 +23,18 @@ export const metadata: Metadata = { title: "歷史匯出文件" };
 export const dynamic = "force-dynamic";
 
 
-const TABS: { value: ExportKind; label: string; scopeLabel: string }[] = [
+// zip：已簽署副本 ZIP 匯出紀錄，串接後端（GET /api/esign/exports）；其餘分頁仍為原型（mock store）
+type HistoryTab = ExportKind | "zip";
+
+const TABS: { value: HistoryTab; label: string; scopeLabel: string }[] = [
   { value: "list", label: "簽署紀錄清單 Excel", scopeLabel: "匯出範圍" },
   { value: "signerCopy", label: "已簽署文件 PDF", scopeLabel: "簽署人" },
+  { value: "zip", label: "已簽署文件 ZIP", scopeLabel: "匯出範圍" },
   // TODO: 後端完成簽到表後改為串接 API
   { value: "sheet", label: "簽到表 PDF（尚未完成）", scopeLabel: "匯出範圍" },
 ];
 
-const href = (tab: ExportKind, page = 1) => {
+const href = (tab: HistoryTab, page = 1) => {
   const qs = new URLSearchParams();
   if (tab !== "list") qs.set("tab", tab);
   if (page > 1) qs.set("page", String(page));
@@ -59,6 +64,29 @@ export default async function ExportHistoryPage({
 
   const params = await searchParams;
   const tab = TABS.find((t) => t.value === params.tab) ?? TABS[0];
+  const tabs = (
+    <LinkTabs
+      value={tab.value}
+      tabs={TABS.map((t) => ({
+        value: t.value,
+        // ZIP 紀錄以 cursor 分頁，沒有總筆數
+        label: t.value === "zip" ? t.label : `${t.label}（${listExportRecords(t.value).length}）`,
+        href: href(t.value),
+      }))}
+    />
+  );
+  if (tab.value === "zip") {
+    return (
+      <>
+        {header}
+        <Stack spacing={2}>
+          {tabs}
+          <ZipExportHistory />
+        </Stack>
+      </>
+    );
+  }
+
   const all = listExportRecords(tab.value);
   const { items: records, page, pageCount } = paginate(all, parsePage(params.page), PAGE_SIZE);
 
@@ -66,14 +94,7 @@ export default async function ExportHistoryPage({
     <>
       {header}
       <Stack spacing={2}>
-        <LinkTabs
-          value={tab.value}
-          tabs={TABS.map((t) => ({
-            value: t.value,
-            label: `${t.label}（${listExportRecords(t.value).length}）`,
-            href: href(t.value),
-          }))}
-        />
+        {tabs}
         {/* <Typography variant="secondary" component="div" sx={{ textAlign: 'right' }}>
           共 {all.length} 筆
         </Typography> */}

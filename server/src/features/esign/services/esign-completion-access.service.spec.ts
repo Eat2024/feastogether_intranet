@@ -77,10 +77,12 @@ describe('EsignCompletionAccessService 個人下載', () => {
     '%s 的 ready 副本供建立人及本人下載',
     async (status) => {
       const f = await setup(status);
-      expect((await f.service.creatorFile(4, 'person-a', 7))?.bytes).toEqual(
-        f.bytes,
-      );
-      expect((await f.service.signerFile('person-a', 20))?.bytes).toEqual(f.bytes);
+      const creator = await f.service.creatorFile(4, 'person-a', 7);
+      expect(creator.file?.bytes).toEqual(f.bytes);
+      expect(creator.signer).toBe(f.signer);
+      const own = await f.service.signerFile('person-a', 20);
+      expect(own.file?.bytes).toEqual(f.bytes);
+      expect(own.signer).toBe(f.signer);
       expect(f.files.findCompletedFile).toHaveBeenCalledWith(
         21,
         expect.anything(),
@@ -109,7 +111,9 @@ describe('EsignCompletionAccessService 個人下載', () => {
     async (status) => {
       const f = await setup();
       f.signer.completionStatus = status;
-      await expect(f.service.creatorFile(4, 'person-a', 7)).resolves.toBeNull();
+      await expect(
+        f.service.creatorFile(4, 'person-a', 7),
+      ).resolves.toMatchObject({ file: null });
       expect(f.files.findCompletedFile).not.toHaveBeenCalled();
       expect(f.files.findDocumentFile).not.toHaveBeenCalled();
     },

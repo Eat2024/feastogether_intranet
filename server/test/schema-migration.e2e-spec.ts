@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.options';
 import { withSchemaTestDatabase } from '#app/infrastructure/database/test/schema-test-database';
+import { revertAfter } from './schema-migration.helper';
 
 const BUSINESS_TABLES = [
   'hr_departments',
@@ -31,7 +32,7 @@ describe('e-sign schema migrations', () => {
       const ds = await new DataSource(optionsFor(database)).initialize();
       try {
         await ds.runMigrations();
-        await ds.undoLastMigration();
+        await revertAfter(ds, 'SignerNote1792454404000');
         await ds.query(
           'ALTER TABLE esign_signers RENAME INDEX uq_esign_signers_document_email TO unexpected_email_index',
         );
@@ -173,6 +174,96 @@ describe('e-sign schema migrations', () => {
     });
   });
 
+  it('匯出紀錄 migration 保留既有 ZIP 工作，可 up → down → up', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = new DataSource(optionsFor(database));
+      await ds.initialize();
+      try {
+        await ds.runMigrations();
+        await revertAfter(ds, 'InternalEmailInvitations1792454405000');
+        const reverted = await exportJobsShape(ds, database);
+        await seedExportDocument(ds);
+        await ds.query(
+          "INSERT INTO esign_export_jobs (public_id,export_type,document_id,created_by_user_id,status,scope_description,snapshot_json) VALUES ('00000000-0000-4000-8000-000000000033','signed_copies_zip',1,1,'completed','全部簽署人',JSON_ARRAY())",
+        );
+
+        await ds.runMigrations();
+        const applied = await exportJobsShape(ds, database);
+        expect(applied).toEqual({
+          createdByNullable: 'YES',
+          newColumns: ['conditions_json', 'signer_id'],
+          indexes: expect.objectContaining({
+            idx_esign_export_jobs_type_created: 'export_type,created_at,id',
+            idx_esign_export_jobs_document_type_created:
+              'document_id,export_type,created_at,id',
+            idx_esign_export_jobs_signer_created: 'signer_id,created_at,id',
+            idx_esign_export_jobs_created_at: 'created_at',
+            idx_esign_export_jobs_completed_at: 'completed_at',
+          }) as unknown,
+          checks: ['chk_esign_export_jobs_record_type'],
+          foreignKeys: [
+            'fk_esign_export_jobs_document:RESTRICT',
+            'fk_esign_export_jobs_signer:RESTRICT',
+            'fk_esign_export_jobs_user:RESTRICT',
+          ],
+        });
+        // 既有 ZIP 工作在 CHECK 下仍可更新。
+        await ds.query(
+          "UPDATE esign_export_jobs SET scope_description='全部簽署人（重新整理）' WHERE id=1",
+        );
+
+        await ds.undoLastMigration();
+        expect(await exportJobsShape(ds, database)).toEqual(reverted);
+        expect(reverted).toMatchObject({
+          createdByNullable: 'NO',
+          newColumns: [],
+          checks: [],
+        });
+
+        await ds.runMigrations();
+        expect(await exportJobsShape(ds, database)).toEqual(applied);
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
+
+  it.each([
+    [
+      'excel',
+      "INSERT INTO esign_export_jobs (public_id,export_type,document_id,created_by_user_id,conditions_json,status,scope_description,record_count,completed_at) VALUES ('00000000-0000-4000-8000-000000000034','excel',1,1,JSON_OBJECT('statuses',JSON_ARRAY('signed'),'depts',JSON_ARRAY(),'fields',JSON_ARRAY('name')),'completed','全部',1,NOW(6))",
+    ],
+    [
+      'pdf',
+      "INSERT INTO esign_export_jobs (public_id,export_type,document_id,created_by_user_id,signer_id,status,scope_description,record_count,completed_at) VALUES ('00000000-0000-4000-8000-000000000035','pdf',1,NULL,1,'completed','外部（external@example.test）',1,NOW(6))",
+    ],
+  ])(
+    '已有 %s 紀錄時，匯出紀錄 migration 在任何 DDL 前拒絕回滾',
+    async (_type, insertRecord) => {
+      await withSchemaTestDatabase(async ({ database }) => {
+        const ds = new DataSource(optionsFor(database));
+        await ds.initialize();
+        try {
+          await ds.runMigrations();
+          await seedExportDocument(ds);
+          await ds.query(insertRecord);
+          const rows: unknown = await ds.query(
+            'SELECT * FROM esign_export_jobs ORDER BY id',
+          );
+          const shape = await exportJobsShape(ds, database);
+
+          await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
+          expect(
+            await ds.query('SELECT * FROM esign_export_jobs ORDER BY id'),
+          ).toEqual(rows);
+          expect(await exportJobsShape(ds, database)).toEqual(shape);
+        } finally {
+          await ds.destroy();
+        }
+      });
+    },
+  );
+
   it('最新 migration 可 apply → 無 drift → 單獨 revert → reapply', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const dataSource = new DataSource(optionsFor(database));
@@ -297,6 +388,73 @@ async function authSessionIndexes(dataSource: DataSource, database: string) {
   return rows.map((row) => row.INDEX_NAME);
 }
 
+async function seedExportDocument(ds: DataSource): Promise<void> {
+  await ds.query(
+    "INSERT INTO users (empid,name) VALUES ('EXPORT001','合成員工')",
+  );
+  await ds.query(
+    "INSERT INTO esign_documents (doc_number,title,created_by_user_id) VALUES ('00000000-0000-4000-8000-000000000031','匯出文件',1)",
+  );
+  await ds.query(
+    "INSERT INTO esign_signers (public_id,document_id,signer_type,name_snapshot,email) VALUES ('00000000-0000-4000-8000-000000000032',1,'email','外部','external@example.test')",
+  );
+}
+
+/** 匯出紀錄 migration 影響的欄位、索引、CHECK 與外鍵。 */
+async function exportJobsShape(dataSource: DataSource, database: string) {
+  const columns = await dataSource.query<
+    Array<{ COLUMN_NAME: string; IS_NULLABLE: string }>
+  >(
+    `SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = 'esign_export_jobs'
+        AND COLUMN_NAME IN ('created_by_user_id','signer_id','conditions_json')
+      ORDER BY COLUMN_NAME`,
+    [database],
+  );
+  const indexRows = await dataSource.query<
+    Array<{ INDEX_NAME: string; COLUMN_NAME: string }>
+  >(
+    `SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.statistics
+      WHERE table_schema = ? AND table_name = 'esign_export_jobs'
+      ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
+    [database],
+  );
+  const indexes: Record<string, string> = {};
+  for (const { INDEX_NAME, COLUMN_NAME } of indexRows) {
+    indexes[INDEX_NAME] = indexes[INDEX_NAME]
+      ? `${indexes[INDEX_NAME]},${COLUMN_NAME}`
+      : COLUMN_NAME;
+  }
+  const checks = await dataSource.query<Array<{ CONSTRAINT_NAME: string }>>(
+    `SELECT CONSTRAINT_NAME FROM information_schema.table_constraints
+      WHERE constraint_schema = ? AND table_name = 'esign_export_jobs'
+        AND constraint_type = 'CHECK'
+      ORDER BY CONSTRAINT_NAME`,
+    [database],
+  );
+  const foreignKeys = await dataSource.query<
+    Array<{ CONSTRAINT_NAME: string; DELETE_RULE: string }>
+  >(
+    `SELECT CONSTRAINT_NAME, DELETE_RULE FROM information_schema.referential_constraints
+      WHERE constraint_schema = ? AND table_name = 'esign_export_jobs'
+      ORDER BY CONSTRAINT_NAME`,
+    [database],
+  );
+  return {
+    createdByNullable: columns.find(
+      (column) => column.COLUMN_NAME === 'created_by_user_id',
+    )?.IS_NULLABLE,
+    newColumns: columns
+      .map((column) => column.COLUMN_NAME)
+      .filter((name) => name !== 'created_by_user_id'),
+    indexes,
+    checks: checks.map((check) => check.CONSTRAINT_NAME),
+    foreignKeys: foreignKeys.map(
+      (key) => `${key.CONSTRAINT_NAME}:${key.DELETE_RULE}`,
+    ),
+  };
+}
+
 async function authSessionForeignKeys(
   dataSource: DataSource,
   database: string,
@@ -308,16 +466,4 @@ async function authSessionForeignKeys(
     [database],
   );
   return rows.map((row) => row.CONSTRAINT_NAME);
-}
-
-/** 後續 migration 增加時，舊資料測試仍在其指定版本執行。 */
-async function revertAfter(ds: DataSource, migration: string): Promise<void> {
-  while (true) {
-    const rows = await ds.query<Array<{ name: string }>>(
-      'SELECT name FROM migrations ORDER BY id DESC LIMIT 1',
-    );
-    if (rows[0]?.name === migration) return;
-    if (!rows.length) throw new Error(`找不到測試 migration：${migration}`);
-    await ds.undoLastMigration();
-  }
 }

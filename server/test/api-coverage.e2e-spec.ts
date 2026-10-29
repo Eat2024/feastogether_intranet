@@ -94,7 +94,8 @@ describe('runtime API coverage', () => {
       .get('/api/external-signing-task/source-file')
       .expect(401);
     await request(ctx.server)
-      .get('/api/external-signing-task/completed-file')
+      .post('/api/external-signing-task/completed-file/downloads')
+      .set('Origin', 'http://localhost:3000')
       .expect(401);
     await request(ctx.server)
       .post('/api/external-signing-task/signatures')
@@ -114,6 +115,41 @@ describe('runtime API coverage', () => {
     await request(ctx.server)
       .get(`/api/external-completions/${signerPublicId}/history`)
       .expect(404);
+  });
+
+  it('匯出歷程改由 history/export 提供，舊路由不再提供存取', async () => {
+    await request(ctx.server).get('/api/esign/exports').expect(404);
+    const response = await request(ctx.server)
+      .get('/api/esign/history/export?type=zip')
+      .expect(401);
+    expect(response.body).toMatchObject({
+      success: false,
+      error: { code: 'UNAUTHORIZED' },
+    });
+  });
+
+  it('單人 PDF 下載改為會記錄的 POST，舊 GET 下載不再提供存取', async () => {
+    const signerPublicId = '550e8400-e29b-41d4-a716-446655440000';
+    for (const path of [
+      `/api/esign/documents/1/signers/${signerPublicId}/completed-file`,
+      `/api/esign/signing-tasks/${signerPublicId}/completed-file`,
+      '/api/external-signing-task/completed-file',
+    ])
+      await request(ctx.server).get(path).expect(404);
+    for (const path of [
+      `/api/esign/documents/1/signers/${signerPublicId}/completed-file/downloads`,
+      `/api/esign/signing-tasks/${signerPublicId}/completed-file/downloads`,
+      `/api/esign/history/export/${signerPublicId}/downloads`,
+    ]) {
+      const response = await request(ctx.server)
+        .post(path)
+        .set('Origin', 'http://localhost:3000')
+        .expect(401);
+      expect(response.body).toMatchObject({
+        success: false,
+        error: { code: 'UNAUTHORIZED' },
+      });
+    }
   });
 
   it('公開簽章驗證已註冊、不需 session，無效 token 回統一 404 envelope', async () => {

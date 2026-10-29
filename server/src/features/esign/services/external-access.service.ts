@@ -22,7 +22,10 @@ import {
   EsignAuditService,
   type EsignAuditMetadata,
 } from './esign-audit.service';
-import { EsignCompletionAccessService } from './esign-completion-access.service';
+import {
+  EsignCompletionAccessService,
+  type PersonalCopyDownload,
+} from './esign-completion-access.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
@@ -224,15 +227,18 @@ export class ExternalAccessService {
     return { bytes, fileName: source.originalFileName ?? 'document.pdf' };
   }
 
-  /** 本人副本：只限已簽者；未產生時回傳 null */
-  async completedFile(credential: string) {
+  /** 本人副本：只限已簽者；未產生時 file 為 null */
+  async completedFile(credential: string): Promise<PersonalCopyDownload> {
     const { signer, document } = await this.checkedAccess(
       { credential },
       this.mysql.getManager(),
     );
     if (signer.status !== 'signed')
       throw new AppException(...AppErrors.ESIGN_EXTERNAL_UNAUTHORIZED);
-    return this.completions.personalCopy(document, signer);
+    return {
+      signer,
+      file: await this.completions.personalCopy(document, signer),
+    };
   }
 
   /**

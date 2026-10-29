@@ -403,27 +403,27 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /esign/documents/{documentId}/signers/{signerPublicId}/completed-file:
+  /esign/documents/{documentId}/signers/{signerPublicId}/completed-file/downloads:
     parameters:
       - $ref: "#/components/parameters/DocumentId"
       - $ref: "#/components/parameters/SignerPublicId"
-    get:
+    post:
       operationId: downloadSignerCompletedFile
       summary: 建立人依簽署人下載 ready 個人副本
-      description: 必須驗證 signer 屬於指定文件且目前員工為建立人；active、expired、finalizing、completed、stopped 均可取得 ready 副本。未授權或目標不存在為 404；尚未 ready 為 409。
+      description: 必須驗證 signer 屬於指定文件且目前員工為建立人；active、expired、finalizing、completed、stopped 均可取得 ready 副本。未授權或目標不存在為 404；尚未 ready 為 409。Spec 015 改為 POST 子資源（需同源 Origin），送出前寫入 pdf 匯出紀錄，原本的 GET …/completed-file 已移除；詳見 specs/015-export-history/contracts/export-history-http-api.md。
       responses:
         "200": { $ref: "#/components/responses/PdfFile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/StateConflict" }
 
-  /esign/signing-tasks/{signerPublicId}/completed-file:
+  /esign/signing-tasks/{signerPublicId}/completed-file/downloads:
     parameters:
       - $ref: "#/components/parameters/SignerPublicId"
-    get:
+    post:
       operationId: downloadMyCompletedFile
       summary: 已簽署內部員工下載本人 ready 個人副本
-      description: 不等待全員結案；必須屬於目前員工。其他人的 publicId 一律 404，不回簽署或產製狀態；本人未 ready 為 409。
+      description: 不等待全員結案；必須屬於目前員工。其他人的 publicId 一律 404，不回簽署或產製狀態；本人未 ready 為 409。Spec 015 改為 POST 子資源（需同源 Origin），送出前寫入 pdf 匯出紀錄，原本的 GET …/completed-file 已移除。
       responses:
         "200": { $ref: "#/components/responses/PdfFile" }
         "401": { $ref: "#/components/responses/Unauthorized" }

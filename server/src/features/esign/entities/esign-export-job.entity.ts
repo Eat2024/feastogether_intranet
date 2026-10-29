@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   Entity,
@@ -10,6 +11,7 @@ import {
 } from 'typeorm';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from './esign-document.entity';
+import { EsignSigner } from './esign-signer.entity';
 
 export interface ExportSnapshotEntry {
   recordId: number;
@@ -24,6 +26,39 @@ export interface ExportResolvedFile {
   objectVersion?: string;
   sha256: string;
   fileSize: number;
+}
+/** 各類匯出紀錄的 `export_type` 值；鍵與 API 的紀錄類型相同，ZIP 沿用 Spec 009 的既有值。 */
+export const EXPORT_TYPE_COLUMN = {
+  excel: 'excel',
+  pdf: 'pdf',
+  zip: 'signed_copies_zip',
+} as const;
+export type EsignExportType =
+  (typeof EXPORT_TYPE_COLUMN)[keyof typeof EXPORT_TYPE_COLUMN];
+
+/** Excel 匯出條件可選的簽署狀態。 */
+export const EXPORT_CONDITION_STATUSES = [
+  'pending',
+  'signed',
+  'rejected',
+] as const;
+/** Excel 匯出條件可選的欄位。 */
+export const EXPORT_CONDITION_FIELDS = [
+  'name',
+  'employeeNo',
+  'dept',
+  'title',
+  'email',
+  'status',
+  'signedAt',
+  'rejectedAt',
+  'rejectReason',
+] as const;
+/** Excel 匯出條件；空陣列表示全部。 */
+export interface ExportConditions {
+  statuses: (typeof EXPORT_CONDITION_STATUSES)[number][];
+  depts: string[];
+  fields: (typeof EXPORT_CONDITION_FIELDS)[number][];
 }
 export interface ExportStaging {
   generation: string;
@@ -57,6 +92,18 @@ export interface ExportStaging {
 @Index('idx_esign_export_jobs_snapshot_at', ['snapshotAt'])
 @Index('idx_esign_export_jobs_expires_at', ['expiresAt'])
 @Index('idx_esign_export_jobs_next_attempt_at', ['nextAttemptAt'])
+@Index('idx_esign_export_jobs_type_created', ['exportType', 'createdAt', 'id'])
+@Index('idx_esign_export_jobs_document_type_created', [
+  'documentId',
+  'exportType',
+  'createdAt',
+  'id',
+])
+@Index('idx_esign_export_jobs_signer_created', ['signerId', 'createdAt', 'id'])
+@Check(
+  'chk_esign_export_jobs_record_type',
+  "(`export_type` <> 'excel' OR (`conditions_json` IS NOT NULL AND `created_by_user_id` IS NOT NULL AND `signer_id` IS NULL)) AND (`export_type` <> 'pdf' OR (`signer_id` IS NOT NULL AND `conditions_json` IS NULL)) AND (`export_type` IN ('excel','pdf') OR (`created_by_user_id` IS NOT NULL AND `signer_id` IS NULL AND `conditions_json` IS NULL))",
+)
 export class EsignExportJob {
   @Column({
     name: 'public_id',
@@ -181,7 +228,7 @@ export class EsignExportJob {
     length: 30,
     comment: '匯出類型',
   })
-  exportType!: string;
+  exportType!: EsignExportType;
 
   @Column({
     name: 'document_id',
@@ -201,16 +248,40 @@ export class EsignExportJob {
   @Column({
     name: 'created_by_user_id',
     type: 'bigint',
-    comment: '建立員工 ID',
+    nullable: true,
+    comment: '建立員工 ID，NULL 為外部簽署人本人下載',
   })
-  createdByUserId!: number;
+  createdByUserId!: number | null;
 
-  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({
     name: 'created_by_user_id',
     foreignKeyConstraintName: 'fk_esign_export_jobs_user',
   })
-  createdByUser?: User;
+  createdByUser?: User | null;
+
+  @Column({
+    name: 'signer_id',
+    type: 'bigint',
+    nullable: true,
+    comment: '單人副本的簽署人',
+  })
+  signerId?: number | null;
+
+  @ManyToOne(() => EsignSigner, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'signer_id',
+    foreignKeyConstraintName: 'fk_esign_export_jobs_signer',
+  })
+  signer?: EsignSigner | null;
+
+  @Column({
+    name: 'conditions_json',
+    type: 'json',
+    nullable: true,
+    comment: 'Excel 匯出條件',
+  })
+  conditionsJson?: ExportConditions | null;
 
   @Column({
     type: 'varchar',

@@ -23,7 +23,11 @@ import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorat
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { SignatureSubmissionDto } from '../dto/signature-submission.dto';
 import { ListSigningTasksQueryDto } from '../dto/document-query.dto';
-import { EsignCompletionAccessService } from '../services/esign-completion-access.service';
+import { EsignExportHistoryService } from '../services/esign-export-history.service';
+import {
+  CompletedPdfDownload,
+  sendCompletedPdf,
+} from '../helpers/completed-pdf-reply';
 import { EsignSigningTaskService } from '../services/esign-signing-task.service';
 import {
   EsignSigningService,
@@ -37,7 +41,7 @@ export class SigningTasksController {
     private readonly tasks: EsignSigningTaskService,
     private readonly signing: EsignSigningService,
     private readonly config: ConfigService,
-    private readonly completions: EsignCompletionAccessService,
+    private readonly exportHistory: EsignExportHistoryService,
   ) {}
 
   // 員工本人拒簽，沿用文件規則與同次重送。
@@ -144,30 +148,23 @@ export class SigningTasksController {
       });
   }
 
-  // 已簽者下載本人副本；完成後不受原簽署期限影響。
+  // 已簽者下載本人副本；完成後不受原簽署期限影響，送出前寫入 pdf 匯出紀錄。
   @ApiOperation({
     summary: '下載本人已簽署副本',
     description:
-      '以員工 session 下載本人已簽署且產製完成的 PDF，保留證據與檔案完整性驗證。未產製完成回 409、非本人回 404、未登入回 401。',
+      '以員工 session 下載本人已簽署且產製完成的 PDF（200 application/pdf 附件），保留證據與檔案完整性驗證。送出前新增一筆 pdf 匯出紀錄（匯出人與範圍都是本人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、未產製完成回 409、非本人回 404、未登入回 401，都不記錄。取代已移除的 GET …/completed-file。',
   })
-  @Get(':signerPublicId/completed-file')
-  @Header('Cache-Control', 'private, no-store')
-  @Header('X-Content-Type-Options', 'nosniff')
-  async completedFile(
+  @Post(':signerPublicId/completed-file/downloads')
+  @CompletedPdfDownload()
+  async downloadCompletedFile(
     @Param('signerPublicId') signerPublicId: string,
     @CurrentUserId() userId: number,
     @Res() reply: FastifyReply,
   ) {
-    const file = await this.completions.signerFile(signerPublicId, userId);
-    if (!file)
-      throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
-    reply
-      .type('application/pdf')
-      .header(
-        'Content-Disposition',
-        `attachment; filename="completed.pdf"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
-      )
-      .send(file.bytes);
+    sendCompletedPdf(
+      reply,
+      await this.exportHistory.downloadOwnCopy(signerPublicId, userId),
+    );
   }
 
   private notFound(): AppException {

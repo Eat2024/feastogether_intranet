@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.options';
 import { withSchemaTestDatabase } from '#app/infrastructure/database/test/schema-test-database';
+import { revertAfter } from './schema-migration.helper';
 
 const optionsFor = (database: string) =>
   buildMysqlOptions((key) =>
@@ -35,6 +36,7 @@ describe('e-sign schema database constraints', () => {
         const before: unknown = await ds.query(
           'SELECT * FROM esign_signers ORDER BY id',
         );
+        await revertAfter(ds, 'InternalEmailInvitations1792454405000');
         await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
         expect(
           await ds.query('SELECT * FROM esign_signers ORDER BY id'),
@@ -248,6 +250,7 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_document_fields_type',
           'chk_esign_documents_sign_period',
           'chk_esign_documents_status',
+          'chk_esign_export_jobs_record_type',
           'chk_esign_file_objects_completed_owner',
           'chk_esign_file_objects_owner',
           'chk_esign_file_objects_signature_field',
@@ -261,6 +264,87 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_signers_status',
           'chk_esign_signers_terminal_times',
         ]);
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
+
+  it('匯出紀錄依類型限制匯出人、簽署人與條件，簽署人外鍵為 RESTRICT', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = await new DataSource(optionsFor(database)).initialize();
+      try {
+        await ds.runMigrations();
+        await ds.query(
+          "INSERT INTO users (empid,name) VALUES ('EXPORT01','合成員工')",
+        );
+        await ds.query(
+          "INSERT INTO esign_documents (doc_number,title,created_by_user_id) VALUES ('00000000-0000-4000-8000-000000000020','匯出紀錄',1)",
+        );
+        await ds.query(
+          "INSERT INTO esign_signers (public_id,document_id,signer_type,name_snapshot,email) VALUES ('00000000-0000-4000-8000-000000000021',1,'email','外部','external@example.test')",
+        );
+        const conditions = JSON.stringify({
+          statuses: ['signed'],
+          depts: [],
+          fields: ['name'],
+        });
+        const insertRecord = (
+          type: string,
+          creator: number | null,
+          signer: number | null,
+          conditionsJson: string | null,
+        ) =>
+          ds.query(
+            "INSERT INTO esign_export_jobs (export_type,document_id,created_by_user_id,signer_id,conditions_json,status,scope_description) VALUES (?,1,?,?,?,'completed','範圍')",
+            [type, creator, signer, conditionsJson],
+          );
+
+        const rejected: Array<
+          [string, number | null, number | null, string | null]
+        > = [
+          ['excel', 1, null, null],
+          ['excel', null, null, conditions],
+          ['excel', 1, 1, conditions],
+          ['pdf', 1, null, null],
+          ['pdf', 1, 1, conditions],
+          ['signed_copies_zip', null, null, null],
+          ['signed_copies_zip', 1, 1, null],
+          ['signed_copies_zip', 1, null, conditions],
+        ];
+        for (const row of rejected) {
+          await expect(insertRecord(...row)).rejects.toThrow(
+            'chk_esign_export_jobs_record_type',
+          );
+        }
+
+        await insertRecord('excel', 1, null, conditions);
+        await insertRecord('pdf', 1, 1, null);
+        await insertRecord('pdf', null, 1, null);
+        await insertRecord('signed_copies_zip', 1, null, null);
+        const accepted = await ds.query<Array<{ export_type: string }>>(
+          'SELECT export_type FROM esign_export_jobs ORDER BY id',
+        );
+        expect(accepted.map(({ export_type }) => export_type)).toEqual([
+          'excel',
+          'pdf',
+          'pdf',
+          'signed_copies_zip',
+        ]);
+
+        await expect(insertRecord('pdf', 1, 999, null)).rejects.toThrow(
+          'fk_esign_export_jobs_signer',
+        );
+        await expect(
+          ds.query('DELETE FROM esign_signers WHERE id=1'),
+        ).rejects.toThrow('fk_esign_export_jobs_signer');
+        expect(
+          await ds.query(
+            `SELECT DELETE_RULE FROM information_schema.referential_constraints
+              WHERE constraint_schema = ? AND constraint_name = 'fk_esign_export_jobs_signer'`,
+            [database],
+          ),
+        ).toEqual([{ DELETE_RULE: 'RESTRICT' }]);
       } finally {
         await ds.destroy();
       }

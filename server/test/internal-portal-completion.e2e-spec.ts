@@ -215,7 +215,8 @@ describe('Spec016 員工拒簽與本人副本', () => {
       .set('Cookie', cookies[0])
       .expect(409);
     await request(ctx.server)
-      .get(path(id) + '/completed-file')
+      .post(path(id) + '/completed-file/downloads')
+      .set('Origin', origin)
       .set('Cookie', cookies[0])
       .expect(409);
     const tasks = apiData<
@@ -263,19 +264,20 @@ describe('Spec016 員工拒簽與本人副本', () => {
   it('真實 worker 產製本人副本；到期仍下載相同 PDF，跨人及損毀 fail closed', async () => {
     const f = await fixture();
     const id = f.signers[0]!.publicId;
-    const get = (cookie = cookies[0]) =>
+    const download = (cookie = cookies[0]) =>
       request(ctx.server)
-        .get(path(id) + '/completed-file')
+        .post(path(id) + '/completed-file/downloads')
+        .set('Origin', origin)
         .set('Cookie', cookie);
-    await get().expect(409);
+    await download().expect(409);
     const signed = apiData<{ verificationUrl: string }>(
       await post(path(id) + '/signatures', await bodyFor(id)).expect(201),
     );
-    await get().expect(409);
+    await download().expect(409);
     await worker.get(DocumentFinalizationProcessor).process({
       data: { documentId: Number(f.document.id), signerId: f.signers[0]!.id },
     } as Job<{ documentId: number; signerId: number }>);
-    const pdf = await get().expect(200);
+    const pdf = await download().expect(200);
     expect(pdf.headers['content-type']).toContain('application/pdf');
     expect(pdf.headers['content-disposition']).toContain('attachment');
     expect(pdf.headers['cache-control']).toBe('private, no-store');
@@ -303,12 +305,14 @@ describe('Spec016 員工拒簽與本人副本', () => {
     expect(
       tasks.find((t) => t.signerPublicId === id)?.signer.completion.status,
     ).toBe('ready');
-    await get(cookies[1]).expect(404);
+    await download(cookies[1]).expect(404);
     await request(ctx.server)
-      .get(path(id) + '/completed-file')
+      .post(path(id) + '/completed-file/downloads')
+      .set('Origin', origin)
       .expect(401);
     await request(ctx.server)
-      .get(path(f.signers[1]!.publicId) + '/completed-file')
+      .post(path(f.signers[1]!.publicId) + '/completed-file/downloads')
+      .set('Origin', origin)
       .set('Cookie', cookies[1])
       .expect(409);
     await manager().update(EsignDocument, Number(f.document.id), {
@@ -316,7 +320,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
       signStartAt: new Date(Date.now() - 86400000),
       signEndAt: new Date(Date.now() - 1000),
     });
-    expect((await get().expect(200)).body).toEqual(pdf.body);
+    expect((await download().expect(200)).body).toEqual(pdf.body);
     const completedSigner = await manager().findOneByOrFail(EsignSigner, {
       id: f.signers[0]!.id,
     });
@@ -324,7 +328,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
       completionReadyAt: null,
       completionStatus: 'failed',
     });
-    await get().expect(409);
+    await download().expect(409);
     await manager().update(EsignSigner, f.signers[0]!.id, {
       completionStatus: 'ready',
       completionReadyAt: completedSigner.completionReadyAt,
@@ -339,6 +343,6 @@ describe('Spec016 員工拒簽與本人副本', () => {
     await manager().update(EsignFileObject, file.id, {
       sha256: '0'.repeat(64),
     });
-    await get().expect(409);
+    await download().expect(409);
   });
 });

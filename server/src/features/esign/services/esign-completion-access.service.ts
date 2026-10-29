@@ -17,6 +17,18 @@ import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { canonicalSha256 } from './esign-audit.service';
 import { PdfValidationService } from './pdf-validation.service';
 
+/** 已驗證完整性的本人副本。 */
+export interface PersonalCopyFile {
+  bytes: Buffer;
+  fileName: string;
+}
+
+/** 下載本人副本時一併帶回簽署人，供寫入 pdf 匯出紀錄；副本未產生時 file 為 null。 */
+export interface PersonalCopyDownload {
+  signer: EsignSigner;
+  file: PersonalCopyFile | null;
+}
+
 @Injectable()
 export class EsignCompletionAccessService {
   constructor(
@@ -34,21 +46,19 @@ export class EsignCompletionAccessService {
     documentId: number,
     signerPublicId: string,
     userId: number,
-  ) {
+  ): Promise<PersonalCopyDownload> {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
     this.access.checkEsignCreator(document, userId);
     const signer = await this.signers.findByPublicId(signerPublicId, manager);
     if (!signer || signer.documentId !== documentId) throw this.notFound();
-    return this.personalCopy(document, signer);
+    return { signer, file: await this.personalCopy(document, signer) };
   }
 
   async signerFile(
     signerPublicId: string,
     userId: number,
-  ): Promise<
-    Awaited<ReturnType<EsignCompletionAccessService['personalCopy']>>
-  > {
+  ): Promise<PersonalCopyDownload> {
     const manager = this.mysql.getManager();
     const signer = await this.signers.findByPublicId(signerPublicId, manager);
     const document = signer
@@ -56,14 +66,17 @@ export class EsignCompletionAccessService {
       : null;
     if (!signer || !document) throw this.notFound();
     this.access.assertInternalSigner(document, signer, userId);
-    return this.personalCopy(document, signer);
+    return { signer, file: await this.personalCopy(document, signer) };
   }
 
   /**
    * 讀取並驗證簽署人的本人副本；未產生時回傳 null。
    * 不做授權檢查，呼叫端必須先確認呼叫者可存取此簽署人。
    */
-  async personalCopy(document: EsignDocument, signer: EsignSigner) {
+  async personalCopy(
+    document: EsignDocument,
+    signer: EsignSigner,
+  ): Promise<PersonalCopyFile | null> {
     if (
       !['active', 'expired', 'finalizing', 'completed', 'stopped'].includes(
         document.status,

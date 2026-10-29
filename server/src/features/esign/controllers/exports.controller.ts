@@ -34,11 +34,6 @@ export class ExportsController {
     return this.exports.listDocuments(query);
   }
 
-  // 查詢文件副本匯出歷程。
-  @Get('exports') history(@Query() query: ExportQueryDto) {
-    return this.exports.history(query);
-  }
-
   // 由建立人申請文件副本 ZIP 匯出，回傳既有或新建的匯出狀態。
   @Post('documents/:documentId/exports')
   @UseGuards(OriginGuard)

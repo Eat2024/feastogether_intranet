@@ -420,8 +420,8 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
     const context = setup();
     const credential = await accessCredential(context);
     await expect(context.service.completedFile(credential)).resolves.toEqual({
-      bytes: Buffer.from('%PDF-'),
-      fileName: 'completed.pdf',
+      signer: context.signer,
+      file: { bytes: Buffer.from('%PDF-'), fileName: 'completed.pdf' },
     });
     expect(context.completions.personalCopy).toHaveBeenCalledWith(
       context.document,

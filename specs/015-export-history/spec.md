@@ -29,6 +29,12 @@
 - 使用者確認：先保留 Excel 重新下載與 `conditions_json`。非建立人只能透過重新下載取得 Excel，現有歷史頁原型的 Excel 頁籤也有重新下載按鈕。
 - 使用者確認：015 以 016（PR #34）為基礎開發，PR #33 須在 PR #34 之後合併。016 之後，內部員工以員工 session 從 `/api/esign/signing-tasks/{signerPublicId}/completed-file` 下載本人副本，外部簽署頁的下載路由只剩外部簽署人使用；兩條都要記錄。
 
+### Session 2026-10-29
+
+- 使用者確認 2026-10-29：Excel 記錄的 `conditions.depts` 每個部門鍵放寬為 1–1,000 字（陣列仍最多 500 個），容納前端 `d:`＋`encodeURIComponent(部門名稱)` 的部門鍵。
+- 使用者確認 2026-10-29：Excel 記錄的 `scope` 接受 trim 後 1–2,000 字；超過 255 字時依字元（不是位元組）存成前 254 字加「…」，共 255 字。回應與查詢都回傳儲存的值。
+- 使用者確認 2026-10-29：契約 ZIP 範例的 `scope` 改為實際寫入的「此次簽署的所有已簽副本」。
+
 ## User Scenarios & Testing
 
 ### User Story 1 - 依類型查看所有人的匯出紀錄 (Priority: P1)
@@ -135,11 +141,12 @@
 - Excel 紀錄由前端回報，後端只能驗證身分與文件，範圍說明與筆數以前端為準；不做冪等，網路重試造成的重複紀錄可接受。
 - 文件名稱與編號取文件目前的資料。已發起的文件不能改名，文件刪除受外鍵限制，不需要另存匯出當時的名稱。
 - 本 spec 只交付後端。所有前端改動（歷史頁、Excel 回報紀錄、ZIP 面板、PDF 下載改用 POST）由前端工程師在後端完成後處理，交接內容見 contract。
+- 共用的 `ExportQueryDto` 移除了只供 `GET /api/esign/exports` 使用的 `documentId`。`GET /api/esign/exportable-documents?documentId=…` 因此由「忽略」改為 400（全域 `forbidNonWhitelisted`）。這是刻意保留的副作用：client 沒有帶這個參數。
 
 ## Out of Scope
 
 - 簽到表匯出與其紀錄。
-- `GET /api/esign/exportable-documents` 跨建立人文件查找（不變）。
+- `GET /api/esign/exportable-documents` 跨建立人文件查找（行為不變；唯一差異是帶未知的 `documentId` 參數改回 400，見 Assumptions）。
 - 人資角色或管理者權限機制。
 - 所有前端改動（交給前端工程師，見 contract「前端交接」）。
 - 歷史頁的 ZIP 頁籤（由前端工程師評估）。

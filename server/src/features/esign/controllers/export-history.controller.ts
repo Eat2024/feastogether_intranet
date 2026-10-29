@@ -2,9 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Header,
-  HttpCode,
-  HttpStatus,
   Param,
   Post,
   Query,
@@ -17,7 +14,6 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
-  ApiProduces,
   ApiResponse,
 } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
@@ -30,7 +26,10 @@ import {
   ExportHistoryPageDto,
   ExportHistoryQueryDto,
 } from '../dto/export-history.dto';
-import { sendCompletedPdf } from '../helpers/completed-pdf-reply';
+import {
+  CompletedPdfDownload,
+  sendCompletedPdf,
+} from '../helpers/completed-pdf-reply';
 import { EsignExportHistoryService } from '../services/esign-export-history.service';
 
 @Controller('esign/history/export')
@@ -64,7 +63,7 @@ export class ExportHistoryController {
   @ApiOperation({
     summary: '記錄 Excel 匯出',
     description:
-      '需有效員工 session 與同源請求；不限建立人。type 只接受 excel；documentId 須為已發起且未刪除的文件，否則 404；scope trim 後 1–255 字；count 為 0 以上整數；conditions.statuses 為 pending／signed／rejected 的子集、conditions.depts 為部門鍵（每個 1–255 字、最多 500 個），兩者空陣列表示全部；conditions.fields 至少一個，為 name、employeeNo、dept、title、email、status、signedAt、rejectedAt、rejectReason 的子集。匯出人取自 session，不接受前端傳入；未知欄位回 400。成功回新紀錄，形狀與查詢的 item 相同。前端在記錄成功後才產生並下載 Excel。',
+      '需有效員工 session 與同源請求；不限建立人。type 只接受 excel；documentId 須為已發起且未刪除的文件，否則 404；scope trim 後 1–2000 字，超過 255 字時存成前 254 字加「…」，回應為儲存的值；count 為 0 以上整數；conditions.statuses 為 pending／signed／rejected 的子集、conditions.depts 為部門鍵（每個 1–1000 字、最多 500 個），兩者空陣列表示全部；conditions.fields 至少一個，為 name、employeeNo、dept、title、email、status、signedAt、rejectedAt、rejectReason 的子集。匯出人取自 session，不接受前端傳入；未知欄位回 400。成功回新紀錄，形狀與查詢的 item 相同。前端在記錄成功後才產生並下載 Excel。',
   })
   @ApiCreatedResponse({
     type: ExportHistoryItemDto,
@@ -113,18 +112,12 @@ export class ExportHistoryController {
   }
 
   // 從單人 PDF 紀錄重新下載；送出前新增一筆紀錄。
-  @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '從 PDF 紀錄重新下載已簽署副本',
     description:
       '需有效員工 session，任何員工都能重新下載任一 pdf 紀錄；外部簽署 session 拒絕。回該簽署人目前的已簽署副本（200 application/pdf 附件，標頭與其他副本下載相同）。送出前新增一筆 pdf 紀錄：文件、簽署人與範圍沿用原紀錄，匯出人為目前使用者；寫入失敗回 500 且不送出檔案。只接受 pdf 紀錄，excel、zip 或不存在回 404；副本無法取得時沿用副本下載的錯誤，都不記錄。',
   })
   @ApiParam({ name: 'id', description: 'pdf 紀錄 UUID' })
-  @ApiProduces('application/pdf')
-  @ApiOkResponse({
-    description: '已簽署副本 PDF（附件）',
-    schema: { type: 'string', format: 'binary' },
-  })
   @ApiResponse({ status: 401, description: '需有效員工 session' })
   @ApiResponse({
     status: 403,
@@ -141,9 +134,7 @@ export class ExportHistoryController {
   })
   @ApiResponse({ status: 500, description: '紀錄寫入失敗，不送出檔案' })
   @Post(':id/downloads')
-  @HttpCode(HttpStatus.OK)
-  @Header('Cache-Control', 'private, no-store')
-  @Header('X-Content-Type-Options', 'nosniff')
+  @CompletedPdfDownload()
   async download(
     @Param('id') id: string,
     @CurrentUserId() userId: number,

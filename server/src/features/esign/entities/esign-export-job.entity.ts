@@ -27,11 +27,38 @@ export interface ExportResolvedFile {
   sha256: string;
   fileSize: number;
 }
+/** 各類匯出紀錄的 `export_type` 值；鍵與 API 的紀錄類型相同，ZIP 沿用 Spec 009 的既有值。 */
+export const EXPORT_TYPE_COLUMN = {
+  excel: 'excel',
+  pdf: 'pdf',
+  zip: 'signed_copies_zip',
+} as const;
+export type EsignExportType =
+  (typeof EXPORT_TYPE_COLUMN)[keyof typeof EXPORT_TYPE_COLUMN];
+
+/** Excel 匯出條件可選的簽署狀態。 */
+export const EXPORT_CONDITION_STATUSES = [
+  'pending',
+  'signed',
+  'rejected',
+] as const;
+/** Excel 匯出條件可選的欄位。 */
+export const EXPORT_CONDITION_FIELDS = [
+  'name',
+  'employeeNo',
+  'dept',
+  'title',
+  'email',
+  'status',
+  'signedAt',
+  'rejectedAt',
+  'rejectReason',
+] as const;
 /** Excel 匯出條件；空陣列表示全部。 */
 export interface ExportConditions {
-  statuses: string[];
+  statuses: (typeof EXPORT_CONDITION_STATUSES)[number][];
   depts: string[];
-  fields: string[];
+  fields: (typeof EXPORT_CONDITION_FIELDS)[number][];
 }
 export interface ExportStaging {
   generation: string;
@@ -201,7 +228,7 @@ export class EsignExportJob {
     length: 30,
     comment: '匯出類型',
   })
-  exportType!: string;
+  exportType!: EsignExportType;
 
   @Column({
     name: 'document_id',

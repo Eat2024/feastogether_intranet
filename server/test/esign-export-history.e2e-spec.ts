@@ -12,7 +12,10 @@ import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
-import { EsignExportJob } from '#app/features/esign/entities/esign-export-job.entity';
+import {
+  EsignExportJob,
+  type ExportConditions,
+} from '#app/features/esign/entities/esign-export-job.entity';
 import { EsignFileObject } from '#app/features/esign/entities/esign-file-object.entity';
 import { EsignSignatureRecord } from '#app/features/esign/entities/esign-signature-record.entity';
 import { ExportJobRepository } from '#app/features/esign/repositories/export-job.repository';
@@ -188,7 +191,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
   }
 
   describe('查詢紀錄', () => {
-    const conditions = {
+    const conditions: ExportConditions = {
       statuses: ['signed'],
       depts: [],
       fields: ['name', 'employeeNo', 'dept', 'status', 'signedAt'],
@@ -866,6 +869,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       send: () => Promise<request.Response>;
       status: number;
       code: string;
+      message?: string;
     }>([
       {
         name: '非建立人以建立人路由下載',
@@ -878,6 +882,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         send: () => download(creatorPath(pendingInternal), creatorCookie),
         status: 409,
         code: 'ESIGN_STATE_CONFLICT',
+        message: '完成文件尚未產生',
       },
       {
         name: '其他員工以本人路由下載',
@@ -891,6 +896,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           download(selfPath(pendingInternal), await employeeCookie(exporter)),
         status: 409,
         code: 'ESIGN_STATE_CONFLICT',
+        message: '個人副本尚未產生',
       },
       {
         name: '外部簽署人尚未簽署',
@@ -979,6 +985,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           download(redownloadPath(records.pendingPdf.publicId!), viewerCookie),
         status: 409,
         code: 'ESIGN_STATE_CONFLICT',
+        message: '個人副本尚未產生',
       },
       {
         name: '未登入重新下載',
@@ -1005,11 +1012,12 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       },
     ])(
       '$name：回 $status $code，不新增紀錄',
-      async ({ send, status, code }) => {
+      async ({ send, status, code, message }) => {
         const before = (await pdfHistory()).total;
         const response = await send();
         expect(response.status).toBe(status);
         expect(apiError(response).code).toBe(code);
+        if (message) expect(apiError(response).message).toBe(message);
         expect((await pdfHistory()).total).toBe(before);
       },
     );

@@ -5,7 +5,6 @@ import { EsignReopeningService } from '../services/esign-reopening.service';
 import {
   ApiBody,
   ApiOperation,
-  ApiProduces,
   ApiResponse,
   ApiOkResponse,
   ApiCookieAuth,
@@ -59,9 +58,11 @@ import { EsignFieldService } from '../services/esign-field.service';
 import { EsignInitiationService } from '../services/esign-initiation.service';
 import { EsignSignerService } from '../services/esign-signer.service';
 import { EsignStoppageService } from '../services/esign-stoppage.service';
-import { EsignCompletionAccessService } from '../services/esign-completion-access.service';
 import { EsignExportHistoryService } from '../services/esign-export-history.service';
-import { sendCompletedPdf } from '../helpers/completed-pdf-reply';
+import {
+  CompletedPdfDownload,
+  sendCompletedPdf,
+} from '../helpers/completed-pdf-reply';
 
 @Controller('esign/documents')
 export class DocumentsController {
@@ -72,7 +73,6 @@ export class DocumentsController {
     private readonly initiations: EsignInitiationService,
     private readonly queries: EsignDocumentQueryService,
     private readonly stoppages: EsignStoppageService,
-    private readonly completions: EsignCompletionAccessService,
     private readonly config: ConfigService,
     private readonly reopenings: EsignReopeningService,
     private readonly employeeEmails: EsignEmployeeEmailService,
@@ -404,37 +404,27 @@ export class DocumentsController {
   }
 
   // 供建立人下載指定簽署人的已簽副本；送出前寫入 pdf 匯出紀錄。
-  @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '下載指定簽署人的個人 PDF',
     description:
       '僅建立人可依簽署人下載已產製完成的個人副本，回 200 application/pdf 附件。送出前新增一筆 pdf 匯出紀錄（匯出人為建立人、範圍為簽署人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、非建立人或簽署人不屬於此文件回 404、副本未產製完成回 409，都不記錄。取代已移除的 GET …/completed-file。',
   })
-  @ApiProduces('application/pdf')
-  @ApiOkResponse({
-    description: '已簽署副本 PDF（附件）',
-    schema: { type: 'string', format: 'binary' },
-  })
   @Post(':documentId/signers/:signerPublicId/completed-file/downloads')
-  @HttpCode(HttpStatus.OK)
-  @Header('Cache-Control', 'private, no-store')
-  @Header('X-Content-Type-Options', 'nosniff')
+  @CompletedPdfDownload()
   async downloadCompletedFile(
     @Param('documentId') id: string,
     @Param('signerPublicId') signerPublicId: string,
     @CurrentUserId() userId: number,
     @Res() reply: FastifyReply,
   ) {
-    const { signer, file } = await this.completions.creatorFile(
-      this.id(id),
-      signerPublicId,
-      userId,
+    sendCompletedPdf(
+      reply,
+      await this.exportHistory.downloadCreatorCopy(
+        this.id(id),
+        signerPublicId,
+        userId,
+      ),
     );
-    if (!file) {
-      throw new AppException(...AppErrors.ESIGN_COMPLETED_DOCUMENT_NOT_READY);
-    }
-    await this.exportHistory.recordPdf(signer, userId);
-    sendCompletedPdf(reply, file);
   }
 
   private id(value: string): number {

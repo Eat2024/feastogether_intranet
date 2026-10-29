@@ -11,12 +11,15 @@ export const endpoints = {
     `esign/documents/${encodeURIComponent(id)}/employee-email-checks`,
   ESIGN_DOCUMENT_HISTORY: (id: string) => `esign/documents/${encodeURIComponent(id)}/history`,
   ESIGN_SIGNER_COMPLETED_FILE: (id: string, signerPublicId: string) =>
-    `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/completed-file`,
+    `esign/documents/${encodeURIComponent(id)}/signers/${encodeURIComponent(signerPublicId)}/completed-file/downloads`,
   ESIGN_DOCUMENT_STOPPAGES: (id: string) => `esign/documents/${encodeURIComponent(id)}/stoppages`,
   ESIGN_DOCUMENT_REOPENINGS: (id: string) => `esign/documents/${encodeURIComponent(id)}/reopenings`,
   ESIGN_REOPENING_INVITATIONS: (id: string) => `esign/documents/${encodeURIComponent(id)}/reopening-invitations`,
   // 已簽署副本 ZIP 匯出（server/src/features/esign/controllers/exports.controller.ts）
-  ESIGN_EXPORTS: 'esign/exports',
+  // 歷史匯出紀錄（server/src/features/esign/controllers/export-history.controller.ts，Spec 015）
+  ESIGN_EXPORT_HISTORY: 'esign/history/export',
+  ESIGN_EXPORT_HISTORY_DOCUMENT: (id: string) => `esign/history/export/${encodeURIComponent(id)}/document`,
+  ESIGN_EXPORT_HISTORY_DOWNLOADS: (id: string) => `esign/history/export/${encodeURIComponent(id)}/downloads`,
   ESIGN_DOCUMENT_EXPORTS: (id: string) => `esign/documents/${encodeURIComponent(id)}/exports`,
   ESIGN_DOCUMENT_EXPORT: (id: string, exportId: string) =>
     `esign/documents/${encodeURIComponent(id)}/exports/${encodeURIComponent(exportId)}`,
@@ -34,7 +37,7 @@ export const endpoints = {
   // 本人的簽署任務列表（server/src/features/esign/controllers/signing-tasks.controller.ts）；
   // 個人簽署／拒簽／下載等舊入口已改為須從 Email 邀請操作（Spec 010），前端不再呼叫
   ESIGN_SIGNING_TASK_REJECTION: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/rejection`,
-  ESIGN_SIGNING_TASK_COMPLETED_FILE: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/completed-file`,
+  ESIGN_SIGNING_TASK_COMPLETED_FILE: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/completed-file/downloads`,
   ESIGN_SIGNING_TASKS: 'esign/signing-tasks',
   ESIGN_SIGNING_TASK: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}`,
   ESIGN_SIGNING_TASK_SIGNATURES: (id: string) => `esign/signing-tasks/${encodeURIComponent(id)}/signatures`,
@@ -49,7 +52,7 @@ export const endpoints = {
   EXTERNAL_SIGNING_TASK_SOURCE_FILE: 'external-signing-task/source-file',
   EXTERNAL_SIGNING_TASK_SIGNATURES: 'external-signing-task/signatures',
   EXTERNAL_SIGNING_TASK_REJECTION: 'external-signing-task/rejection',
-  EXTERNAL_SIGNING_TASK_COMPLETED_FILE: 'external-signing-task/completed-file',
+  EXTERNAL_SIGNING_TASK_COMPLETED_FILE: 'external-signing-task/completed-file/downloads',
 
   // 公開簽章驗證（server/src/features/esign/controllers/signature-verification.controller.ts）：不需登入
   SIGNATURE_VERIFICATION: (code: string) => `signature-verifications/${encodeURIComponent(code)}`,

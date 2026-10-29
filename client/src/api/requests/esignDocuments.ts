@@ -24,7 +24,7 @@ import type {
   SignerNoteResult,
   UpdateDocumentBody,
 } from '@/api/types';
-import { getBlob } from './blob';
+import { downloadFile } from './blob';
 
 /**
  * @name 列出電子簽文件
@@ -151,7 +151,8 @@ export const deleteDocument = async (id: string): Promise<void> => {
 
 /**
  * @name 下載簽署人的個人簽署副本
- * @description 僅建立人可下載，且該簽署人的個人副本須已產製完成；回傳 PDF 檔
+ * @description 僅建立人可下載，且該簽署人的個人副本須已產製完成；回傳 PDF 檔。
+ * POST：後端在送出檔案的同一請求寫入一筆「單人 PDF」匯出紀錄（Spec 015）
  */
 export const downloadSignerCompletedFile = async ({
   id,
@@ -159,7 +160,7 @@ export const downloadSignerCompletedFile = async ({
 }: {
   id: string;
   signerPublicId: string;
-}): Promise<Blob> => getBlob(endpoints.ESIGN_SIGNER_COMPLETED_FILE(id, signerPublicId));
+}): Promise<Blob> => (await downloadFile(endpoints.ESIGN_SIGNER_COMPLETED_FILE(id, signerPublicId), 'POST')).bytes;
 
 /**
  * @name 查詢內部簽署人候選

@@ -2,7 +2,6 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { addExportRecord } from '@/features/export-history/store';
 import { emailSignerId, isValidEmail, normalizeEmail } from '@/lib/email';
 import { getCurrentUser, getOrgTree, getStaff } from './orgChart';
 import { normalizeSignerNote } from './detail/signerNote';
@@ -121,11 +120,9 @@ export async function notifySigners(input: {
   return { count: targets.length };
 }
 
-const signerLabel = (s: Signer) => `${s.name}（${s.employeeNo || s.email || '—'}）`;
-
 /**
  * 取得某位簽署人已簽署副本所需的資料（含其手寫簽名），供管理端匯出個人的已簽署文件。
- * 只回傳該簽署人的紀錄，不帶出其他人的簽名；每次呼叫都會記入匯出紀錄。
+ * 只回傳該簽署人的紀錄，不帶出其他人的簽名。
  * TODO: 串接登入與權限後，限制只有文件建立人或管理者可以匯出
  */
 export async function getSignerCopy(input: {
@@ -137,15 +134,6 @@ export async function getSignerCopy(input: {
   const signer = form.signers.find((s) => s.id === input.signerId);
   if (!signer) return { error: '找不到此簽署人' };
   if (signer.status !== 'signed') return { error: '此簽署人尚未簽署，沒有可匯出的文件' };
-  addExportRecord({
-    kind: 'signerCopy',
-    formId: form.id,
-    formName: form.name,
-    docNumber: form.docNumber ?? null,
-    scope: signerLabel(signer),
-    count: 1,
-    signerId: signer.id,
-  });
   return { form: toSignerView(form, signer.id), signer };
 }
 
@@ -217,23 +205,14 @@ export async function saveSheetDocument(input: {
 }
 
 /**
- * 匯出整份簽到表所需的資料（含所有人的簽到簽名），每次呼叫都會記入匯出紀錄。
+ * 匯出整份簽到表所需的資料（含所有人的簽到簽名）。
  * TODO: 串接登入與權限後，限制只有文件建立人或管理者可以匯出
  */
 export async function getSheetExport(input: { formId: string }): Promise<{ error: string } | SheetExport> {
   const form = getForm(input.formId);
   if (!form || form.docType !== 'sheet' || !form.sheet) return { error: '找不到此簽到表' };
   if (form.status === 'draft') return { error: '簽到表尚未發起，沒有可匯出的資料' };
-  const data = sheetExportData(form);
-  addExportRecord({
-    kind: 'sheet',
-    formId: form.id,
-    formName: form.name,
-    docNumber: form.docNumber ?? null,
-    scope: `整份簽到表（應到 ${data.attendance.expected} 人；實到 ${data.attendance.actual} 人）`,
-    count: data.attendance.actual,
-  });
-  return data;
+  return sheetExportData(form);
 }
 
 /** 單次追加的人數上限，避免一次送出過大的資料 */

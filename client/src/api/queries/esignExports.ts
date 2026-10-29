@@ -1,14 +1,14 @@
 import { queryKeys } from '@/api/query-keys';
 import { queryOptions } from '@/api/query-options';
 import { getDocumentExport, getExportHistory } from '@/api/requests';
-import type { ExportHistoryParams } from '@/api/types';
+import type { ExportHistoryPage, ExportHistoryParams, ExportHistoryType } from '@/api/types';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 
-/** 匯出紀錄 */
-export function useGetExportHistoryQuery<TData = Awaited<ReturnType<typeof getExportHistory>>, TError = AxiosError>(
-  params: ExportHistoryParams = {},
-  options?: Omit<UseQueryOptions<Awaited<ReturnType<typeof getExportHistory>>, TError, TData>, 'queryKey' | 'queryFn'>,
+/** 歷史匯出紀錄（依類型、頁碼分頁） */
+export function useGetExportHistoryQuery<T extends ExportHistoryType>(
+  params: ExportHistoryParams<T>,
+  options?: Omit<UseQueryOptions<ExportHistoryPage<T>, AxiosError>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
     queryKey: [queryKeys.ESIGN_EXPORT_HISTORY, params],

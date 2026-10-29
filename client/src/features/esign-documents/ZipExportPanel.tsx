@@ -2,7 +2,7 @@
 
 // 匯出頁的「已簽署文件 ZIP」：POST /api/esign/documents/:id/exports 受理後由後端背景打包，
 // 以 GET .../exports/:exportId 查詢進度，完成後以瀏覽器直接下載（檔案可能很大，不先讀進記憶體）。
-// 進入頁面時以 GET /api/esign/exports?documentId= 帶回這份文件最近一次的匯出。
+// 進入頁面時以 GET /api/esign/history/export?type=zip&documentId=&pageSize=1 帶回這份文件最近一次的匯出。
 import { useGetDocumentExportQuery, useGetExportHistoryQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
 import { documentExportFileUrl, requestDocumentExport, retryDocumentExport } from '@/api/requests';
@@ -35,7 +35,7 @@ export default function ZipExportPanel({ documentId, signedCount }: { documentId
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
   // 這份文件最近一次的匯出（進入頁面時帶回）；按下產生後改看新的匯出工作
-  const latest = useGetExportHistoryQuery({ documentId, limit: 1 });
+  const latest = useGetExportHistoryQuery({ type: 'zip', documentId, pageSize: 1 });
   const [requestedId, setRequestedId] = useState<string | null>(null);
   const exportId = requestedId ?? latest.data?.items[0]?.id ?? null;
   const job = useGetDocumentExportQuery(documentId, exportId);

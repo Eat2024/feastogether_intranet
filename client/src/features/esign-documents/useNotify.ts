@@ -7,6 +7,7 @@ import { createNotificationBatch } from '@/api/requests';
 import type { CreateNotificationBatchBody } from '@/api/types';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
 import { getErrorMessage } from '@/lib/apiError';
+import { randomUUID } from '@/lib/uuid';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 
@@ -27,7 +28,7 @@ export function useNotify(documentId: string) {
     mutationFn: ({ selection, signerPublicIds }: Target) => {
       const ids = signerPublicIds && [...signerPublicIds].sort();
       const key = JSON.stringify({ selection, ids });
-      if (lastRequest.current?.key !== key) lastRequest.current = { key, requestId: crypto.randomUUID() };
+      if (lastRequest.current?.key !== key) lastRequest.current = { key, requestId: randomUUID() };
       return createNotificationBatch({
         id: documentId,
         body: { requestId: lastRequest.current.requestId, selection, signerPublicIds: ids },

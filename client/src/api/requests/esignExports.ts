@@ -3,6 +3,7 @@ import { endpoints } from '@/api/endpoints';
 import type {
   CreateExcelExportRecordBody,
   EsignExportJob,
+  EsignExportPreviewDocument,
   EsignExportRequestResult,
   ExcelExportDocument,
   ExcelExportHistoryItem,
@@ -45,7 +46,7 @@ export const retryDocumentExport = async ({ id, exportId }: { id: string; export
 
 /**
  * @name 查詢歷史匯出紀錄
- * @description 依類型（excel／pdf／zip）以頁碼查詢所有人的匯出紀錄，依匯出時間由新到舊；可限定文件
+ * @description 依類型（excel／pdf／zip）以頁碼查詢同部門文件的匯出紀錄，依匯出時間由新到舊；可限定文件
  */
 export const getExportHistory = async <T extends ExportHistoryType>(
   params: ExportHistoryParams<T>,
@@ -82,3 +83,13 @@ export const redownloadPdfExport = (recordId: string): Promise<{ bytes: Blob; fi
 /** 下載 ZIP 的網址：檔案可能很大，以瀏覽器直接下載（同源請求會帶上 session cookie），不先讀進記憶體 */
 export const documentExportFileUrl = (id: string, exportId: string, fileId: string) =>
   `${api.defaults.baseURL}/${endpoints.ESIGN_DOCUMENT_EXPORT_FILE(id, exportId, fileId)}`;
+
+/** 同部門文件的完整 Excel 匯出預覽；讀取不產生匯出紀錄。 */
+export const getDocumentExportPreview = async (id: string): Promise<EsignExportPreviewDocument> => {
+  const res = await api<EsignExportPreviewDocument>({
+    method: 'GET',
+    url: endpoints.ESIGN_DOCUMENT(id),
+    params: { view: 'export' },
+  });
+  return res.data;
+};

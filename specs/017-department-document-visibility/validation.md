@@ -60,3 +60,11 @@
 - Creation E2E 10/10、8套既有fixtures 78/78、completion+creation 16/16、draft單元22/22通過；全server unit109 suites／1,047 tests通過。
 - 缺碼409並清檔、非法multipart欄位拒絕、名稱缺值、保存失敗清檔、調職前後快照與列表／建立人管理驗收通過。發起／補簽／停止／完成流程保留部門與簽署payload。
 - Server build、lint:check（0 errors）及diff check通過。既有8套fixtures逐人明列合成部門，保留跨人負向案例；沒有runtime預設部門。
+
+## Ticket 05（T017–T021）與 08 client 提前整合
+
+- client lint／build通過；無新增測試框架或dependency。
+- 以原始碼臨時副本啟動獨立Next server（13000），保留使用者既有3000 dev process；Chrome156三個隔離context搭配真實Nest API（13017，DB feastogether_intranet_test017ui、Redis1）驗收，不替換HTTP回應。
+- 23個API請求檢查通過：兩位同部門看到彼此、跨部門不可見；文件／建立人搜尋、狀態、單邊／雙邊日期篩選與清除；草稿來源預覽入口及進度；無Email／note／管理控制；直接edit/signers導回唯讀且無通知／邀請／組織查詢；建立人保留管理；跨部門直接詳情拒絕。
+- 同部門非建立人view=export獨立cache／API取得核准Email欄位，與一般唯讀DTO分離。瀏覽器測試用合成快照與文件，建立交易正確性另由ticket06驗證。
+- 為同一組判別DTO／頁面保持可建置，T033／T034的client修改一併整合：Excel預覽、PDF canExport與history/ZIP失敗顯示；ticket08尚未完成，等待07與全匯出安全回歸，不能宣稱整體隔離可上線。

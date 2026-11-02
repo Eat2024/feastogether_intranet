@@ -1,5 +1,5 @@
 // 檢視頁（後端文件）簽署人清單的狀態分頁、搜尋、排序與分頁；條件記在網址上，在瀏覽器端處理
-import type { EsignSignerStatus, EsignSignerView } from '@/api/types';
+import type { EsignReadonlySignerView, EsignSignerStatus, EsignSignerView } from '@/api/types';
 import { PAGE_SIZE, paginate, parsePage } from '@/lib/paginate';
 import { nextSortState, parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
 
@@ -18,9 +18,11 @@ export type SignerSort = Sort<SignerSortKey>;
 // 狀態排序：待簽署 → 已簽署 → 已拒絕
 const STATUS_ORDER: Record<EsignSignerStatus, number> = { pending: 0, signed: 1, rejected: 2 };
 
-const SORT_VALUE: Record<SignerSortKey, (s: EsignSignerView) => SortValue> = {
+type SignerProgress = EsignReadonlySignerView & Partial<Pick<EsignSignerView, 'employeeNo' | 'email' | 'department'>>;
+
+const SORT_VALUE: Record<SignerSortKey, (s: SignerProgress) => SortValue> = {
   name: (s) => s.name,
-  dept: (s) => s.department,
+  dept: (s) => s.department ?? null,
   status: (s) => STATUS_ORDER[s.status],
   // 簽署／拒絕時間
   time: (s) => s.signedAt ?? s.rejectedAt,
@@ -42,13 +44,13 @@ export function parseSignerQuery(params: URLSearchParams): SignerQuery {
 }
 
 /** 各狀態的人數（分頁標籤用；不受搜尋影響） */
-export function countByStatus(signers: EsignSignerView[]): Record<SignerStatusTab, number> {
+export function countByStatus(signers: EsignReadonlySignerView[]): Record<SignerStatusTab, number> {
   const count = (st: EsignSignerStatus) => signers.filter((s) => s.status === st).length;
   return { all: signers.length, pending: count('pending'), signed: count('signed'), rejected: count('rejected') };
 }
 
 /** 套用狀態、搜尋（姓名、員編、Email、部門）、排序與分頁；未指定排序時維持後端順序 */
-export function querySigners<T extends EsignSignerView>(signers: T[], query: SignerQuery) {
+export function querySigners<T extends SignerProgress>(signers: T[], query: SignerQuery) {
   const q = query.q.toLowerCase();
   let rows = signers.filter(
     (s) =>

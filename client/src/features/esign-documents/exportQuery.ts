@@ -1,5 +1,5 @@
 // 匯出簽署紀錄（後端文件）的條件、欄位與資料整理；條件記在網址上（格式與 mock 版相同），預覽與 Excel 共用。
-// Excel 在瀏覽器端產生：匯出頁的資料來自文件詳情；歷史匯出的重新下載來自 GET /api/esign/history/export/:id/document。
+// Excel 在瀏覽器端產生：匯出頁的資料來自同部門匯出預覽；歷史匯出的重新下載來自 GET /api/esign/history/export/:id/document。
 // 產生前先以 POST /api/esign/history/export 記錄匯出（Spec 015）。
 import type { EsignSignerStatus, EsignSignerView, ExcelExportField } from '@/api/types';
 import dayjs from 'dayjs';
@@ -14,7 +14,7 @@ const STATUS_LABEL: Record<EsignSignerStatus, string> = { pending: '待簽署', 
 
 const formatTime = (iso: string | null) => (iso ? dayjs(iso).format('YYYY/MM/DD HH:mm') : '');
 
-/** 產生 Excel 用到的簽署人欄位（文件詳情與歷史匯出的重新下載資料共有的欄位） */
+/** 產生 Excel 用到的簽署人欄位（同部門匯出預覽與歷史重新下載共有的欄位） */
 export type ExportSigner = Pick<
   EsignSignerView,
   'type' | 'name' | 'employeeNo' | 'department' | 'title' | 'email' | 'status' | 'signedAt' | 'rejectedAt' | 'rejectReason'

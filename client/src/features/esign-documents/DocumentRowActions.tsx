@@ -15,26 +15,22 @@ import StopDocumentButton from './StopDocumentButton';
 export default function DocumentRowActions({
   doc,
 }: {
-  doc: Pick<EsignDocumentListItem, 'id' | 'title' | 'status' | 'pendingCount' | 'signEndAt'>;
+  doc: Pick<EsignDocumentListItem, 'id' | 'title' | 'status' | 'pendingCount' | 'signEndAt' | 'isCreator'>;
 }) {
   return (
     <Box sx={{ display: 'flex', gap: 0.5 }}>
-      {/* 草稿才能前往設定簽署並發起 */}
-      <TooltipIconButton
-        label="發起簽署"
-        icon={<SendRoundedIcon />}
-        color="info"
-        href={`/forms/${doc.id}/signers`}
-        disabled={doc.status !== 'draft'}
-      />
-      {/* 檢視簽署進度與歷程（草稿尚無進度，停用） */}
-      <TooltipIconButton
-        label="檢視"
-        icon={<VisibilityRoundedIcon />}
-        color="info"
-        href={`/forms/${doc.id}`}
-        disabled={doc.status === 'draft'}
-      />
+      {/* 草稿只能由建立人設定簽署並發起 */}
+      {doc.isCreator && (
+        <TooltipIconButton
+          label="發起簽署"
+          icon={<SendRoundedIcon />}
+          color="info"
+          href={`/forms/${doc.id}/signers`}
+          disabled={doc.status !== 'draft'}
+        />
+      )}
+      {/* 同部門草稿與已發起文件皆可檢視 */}
+      <TooltipIconButton label="檢視" icon={<VisibilityRoundedIcon />} color="info" href={`/forms/${doc.id}`} />
       {/* 匯出簽署紀錄（草稿尚無簽署資料，停用） */}
       <TooltipIconButton
         label="匯出"
@@ -43,20 +39,24 @@ export default function DocumentRowActions({
         href={`/forms/${doc.id}/export`}
         disabled={doc.status === 'draft'}
       />
-      {/* 後端只允許修改尚未發起的草稿 */}
-      <TooltipIconButton
-        label={doc.status === 'draft' ? '編輯' : '編輯（已發起的文件無法修改）'}
-        icon={<EditRoundedIcon />}
-        color="info"
-        href={`/forms/${doc.id}/edit`}
-        disabled={doc.status !== 'draft'}
-      />
-      {/* 已到期且仍有人未簽署才能補簽 */}
-      <ReopenDocumentButton doc={doc} disabled={doc.status !== 'expired' || doc.pendingCount === 0} />
-      {/* 簽署中、已到期才能停止 */}
-      <StopDocumentButton doc={doc} disabled={doc.status !== 'active' && doc.status !== 'expired'} />
-      {/* 後端只允許刪除尚未發起的草稿 */}
-      <DeleteDocumentButton doc={doc} disabled={doc.status !== 'draft'} />
+      {/* 管理操作只提供給建立人 */}
+      {doc.isCreator && (
+        <>
+          <TooltipIconButton
+            label={doc.status === 'draft' ? '編輯' : '編輯（已發起的文件無法修改）'}
+            icon={<EditRoundedIcon />}
+            color="info"
+            href={`/forms/${doc.id}/edit`}
+            disabled={doc.status !== 'draft'}
+          />
+          {/* 已到期且仍有人未簽署才能補簽 */}
+          <ReopenDocumentButton doc={doc} disabled={doc.status !== 'expired' || doc.pendingCount === 0} />
+          {/* 簽署中、已到期才能停止 */}
+          <StopDocumentButton doc={doc} disabled={doc.status !== 'active' && doc.status !== 'expired'} />
+          {/* 後端只允許刪除尚未發起的草稿 */}
+          <DeleteDocumentButton doc={doc} disabled={doc.status !== 'draft'} />
+        </>
+      )}
     </Box>
   );
 }

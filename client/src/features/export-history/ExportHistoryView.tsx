@@ -1,6 +1,6 @@
 'use client';
 
-// 歷史匯出文件：GET /api/esign/history/export（Spec 015，所有人的匯出紀錄，依匯出時間由新到舊）。
+// 歷史匯出文件：GET /api/esign/history/export（Spec 017，同部門文件的匯出紀錄，依匯出時間由新到舊）。
 // 依類型分頁標籤（Excel／PDF／ZIP），頁碼分頁；分頁與頁碼記在網址參數 tab、page。
 // 簽到表後端尚未完成，分頁先隱藏。
 import { useGetExportHistoryQuery } from '@/api/queries';
@@ -279,7 +279,7 @@ export default function ExportHistoryView() {
 
   const columns = COLUMN_SETS[type] as ColumnSet<ExportHistoryType>;
   const head = ['匯出時間', '文件名稱', '文件編號', ...columns.head, '匯出人', '重新下載'];
-  const pageCount = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const pageCount = data && !isError ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
   const placeholder = isPending ? (
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5 }}>
@@ -303,7 +303,7 @@ export default function ExportHistoryView() {
         value={type}
         tabs={TABS.map((t) => ({
           value: t.value,
-          label: t.value !== 'sheet' && data ? `${t.label}（${data.typeTotals[t.value]}）` : t.label,
+          label: t.value !== 'sheet' && data && !isError ? `${t.label}（${data.typeTotals[t.value]}）` : t.label,
           href: historyHref(t.value),
         }))}
       />

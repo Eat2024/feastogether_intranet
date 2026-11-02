@@ -53,11 +53,11 @@
 - [x] T014 [US1] 更新 `server/src/features/esign/dto/document-query.dto.ts` 與 `server/src/features/esign/controllers/documents.controller.ts` 支援 dep／created／assigned 及原 status；不支援 all 或 caller departmentCode；更新 Swagger，串接 userId，通過列表測試。
 - [x] T015 [US1] 在 `server/src/features/esign/dto/esign-common.dto.ts` 與 `server/src/features/esign/services/esign-view.mapper.ts` 定義以 isCreator 區分的管理／唯讀 DTO，必要時更新呼叫 mapper 的簽署任務型別；唯讀僅含契約列出的文件／來源 metadata 與姓名、狀態、時間，不能傳 Email、note、個別拒簽理由、驗證連結、邀請憑證、寄送資格或 object key。
 - [x] T016 [US1] 在 `server/src/features/esign/services/esign-document-query.service.ts` 將詳情與來源讀取改用 T009 唯讀政策，重命名 creatorDetail／creatorSource 至符合共用讀取責任並更新 `server/src/features/esign/controllers/documents.controller.ts` 呼叫；history 增加同部門文件層級事件視角，保留本人簽署視角、來源完整性驗證，reopeningInvitations 仍限建立人。
-- [ ] T017 [US1] 在 `client/src/api/types/esignDocuments.ts` 對齊 dep 與 isCreator 判別 DTO，更新 `client/src/features/esign-documents/DocumentsListView.tsx` 固定 role=dep；保留 `client/src/features/esign-documents/listQuery.ts` 的原關鍵字／日期／狀態邏輯，不新增後端搜尋 API。
-- [ ] T018 [US1] 修改 `client/src/features/esign-documents/DocumentRowActions.tsx`、`DocumentsTable.tsx`，讓非建立人可進草稿與已發起文件的檢視，但不能顯示修改／發起／停止／補簽／刪除操作；匯出按鈕留待 US4 以部門授權串接，不能以 isCreator 當匯出資格。
-- [ ] T019 [US1] 修改 `client/src/features/esign-documents/DocumentDetailView.tsx` 與 `DocumentSignerTable.tsx` 呈現唯讀 DTO；非建立人不 mount `NotificationHistory.tsx`、備註 mutation、催簽與補簽邀請控制，保留來源預覽與必要進度，避免先讀取敏感資料再 UI 隱藏。
-- [ ] T020 [US1] 在 `client/src/features/esign-documents/DocumentEditView.tsx`、`DocumentSignersEditor.tsx` 加建立人判斷，直接進 /edit／/signers 的同部門非建立人導回唯讀頁，不進可寫 editor；確認 backend mutation 一律仍驗證建立人與文件狀態。
-- [ ] T021 [US1] 執行 T011／T012 及 `specs/017-department-document-visibility/quickstart.md` 的前端雙帳號／日期搜尋／草稿檢視案例，於 `specs/017-department-document-visibility/validation.md` 記錄 isCreator、隱私欄位及無管理 side effect 驗收；client 跑 lint/build。
+- [x] T017 [US1] 在 `client/src/api/types/esignDocuments.ts` 對齊 dep 與 isCreator 判別 DTO，更新 `client/src/features/esign-documents/DocumentsListView.tsx` 固定 role=dep；保留 `client/src/features/esign-documents/listQuery.ts` 的原關鍵字／日期／狀態邏輯，不新增後端搜尋 API。
+- [x] T018 [US1] 修改 `client/src/features/esign-documents/DocumentRowActions.tsx`、`DocumentsTable.tsx`，讓非建立人可進草稿與已發起文件的檢視，但不能顯示修改／發起／停止／補簽／刪除操作；匯出按鈕留待 US4 以部門授權串接，不能以 isCreator 當匯出資格。
+- [x] T019 [US1] 修改 `client/src/features/esign-documents/DocumentDetailView.tsx` 與 `DocumentSignerTable.tsx` 呈現唯讀 DTO；非建立人不 mount `NotificationHistory.tsx`、備註 mutation、催簽與補簽邀請控制，保留來源預覽與必要進度，避免先讀取敏感資料再 UI 隱藏。
+- [x] T020 [US1] 在 `client/src/features/esign-documents/DocumentEditView.tsx`、`DocumentSignersEditor.tsx` 加建立人判斷，直接進 /edit／/signers 的同部門非建立人導回唯讀頁，不進可寫 editor；確認 backend mutation 一律仍驗證建立人與文件狀態。
+- [x] T021 [US1] 執行 T011／T012 及 `specs/017-department-document-visibility/quickstart.md` 的前端雙帳號／日期搜尋／草稿檢視案例，於 `specs/017-department-document-visibility/validation.md` 記錄 isCreator、隱私欄位及無管理 side effect 驗收；client 跑 lint/build。
 
 **Checkpoint**：可在合成資料展示同部門瀏覽；仍不可宣稱整體可上 UAT，必須完成 US2／US4／US3。
 

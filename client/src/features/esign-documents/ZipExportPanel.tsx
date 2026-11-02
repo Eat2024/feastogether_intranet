@@ -87,6 +87,8 @@ export default function ZipExportPanel({ documentId, signedCount }: { documentId
           <CircularProgress size={20} />
           <Typography variant="description">讀取匯出狀態中…</Typography>
         </Box>
+      ) : latest.isError ? (
+        <Alert severity="error">無法取得匯出紀錄：{getErrorMessage(latest.error)}</Alert>
       ) : job.isError ? (
         <Alert severity="error">無法取得匯出狀態：{getErrorMessage(job.error)}</Alert>
       ) : !data ? (

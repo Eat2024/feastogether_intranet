@@ -1,5 +1,5 @@
 // 已簽署副本 ZIP 匯出（server/src/features/esign/services/esign-export.service.ts、dto/export.dto.ts）
-import type { EsignSignerStatus } from './esignDocuments';
+import type { EsignDocumentStatus, EsignSignerStatus } from './esignDocuments';
 
 /**
  * 匯出工作狀態：pending 排隊中；waiting 仍有個人副本產製中，等待完成；processing 打包中；
@@ -143,4 +143,9 @@ export interface ExcelExportDocument {
     rejectedAt: string | null;
     rejectReason: string | null;
   }[];
+}
+
+/** GET esign/documents/:id?view=export：同部門授權後的完整匯出預覽，不新增歷史紀錄。 */
+export interface EsignExportPreviewDocument extends ExcelExportDocument {
+  status: EsignDocumentStatus;
 }

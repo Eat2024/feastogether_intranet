@@ -2,7 +2,7 @@
 
 import { queryKeys } from "@/api/query-keys";
 import { createDocument, documentSourceFileUrl, updateDocument } from "@/api/requests";
-import type { EsignDocumentDetail } from "@/api/types";
+import type { EsignManagedDocumentDetail } from "@/api/types";
 import { fromFieldViews, toFieldPlacements } from "@/features/esign-documents/fields";
 import { getErrorMessage } from "@/lib/apiError";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
@@ -332,7 +332,7 @@ export default function UploadEditor({
   locked = false,
 }: {
   /** 要修改的後端草稿；新增文件時不提供 */
-  draft?: EsignDocumentDetail;
+  draft?: EsignManagedDocumentDetail;
   locked?: boolean;
 }) {
   const router = useRouter();
@@ -360,7 +360,7 @@ export default function UploadEditor({
   });
   const saving = create.isPending || create.isSuccess || update.isPending || update.isSuccess;
   // 後端草稿沒有記錄是否使用系統簽署確認頁：沒有欄位的草稿視為使用確認頁（新增時只有確認頁可以不放欄位）
-  const draftUpload = (d: EsignDocumentDetail): UploadInfo => ({
+  const draftUpload = (d: EsignManagedDocumentDetail): UploadInfo => ({
     fileName: d.sourceFile?.fileName ?? "",
     pages: d.sourceFile?.pageCount ?? 0,
     mode: d.fields.length ? "inline" : "confirmPage",

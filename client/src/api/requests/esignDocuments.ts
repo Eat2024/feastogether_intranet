@@ -72,8 +72,8 @@ export const updateDocument = async ({ id, title, file, fields }: UpdateDocument
 };
 
 /**
- * @name 取得建立人的文件詳情
- * @description 含簽署人、欄位與原始 PDF 資訊；只有建立人可讀取
+ * @name 取得文件管理或同部門唯讀詳情
+ * @description 以 isCreator 區分管理與裁切後的同部門唯讀資料；匯出另使用授權預覽
  */
 export const getDocument = async (id: string): Promise<EsignDocumentDetail> => {
   const res = await api<EsignDocumentDetail>({ method: 'GET', url: endpoints.ESIGN_DOCUMENT(id) });
@@ -150,7 +150,7 @@ export const deleteDocument = async (id: string): Promise<void> => {
 
 /**
  * @name 下載簽署人的個人簽署副本
- * @description 僅建立人可下載，且該簽署人的個人副本須已產製完成；回傳 PDF 檔。
+ * @description 同部門可下載，且該簽署人的個人副本須已產製完成；回傳 PDF 檔。
  * POST：後端在送出檔案的同一請求寫入一筆「單人 PDF」匯出紀錄（Spec 015）
  */
 export const downloadSignerCompletedFile = async ({
@@ -193,7 +193,7 @@ export const resolveSignerCandidates = async (employeeNos: string[]): Promise<Es
   return res.data.items;
 };
 
-/** 建立人讀取原始 PDF 的網址（pdf.js 直接讀取，同源請求會帶上 session cookie） */
+/** 建立人或同部門讀取原始 PDF 的網址（pdf.js 直接讀取，同源請求會帶上 session cookie） */
 export const documentSourceFileUrl = (id: string) =>
   `${api.defaults.baseURL}/${endpoints.ESIGN_DOCUMENT_SOURCE_FILE(id)}`;
 

@@ -8,13 +8,14 @@ export type EsignDocumentStatus = 'draft' | 'active' | 'expired' | 'finalizing' 
 
 /** GET esign/documents 的查詢參數（皆選填） */
 export interface GetDocumentsParams {
-  /** created：我建立的；assigned：指派給我簽署的；不帶為兩者合併 */
-  role?: 'created' | 'assigned';
+  /** dep：目前部門；created：我建立的；assigned：指派給我簽署的；不帶為個人兩者合併 */
+  role?: 'dep' | 'created' | 'assigned';
   status?: EsignDocumentStatus;
 }
 
 /** 文件列表的一筆資料；時間皆為 ISO 8601 */
 export interface EsignDocumentListItem {
+  isCreator: boolean;
   id: string;
   docNumber: string;
   title: string;
@@ -126,19 +127,31 @@ export interface EsignFieldView extends EsignFieldPlacement {
   id: string;
 }
 
-/** GET esign/documents/:id：建立人的文件詳情 */
-export interface EsignDocumentDetail extends Omit<EsignDocumentListItem, 'signStartAt' | 'signEndAt' | 'createdBy'> {
-  createdBy: { name: string; employeeNo: string } | null;
+/** 同部門唯讀簽署進度，不包含個人聯絡資料或管理資訊。 */
+export type EsignReadonlySignerView = Pick<EsignSignerView, 'publicId' | 'name' | 'status' | 'signedAt' | 'rejectedAt'>;
+
+interface EsignDocumentDetailBase extends EsignDocumentListItem {
+  canExport: boolean;
   sourceFile?: { fileName: string; size: number; pageCount: number; sha256: string };
-  signStartAt: string | null;
-  signEndAt: string | null;
-  /** 浮水印、允許拒簽：草稿為暫存的設定，發起後為發起時的設定 */
+  stopReason: string | null;
+}
+
+/** 建立人管理詳情；管理與匯出資格分開判斷。 */
+export interface EsignManagedDocumentDetail extends EsignDocumentDetailBase {
+  isCreator: true;
   watermark: boolean;
   allowReject: boolean;
-  stopReason: string | null;
   signers: EsignManagedSignerView[];
   fields: EsignFieldView[];
 }
+
+/** 同部門文件詳情：不含欄位配置、通知與備註等管理資料。 */
+export interface EsignReadonlyDocumentDetail extends EsignDocumentDetailBase {
+  isCreator: false;
+  signers: EsignReadonlySignerView[];
+}
+
+export type EsignDocumentDetail = EsignManagedDocumentDetail | EsignReadonlyDocumentDetail;
 
 /** 發起簽署的簽署人：內部員工帶後端 userId；外部以 Email 加入 */
 export type EsignSignerInput = { type: 'user'; userId: string } | { type: 'email'; name: string; email: string };

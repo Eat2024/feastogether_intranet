@@ -4,9 +4,6 @@ import { AppException } from '#app/common/errors/app.exception';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
-import { DocumentRepository } from '../repositories/document.repository';
-import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { EmployeeEmailCheckResultDto } from '../dto/employee-directory-response.dto';
 
 export interface EmployeeEmailIdentity {
   userId: number;
@@ -16,39 +13,14 @@ export interface EmployeeEmailResult extends EmployeeEmailIdentity {
   email: string | null;
 }
 
-/** 預覽及發起共用的員工核對，不保存信箱，也不寄送通知。 */
+/** 發起簽署使用的員工核對，不保存信箱，也不寄送通知。 */
 @Injectable()
 export class EsignEmployeeEmailService {
   constructor(
     private readonly mysql: MysqlService,
     private readonly users: UserRepository,
-    private readonly documents: DocumentRepository,
-    private readonly access: EsignAccessPolicyService,
     private readonly hr: FeastogetherHrService,
   ) {}
-
-  async checkDraft(
-    documentId: number,
-    creatorUserId: number,
-    userIds: string[],
-  ): Promise<EmployeeEmailCheckResultDto> {
-    const document = await this.documents.findById(
-      documentId,
-      this.mysql.getManager(),
-    );
-    this.access.checkEsignDraftCreator(document, creatorUserId);
-    const identities = await this.resolveUsers(userIds);
-    const results = await this.lookupEmails(identities);
-    return {
-      items: results.map(({ userId, email }) => ({
-        userId: String(userId),
-        status: email ? ('ready' as const) : ('unavailable' as const),
-        maskedEmail: email
-          ? `${email[0]}***${email.slice(email.lastIndexOf('@'))}`
-          : null,
-      })),
-    };
-  }
 
   /** 呼叫端可於發起交易內再次讀取，以比對查詢前後身分是否一致。 */
   async resolveUsers(

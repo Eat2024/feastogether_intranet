@@ -165,11 +165,11 @@ export class EsignExportHistoryService {
 
   /**
    * 從 pdf 紀錄重新下載：任何員工都能取得該簽署人目前的副本。
-   * 新紀錄的簽署人（含文件）與範圍沿用原紀錄，匯出人為目前使用者。
+   * 沿用既有紀錄，不新增或改寫匯出歷史。
    */
   async redownloadPdf(
     publicId: string,
-    userId: number,
+    _userId: number,
   ): Promise<PersonalCopyFile> {
     const manager = this.mysql.getManager();
     const record = await this.jobs.historyRecord(
@@ -186,7 +186,9 @@ export class EsignExportHistoryService {
     if (!record || !signer || !document)
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     const file = await this.completions.personalCopy(document, signer);
-    return this.recordPdf({ signer, file }, userId, record.scopeDescription);
+    if (!file)
+      throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
+    return file;
   }
 
   /**

@@ -45,3 +45,11 @@
 - 完整server unit 108 suites／1,032 tests通過，server lint 0 errors／267 warnings，server build通過。既有policy constructor mocks僅補新增repository依賴。
 - 合成fixtures與E2E／security收集規則已建立，HTTP功能案例待ticket04建立執行；三種登入E2E待ticket09，不宣稱已驗收。
 - 前後端新增 ESIGN_DEPARTMENT_UNAVAILABLE／409；無新env／session格式。未連線UAT。
+
+## Ticket 04（T011–T016）
+
+- T011先紅5 failed／3 passed（缺dep/唯讀功能及history未帶signerId的管理事件裁切），實作後query單元9 tests通過。
+- 安全E2E先確認同部門detail 404、dep缺功能400；補合法multipart與發起body後4 tests全綠，含14管理入口拒絕及文件／簽署人／audit／notification／queue均無變更。
+- 正常E2E 7 tests通過：兩部門各兩位建立人×六狀態、NULL舊文件、精確大小寫／同名異碼、來源PDF、DTO裁切、歷程、個人查詢、調職舊session。
+- 全server unit 109 suites／1,041 tests通過，server build、修改檔ESLint 0 errors/warnings通過。
+- 契約補全canExport與既有GET detail的view=export；同部門才可取得完整Excel欄位，草稿404，GET不寫紀錄，不影響一般唯讀裁切。詳見department-access.md。

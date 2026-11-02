@@ -35,6 +35,7 @@
 
 既有 `GET /api/esign/documents/:documentId`、`.../source-file`、`.../history` 增加同部門唯讀授權，原來源完整性驗證、private/no-store 與嵌入政策保留。
 
+- 詳情回傳 server 計算的 `canExport: boolean` 供一般匯出按鈕呈現；缺代碼或調職後與文件不同部門為 false，不阻斷建立人個人管理。此欄不是授權憑證，所有實際匯出入口仍重新查目前部門。
 - 詳情回傳明確 `isCreator`。建立人取得既有管理 DTO；非建立人使用唯讀 DTO，前端型別以 isCreator 區分，不能假設管理欄位存在。
 - 唯讀提供：文件 ID、標題、編號、狀態、建立人、簽署期間、文件層級停止原因、來源預覽 metadata、簽署人顯示姓名／狀態／完成或拒簽時間、簽署進度。草稿也可唯讀。
 - 非建立人不回傳：Email、員編／職稱／部門等非進度必要資料、內部 note、個別拒簽理由、驗證代碼與連結、邀請 URL／token、催簽資格、逐人寄送結果、原始簽名圖、檔案 object key。來源文件本身的內容為使用者授權同部門可瀏覽的文件內容。
@@ -48,6 +49,7 @@
 
 | 入口 | 修改要求 |
 |---|---|
+| GET `/api/esign/documents/:documentId?view=export` | 首次 Excel 預覽，獨立驗證同部門且文件已發起（草稿 404），回傳既有 ExcelExportDocument 欄位加有效 status；不回管理 DTO、不寫紀錄、不載入來源 PDF。view 只允許 export，未帶沿用一般詳情 |
 | GET `/api/esign/exportable-documents` | 查詢先按部門限制，再套 q/status/cursor/limit；不讓 cursor 跨部門漏資料 |
 | POST `/api/esign/documents/:documentId/exports` | 同部門才可建立或重用 ZIP；權限檢查早於 snapshot、寫 DB、enqueue |
 | GET `/api/esign/documents/:documentId/exports/:exportId` | 授權文件且確認工作屬於同一文件後才回狀態／files |
@@ -71,3 +73,7 @@
 - role 或參數不合法：沿用 400 驗證錯誤。
 - 同部門但無文件：200 空列表。檔案未就緒、已過期、Range 錯誤等依原契約，在通過授權後判斷。
 - 同部門資格不得取代 PDF readiness、交易狀態、OriginGuard 或 session 驗證。
+
+## 實作時補全（2026-11-02）
+
+首次匯出尚無歷史紀錄，不能用 history/:id/document 取得預覽，亦不可用一般唯讀詳情取得敏感欄位。因此沿用既有文件路徑新增明確 view=export 查詢與獨立同部門授權；下載時沿既有 POST 紀錄流程。canExport 只供 UI 呈現，不能由 isCreator 推論部門資格。未新增 API 路徑、環境變數或永久檔案 URL。

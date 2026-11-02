@@ -124,9 +124,11 @@ export class EsignViewMapper {
     counts: EsignSignerCounts,
     creator: User | undefined,
     now = new Date(),
+    viewerUserId?: number,
   ): EsignDocumentListItemDto {
     return {
       ...this.documentSummary(document, counts, now),
+      isCreator: document.createdByUserId === viewerUserId,
       signStartAt: document.signStartAt?.toISOString() ?? null,
       signEndAt: document.signEndAt?.toISOString() ?? null,
       createdBy: this.creator(creator),
@@ -144,6 +146,16 @@ export class EsignViewMapper {
       size: Number(file.fileSize),
       pageCount,
       sha256: file.sha256,
+    };
+  }
+
+  readonlySigner(signer: EsignSigner) {
+    return {
+      publicId: signer.publicId,
+      name: signer.nameSnapshot,
+      status: signer.status as EsignSignerStatus,
+      signedAt: signer.signedAt?.toISOString() ?? null,
+      rejectedAt: signer.rejectedAt?.toISOString() ?? null,
     };
   }
 

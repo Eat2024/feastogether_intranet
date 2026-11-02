@@ -4,7 +4,7 @@
 
 **Blocked by:** [03](./03-trusted-department-policy.md)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Spec:** [Spec 017](https://github.com/Eat2024/feastogether_intranet/blob/a827699743ccf306900f33a05064c76f954c13b0/specs/017-department-document-visibility/spec.md)；US1；FR-001/002/005/006/007/008；SC-001/003。
 
@@ -27,3 +27,13 @@
 - [ ] T014 [US1] 更新 `server/src/features/esign/dto/document-query.dto.ts` 與 `server/src/features/esign/controllers/documents.controller.ts` 支援 dep／created／assigned 及原 status；不支援 all 或 caller departmentCode；更新 Swagger，串接 userId，通過列表測試。
 - [ ] T015 [US1] 在 `server/src/features/esign/dto/esign-common.dto.ts` 與 `server/src/features/esign/services/esign-view.mapper.ts` 定義以 isCreator 區分的管理／唯讀 DTO，必要時更新呼叫 mapper 的簽署任務型別；唯讀僅含契約列出的文件／來源 metadata 與姓名、狀態、時間，不能傳 Email、note、個別拒簽理由、驗證連結、邀請憑證、寄送資格或 object key。
 - [ ] T016 [US1] 在 `server/src/features/esign/services/esign-document-query.service.ts` 將詳情與來源讀取改用 T009 唯讀政策，重命名 creatorDetail／creatorSource 至符合共用讀取責任並更新 `server/src/features/esign/controllers/documents.controller.ts` 呼叫；history 增加同部門文件層級事件視角，保留本人簽署視角、來源完整性驗證，reopeningInvitations 仍限建立人。
+
+## Ticket 04（T011–T016）
+
+- T011先紅5 failed／3 passed（缺dep/唯讀功能及history未帶signerId的管理事件裁切），實作後query單元9 tests通過。
+- 安全E2E先確認同部門detail 404、dep缺功能400；補合法multipart與發起body後4 tests全綠，含14管理入口拒絕及文件／簽署人／audit／notification／queue均無變更。
+- 正常E2E 7 tests通過：兩部門各兩位建立人×六狀態、NULL舊文件、精確大小寫／同名異碼、來源PDF、DTO裁切、歷程、個人查詢、調職舊session。
+- 全server unit 109 suites／1,041 tests通過，server build、修改檔ESLint 0 errors/warnings通過。
+- 契約補全canExport與既有GET detail的view=export；同部門才可取得完整Excel欄位，草稿404，GET不寫紀錄，不影響一般唯讀裁切。詳見department-access.md。
+
+直接整合commit：`git log --grep="feat(spec017): add department read APIs"`。

@@ -145,6 +145,7 @@ export class EsignSigningTaskService {
         counts,
         creator ?? undefined,
         now,
+        signer.userId,
       ),
       signer: this.mapper.signer(signer, null, record?.verificationCode),
       fields: allFields.map((field) => this.mapper.field(field)),

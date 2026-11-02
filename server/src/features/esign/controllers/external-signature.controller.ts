@@ -49,6 +49,7 @@ import {
   invitationInvalidPage,
   otpInputPage,
   otpMailFailedPage,
+  otpRecipientBlockedPage,
   otpRejectedPage,
   serviceUnavailablePage,
   signingNotStartedPage,
@@ -109,7 +110,7 @@ export class ExternalSignatureController {
   @ApiOperation({
     summary: '寄出 Email 簽署驗證碼（僅限外部指派）',
     description:
-      '以表單欄位 token 驗證邀請；舊內部指派一律 303 導向 Portal，不寄 OTP、不建立存取。外部有效（待簽者在簽署期間，或已簽者）時寄 6 位數驗證碼到邀請信箱（10 分鐘有效，舊驗證碼失效），回驗證碼輸入頁（顯示遮罩後的信箱、重新寄送按鈕倒數 60 秒），並記錄 external_otp.sent。距上次寄送未滿 60 秒或同一簽署人 1 小時內已寄滿 5 封時回 429 驗證碼輸入頁並顯示可再寄送的時間，不寄信、不覆寫現有驗證碼。有效邀請但簽署尚未開始回 409 尚未開始頁；token 格式錯誤（400）、邀請無效或過期（401）回相同的失效頁；以上都不寄信。寄信失敗回 503 可重試頁，不保留驗證碼、不計入冷卻與寄送次數。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由邀請確認頁與驗證碼輸入頁（重新寄送）的 HTML 表單送出，不是 Next.js 頁面直接呼叫。',
+      '以表單欄位 token 驗證邀請；舊內部指派一律 303 導向 Portal，不寄 OTP、不建立存取。外部有效（待簽者在簽署期間，或已簽者）時寄 6 位數驗證碼到邀請信箱（10 分鐘有效，舊驗證碼失效），回驗證碼輸入頁（顯示遮罩後的信箱、重新寄送按鈕倒數 60 秒），並記錄 external_otp.sent。距上次寄送未滿 60 秒或同一簽署人 1 小時內已寄滿 5 封時回 429 驗證碼輸入頁並顯示可再寄送的時間，不寄信、不覆寫現有驗證碼。有效邀請但簽署尚未開始回 409 尚未開始頁；token 格式錯誤（400）、邀請無效或過期（401）回相同的失效頁；以上都不寄信。非正式環境收件人未獲白名單允許回 403 安全頁，不顯示已寄送或輸入碼；白名單檢查故障或寄信失敗回 503 可重試頁，不保留驗證碼、不計入冷卻與寄送次數。依 IP 限流，request body 不寫入 access log。\n\n前端串接參考：由邀請確認頁與驗證碼輸入頁（重新寄送）的 HTML 表單送出，不是 Next.js 頁面直接呼叫。',
   })
   @Post('external-signature-otps')
   async sendOtp(
@@ -121,6 +122,14 @@ export class ExternalSignatureController {
       this.external.isTokenFormat(token),
       async () => {
         const { email, issue } = await this.external.sendOtp(token);
+        if (issue.status === 'recipient-blocked') {
+          this.sendInvitationPage(
+            reply,
+            HttpStatus.FORBIDDEN,
+            otpRecipientBlockedPage(),
+          );
+          return;
+        }
         if (issue.status === 'delivery-failed') {
           this.sendInvitationPage(
             reply,

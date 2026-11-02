@@ -211,7 +211,7 @@ export function invitationConfirmPage(token: string): string {
 }
 
 /** 已寄出或因冷卻、每小時上限未寄送；寄送失敗另回寄送失敗頁 */
-type SentOrLimited = Exclude<OtpIssue, { status: 'delivery-failed' }>;
+type SentOrLimited = Extract<OtpIssue, { retryAfterSeconds: number }>;
 
 /**
  * 驗證碼輸入頁：寄出驗證碼後顯示，重新寄送按鈕倒數冷卻秒數。冷卻中或已達每小時上限（429）時未寄新驗證碼，
@@ -271,6 +271,15 @@ export function otpRejectedPage(
     notes: [
       `錯誤 ${OTP_MAX_ATTEMPTS} 次或超過 ${OTP_VALIDITY}，驗證碼即失效，請重新寄送。`,
     ],
+  });
+}
+
+/** 非正式環境收件人未獲允許，不顯示新驗證碼輸入或寄送成功。 */
+export function otpRecipientBlockedPage(): string {
+  return renderPage({
+    icon: 'unavailable',
+    title: '無法寄送驗證碼',
+    description: '此環境未開放寄送至此收件人，請聯絡系統管理員',
   });
 }
 

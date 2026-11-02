@@ -1,3 +1,8 @@
+import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
+import {
+  MailRecipientBlockedError,
+  MailWhitelistCheckFailedError,
+} from '#app/infrastructure/mail/mail-recipient-policy.errors';
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
@@ -22,7 +27,8 @@ export type OtpIssue =
       retryAfterSeconds: number;
     }
   /** deliver 失敗：未保存驗證碼、不計入冷卻與寄送次數，可立即重試 */
-  | { status: 'delivery-failed' };
+  | { status: 'delivery-failed' }
+  | { status: 'recipient-blocked' };
 
 export type OtpVerification =
   | { status: 'verified' }
@@ -42,7 +48,10 @@ export type OtpVerification =
  */
 @Injectable()
 export class ExternalOtpService {
-  constructor(private readonly redis: RedisService) {}
+  constructor(
+    private readonly redis: RedisService,
+    private readonly logger: AppLoggerService,
+  ) {}
 
   isCodeFormat(code: string): boolean {
     return /^[0-9]{6}$/.test(code);
@@ -51,7 +60,7 @@ export class ExternalOtpService {
   /**
    * 已達每小時上限或冷卻中不寄送；否則產生新驗證碼交給 deliver 寄出，寄出成功才保存（舊驗證碼隨即失效）並計次。
    * 先佔用冷卻再寄送，同一簽署人同時只會寄出一封；寄送失敗釋放冷卻、不計次、不保留驗證碼。
-   * 寄送錯誤可能帶回收件內容，不記錄也不往外拋，只回報 delivery-failed。
+   * 寄送錯誤可能帶回收件內容，不記錄原始例外也不往外拋；政策失敗只記穩定原因。
    */
   async issue(
     signerId: number,
@@ -79,8 +88,19 @@ export class ExternalOtpService {
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     try {
       await deliver(code);
-    } catch {
+    } catch (error) {
       await this.redis.del(cooldown);
+      if (
+        error instanceof MailRecipientBlockedError ||
+        error instanceof MailWhitelistCheckFailedError
+      )
+        this.logger.warn({
+          event: 'esign.otp_mail_policy_failed',
+          context: ExternalOtpService.name,
+          metadata: { reasonCode: error.reasonCode },
+        });
+      if (error instanceof MailRecipientBlockedError)
+        return { status: 'recipient-blocked' };
       return { status: 'delivery-failed' };
     }
     // 寄送成功才存redis

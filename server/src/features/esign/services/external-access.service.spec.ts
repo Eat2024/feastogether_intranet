@@ -100,7 +100,7 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       audit as never,
       {} as never,
       completions as never,
-      new ExternalOtpService(redis as never),
+      new ExternalOtpService(redis as never, { warn: jest.fn() } as never),
       mailer,
       credentials,
     );

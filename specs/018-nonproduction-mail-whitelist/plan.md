@@ -4,7 +4,7 @@
 
 **Input**: Spec 018；setup-plan feature 識別為 `018-nonproduction-mail-whitelist`，實際 Git 分支如上。
 
-**Status**: Phase 1 規劃完成，尚未產生 tasks、修改程式、執行 migration 或寄信。
+**Status**: 依已確認的本機 tickets 01–05 實作；01–04 已整合，05 完整驗證與 code review 進行中。未部署或寄送真實郵件。
 
 ## Summary
 
@@ -109,3 +109,7 @@ client/src/features/esign-documents/notificationLabels.ts
 ## Complexity Tracking
 
 無違反 constitution 的例外。新增具體共用 sender 是三種寄信方法與兩種 driver 共享同一安全邊界的最小必要實作，不擴充成 registry／plugin／策略框架。
+
+## 實作追蹤
+
+本功能未另外建立 tasks.md；使用者確認後採 `.scratch/018-nonproduction-mail-whitelist/issues/` 的五張 tickets 追蹤相依與驗收。01 維護 → 02 共用政策／單人邀請 → 03 群發／催簽與 04 OTP → 05 整合驗證。正式環境操作依 [maintenance.md](maintenance.md)，驗證紀錄見 [quickstart.md](quickstart.md)。

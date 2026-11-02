@@ -103,8 +103,8 @@ export class SyntheticMailFixture {
                 }
               : { status: 'ineligible' },
           );
-        this.config = config;
-        this.policy = new MailRecipientPolicyService(
+        this.config ??= config;
+        const policy = new MailRecipientPolicyService(
           mysql,
           rules,
           departments,
@@ -112,9 +112,10 @@ export class SyntheticMailFixture {
         );
         const sender = new GuardedInvitationMailSender(
           config,
-          this.policy,
+          policy,
           this.adapter,
         );
+        this.policy ??= policy;
         this.guarded ??= sender;
         return sender;
       },
@@ -134,12 +135,10 @@ export class SyntheticMailFixture {
   }
 
   async cleanup(mysql: MysqlService): Promise<void> {
-    await mysql
-      .getManager()
-      .delete(MailRecipientWhitelist, {
-        type: 'department',
-        value: this.department,
-      });
+    await mysql.getManager().delete(MailRecipientWhitelist, {
+      type: 'department',
+      value: this.department,
+    });
   }
 }
 

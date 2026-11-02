@@ -2618,10 +2618,7 @@ describe('核心電子簽 US1', () => {
       jest.useRealTimers();
     }
     await queue.pause();
-    const finalWorker = await NestFactory.createApplicationContext(
-      WorkerModule,
-      { logger: false },
-    );
+    const finalWorker = await createSyntheticWorker(ctx);
     try {
       const owners = await db.query<Array<{ id: number }>>(
         "SELECT id FROM esign_signers WHERE document_id=? AND status='signed'",

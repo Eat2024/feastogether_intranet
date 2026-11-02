@@ -1,6 +1,6 @@
 # Data Model: mail_recipient_whitelist
 
-使用者已核准七欄，沒有第八個操作人、環境、信箱或啟用旗標。以下為規劃，尚未建表。
+使用者已核准七欄，沒有第八個操作人、環境、信箱或啟用旗標。以下已實作為 entity／migration／schema，僅在隔離測試 DB 建表驗證。
 
 ## Entity 與欄位
 

@@ -1,6 +1,6 @@
 # Quickstart: 非 production 白名單驗證
 
-此為未來實作後的指南，並非已執行的測試報告。本輪不得藉此指令對 UAT 寫入或寄送真實郵件。
+程式已實作；以下為隔離測試與受控切換指南，執行結果另列於本文末。不得藉此指令對 UAT 寫入或寄送真實郵件。
 
 ## 前置條件
 
@@ -8,7 +8,7 @@
 - 依 server/.env.example 設定明確合法 NODE_ENV 與既有 driver；不得印出或提交密碼／API key。
 - HR org_chart／staff_emails／完整員編查詢使用合成 stub，SMTP transporter 使用攔截 spy；不使用真實員工地址或真的 SMTP。
 - 測試具體 guarded sender，底層 fake observer 只記允許地址。不要將公開 token 全域 override 成繞過政策的 fake，也不要將測試 NODE_ENV 改 production 求通過。
-- 現有本機 E2E 曾因 MySQL 驗證失敗中止；先恢復隔離測試環境，不繞過 DB 保護。
+- 現有本機 MySQL 憑證驗證失敗，實作驗證改用一次性本機 MySQL 8.4 容器與獨立 Redis；保留測試 DB 前綴及 Redis DB 非 0 保護。
 
 ## Schema 與維護演練
 
@@ -70,3 +70,17 @@ pnpm build
 3. 同步部署政策 sender、worker 結果處理及 OTP 分支；先用合成／受控測試驗收再開放。
 4. 回滾前先停寄送，不能直接恢復不查白名單的舊版本對外寄信。保留 DB 修復，不以刪表或假 production 繞過。
 5. 交付記錄實際命令、通過／失敗與原因、各環境影響；此文件不是操作授權或通過報告。
+
+## 測試配置與既有案例
+
+既有寄送 E2E 使用每個案例明確登錄的有限合成人資名單、真實白名單表與政策，並由 guarded sender 包覆 fake observer。名單只於測試安排階段建立，不從寄送輸入、文件快照或網域自動放行。真實 worker 也共用該有限名單。原生 MailModule 的 HTTP／worker 組裝另由 mail-whitelist-runtime 驗證，不覆寫公開 sender 或政策。
+
+白名單專用 suites 為 mail-whitelist-schema、mail-whitelist-recovery、mail-whitelist-worker、mail-whitelist-otp、mail-whitelist-runtime；Jest 收集配置包含對應案例。SMTP 透過記憶體 transporter 檢查 envelope／MIME，沒有真實寄信。
+
+既有兩個跨台北午夜案例在移動測試時鐘後重新核發測試 session，保留正式 session TTL 與 auth guard；基線曾因此出現 401。6000 人容量案例保留，基線完整 E2E 約 161 秒，需等待 worker 完成逐批紀錄。
+
+## 2026-11-02 實作驗證紀錄
+
+- TDD：原核心寄送案例改經真實白名單後，未安排合成名單時 17 項失敗（403），加入明確 fixture 後 25 項核心案例全數通過，不能將 fake 成功當作送達。
+- 完整驗證結果待本次執行完成後填入；不以本段作為已通過聲明。
+- 未執行 UAT／production migration、seed、部署或真實 HR／SMTP 呼叫。正式切換仍須依維護程序操作。

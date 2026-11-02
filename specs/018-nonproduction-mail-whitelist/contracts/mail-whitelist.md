@@ -1,6 +1,6 @@
 # Mail Whitelist Contract
 
-**狀態**：規劃定稿，尚未實作；不新增 HTTP API 路徑或管理介面。
+**狀態**：已實作；完整驗證與 code review 進行中。未新增 HTTP API 路徑或管理介面。
 
 ## 環境
 

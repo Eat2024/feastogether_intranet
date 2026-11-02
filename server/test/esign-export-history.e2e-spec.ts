@@ -830,7 +830,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       expect(scope).toBe(`${name}（${email}`.slice(0, 255));
     });
 
-    it('任何員工都能從 pdf 紀錄重新下載：回目前的副本，新紀錄沿用文件、簽署人與範圍，匯出人為目前使用者', async () => {
+    it('從 pdf 紀錄重新下載：重複與並發取得原副本，不新增或改寫歷史', async () => {
       const original = await insertRecord(
         {
           exportType: 'pdf',
@@ -842,24 +842,14 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         },
         new Date(Date.now() - 60_000),
       );
-      const before = (await pdfHistory()).total;
-      // 非建立人、也不是原匯出人。
-      const response = await download(
-        redownloadPath(original.publicId!),
-        await employeeCookie(exporter),
-      ).expect(200);
-      expectCompletedPdf(response, externalCopy);
-      const page = await pdfHistory();
-      expect(page.total).toBe(before + 1);
-      expect(page.items[0]).toEqual({
-        ...pdfItem(externalCopy, {
-          name: exporter.name,
-          employeeNo: exporter.empid,
-          email: null,
-        }),
-        scope: '原紀錄的範圍說明',
-      });
-      expect(page.items[0].id).not.toBe(original.publicId);
+      const before = await pdfHistory();
+      const cookie = await employeeCookie(exporter);
+      const redownload = () =>
+        download(redownloadPath(original.publicId!), cookie).expect(200);
+      expectCompletedPdf(await redownload(), externalCopy);
+      const repeated = await Promise.all([redownload(), redownload()]);
+      for (const response of repeated) expectCompletedPdf(response, externalCopy);
+      expect(await pdfHistory()).toEqual(before);
     });
 
     const withoutOrigin = (path: string, cookie: string) =>
@@ -1038,11 +1028,6 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       {
         name: '外部簽署人本人下載',
         send: async () => download(externalPath, await externalCopyCookie()),
-      },
-      {
-        name: '從紀錄重新下載',
-        send: () =>
-          download(redownloadPath(records.pdf.publicId!), viewerCookie),
       },
     ])('$name：紀錄寫入失敗回 500，不送出 PDF', async ({ send }) => {
       const before = (await pdfHistory()).total;

@@ -25,6 +25,7 @@ import LinkTabs from '@/components/LinkTabs';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
 import TooltipIconButton from '@/components/TooltipIconButton';
 import { formatDateTime } from '@/features/esign-documents/listQuery';
+import { buildDeptOptions, exportRows, selectedDeptNames } from '@/features/esign-documents/exportQuery';
 import { getErrorMessage } from '@/lib/apiError';
 import { PAGE_SIZE, pageHrefs, parsePage } from '@/lib/paginate';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
@@ -87,27 +88,28 @@ function saveBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-/** 重新下載後會新增一筆紀錄，更新列表與筆數 */
+/** ZIP 重試或重新產生後更新工作狀態與列表 */
 function useRefreshHistory() {
   const queryClient = useQueryClient();
   return () => void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_EXPORT_HISTORY] });
 }
 
-/** Excel：依當時的匯出條件、以文件目前的資料重新產生（同樣先記錄一筆匯出） */
+/** Excel：依原條件與文件目前資料重新產生，不新增歷史紀錄 */
 function ExcelRedownload({ record }: { record: ExcelExportHistoryItem }) {
   const { showSnackbar } = useSnackbar();
-  const refresh = useRefreshHistory();
   const download = useMutation({
     mutationFn: async () => {
       // exceljs 較大，點擊時才載入
-      const [doc, { recordAndDownloadExcel }] = await Promise.all([
+      const [doc, { buildExportXlsx }] = await Promise.all([
         getExcelExportDocument(record.id),
         import('@/features/esign-documents/buildExportXlsx'),
       ]);
-      await recordAndDownloadExcel(doc, record.conditions);
+      const rows = exportRows(doc.signers, record.conditions);
+      const deptNames = selectedDeptNames(record.conditions.depts, buildDeptOptions(doc.signers));
+      const { blob, fileName } = await buildExportXlsx(doc, record.conditions, rows, deptNames);
+      saveBlob(blob, fileName);
     },
     meta: { suppressGlobalErrorToast: true },
-    onSuccess: refresh,
     onError: (err) => showSnackbar(getErrorMessage(err, '下載失敗，請稍後再試'), 'error'),
   });
   return (
@@ -121,16 +123,14 @@ function ExcelRedownload({ record }: { record: ExcelExportHistoryItem }) {
   );
 }
 
-/** PDF：下載該簽署人目前的已簽署副本（後端同時新增一筆紀錄） */
+/** PDF：下載該簽署人目前的已簽署副本，不新增歷史紀錄 */
 function PdfRedownload({ record }: { record: PdfExportHistoryItem }) {
   const { showSnackbar } = useSnackbar();
-  const refresh = useRefreshHistory();
   const download = useMutation({
     mutationFn: () => redownloadPdfExport(record.id),
     meta: { suppressGlobalErrorToast: true },
     onSuccess: ({ bytes, fileName }) => {
       saveBlob(bytes, fileName);
-      refresh();
     },
     onError: (err) => showSnackbar(getErrorMessage(err, '下載失敗，請稍後再試'), 'error'),
   });

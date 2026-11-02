@@ -9,7 +9,6 @@ import {
   documentExportFileUrl,
   getExcelExportDocument,
   redownloadPdfExport,
-  requestDocumentExport,
   retryDocumentExport,
 } from '@/api/requests';
 import type {
@@ -29,7 +28,6 @@ import { buildDeptOptions, exportRows, selectedDeptNames } from '@/features/esig
 import { getErrorMessage } from '@/lib/apiError';
 import { PAGE_SIZE, pageHrefs, parsePage } from '@/lib/paginate';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
-import FolderZipRoundedIcon from '@mui/icons-material/FolderZipRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -74,7 +72,7 @@ const ZIP_STATUS_META: Record<EsignExportStatus, { label: string; color: ChipPro
   processing: { label: '打包中', color: 'info' },
   completed: { label: '可下載', color: 'success' },
   failed: { label: '失敗', color: 'error' },
-  expired: { label: '已到期', color: 'default' },
+  expired: { label: '檔案已不可用', color: 'default' },
 };
 
 const ZIP_IN_PROGRESS: EsignExportStatus[] = ['pending', 'waiting', 'processing'];
@@ -145,7 +143,7 @@ function PdfRedownload({ record }: { record: PdfExportHistoryItem }) {
   );
 }
 
-/** ZIP：下載、重試失敗的匯出，或重新產生已到期的 ZIP */
+/** ZIP：下載或重試尚未成功的匯出；舊不可用成果不重新產生。 */
 function ZipAction({ record }: { record: ZipExportHistoryItem }) {
   const { showSnackbar } = useSnackbar();
   const refresh = useRefreshHistory();
@@ -158,22 +156,14 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
     },
     onError: (err) => showSnackbar(getErrorMessage(err, '重試失敗，請稍後再試'), 'error'),
   });
-  const regenerate = useMutation({
-    mutationFn: requestDocumentExport,
-    meta: { suppressGlobalErrorToast: true },
-    onSuccess: () => {
-      refresh();
-      showSnackbar('已受理重新產生 ZIP，完成後即可下載', 'success');
-    },
-    onError: (err) => showSnackbar(getErrorMessage(err, '重新產生失敗，請稍後再試'), 'error'),
-  });
+
 
   const file = record.files[0];
   if (record.status === 'completed' && file) {
     // 檔案可能很大，以瀏覽器直接下載（支援續傳），不先讀進記憶體
     return (
       <TooltipIconButton
-        label={`下載 ZIP（保存至 ${formatDateTime(record.expiresAt) ?? '—'}）`}
+        label="下載 ZIP"
         icon={<FileDownloadRoundedIcon />}
         color="info"
         href={documentExportFileUrl(record.document.id, record.id, file.id)}
@@ -194,15 +184,7 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
     );
   }
   if (record.status === 'expired') {
-    return (
-      <TooltipIconButton
-        label="ZIP 已過保存期限，重新產生（收錄目前所有已簽署副本）"
-        icon={<FolderZipRoundedIcon />}
-        color="info"
-        disabled={regenerate.isPending}
-        onClick={() => regenerate.mutate(record.document.id)}
-      />
-    );
+    return <Typography variant="helper">檔案已不可用</Typography>;
   }
   return (
     <Typography variant="helper" component="span">
@@ -240,11 +222,6 @@ const COLUMN_SETS: { [T in ExportHistoryType]: ColumnSet<T> } = {
           <TableCell>{r.count} 份</TableCell>
           <TableCell sx={{ whiteSpace: 'nowrap' }}>
             <Chip size="small" variant="soft" label={status.label} color={status.color} />
-            {r.status === 'completed' && r.expiresAt && (
-              <Typography variant="helper" component="div">
-                保存至 {formatDateTime(r.expiresAt)}
-              </Typography>
-            )}
             {r.status === 'waiting' && (
               <Typography variant="helper" component="div">
                 尚有 {r.waitingCount} 份副本產製中
@@ -309,7 +286,7 @@ export default function ExportHistoryView() {
       />
       {type === 'zip' && (
         <Typography variant="helper" component="div">
-          每份文件的已簽署副本（每人一份 PDF）打包成一個 ZIP；ZIP 自完成起保存 7 天，期限內重複申請會沿用同一份。
+          每份文件的已簽署副本（每人一份 PDF）打包成一個 ZIP；ZIP 產生後持續保留並沿用同一份，不包含後續新增的簽署。
         </Typography>
       )}
       <TableContainer component={Paper} variant="outlined">

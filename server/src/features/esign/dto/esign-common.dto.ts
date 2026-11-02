@@ -1,3 +1,4 @@
+import { ExportJobViewDto } from './export.dto';
 export type EsignDocumentStatus =
   | 'draft'
   | 'active'
@@ -126,6 +127,8 @@ export class EsignManagedSignerViewDto extends EsignSignerViewDto {
 }
 
 export class EsignDocumentDetailDto extends EsignDocumentSummaryDto {
+  /** 固定沿用的 ZIP 工作公開資訊，尚未申請時為 null。 */
+  exportSummary!: ExportJobViewDto | null;
   /** 建立人帳號不存在時為 null */
   createdBy!: EsignDocumentCreatorDto | null;
   sourceFile?: EsignSourceFileDto;

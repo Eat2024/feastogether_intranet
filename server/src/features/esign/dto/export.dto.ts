@@ -22,3 +22,24 @@ export class ExportQueryDto {
   @IsOptional() @IsString() @MaxLength(100) q?: string;
   @IsOptional() @IsString() @MaxLength(20) status?: string;
 }
+
+/** 匯出工作的公開投影，不包含快照或儲存位置。 */
+export class ExportJobViewDto {
+  id!: string;
+  documentId!: string;
+  status!: string;
+  snapshotAt!: string | null;
+  expectedCount!: number;
+  processedCount!: number;
+  waitingCount!: number;
+  completedAt!: string | null;
+  expiresAt!: string | null;
+  failureCode!: string | null;
+  files!: {
+    id: string;
+    fileName: string;
+    size: number;
+    sha256: string;
+    downloadPath: string;
+  }[];
+}

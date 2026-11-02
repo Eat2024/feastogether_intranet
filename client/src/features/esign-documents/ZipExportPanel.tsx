@@ -2,8 +2,8 @@
 
 // 匯出頁的「已簽署文件 ZIP」：POST /api/esign/documents/:id/exports 受理後由後端背景打包，
 // 以 GET .../exports/:exportId 查詢進度，完成後以瀏覽器直接下載（檔案可能很大，不先讀進記憶體）。
-// 進入頁面時以 GET /api/esign/history/export?type=zip&documentId=&pageSize=1 帶回這份文件最近一次的匯出。
-import { useGetDocumentExportQuery, useGetExportHistoryQuery } from '@/api/queries';
+// 進入頁面時使用文件詳情的 exportSummary，與後端固定沿用的工作一致。
+import { useGetDocumentExportQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
 import { documentExportFileUrl, requestDocumentExport, retryDocumentExport } from '@/api/requests';
 import type { EsignExportJob } from '@/api/types';
@@ -31,13 +31,12 @@ function formatSize(bytes: number) {
 
 const IN_PROGRESS: EsignExportJob['status'][] = ['pending', 'waiting', 'processing'];
 
-export default function ZipExportPanel({ documentId, signedCount }: { documentId: string; signedCount: number }) {
+export default function ZipExportPanel({ documentId, signedCount, exportSummary }: { documentId: string; signedCount: number; exportSummary: EsignExportJob | null }) {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
-  // 這份文件最近一次的匯出（進入頁面時帶回）；按下產生後改看新的匯出工作
-  const latest = useGetExportHistoryQuery({ type: 'zip', documentId, pageSize: 1 });
+  // 詳情已選定固定工作；首次申請後改用回傳的工作。
   const [requestedId, setRequestedId] = useState<string | null>(null);
-  const exportId = requestedId ?? latest.data?.items[0]?.id ?? null;
+  const exportId = requestedId ?? exportSummary?.id ?? null;
   const job = useGetDocumentExportQuery(documentId, exportId);
 
   const onJob = (next: EsignExportJob) => {
@@ -61,7 +60,7 @@ export default function ZipExportPanel({ documentId, signedCount }: { documentId
     onError: (err) => showSnackbar(getErrorMessage(err, '重試失敗，請稍後再試'), 'error'),
   });
 
-  const data = job.data;
+  const data = job.data ?? exportSummary;
   const busy = request.isPending || retry.isPending;
   const generateButton = (label: string) => (
     <Button
@@ -82,7 +81,7 @@ export default function ZipExportPanel({ documentId, signedCount }: { documentId
         每位已簽署者一份個人簽署副本（PDF），打包成一個 ZIP。範圍為產生當下所有已簽署的副本，不套用狀態、部門等篩選。
       </Typography>
 
-      {(latest.isPending && !requestedId) || (exportId && job.isPending) ? (
+      {exportId && job.isPending ? (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
           <CircularProgress size={20} />
           <Typography variant="description">讀取匯出狀態中…</Typography>
@@ -127,7 +126,6 @@ export default function ZipExportPanel({ documentId, signedCount }: { documentId
                 </Typography>
                 <Typography variant="helper" component="div">
                   {data.expectedCount} 份・{formatSize(f.size)}・{formatDateTime(data.snapshotAt) ?? '—'} 的簽署資料
-                  {data.expiresAt && `・保存至 ${formatDateTime(data.expiresAt)}`}
                 </Typography>
               </Box>
               {/* 直接以瀏覽器下載：檔案可能很大，且支援續傳 */}
@@ -143,9 +141,9 @@ export default function ZipExportPanel({ documentId, signedCount }: { documentId
             </Box>
           ))}
           {signedCount > data.expectedCount && (
-            // 後端在保存期限內一律沿用同一份 ZIP，過期後重新產生才會包含之後簽署的人
+            // ZIP 產生後固定沿用，不納入後續簽署。
             <Alert severity="info" variant="outlined">
-              產生之後又有 {signedCount - data.expectedCount} 人完成簽署，目前的 ZIP 沒有包含；保存期限過後重新產生即會包含。
+              產生之後又有 {signedCount - data.expectedCount} 人完成簽署，目前的 ZIP 沒有包含，後續下載仍沿用這份檔案。
             </Alert>
           )}
         </Stack>
@@ -173,9 +171,9 @@ export default function ZipExportPanel({ documentId, signedCount }: { documentId
             : 'ZIP 產生失敗，請重試。'}
         </Alert>
       ) : (
-        // expired：檔案已過保存期限
-        <Alert severity="info" variant="outlined" action={generateButton('重新產生')}>
-          上次產生的 ZIP 已過保存期限（{formatDateTime(data.expiresAt) ?? '—'}），請重新產生。
+        // 舊 expired 紀錄不自動重建。
+        <Alert severity="info" variant="outlined">
+          檔案已不可用，請聯絡系統管理員。
         </Alert>
       )}
     </Stack>

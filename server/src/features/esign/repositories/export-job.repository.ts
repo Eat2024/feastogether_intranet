@@ -105,12 +105,13 @@ export class ExportJobRepository {
     q: {
       exportType: EsignExportType;
       documentId?: number;
+      q?: string;
       offset: number;
       limit: number;
     },
     manager: EntityManager,
   ) {
-    return this.historyRecordsQuery(q.documentId, manager)
+    return this.historyRecordsQuery(q.documentId, manager, q.q)
       .andWhere('job.exportType = :exportType', { exportType: q.exportType })
       .orderBy('job.createdAt', 'DESC')
       .addOrderBy('job.id', 'DESC')
@@ -136,8 +137,9 @@ export class ExportJobRepository {
     exportTypes: EsignExportType[],
     documentId: number | undefined,
     manager: EntityManager,
+    q?: string,
   ) {
-    const rows = await this.visibleHistoryQuery(documentId, manager)
+    const rows = await this.visibleHistoryQuery(documentId, manager, q)
       .andWhere('job.exportType IN (:...exportTypes)', { exportTypes })
       .select('job.exportType', 'exportType')
       .addSelect('COUNT(*)', 'count')
@@ -150,9 +152,10 @@ export class ExportJobRepository {
   private historyRecordsQuery(
     documentId: number | undefined,
     manager: EntityManager,
+    q?: string,
   ) {
     return (
-      this.visibleHistoryQuery(documentId, manager)
+      this.visibleHistoryQuery(documentId, manager, q)
         // 不載入 ZIP 快照與已固定副本清單，單筆可達數千項。
         .select([
           'job.id',
@@ -195,6 +198,7 @@ export class ExportJobRepository {
   private visibleHistoryQuery(
     documentId: number | undefined,
     manager: EntityManager,
+    q?: string,
   ) {
     const query = manager
       .createQueryBuilder(EsignExportJob, 'job')
@@ -205,6 +209,26 @@ export class ExportJobRepository {
       });
     if (documentId)
       query.andWhere('job.documentId = :documentId', { documentId });
+    if (q) {
+      // withDeleted 保留歷史文件建立人的查詢能力；建立人不是 job 的匯出人。
+      query.leftJoin('document.createdByUser', 'creator');
+      const keyword = `%${q.replace(/[!%_]/g, '!$&')}%`;
+      const columns = [
+        'document.title',
+        'document.docNumber',
+        'creator.name',
+        'creator.empid',
+      ];
+      query.andWhere(
+        `(${columns
+          .map(
+            (column) =>
+              `LOWER(CONVERT(${column} USING utf8mb4)) COLLATE utf8mb4_0900_bin LIKE LOWER(CONVERT(:keyword USING utf8mb4)) COLLATE utf8mb4_0900_bin ESCAPE '!'`,
+          )
+          .join(' OR ')})`,
+        { keyword },
+      );
+    }
     return query;
   }
   signedCount(documentId: number, manager: EntityManager) {

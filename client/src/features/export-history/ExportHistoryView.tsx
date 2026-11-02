@@ -1,7 +1,7 @@
 'use client';
 
 // 歷史匯出文件：GET /api/esign/history/export（Spec 015，所有人的匯出紀錄，依匯出時間由新到舊）。
-// 依類型分頁標籤（Excel／PDF／ZIP），頁碼分頁；分頁與頁碼記在網址參數 tab、page。
+// 依類型分頁標籤（Excel／PDF／ZIP），頁碼分頁；類型、頁碼與搜尋記在網址參數 tab、page、q。
 // 簽到表後端尚未完成，分頁先隱藏。
 import { useGetExportHistoryQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
@@ -22,6 +22,7 @@ import type {
 } from '@/api/types';
 import LinkPagination from '@/components/LinkPagination';
 import LinkTabs from '@/components/LinkTabs';
+import SearchField from '@/components/SearchField';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
 import TooltipIconButton from '@/components/TooltipIconButton';
 import { formatDateTime } from '@/features/esign-documents/listQuery';
@@ -45,8 +46,8 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, type ReactNode } from 'react';
 
 type HistoryTab = ExportHistoryType | 'sheet';
 
@@ -60,8 +61,9 @@ const TABS: { value: HistoryTab; label: string }[] = [
   ...(SHEET_ENABLED ? [{ value: 'sheet' as const, label: '簽到表 PDF（尚未完成）' }] : []),
 ];
 
-const historyHref = (tab: HistoryTab, page = 1) => {
+const historyHref = (tab: HistoryTab, page = 1, query = '') => {
   const qs = new URLSearchParams();
+  if (query) qs.set('q', query);
   if (tab !== 'excel') qs.set('tab', tab);
   if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
@@ -264,18 +266,34 @@ function RecordAction({ record }: { record: ExportHistoryItemByType[ExportHistor
 }
 
 export default function ExportHistoryView() {
+  const router = useRouter();
+  const pathname = usePathname();
   const params = useSearchParams();
   const tabParam = params.get('tab');
   const type: ExportHistoryType = tabParam === 'pdf' || tabParam === 'zip' ? tabParam : 'excel';
-  const page = parsePage(params.get('page') ?? undefined);
+  const requestedPage = parsePage(params.get('page') ?? undefined);
+  const query = (params.get('q') ?? '').trim();
   const { data, isPending, isError, error, refetch, isFetching } = useGetExportHistoryQuery(
-    { type, page, pageSize: PAGE_SIZE },
+    { type, q: query || undefined, page: requestedPage, pageSize: PAGE_SIZE },
     {
       // ZIP 有紀錄還在處理中時定期更新
       refetchInterval: (query) =>
         query.state.data?.items.some((r) => r.type === 'zip' && ZIP_IN_PROGRESS.includes(r.status)) ? 5000 : false,
     },
   );
+
+  const page = data?.page ?? requestedPage;
+  // 等待目前條件的回應，再以後端有效頁碼導正網址；保留關鍵字與其他條件。
+  useEffect(() => {
+    if (!data || isError) return;
+    const canonicalPage = data.page > 1 ? String(data.page) : null;
+    if (params.get('page') === canonicalPage && params.getAll('page').length <= 1) return;
+    const qs = new URLSearchParams(params);
+    qs.delete('page');
+    if (canonicalPage) qs.set('page', canonicalPage);
+    const queryString = qs.toString();
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+  }, [data, isError, params, pathname, router]);
 
   const columns = COLUMN_SETS[type] as ColumnSet<ExportHistoryType>;
   const head = ['匯出時間', '文件名稱', '文件編號', ...columns.head, '匯出人', '重新下載'];
@@ -294,17 +312,18 @@ export default function ExportHistoryView() {
       </Button>
     </Stack>
   ) : data.items.length === 0 ? (
-    <Typography variant="description">目前還沒有匯出紀錄。</Typography>
+    <Typography variant="description">{query ? `找不到符合「${query}」的匯出紀錄。` : '目前還沒有匯出紀錄。'}</Typography>
   ) : null;
 
   return (
     <Stack spacing={2}>
+      <SearchField placeholder="搜尋文件名稱、文件編號或建立人" width={320} />
       <LinkTabs
         value={type}
         tabs={TABS.map((t) => ({
           value: t.value,
           label: t.value !== 'sheet' && data ? `${t.label}（${data.typeTotals[t.value]}）` : t.label,
-          href: historyHref(t.value),
+          href: historyHref(t.value, 1, query),
         }))}
       />
       {type === 'zip' && (
@@ -348,7 +367,7 @@ export default function ExportHistoryView() {
           </TableBody>
         </Table>
       </TableContainer>
-      <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => historyHref(type, p))} />
+      <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => historyHref(type, p, query))} />
     </Stack>
   );
 }

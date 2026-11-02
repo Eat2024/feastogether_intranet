@@ -5,7 +5,7 @@ import type { ExportHistoryPage, ExportHistoryParams, ExportHistoryType } from '
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 
-/** 歷史匯出紀錄（依類型、頁碼分頁） */
+/** 歷史匯出紀錄（依類型、關鍵字、頁碼分頁；params 共同構成快取 key） */
 export function useGetExportHistoryQuery<T extends ExportHistoryType>(
   params: ExportHistoryParams<T>,
   options?: Omit<UseQueryOptions<ExportHistoryPage<T>, AxiosError>, 'queryKey' | 'queryFn'>,

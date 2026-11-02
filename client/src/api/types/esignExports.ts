@@ -93,6 +93,8 @@ export interface ExportHistoryItemByType {
 /** GET esign/history/export 的查詢參數 */
 export interface ExportHistoryParams<T extends ExportHistoryType = ExportHistoryType> {
   type: T;
+  /** 文件名稱、編號或文件建立人姓名／員編；trim 後最多 100 字 */
+  q?: string;
   page?: number;
   /** 1～100，預設 10 */
   pageSize?: number;

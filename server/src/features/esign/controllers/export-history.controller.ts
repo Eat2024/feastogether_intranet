@@ -48,12 +48,13 @@ export class ExportHistoryController {
       '',
       '**排序與分頁**',
       '- 依匯出時間、紀錄流水號由新到舊',
-      '- 以頁碼分頁；`page` 超過最後一頁時回空的 `items`',
+      '- 以頁碼分頁；`page` 超過最後一頁時導正到最後有效頁，無結果時回第 1 頁',
+      '- `q` 為 trim 後最多 100 字的部分文字，任一文件名稱、文件編號、文件建立人姓名或員編符合即可；不分英文字母大小寫，%／_／! 視為一般文字',
       '',
       '**回應欄位**',
       '- `items`：只含查詢的 `type`',
       '- `total`：該類型的總筆數',
-      '- `typeTotals`：各類型的總筆數；有帶 `documentId` 時同樣只算該文件',
+      '- `typeTotals`：各類型總筆數，與 items 套用相同 q、documentId 及可見範圍，不受目前 type 限制',
       '- `exportedBy`：員工有 `employeeNo`、`email` 為 null；外部簽署人相反',
       '- `conditions`：只在 `excel` 出現',
       '- `signerPublicId`：只在 `pdf` 出現',
@@ -69,7 +70,8 @@ export class ExportHistoryController {
   })
   @ApiResponse({
     status: 400,
-    description: 'INVALID_REQUEST：type、page、pageSize 或 documentId 不合法',
+    description:
+      'INVALID_REQUEST：type、page、pageSize、documentId 或 q 不合法',
   })
   @ApiResponse({ status: 401, description: '需有效員工 session' })
   list(@Query() query: ExportHistoryQueryDto): Promise<ExportHistoryPageDto> {

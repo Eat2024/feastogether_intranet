@@ -1,3 +1,4 @@
+import { EsignHistoryItemDto } from '../dto/esign-common.dto';
 import { SignerNoteDto } from '../dto/signer-note.dto';
 import { DraftSaveDto, DraftSettingsDto } from '../dto/draft-settings.dto';
 import { ReopenDocumentDto, type ReopeningInput } from '../dto/reopening.dto';
@@ -332,12 +333,17 @@ export class DocumentsController {
     return this.queries.creatorDetail(documentId, userId);
   }
 
-  // 供建立人查詢文件歷程。
-  @ApiOperation({
-    summary: '查詢文件簽署歷程',
-    description: '回傳建立人可見的文件事件與停止原因。',
-  })
+  // 回傳目前員工可見的歷程與中文說明。
   @Get(':documentId/history')
+  @ApiOperation({
+    summary: '查詢可見的簽署歷程',
+    description:
+      '每筆包含原事件 type 與繁體中文 label；未知事件使用中性中文說明。保留既有歷程授權與補簽資訊裁切，不改寫稽核資料。',
+  })
+  @ApiOkResponse({
+    type: [EsignHistoryItemDto],
+    description: '全域回應 envelope 的 data 為歷程陣列',
+  })
   history(@Param('documentId') id: string, @CurrentUserId() userId: number) {
     return this.queries.history(this.id(id), userId);
   }

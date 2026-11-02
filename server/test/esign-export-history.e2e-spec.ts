@@ -655,7 +655,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           processedCount: 6,
           waitingCount: 0,
           completedAt: zipA.completedAt!.toISOString(),
-          expiresAt: zipA.expiresAt!.toISOString(),
+          expiresAt: null,
           failureCode: null,
           files: [
             {

@@ -1,3 +1,4 @@
+import { EsignExportService } from './esign-export.service';
 import type { EsignSigner } from '../entities/esign-signer.entity';
 import type { EsignNotificationLog } from '../entities/esign-notification-log.entity';
 import { reminderEligibility } from './esign-reminder-policy';
@@ -13,7 +14,10 @@ import {
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
-import type { EsignInvitationDelivery } from '../dto/esign-common.dto';
+import type {
+  EsignHistoryItemDto,
+  EsignInvitationDelivery,
+} from '../dto/esign-common.dto';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import { AuditEventRepository } from '../repositories/audit-event.repository';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
@@ -46,6 +50,7 @@ export class EsignDocumentQueryService {
     private readonly users: UserRepository,
     private readonly records: SignatureRecordRepository,
     private readonly tokens: EsignTokenService,
+    private readonly exports: EsignExportService,
   ) {}
 
   private reminderSummary(
@@ -228,6 +233,7 @@ export class EsignDocumentQueryService {
       allowReject: document.allowReject,
       stopReason: document.stopReason ?? null,
       createdBy: this.mapper.creator(creator),
+      exportSummary: await this.exports.documentSummary(documentId),
       signers: signers.map((signer) => ({
         ...this.mapper.signer(
           signer,
@@ -307,7 +313,10 @@ export class EsignDocumentQueryService {
     return { bytes, fileName: source.originalFileName ?? 'document.pdf' };
   }
 
-  async history(documentId: number, userId: number) {
+  async history(
+    documentId: number,
+    userId: number,
+  ): Promise<EsignHistoryItemDto[]> {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
     const signers = document
@@ -354,23 +363,40 @@ export class EsignDocumentQueryService {
       )
       .map((event) => {
         if (event.eventType === 'document.reopened') {
-          const base = {
+          const base: EsignHistoryItemDto = {
             type: event.eventType,
+            label: this.mapper.historyLabel(event.eventType),
+            actor: { kind: 'employee', name: '建立人' },
+            reason: null,
             occurredAt: event.occurredAt.toISOString(),
-            signEndAt: event.metadataJson?.signEndAt,
+            signEndAt:
+              typeof event.metadataJson?.signEndAt === 'string'
+                ? event.metadataJson.signEndAt
+                : undefined,
           };
           return isCreator
             ? {
                 ...base,
-                actor: '建立人',
+                actor: this.mapper.historyActor(
+                  event,
+                  undefined,
+                  event.actorUserId ? actors.get(event.actorUserId) : undefined,
+                ),
                 actorUserId: String(event.actorUserId),
-                previousSignEndAt: event.metadataJson?.previousSignEndAt,
-                reason: event.metadataJson?.reason,
+                previousSignEndAt:
+                  typeof event.metadataJson?.previousSignEndAt === 'string'
+                    ? event.metadataJson.previousSignEndAt
+                    : undefined,
+                reason:
+                  typeof event.metadataJson?.reason === 'string'
+                    ? event.metadataJson.reason
+                    : null,
               }
             : base;
         }
         return {
           type: event.eventType,
+          label: this.mapper.historyLabel(event.eventType),
           occurredAt: event.occurredAt.toISOString(),
           actor: this.mapper.historyActor(
             event,

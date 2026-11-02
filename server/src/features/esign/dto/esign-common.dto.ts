@@ -1,3 +1,4 @@
+import { ExportJobViewDto } from './export.dto';
 export type EsignDocumentStatus =
   | 'draft'
   | 'active'
@@ -126,6 +127,8 @@ export class EsignManagedSignerViewDto extends EsignSignerViewDto {
 }
 
 export class EsignDocumentDetailDto extends EsignDocumentSummaryDto {
+  /** 固定沿用的 ZIP 工作公開資訊，尚未申請時為 null。 */
+  exportSummary!: ExportJobViewDto | null;
   /** 建立人帳號不存在時為 null */
   createdBy!: EsignDocumentCreatorDto | null;
   sourceFile?: EsignSourceFileDto;
@@ -143,7 +146,14 @@ export class EsignHistoryActorDto {
 
 export class EsignHistoryItemDto {
   type!: string;
+  /** 後端統一提供的繁體中文事件說明。 */
+  label!: string;
   occurredAt!: string;
   actor!: EsignHistoryActorDto;
   reason!: string | null;
+  /** 補簽後期限；僅補簽事件提供。 */
+  signEndAt?: string;
+  /** 僅文件建立人可見的補簽資訊。 */
+  actorUserId?: string;
+  previousSignEndAt?: string;
 }

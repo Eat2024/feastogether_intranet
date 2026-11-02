@@ -28,19 +28,30 @@ export class ExportJobRepository {
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
-  reusable(documentId: number, now: Date, manager: EntityManager) {
+  reusable(documentId: number, manager: EntityManager) {
     return manager
       .createQueryBuilder(EsignExportJob, 'job')
+      .select([
+        'job.id',
+        'job.publicId',
+        'job.documentId',
+        'job.status',
+        'job.snapshotAt',
+        'job.recordCount',
+        'job.processedCount',
+        'job.waitingCount',
+        'job.completedAt',
+        'job.failureCode',
+      ])
       .where('job.documentId = :documentId', { documentId })
       .andWhere(
         "job.exportType = 'signed_copies_zip' AND job.snapshotJson IS NOT NULL",
       )
       .andWhere(
-        "((job.status = 'completed' AND job.expiresAt > :now) OR job.status IN ('pending','waiting','processing','failed'))",
-        { now },
+        "(job.completedAt IS NOT NULL OR job.status IN ('completed','expired','pending','waiting','processing','failed'))",
       )
       .orderBy(
-        "CASE WHEN job.status = 'completed' THEN 0 WHEN job.status = 'failed' THEN 2 ELSE 1 END",
+        "CASE WHEN job.completedAt IS NOT NULL OR job.status IN ('completed','expired') THEN 0 WHEN job.status = 'failed' THEN 2 ELSE 1 END",
         'ASC',
       )
       .addOrderBy('job.id', 'DESC')
@@ -95,10 +106,7 @@ export class ExportJobRepository {
       .getMany();
   }
   latest(documentId: number, manager: EntityManager) {
-    return manager.findOne(EsignExportJob, {
-      where: { documentId, exportType: 'signed_copies_zip' },
-      order: { id: 'DESC' },
-    });
+    return this.reusable(documentId, manager);
   }
   /** 依匯出時間、流水號由新到舊列出一頁紀錄，帶出文件、匯出員工與簽署人。 */
   historyPage(
@@ -244,7 +252,7 @@ export class ExportJobRepository {
       .createQueryBuilder(EsignExportJob, 'job')
       .where('job.snapshotJson IS NOT NULL')
       .andWhere(
-        "((job.status IN ('pending','waiting') AND (job.nextAttemptAt IS NULL OR job.nextAttemptAt <= :now)) OR (job.status='processing' AND job.leaseExpiresAt <= :now) OR (job.status='completed' AND job.expiresAt <= :now) OR (job.status='expired' AND EXISTS (SELECT 1 FROM esign_file_objects f WHERE f.export_job_id=job.id AND f.archive_status='active')))",
+        "((job.status IN ('pending','waiting') AND (job.nextAttemptAt IS NULL OR job.nextAttemptAt <= :now)) OR (job.status='processing' AND job.leaseExpiresAt <= :now))",
         { now },
       )
       .orderBy('job.updatedAt', 'ASC')

@@ -1,3 +1,4 @@
+import type { EsignExportJob } from './esignExports';
 // 電子簽文件（server/src/features/esign/dto/esign-common.dto.ts、document-query.dto.ts）
 
 /**
@@ -128,6 +129,7 @@ export interface EsignFieldView extends EsignFieldPlacement {
 
 /** GET esign/documents/:id：建立人的文件詳情 */
 export interface EsignDocumentDetail extends Omit<EsignDocumentListItem, 'signStartAt' | 'signEndAt' | 'createdBy'> {
+  exportSummary: EsignExportJob | null;
   createdBy: { name: string; employeeNo: string } | null;
   sourceFile?: { fileName: string; size: number; pageCount: number; sha256: string };
   signStartAt: string | null;
@@ -270,6 +272,8 @@ export interface SignerNoteResult {
 export interface EsignHistoryItem {
   /** 事件類型，例如 document.initiated、signature.completed、document.stopped_by_creator */
   type: string;
+  /** 後端統一提供的繁體中文事件說明 */
+  label: string;
   occurredAt: string;
   /** 操作者：簽署人、員工（建立人）或系統；同名簽署人以 signerPublicId 區分 */
   actor: {
@@ -277,8 +281,12 @@ export interface EsignHistoryItem {
     name: string;
     signerPublicId?: string;
   };
-  /** 停止簽署等事件的原因 */
+  /** 停止簽署等事件的原因；依權限裁切 */
   reason: string | null;
+  /** 僅補簽事件提供；舊期限與建立人識別僅建立人可見 */
+  signEndAt?: string;
+  previousSignEndAt?: string;
+  actorUserId?: string;
 }
 
 /** GET esign/signer-candidates 的一筆資料 */

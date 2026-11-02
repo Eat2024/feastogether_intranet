@@ -86,5 +86,5 @@ pnpm build
 - `pnpm -C server test:schema`：3 suites／14 tests 通過。
 - `pnpm -C server test:e2e:security`：13 suites／73 tests 通過。
 - `pnpm -C server test --runInBand`：108 suites／1,006 tests 通過；`pnpm lint` 通過（既有 warnings、0 errors）；`pnpm -C server build` 通過。
-- `pnpm -C server test:e2e`：32 suites／345 tests 通過，162.123 秒，包含 6000 人完整發起與群發。client build 與正式雙軸 review 由整合分支完成。
+- `pnpm -C server test:e2e`：32 suites／345 tests 通過，162.123 秒，包含 6000 人完整發起與群發。整合分支 `pnpm build` 前後端通過；正式 Standards／Spec review 各 0 項發現，範圍為 `fb3c4ea...8546772`。
 - 未執行 UAT／production migration、seed、部署或真實 HR／SMTP 呼叫。正式切換仍須依維護程序操作。

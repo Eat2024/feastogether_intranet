@@ -4,7 +4,7 @@
 
 **Input**: Spec 018；setup-plan feature 識別為 `018-nonproduction-mail-whitelist`，實際 Git 分支如上。
 
-**Status**: 依已確認的本機 tickets 01–05 實作；01–04 已整合，05 完整驗證與 code review 進行中。未部署或寄送真實郵件。
+**Status**: 依已確認的本機 tickets 01–05 實作並全部整合結案；完整驗證與雙軸 code review 已完成。未部署或寄送真實郵件。
 
 ## Summary
 

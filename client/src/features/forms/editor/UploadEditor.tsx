@@ -40,8 +40,13 @@ import type { UploadField, UploadInfo } from "../types";
 // 目前只在瀏覽器端以 pdf.js 讀取 PDF；Word 需串接後端轉檔後才支援
 const ACCEPT = ".pdf,application/pdf";
 
+// TODO: 後端支援系統簽署確認頁後改為 true，重新開放「改用系統簽署確認頁」
+const CONFIRM_PAGE_ENABLED = false;
+
 // 預覽縮放：各倍率對應的頁面繪製寬度（px，約為畫面寬度的 2 倍，放大時不模糊）
 const ZOOM_LEVELS = [
+  { value: 0.25, label: "25%", renderWidth: 400 },
+  { value: 0.5, label: "50%", renderWidth: 800 },
   { value: 1, label: "100%", renderWidth: 1600 },
   { value: 1.5, label: "150%", renderWidth: 2400 },
   { value: 2, label: "200%", renderWidth: 3200 },
@@ -365,7 +370,7 @@ export default function UploadEditor({
   const [name, setName] = useState(draft?.title ?? "");
   const [fileName, setFileName] = useState(up?.fileName ?? "");
   const [pages, setPages] = useState(up?.pages ?? 0);
-  const [confirmMode, setConfirmMode] = useState(up?.mode === "confirmPage");
+  const [confirmMode, setConfirmMode] = useState(CONFIRM_PAGE_ENABLED && up?.mode === "confirmPage");
   const [fields, setFields] = useState<UploadField[]>(up?.fields ?? []);
   const [activePage, setActivePage] = useState(up?.fields[0]?.page ?? 1);
   const [errors, setErrors] = useState<Errors>({});
@@ -542,7 +547,7 @@ export default function UploadEditor({
     // 修改草稿時可沿用原本的 PDF
     else if (!draft && !pdfFile) next.file = "請先上傳文件";
     else if (!confirmMode && fields.length === 0) {
-      next.fields = "請至少指定一個簽名位置，或改用系統簽署確認頁";
+      next.fields = CONFIRM_PAGE_ENABLED ? "請至少指定一個簽名位置，或改用系統簽署確認頁" : "請至少指定一個簽名位置";
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -550,7 +555,7 @@ export default function UploadEditor({
 
   const submit = () => {
     if (!validate()) return;
-    // 系統簽署確認頁後端尚未支援：不帶欄位（修改時清除既有欄位），設定簽署頁會提示無法發起
+    // 系統簽署確認頁（目前隱藏）不帶欄位，由後端產生確認頁
     const placements = confirmMode ? [] : toFieldPlacements(fields);
     if (draft) {
       // 沒有重新上傳時沿用原本的 PDF；欄位一律整批取代
@@ -690,41 +695,38 @@ export default function UploadEditor({
                 </Box>
               </Box>
 
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 2,
-                  px: 2,
-                  py: 1.5,
-                  bgcolor: "grey.100",
-                  borderRadius: 1,
-                }}
-              >
-                <Box>
-                  <Typography variant="subheading" component="div">
-                    原文件版面不便標記，改用系統簽署確認頁
-                  </Typography>
-                  <Typography variant="helper" component="div">
-                    適用：掃描文件、不允許改動原版面、找不到合適簽名位置
-                  </Typography>
-                  {confirmMode && (
-                    <Typography variant="helper" component="div" sx={{ color: "warning.dark" }}>
-                      後端尚未支援系統簽署確認頁，選擇此方式的文件可以先建立草稿，但暫時無法發起簽署。
-                    </Typography>
-                  )}
-                </Box>
-                <Switch
-                  checked={confirmMode}
-                  disabled={locked}
-                  onChange={(e) => {
-                    setConfirmMode(e.target.checked);
-                    setErrors((err) => ({ ...err, fields: undefined }));
+              {CONFIRM_PAGE_ENABLED && (
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 2,
+                    px: 2,
+                    py: 1.5,
+                    bgcolor: "grey.100",
+                    borderRadius: 1,
                   }}
-                  slotProps={{ input: { "aria-label": "改用系統簽署確認頁" } }}
-                />
-              </Box>
+                >
+                  <Box>
+                    <Typography variant="subheading" component="div" sx={{ fontWeight: 500, mb: 0.5 }}>
+                      原文件無合適簽名位置時，於文件末尾附加制式簽署頁
+                    </Typography>
+                    <Typography variant="helper" component="div">
+                      適用：掃描文件、須保留原始版面，或未預留簽名欄位的文件
+                    </Typography>
+                  </Box>
+                  <Switch
+                    checked={confirmMode}
+                    disabled={locked}
+                    onChange={(e) => {
+                      setConfirmMode(e.target.checked);
+                      setErrors((err) => ({ ...err, fields: undefined }));
+                    }}
+                    slotProps={{ input: { "aria-label": "改用系統簽署確認頁" } }}
+                  />
+                </Box>
+              )}
 
               {confirmMode ? (
                 <Box>
@@ -949,11 +951,11 @@ export default function UploadEditor({
                   </Typography>
 
                   <Alert severity="info" variant="outlined" sx={{ mt: 2 }}>
-                    <AlertTitle>關於大量簽署時的畫面空間</AlertTitle>
-                    這裡拖曳定位的是「這份文件範本」的欄位座標（第幾頁、x%、y%），只需設定一次。
-                    之後不論是 5 人或 500
-                    人簽署，系統都會用同一組座標，在每個人自己的那份文件副本上疊上各自的簽名——
-                    不會因為簽署人數變多而需要更多畫面空間，也不需要逐一標記。
+                    <AlertTitle sx={{ fontWeight: 700 }}>關於多人簽署的操作方式</AlertTitle>
+                    只要在文件範本上設定一次簽名位置，之後不論有 5 人或 500
+                    人簽署，每個人都會在自己的文件副本上，於相同位置簽名。
+                    <br />
+                    因此，人數再多也不會擠在同一份文件上，也不需要替每個人個別設定簽名位置。
                   </Alert>
                 </Box>
               )}

@@ -41,8 +41,10 @@ export default function DeadlineRangePicker({
             開始日
           </Typography>
           <Box sx={{ border: 1, borderColor: 'formBorder', borderRadius: 1 }}>
+            {/* 開始日不得早於今天 */}
             <DateCalendar
               value={startVal}
+              disablePast
               onChange={(v) => {
                 const next = v ? v.format(FORMAT) : null;
                 // 開始日晚於結束日時清除結束日
@@ -60,6 +62,7 @@ export default function DeadlineRangePicker({
             <DateCalendar
               value={endVal}
               minDate={startVal ?? undefined}
+              disablePast
               onChange={(v) => onChange({ start, end: v ? v.format(FORMAT) : null })}
             />
           </Box>

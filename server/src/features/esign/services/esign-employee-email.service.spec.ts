@@ -3,23 +3,14 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
-import { DocumentRepository } from '../repositories/document.repository';
-import { EsignDocumentValidationService } from './esign-document-validation.service';
-import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignEmployeeEmailService } from './esign-employee-email.service';
 
 function fixture() {
-  const manager = { find: jest.fn(), findOne: jest.fn() };
+  const manager = { find: jest.fn() };
   manager.find.mockResolvedValue([
     { id: 1, empid: '001', isActive: true, deletedAt: null },
     { id: 2, empid: '002', isActive: true, deletedAt: null },
   ]);
-  manager.findOne.mockResolvedValue({
-    id: 10,
-    createdByUserId: 1,
-    status: 'draft',
-    deletedAt: null,
-  });
   const http = { post: jest.fn() };
   http.post.mockReturnValue(
     of({
@@ -37,19 +28,15 @@ function fixture() {
     { baseUrl: 'https://source.example.test', apiKey: 'synthetic' } as never,
     { warn: jest.fn() } as never,
   );
-  const documents = new DocumentRepository();
-  const validation = new EsignDocumentValidationService();
   const service = new EsignEmployeeEmailService(
     new MysqlService({ manager } as never),
     new UserRepository(),
-    documents,
-    new EsignAccessPolicyService(validation, documents),
     new FeastogetherHrService(client),
   );
   return { service, manager, http };
 }
 
-describe('草稿員工信箱核對', () => {
+describe('發起簽署員工信箱解析', () => {
   it.each([1, 100, 101, 6000])(
     '完整核對 %i 位員工，每批不超過 100 且最多 4 批在途',
     async (count) => {
@@ -110,37 +97,33 @@ describe('草稿員工信箱核對', () => {
     manager.find.mockResolvedValue([
       { id: 1, empid: '001', isActive: true, ...changed },
     ]);
-    await expect(service.checkDraft(10, 1, ['1'])).rejects.toMatchObject({
+    await expect(service.resolveUsers(['1'])).rejects.toMatchObject({
       status: 422,
       response: { details: { userIds: ['1'] } },
     });
     expect(http.post).not.toHaveBeenCalled();
   });
-  it('非建立人／非草稿／無效帳號先拒絕，不查信箱來源', async () => {
-    const { service, manager, http } = fixture();
-    await expect(service.checkDraft(10, 2, ['1'])).rejects.toMatchObject({
-      status: 404,
-    });
-    manager.findOne.mockResolvedValue({
-      id: 10,
-      createdByUserId: 1,
-      status: 'active',
-    });
-    await expect(service.checkDraft(10, 1, ['1'])).rejects.toMatchObject({
-      status: 409,
-    });
-    manager.findOne.mockResolvedValue({
-      id: 10,
-      createdByUserId: 1,
-      status: 'draft',
-    });
-    await expect(service.checkDraft(10, 1, ['3'])).rejects.toMatchObject({
+  it('無效帳號拒絕解析，不查信箱來源', async () => {
+    const { service, http } = fixture();
+    await expect(service.resolveUsers(['3'])).rejects.toMatchObject({
       status: 422,
       response: { details: { userIds: ['3'] } },
     });
     expect(http.post).not.toHaveBeenCalled();
   });
-  it('缺漏及非法地址顯示 unavailable 而非來源失敗', async () => {
+  it.each([
+    { ids: [] },
+    { ids: ['01'] },
+    { ids: ['9007199254740992'] },
+    { ids: Array<string>(6001).fill('1') },
+  ])('拒絕空名單、非法或不安全ID與超量名單 %#', async ({ ids }) => {
+    const { service, http } = fixture();
+    await expect(service.resolveUsers(ids)).rejects.toMatchObject({
+      status: 422,
+    });
+    expect(http.post).not.toHaveBeenCalled();
+  });
+  it('缺漏及非法地址回 null 而非來源失敗', async () => {
     const { service, http } = fixture();
     http.post.mockReturnValue(
       of({
@@ -150,12 +133,12 @@ describe('草稿員工信箱核對', () => {
         },
       }),
     );
-    await expect(service.checkDraft(10, 1, ['1', '2'])).resolves.toEqual({
-      items: [
-        { userId: '1', status: 'unavailable', maskedEmail: null },
-        { userId: '2', status: 'unavailable', maskedEmail: null },
-      ],
-    });
+    await expect(
+      service.lookupEmails(await service.resolveUsers(['1', '2'])),
+    ).resolves.toEqual([
+      { userId: 1, empid: '001', email: null },
+      { userId: 2, empid: '002', email: null },
+    ]);
   });
   it('每批最多 100，最多 4 批併發；失敗後不再派送且等待已派請求收束', async () => {
     const { service, http } = fixture();
@@ -197,13 +180,13 @@ describe('草稿員工信箱核對', () => {
     await rejected;
     expect(requests).toHaveLength(4);
   });
-  it('建立人取得去重且原順序的遮罩結果，同信箱仍保留各員工', async () => {
+  it('解析保留去重後原順序，同信箱仍保留各員工', async () => {
     const { service } = fixture();
-    await expect(service.checkDraft(10, 1, ['2', '1', '2'])).resolves.toEqual({
-      items: [
-        { userId: '2', status: 'ready', maskedEmail: 's***@example.test' },
-        { userId: '1', status: 'ready', maskedEmail: 's***@example.test' },
-      ],
-    });
+    await expect(
+      service.lookupEmails(await service.resolveUsers(['2', '1', '2'])),
+    ).resolves.toEqual([
+      { userId: 2, empid: '002', email: 'shared@example.test' },
+      { userId: 1, empid: '001', email: 'shared@example.test' },
+    ]);
   });
 });

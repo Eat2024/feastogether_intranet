@@ -60,12 +60,15 @@ export default function SigningTasksTable({
   tab,
   tasks,
   sort,
+  query,
   now,
   placeholder,
 }: {
   tab: SigningTab;
   tasks: EsignSigningTask[];
   sort: SigningSort;
+  /** 搜尋關鍵字：排序連結需保留 */
+  query: string;
   now: Date;
   placeholder: ReactNode;
 }) {
@@ -195,7 +198,7 @@ export default function SigningTasksTable({
                   key={col.header}
                   active={sort?.key === col.sortKey}
                   order={sort?.order ?? 'asc'}
-                  href={signingHref(tab, nextSortState(sort, col.sortKey))}
+                  href={signingHref(tab, nextSortState(sort, col.sortKey), 1, query)}
                 >
                   {col.header}
                 </SortableHeaderCell>

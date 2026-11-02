@@ -93,6 +93,52 @@ export class FeastogetherHrService {
     return valid[0];
   }
 
+  /** 寄信政策需區分明確無資格與來源格式／身分歧義；不改登入錯誤契約。 */
+  async lookupMailEligibleStaff(
+    empId: string,
+  ): Promise<
+    { status: 'eligible'; staff: StaffLookupDto } | { status: 'ineligible' }
+  > {
+    const results: unknown = await this.lookupStaff(empId);
+    if (!Array.isArray(results)) throw staffLookupError();
+    const matches: StaffLookupDto[] = [];
+    for (const result of results as unknown[]) {
+      if (!result || typeof result !== 'object' || Array.isArray(result))
+        throw staffLookupError();
+      const status: unknown = Reflect.get(result, 'person_status');
+      const statusName: unknown = Reflect.get(result, 'person_status_name');
+      if (
+        typeof status !== 'number' ||
+        !Number.isInteger(status) ||
+        typeof statusName !== 'string' ||
+        !statusName.trim()
+      )
+        throw staffLookupError();
+      const dto = plainToInstance(StaffLookupDto, {
+        ...result,
+        person_status: 1,
+        person_status_name: '正式',
+      });
+      if (
+        (await validate(dto, { whitelist: true, forbidUnknownValues: true }))
+          .length
+      )
+        throw staffLookupError();
+      dto.person_status = status;
+      dto.person_status_name = statusName;
+      if (dto.person_empid === empId) matches.push(dto);
+    }
+    if (matches.length > 1) throw staffLookupError();
+    const staff = matches[0];
+    if (
+      !staff ||
+      ![0, 1].includes(staff.person_status) ||
+      !['試用', '正式'].includes(staff.person_status_name)
+    )
+      return { status: 'ineligible' };
+    return { status: 'eligible', staff };
+  }
+
   /** 准考證（依日期區間）。 */
   getExamTicket(
     token: string,

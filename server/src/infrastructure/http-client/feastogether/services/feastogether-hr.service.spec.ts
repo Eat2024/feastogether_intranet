@@ -111,6 +111,84 @@ describe('FeastogetherHrService', () => {
     },
   );
 
+  it.each([
+    null,
+    [null],
+    [
+      {
+        person_empid: '00123',
+        person_name: '測試',
+        person_status: '1',
+        person_status_name: '正式',
+      },
+    ],
+    [
+      {
+        person_empid: '00123',
+        person_name: '',
+        person_status: 2,
+        person_status_name: '離職',
+      },
+    ],
+    [
+      {
+        person_empid: '00123',
+        person_name: '測試',
+        person_status: 1,
+        person_status_name: '正式',
+      },
+      {
+        person_empid: '00123',
+        person_name: '測試',
+        person_status: 1,
+        person_status_name: '正式',
+      },
+    ],
+  ])('寄信資格拒絕格式錯誤或多個精確身分：%j', async (rows) => {
+    const { service, client } = build();
+    client.get.mockResolvedValue(rows);
+    await expect(
+      service.lookupMailEligibleStaff('00123'),
+    ).rejects.toMatchObject({ code: AppErrorCode.STAFF_LOOKUP_FAILED });
+  });
+
+  it('寄信資格可區分查無、離職與可信有效員工，不改登入拒絕契約', async () => {
+    const { service, client } = build();
+    client.get.mockResolvedValue([]);
+    await expect(service.lookupMailEligibleStaff('00123')).resolves.toEqual({
+      status: 'ineligible',
+    });
+    client.get.mockResolvedValue([
+      {
+        person_empid: '00123',
+        person_name: '測試員工',
+        person_status: 2,
+        person_status_name: '離職',
+      },
+    ]);
+    await expect(service.lookupMailEligibleStaff('00123')).resolves.toEqual({
+      status: 'ineligible',
+    });
+    await expect(service.lookupEligibleStaff('00123')).rejects.toMatchObject({
+      code: AppErrorCode.AUTH_EXCHANGE_FAILED,
+    });
+    client.get.mockResolvedValue([
+      {
+        person_empid: '00123',
+        person_name: '測試員工',
+        person_status: 1,
+        person_status_name: '正式',
+        department_id: null,
+      },
+    ]);
+    await expect(
+      service.lookupMailEligibleStaff('00123'),
+    ).resolves.toMatchObject({
+      status: 'eligible',
+      staff: { person_empid: '00123', department_id: null },
+    });
+  });
+
   it('getShift：帶 Bearer token + 日期區間 query', async () => {
     const { service, client } = build();
     client.get.mockResolvedValue([]);

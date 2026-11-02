@@ -14,6 +14,14 @@ const gmailSmtp = {
 };
 
 describe('validateAppEnvironment', () => {
+  it.each([undefined, '', ' ', 'Production', ' production ', 'unknown'])(
+    '拒絕缺漏或非精確合法環境 %s',
+    (environment) => {
+      expect(() => validateAppEnvironment({ NODE_ENV: environment })).toThrow(
+        'NODE_ENV',
+      );
+    },
+  );
   it('development 固定使用 local storage 與 SMTP，允許不驗證、不加密的本機 Mailpit', () => {
     expect(
       validateAppEnvironment({

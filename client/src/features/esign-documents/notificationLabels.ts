@@ -10,6 +10,8 @@ export const NOTIFICATION_REASONS: Record<string, string> = {
   RECIPIENT_UNAVAILABLE: '沒有有效的收件信箱；內部員工請由人資通知自行登入入口網簽署',
   RECIPIENT_ALREADY_NOTIFIED: '同批次共用信箱已通知，不重複寄送',
   DELIVERY_OUTCOME_UNKNOWN: '寄送結果未確認，不會自動重寄',
+  MAIL_RECIPIENT_NOT_WHITELISTED: '非正式環境白名單未允許寄送',
+  MAIL_WHITELIST_CHECK_FAILED: '寄送白名單檢查失敗',
   MAIL_DELIVERY_FAILED: '寄送失敗',
   INVITATION_NO_LONGER_ACTIVE: '邀請已失效',
   INVITATION_CREDENTIAL_UNAVAILABLE: '邀請憑證已失效',

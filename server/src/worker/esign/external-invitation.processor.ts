@@ -1,4 +1,8 @@
 import {
+  MailRecipientBlockedError,
+  MailWhitelistCheckFailedError,
+} from '#app/infrastructure/mail/mail-recipient-policy.errors';
+import {
   INTERNAL_PORTAL_LOGIN_URL,
   INTERNAL_NOTIFICATION_RECIPIENT_LIMIT,
 } from '#app/features/esign/esign.constants';
@@ -76,8 +80,8 @@ export class ExternalInvitationProcessor extends WorkerHost {
 
     try {
       await this.sendInvitation(claim);
-    } catch {
-      await this.finishFailed(id, claim);
+    } catch (error) {
+      await this.finishFailed(id, claim, error);
       return;
     }
 
@@ -346,6 +350,11 @@ export class ExternalInvitationProcessor extends WorkerHost {
         manager,
       );
       if (log?.errorCode === 'INVITATION_SUPERSEDED') return null;
+      if (
+        log?.errorCode === 'MAIL_WHITELIST_CHECK_FAILED' &&
+        log.attemptCount >= 3
+      )
+        return null;
       if (log?.signer?.signerType === 'user')
         return { internalBatchId: log.batchId };
       if (log?.batch?.kind === 'reminder') return { reminder: true } as const;
@@ -647,6 +656,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
   private async finishFailed(
     id: number,
     claim: ClaimedInvitation,
+    error?: unknown,
   ): Promise<void> {
     await this.mysql.transaction(async (manager) => {
       const log = await this.notifications.findInvitationContextForUpdate(
@@ -660,6 +670,27 @@ export class ExternalInvitationProcessor extends WorkerHost {
         log.invitationGenerationSha256 !== claim.generation ||
         log.signer?.invitationTokenSha256 !== claim.generation
       ) {
+        return;
+      }
+      if (
+        error instanceof MailRecipientBlockedError ||
+        error instanceof MailWhitelistCheckFailedError
+      ) {
+        const blocked = error instanceof MailRecipientBlockedError;
+        const terminal = blocked || log.attemptCount >= 3;
+        log.result = blocked ? 'skipped' : 'failed';
+        log.errorCode = error.reasonCode;
+        log.completedAt = new Date();
+        log.processingStartedAt = null;
+        log.leaseToken = null;
+        log.nextAttemptAt = terminal
+          ? null
+          : new Date(Date.now() + 30_000 * 2 ** (log.attemptCount - 1));
+        if (terminal && log.signer) {
+          log.signer.invitationTokenCiphertext = null;
+          await this.signers.save(log.signer, manager);
+        }
+        await this.notifications.saveLog(log, manager);
         return;
       }
       log.result = 'failed';

@@ -18,8 +18,8 @@
 
 **目的**：建立目前基線與可執行的隔離驗證環境，不重新初始化專案。
 
-- [ ] T001 讀取 root／client／server 的 AGENTS.md 與 Spec 017 全部設計文件，核對當前工作區仍無 role=all 試作殘留，記錄原始 diff、FR-001～FR-012 與各驗收案例對應於 `specs/017-department-document-visibility/validation.md`，不改既有使用者變更。
-- [ ] T002 依 `server/.env.example`、`server/test/global-setup.ts`、`server/test/setup-e2e.ts` 確認 MySQL／Redis 測試環境及 feastogether_intranet_test 前綴保護，解決或明確記錄前次 MySQL 驗證失敗於 `specs/017-department-document-visibility/validation.md`；不提交本機 env、不使用 UAT DB 跑測試。
+- [x] T001 讀取 root／client／server 的 AGENTS.md 與 Spec 017 全部設計文件，核對當前工作區仍無 role=all 試作殘留，記錄原始 diff、FR-001～FR-012 與各驗收案例對應於 `specs/017-department-document-visibility/validation.md`，不改既有使用者變更。
+- [x] T002 依 `server/.env.example`、`server/test/global-setup.ts`、`server/test/setup-e2e.ts` 確認 MySQL／Redis 測試環境及 feastogether_intranet_test 前綴保護，解決或明確記錄前次 MySQL 驗證失敗於 `specs/017-department-document-visibility/validation.md`；不提交本機 env、不使用 UAT DB 跑測試。
 
 ## Phase 2: Foundational
 
@@ -27,7 +27,7 @@
 
 - [ ] T003 在 `server/src/features/users/entities/schema-metadata.spec.ts`、`server/src/features/esign/entities/schema-metadata.spec.ts` 與 `server/test/schema-migration.e2e-spec.ts` 補三欄、字串精確比較、NULL 舊資料、索引及 up/down/up 測試；驗證回滾不修改既有文件證據，先確認預期失敗。
 - [ ] T004 在 `server/src/features/users/entities/user.entity.ts` 與 `server/src/features/esign/entities/esign-document.entity.ts` 新增 departmentCode／createdByDepartmentCode／createdByDepartmentName，逐字落實 data-model 約束：「varchar(50), nullable」「varchar(50), nullable」「varchar(150), nullable」及「新建成功必須非空」；代碼使用 `utf8mb4_0900_bin`，保持字串、前導零及大小寫，原 departmentId 外鍵不變。
-- [ ] T005 建立 `server/src/infrastructure/database/migrations/1793577600000-DepartmentDocumentVisibility.ts`，於 `server/src/infrastructure/database/mysql/mysql.options.ts` 註冊，並更新 `server/src/infrastructure/database/schema.sql`；新增三個 nullable 欄位與 `idx_esign_documents_department_deleted_updated_id`（created_by_department_code, deleted_at, updated_at, id），down 反向移除；不得加 IT 預設值、呼叫 HR 或執行 UAT 回填，通過 T003。
+- [ ] T005 建立 `server/src/infrastructure/database/migrations/1793664000000-DepartmentDocumentVisibility.ts`，於 `server/src/infrastructure/database/mysql/mysql.options.ts` 註冊，並更新 `server/src/infrastructure/database/schema.sql`；新增三個 nullable 欄位與 `idx_esign_documents_department_deleted_updated_id`（created_by_department_code, deleted_at, updated_at, id），down 反向移除；不得加 IT 預設值、呼叫 HR 或執行 UAT 回填，通過 T003。
 - [ ] T006 [P] 在 `server/src/features/auth/services/auth.service.spec.ts`、`server/src/features/auth/services/oauth-identity.service.spec.ts` 補登入部門新增／更新／缺值／上游失敗測試；落實「空白／空字串不作有效代碼」「上游明確缺值以 SQL NULL 清除舊值，不用 TypeORM undefined 跳過更新」，不把本機 departmentId 當上游代碼。
 - [ ] T007 [P] 在 `server/src/common/errors/app-error-code.ts`、`server/src/common/errors/app-errors.ts` 與 `client/src/api/errorCodes.ts` 加入 `ESIGN_DEPARTMENT_UNAVAILABLE`／409／「無法取得您的部門資料，請重新登入或聯絡系統管理員」，沿既有錯誤包裝，不新增 env 或 fallback。
 - [ ] T008 在 `server/src/features/auth/services/auth.service.ts` 與 `server/src/features/auth/services/oauth-identity.service.ts` 同步可信 HR 部門代碼／名稱；OAuth 依驗證後員編查既有 HR service，必要時更新 `server/src/features/auth/auth.module.ts` 的既有 provider wiring；不改 session token 格式或前端可寫欄位，通過 T006。

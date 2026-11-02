@@ -9,14 +9,12 @@ import type { Redis } from 'ioredis';
 import { REDIS_MAIN } from '#app/infrastructure/database/redis/redis.provider';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { HttpAccessLoggerService } from '#app/infrastructure/logging/httpEndpointLog/http-access-logger.service';
-import type { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
-import { INVITATION_MAIL_SENDER } from '#app/infrastructure/mail/invitation-mail-sender.port';
+import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { esignTestPng } from './esign-test-png';
 import { createPrivateKey, createHash, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import { getQueueToken } from '@nestjs/bullmq';
-import { NestFactory } from '@nestjs/core';
 import type { Job, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
@@ -29,9 +27,10 @@ import { apiData, apiError } from './api-response.helper';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { ESIGN_DOCUMENT_FINALIZATION_QUEUE } from '#app/features/esign/esign-queue.constants';
-import { WorkerModule } from '#app/worker.module';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import {
+  mailFixture,
+  createSyntheticWorker,
   closeSecurityE2eApp,
   createSecurityE2eApp,
   type SecurityE2eContext,
@@ -119,6 +118,37 @@ describe('核心電子簽 US1', () => {
         })),
       }),
     );
+    mailFixture(ctx).allowEmails([
+      'atomic@example.test',
+      'delete-test@example.test',
+      'fields-first-a@example.test',
+      'fields-first-b@example.test',
+      'candidate@example.test',
+      'signed@example.test',
+      'pending@example.test',
+      'future@example.test',
+      'otp-flow@example.test',
+      'otp-lock@example.test',
+      'otp-expiry@example.test',
+      'otp-resend@example.test',
+      'otp-hourly@example.test',
+      'otp-mail-failed@example.test',
+      'expiry@example.test',
+      'tab-a@example.test',
+      'tab-b@example.test',
+      'signer-a@example.test',
+      'signer-b@example.test',
+      'reopen-signed@example.test',
+      'reopen-pending@example.test',
+      'reopen@example.test',
+      ...[
+        creatorEmpid,
+        outsiderEmpid,
+        signerEmpid,
+        importedEmpid,
+        ...personalEmpids,
+      ].map((id) => `${id.toLowerCase()}@example.test`),
+    ]);
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
     storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
     tokenService = ctx.app.get(EsignTokenService);
@@ -1168,9 +1198,7 @@ describe('核心電子簽 US1', () => {
       getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
     );
     await finalizationQueue.pause();
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       const processor = worker.get(DocumentFinalizationProcessor);
       const [owner] = await db.query<Array<{ id: number }>>(
@@ -2096,9 +2124,7 @@ describe('核心電子簽 US1', () => {
       '驗證碼寄送失敗文件',
       'otp-mail-failed@example.test',
     );
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const failure = jest
       .spyOn(mailer, 'sendOtp')
       .mockRejectedValueOnce(new Error('smtp down'));
@@ -2436,9 +2462,7 @@ describe('核心電子簽 US1', () => {
       getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
     );
     await queue.pause();
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       const [owner] = await db.query<Array<{ id: number }>>(
         "SELECT id FROM esign_signers WHERE document_id=? AND status='signed'",
@@ -2923,9 +2947,7 @@ describe('核心電子簽 US1', () => {
       getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
     );
     await queue.pause();
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     const processor = worker.get(DocumentFinalizationProcessor);
     const process = (i: number) =>
       processor.process({
@@ -3374,9 +3396,7 @@ describe('核心電子簽 US1', () => {
       getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),
     );
     await queue.pause();
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       await worker.get(DocumentFinalizationProcessor).process({
         data: { documentId, signerId },
@@ -3548,12 +3568,14 @@ describe('核心電子簽 US1', () => {
       ctx.app.get(SignerRepository),
       tokenService,
       ctx.app.get(EsignAuditService),
-      {
-        send: async () => {
-          mailStarted();
-          await pendingMail;
-        },
-      },
+      mailFixture(ctx).guard(
+        Object.assign(new FakeInvitationMailSender(), {
+          send: async () => {
+            mailStarted();
+            await pendingMail;
+          },
+        }),
+      ),
     );
     const delivery = processor.process({
       data: { notificationLogId: Number(oldLog.id) },

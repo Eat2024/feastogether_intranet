@@ -173,7 +173,9 @@ export async function inspectExportRetention(
     for (const job of jobs) {
       const documentId = String(job.documentId);
       const wasCompleted =
-        job.completedAt != null || job.status === 'completed';
+        job.completedAt != null ||
+        job.status === 'completed' ||
+        job.status === 'expired';
       const fixed = wasCompleted && !selectedDocuments.has(documentId);
       if (wasCompleted) selectedDocuments.add(documentId);
       const file = await fileFor(db.manager, job);

@@ -200,6 +200,29 @@ describe('ZIP 保存政策轉換工具', () => {
         .status,
     ).toBe('expired');
   });
+  it('較新的異常到期工作缺少完成時間時，仍固定且不可用，不改選舊檔', async () => {
+    const older = await fixture('completed');
+    const newer = await fixture();
+    newer.job.completedAt = null;
+    await db.manager.save(newer.job);
+    const manifest = await inspectExportRetention(db, storage);
+    expect(
+      manifest.entries.find((row) => row.jobId === String(newer.job.id)),
+    ).toMatchObject({ fixed: true, decision: 'unavailable' });
+    expect(
+      manifest.entries.find((row) => row.jobId === String(older.job.id)),
+    ).toMatchObject({ fixed: false, decision: 'ready' });
+    manifest.entries = manifest.entries.filter(
+      (row) => row.jobId === String(newer.job.id),
+    );
+    expect(await applyExportRetention(db, storage, manifest)).toEqual([
+      { jobId: String(newer.job.id), result: 'unavailable' },
+    ]);
+    expect(
+      (await db.manager.findOneByOrFail(EsignExportJob, { id: newer.job.id }))
+        .completedAt,
+    ).toBeNull();
+  });
   it('盤點後原檔被移除時拒絕恢復', async () => {
     const { job, file } = await fixture();
     const manifest = await inspectExportRetention(db, storage);

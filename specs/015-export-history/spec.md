@@ -1,5 +1,7 @@
 # 功能規格：歷史匯出紀錄 API（history/export）
 
+> **契約更新（Spec 019）**：本文件的重新下載與 ZIP 保存政策已由 [Spec 019](../019-esign-uat-refinements/spec.md) US1／US2 取代：歷史 Excel／PDF／ZIP 重新下載不新增紀錄、不更動原紀錄；Excel 沿用當時條件取得目前資料，PDF／ZIP 沿用原產物。新匯出仍依既有流程記錄；ZIP 無期限、固定最新曾完成工作，不納入後續簽署、不因缺檔改選舊檔或重建，未曾成功的失敗工作才可重試。部門授權另依 Spec 017，仍須整合驗收。下文保留當時決策與測試證據。
+
 **Feature Branch**: 未建立專用分支；目前為 `dev`
 
 **Created**: 2026-10-28

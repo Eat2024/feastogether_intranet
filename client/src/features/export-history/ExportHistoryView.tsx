@@ -88,7 +88,7 @@ function saveBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-/** ZIP 重試或重新產生後更新工作狀態與列表 */
+/** ZIP 未完成工作重試後更新工作狀態與列表 */
 function useRefreshHistory() {
   const queryClient = useQueryClient();
   return () => void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_EXPORT_HISTORY] });

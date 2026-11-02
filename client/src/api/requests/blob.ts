@@ -2,7 +2,7 @@ import api from '@/api/config';
 import axios from 'axios';
 
 /**
- * 下載檔案（Blob）。PDF 下載路由為 POST（後端在送出檔案的同一請求寫入匯出紀錄），其餘為 GET。
+ * 下載檔案（Blob）。PDF 下載路由為 POST；僅非歷史入口寫入匯出紀錄，歷史重新下載不新增紀錄。其餘為 GET。
  * 回傳檔案與 Content-Disposition 的 filename*（沒有時為 null）；失敗時把錯誤內容轉回 JSON，
  * 讓 getErrorMessage 與全域 provider（登入過期等）讀得到後端錯誤。
  */

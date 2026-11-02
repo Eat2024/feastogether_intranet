@@ -20,7 +20,7 @@
 
 ## R3：既有 ZIP 與永久沿用的邊界
 
-**Decision**：部署時先停止舊版匯出工作與清理，排空執行中工作，再以受控一次性工具盤點及轉換。仍存在且驗證通過的舊 completed/expired 產物統一為 completed、expiresAt=null、file.archiveStatus=active。保留所有歷史；同文件多份曾完成 ZIP 以 completedAt 非 null 且 id 最大的工作作後續申請的固定選擇（包含已到期不可用的舊工作），其他已存在可用產物仍可由各自歷史下載。
+**Decision**：部署時先停止舊版匯出工作與清理，排空執行中工作，再以受控一次性工具盤點及轉換。仍存在且驗證通過的舊 completed/expired 產物統一為 completed、expiresAt=null、file.archiveStatus=active。保留所有歷史；同文件多份曾完成 ZIP 以 completedAt 非 null 或 status 為 completed／expired 中 id 最大的工作作後續申請的固定選擇（包含已到期不可用的舊工作），其他已存在可用產物仍可由各自歷史下載。completed／expired 缺少 completedAt 也先固定，再列為不可用；不得改選舊檔、推測完成時間或重建。
 
 已刪除、遺失、損毀或無法確認的產物不復活、不重建。舊 expired 保留為歷史不可用，畫面顯示「檔案已不可用」，隱藏重新產生。若該固定工作缺檔或不可用，後續申請回既有 ESIGN_EXPORT_UNAVAILABLE，不自動建立新快照。若已選用的 completed 檔案日後遺失，同樣報錯，不切換成其他工作。未曾成功的失敗工作仍可重試。
 

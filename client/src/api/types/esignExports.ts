@@ -113,7 +113,7 @@ export interface ExportHistoryPage<T extends ExportHistoryType = ExportHistoryTy
   typeTotals: Record<ExportHistoryType, number>;
 }
 
-/** POST esign/history/export：記錄一次 Excel 匯出（首次匯出與重新下載共用）；匯出人取自 session */
+/** POST esign/history/export：記錄一次新 Excel 匯出（歷史重新下載不呼叫此端點）；匯出人取自 session */
 export interface CreateExcelExportRecordBody {
   type: 'excel';
   documentId: string;

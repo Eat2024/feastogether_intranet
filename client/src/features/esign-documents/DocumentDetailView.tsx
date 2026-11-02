@@ -109,14 +109,19 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
   return (
     <>
       <PageHeader
-        title={doc.title}
+        // 不顯示大標題，文件名稱列在說明第一行；說明在 Typography 內，每項以區塊 span 分行
         description={[
-          doc.docNumber,
-          doc.createdBy && `建立人 ${doc.createdBy.name}（${doc.createdBy.employeeNo}）`,
-          `簽署期間 ${periodText(doc)}`,
+          `文件名稱：${doc.title}`,
+          `文件編號：${doc.docNumber}`,
+          doc.createdBy && `建立人：${doc.createdBy.name}（${doc.createdBy.employeeNo}）`,
+          `簽署期間：${periodText(doc)}`,
         ]
           .filter(Boolean)
-          .join('・')}
+          .map((line) => (
+            <Box key={line} component="span" sx={{ display: 'block' }}>
+              {line}
+            </Box>
+          ))}
         actions={
           <>
             {/* 後端只允許修改草稿，檢視頁的文件都已發起 */}

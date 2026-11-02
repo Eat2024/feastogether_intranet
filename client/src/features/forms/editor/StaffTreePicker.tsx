@@ -10,11 +10,13 @@ import Typography from '@mui/material/Typography';
 import { useTreeItemModel } from '@mui/x-tree-view/hooks';
 import { RichTreeView } from '@mui/x-tree-view/RichTreeView';
 import { TreeItem, type TreeItemProps } from '@mui/x-tree-view/TreeItem';
-import { forwardRef, useDeferredValue, useMemo, useState } from 'react';
+import { forwardRef, memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import type { OrgDept } from '../types';
 
 // 已選人員標籤最多顯示幾位，其餘以「還有 N 位」表示
 const MAX_CHIPS = 40;
+// 搜尋結果上限：樹狀元件沒有虛擬捲動，一次展開數千人會讓畫面卡住數秒（例如只輸入員工編號開頭的「1」）
+const MAX_SEARCH_RESULTS = 200;
 
 type DeptItem = { id: string; kind: 'dept'; label: string; total: number; children: TreeNode[] };
 type EmpItem = { id: string; kind: 'emp'; label: string; employeeNo: string; title: string; deptName: string };
@@ -98,6 +100,46 @@ const OrgTreeItem = forwardRef<HTMLLIElement, TreeItemProps>(function OrgTreeIte
   return <TreeItem {...props} ref={ref} label={label} />;
 });
 
+const TREE_SLOTS = { item: OrgTreeItem };
+const getItemLabel = (item: TreeNode) => item.label;
+const getItemChildren = (item: TreeNode) => (item.kind === 'dept' ? item.children : undefined);
+
+/**
+ * 組織樹本身。項目多時重畫很慢，以 memo 包起來：在搜尋框打字時只更新輸入框，
+ * 等篩選結果（items）、勾選或展開狀態改變時才重畫。
+ */
+const OrgTree = memo(function OrgTree({
+  items,
+  selectedItems,
+  expandedItems,
+  onSelectedItemsChange,
+  onExpandedItemsChange,
+}: {
+  items: TreeNode[];
+  selectedItems: string[];
+  expandedItems: string[];
+  onSelectedItemsChange: (event: unknown, keys: string[]) => void;
+  onExpandedItemsChange: (event: unknown, ids: string[]) => void;
+}) {
+  return (
+    <RichTreeView
+      items={items}
+      getItemLabel={getItemLabel}
+      getItemChildren={getItemChildren}
+      slots={TREE_SLOTS}
+      multiSelect
+      checkboxSelection
+      selectionPropagation={{ descendants: true, parents: true }}
+      selectedItems={selectedItems}
+      onSelectedItemsChange={onSelectedItemsChange}
+      expandedItems={expandedItems}
+      onExpandedItemsChange={onExpandedItemsChange}
+      // 點擊文字只展開／收合，勾選請點核取方塊
+      expansionTrigger="iconContainer"
+    />
+  );
+});
+
 /** 依部門階層選擇需簽署的同仁；勾選部門即選取其下（含子部門）所有同仁 */
 export default function StaffTreePicker({
   org,
@@ -123,6 +165,7 @@ export default function StaffTreePicker({
   }, [org]);
 
   const searching = !!deferredQuery.trim();
+  const tooMany = searching && visibleEmps.length > MAX_SEARCH_RESULTS;
   // 一般瀏覽時使用者自己的展開狀態；清除搜尋後會回到這裡
   const [expanded, setExpanded] = useState<string[]>([]);
   // 搜尋時的展開狀態：搜尋字改變時重設為「全部展開」，之後仍可自由收合／展開
@@ -150,13 +193,23 @@ export default function StaffTreePicker({
     return keys;
   }, [items, visibleEmps, selected]);
 
-  const handleSelect = (_: unknown, keys: string[]) => {
-    // 只更新目前可見（搜尋結果）的員工，其餘已選的人保留
-    const visible = new Set(visibleEmps.map((e) => empIdOf(e.id)));
-    const next = new Set([...selected].filter((id) => !visible.has(id)));
-    keys.filter(isEmpKey).forEach((k) => next.add(empIdOf(k)));
-    onChange(next);
-  };
+  const handleSelect = useCallback(
+    (_: unknown, keys: string[]) => {
+      // 只更新目前可見（搜尋結果）的員工，其餘已選的人保留
+      const visible = new Set(visibleEmps.map((e) => empIdOf(e.id)));
+      const next = new Set([...selected].filter((id) => !visible.has(id)));
+      keys.filter(isEmpKey).forEach((k) => next.add(empIdOf(k)));
+      onChange(next);
+    },
+    [visibleEmps, selected, onChange],
+  );
+  const handleExpand = useCallback(
+    (_: unknown, ids: string[]) => {
+      if (searching) setSearchExpanded({ query: deferredQuery, ids });
+      else setExpanded(ids);
+    },
+    [searching, deferredQuery],
+  );
 
   const selectedList = [...selected].map((id) => empById.get(id)).filter((e): e is EmpItem => !!e);
 
@@ -195,24 +248,17 @@ export default function StaffTreePicker({
             <Typography variant="description" component="div" sx={{ py: 3, textAlign: 'center' }}>
               找不到符合的同仁或部門。
             </Typography>
+          ) : tooMany ? (
+            <Typography variant="description" component="div" sx={{ py: 3, px: 2, textAlign: 'center' }}>
+              符合的同仁超過 {MAX_SEARCH_RESULTS} 人，請輸入更完整的姓名、員工編號或部門。
+            </Typography>
           ) : (
-            <RichTreeView
+            <OrgTree
               items={items}
-              getItemLabel={(item) => item.label}
-              getItemChildren={(item) => (item.kind === 'dept' ? item.children : undefined)}
-              slots={{ item: OrgTreeItem }}
-              multiSelect
-              checkboxSelection
-              selectionPropagation={{ descendants: true, parents: true }}
               selectedItems={selectedItems}
-              onSelectedItemsChange={handleSelect}
               expandedItems={expandedItems}
-              onExpandedItemsChange={(_, ids) => {
-                if (searching) setSearchExpanded({ query: deferredQuery, ids });
-                else setExpanded(ids);
-              }}
-              // 點擊文字只展開／收合，勾選請點核取方塊
-              expansionTrigger="iconContainer"
+              onSelectedItemsChange={handleSelect}
+              onExpandedItemsChange={handleExpand}
             />
           )}
         </Box>

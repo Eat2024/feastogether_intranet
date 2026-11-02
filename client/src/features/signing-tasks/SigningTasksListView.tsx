@@ -1,10 +1,11 @@
 'use client';
 
 // 我的電子簽（後端資料）：GET /api/esign/signing-tasks 取得指派給目前員工的簽署任務，
-// 分頁標籤、排序與分頁記在網址上，在瀏覽器端處理。
+// 搜尋、分頁標籤、排序與分頁記在網址上，在瀏覽器端處理。
 import { useGetSigningTasksQuery } from '@/api/queries';
 import LinkPagination from '@/components/LinkPagination';
 import LinkTabs from '@/components/LinkTabs';
+import SearchField from '@/components/SearchField';
 import { getErrorMessage } from '@/lib/apiError';
 import { PAGE_SIZE, pageHrefs, paginate, parsePage } from '@/lib/paginate';
 import Box from '@mui/material/Box';
@@ -15,7 +16,16 @@ import Typography from '@mui/material/Typography';
 import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import SigningTasksTable from './SigningTasksTable';
-import { parseSigningSort, parseSigningTab, SIGNING_TABS, signingHref, sortTasks, splitTasks, type SigningTab } from './taskQuery';
+import {
+  filterTasks,
+  parseSigningSort,
+  parseSigningTab,
+  SIGNING_TABS,
+  signingHref,
+  sortTasks,
+  splitTasks,
+  type SigningTab,
+} from './taskQuery';
 
 const EMPTY_TEXT: Record<SigningTab, string> = {
   pending: '目前沒有待簽署的文件。',
@@ -27,11 +37,13 @@ export default function SigningTasksListView() {
   const params = useSearchParams();
   const tab = parseSigningTab(params.get('tab'));
   const sort = useMemo(() => parseSigningSort(params, tab), [params, tab]);
+  const query = (params.get('q') ?? '').trim();
   // 以進入頁面的時間判斷是否逾期、可否簽署（簽署頁會再以最新時間判斷）
   const [now] = useState(() => new Date());
   const { data, isPending, isError, error, refetch, isFetching } = useGetSigningTasksQuery();
 
-  const byTab = useMemo(() => splitTasks(data ?? []), [data]);
+  // 先套用搜尋，分頁標籤的筆數也是搜尋結果
+  const byTab = useMemo(() => splitTasks(filterTasks(data ?? [], query)), [data, query]);
   const { items, page, pageCount } = paginate(
     sortTasks(byTab[tab], sort),
     parsePage(params.get('page') ?? undefined),
@@ -52,21 +64,24 @@ export default function SigningTasksListView() {
       </Button>
     </Stack>
   ) : items.length === 0 ? (
-    <Typography variant="description">{EMPTY_TEXT[tab]}</Typography>
+    <Typography variant="description">
+      {query ? `找不到符合「${query}」的文件，請換個關鍵字試試。` : EMPTY_TEXT[tab]}
+    </Typography>
   ) : null;
 
   return (
     <Stack spacing={2}>
+      <SearchField placeholder="搜尋文件名稱、文件編號或建立人" width={320} />
       <LinkTabs
         value={tab}
         tabs={SIGNING_TABS.map((t) => ({
           value: t.key,
           label: data ? `${t.label}（${byTab[t.key].length}）` : t.label,
-          href: `?tab=${t.key}`,
+          href: signingHref(t.key, null, 1, query),
         }))}
       />
-      <SigningTasksTable tab={tab} tasks={items} sort={sort} now={now} placeholder={placeholder} />
-      <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => signingHref(tab, sort, p))} />
+      <SigningTasksTable tab={tab} tasks={items} sort={sort} query={query} now={now} placeholder={placeholder} />
+      <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => signingHref(tab, sort, p, query))} />
     </Stack>
   );
 }

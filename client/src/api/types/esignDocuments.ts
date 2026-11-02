@@ -323,12 +323,3 @@ export interface EsignSignerResolution {
   status: 'resolved' | 'unavailable';
 }
 
-/** POST esign/documents/:id/employee-email-checks 的一筆結果（發起前檢查內部簽署人的收件信箱） */
-export interface EsignEmployeeEmailCheck {
-  /** 後端 userId */
-  userId: string;
-  /** ready：查得到信箱，發起時會寄送邀請；unavailable：人事資料沒有信箱 */
-  status: 'ready' | 'unavailable';
-  /** 遮罩後的信箱，例如 m***@example.com；unavailable 時為 null */
-  maskedEmail: string | null;
-}

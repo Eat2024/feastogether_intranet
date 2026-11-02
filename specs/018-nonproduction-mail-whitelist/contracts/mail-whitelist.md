@@ -1,6 +1,6 @@
 # Mail Whitelist Contract
 
-**狀態**：已實作；完整驗證與 code review 進行中。未新增 HTTP API 路徑或管理介面。
+**狀態**：簡化政策程式與測試已同步；其他寄送契約沿用，未新增 HTTP API 路徑或管理介面。驗證結果見 quickstart.md。
 
 ## 環境
 
@@ -43,8 +43,11 @@ Error class 必須可被 worker／OTP 明確辨識，不使用字串 message 判
 
 - 規則讀取方式為單次呼叫的有效 `(type,value)` 集合；部門完整代碼／員編完整字串 OR 命中。
 - org_chart 只選精確白名單節點的直接員工，額外 employee 值獨立加入；不遞迴放行子節點。
-- getStaffEmails 每批最多 100，與實際地址相交後用完整員編取得可信有效資格；department 規則還需核對目前 department_id。地址與員編的映射必須來自可信 HR 回應，不能只相信 sender 傳來的員編聲稱。
-- 明確無資料、無有效信箱或不符合資格為 blocked；必要來源連線／格式／歧義為 check-failed。不能靠 User 已登入／部門名稱／文件快照／網域或寄件人身分放行。
+- getStaffEmails 每批最多 100，將候選員編的可信有效信箱與實際地址相交，直接回傳允許集合。地址與員編的映射必須來自可信 HR 回應，不能只相信 sender 傳來的員編聲稱。
+- 不呼叫 staff_lookup／lookupMailEligibleStaff／lookupEligibleStaff 做白名單判定；不逐人確認在職狀態，也不再次查詢 department_id。部門規則依本次 org_chart，額外員編依有效規則，無本地 User 依賴。
+- 明確無候選、無可信有效信箱或實際地址不在允許集合為 blocked；必要 DB／組織樹／信箱來源連線或格式錯誤為 check-failed。不能靠 User 已登入／部門名稱／文件快照／網域或寄件人身分放行。
+- 同一次呼叫只讀一次規則、最多一次組織樹，信箱依候選員編每 100 人分批；逐人資格查詢數為 0。規則及可信信箱仍命中時，不另外以離職／停用狀態否決。
+- 同一可信信箱可對應多個白名單候選員編，允許集合按信箱去重，不因此回報 check-failed。
 - 單次查詢結果可共用，不跨呼叫快取；production 不跑此解析。
 
 ## Worker 結果映射

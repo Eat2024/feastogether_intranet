@@ -4,7 +4,7 @@ import { MailRecipientWhitelist } from './mail-recipient-whitelist.entity';
 
 @Injectable()
 export class MailRecipientWhitelistRepository {
-  findActive(manager: EntityManager): Promise<MailRecipientWhitelist[]> {
+  findActiveRules(manager: EntityManager): Promise<MailRecipientWhitelist[]> {
     return manager.find(MailRecipientWhitelist, {
       where: { deletedAt: IsNull() },
     });

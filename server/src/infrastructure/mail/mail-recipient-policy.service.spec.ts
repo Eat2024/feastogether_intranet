@@ -1,162 +1,106 @@
+import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
 import { MailRecipientPolicyService } from './mail-recipient-policy.service';
 import { MailWhitelistCheckFailedError } from './mail-recipient-policy.errors';
 
 function setup() {
   const rules = {
-    findActive: jest
+    findActiveRules: jest
       .fn()
       .mockResolvedValue([{ type: 'employee', value: '09005001' }]),
   };
   const departments = { getOrgChart: jest.fn().mockResolvedValue([]) };
-  const hr = {
-    getStaffEmails: jest
-      .fn()
-      .mockResolvedValue(new Map([['09005001', 'allowed@example.test']])),
-    lookupMailEligibleStaff: jest.fn().mockResolvedValue({
-      status: 'eligible',
-      staff: { person_empid: '09005001', department_id: null },
+  const upstream = {
+    get: jest.fn(() => {
+      throw new Error('白名單不得逐人查詢資格或部門');
     }),
+    post: jest
+      .fn()
+      .mockResolvedValue([
+        { person_empid: '09005001', email: 'allowed@example.test' },
+      ]),
   };
   const service = new MailRecipientPolicyService(
     { getManager: () => ({}) } as never,
-    rules as never,
+    rules,
     departments as never,
-    hr as never,
+    new FeastogetherHrService(upstream as never),
   );
-  return { service, rules, departments, hr };
+  return { service, rules, departments, upstream };
 }
 
 describe('寄信收件人政策', () => {
-  it.each(['ineligible', 'missing-email', 'unmatched-email'])(
-    '員工規則不放行 %s 或相同網域其他地址',
-    async (condition) => {
-      const { service, hr } = setup();
-      if (condition === 'ineligible')
-        hr.lookupMailEligibleStaff.mockResolvedValue({ status: 'ineligible' });
-      if (condition === 'missing-email')
-        hr.getStaffEmails.mockResolvedValue(new Map([['09005001', null]]));
-      if (condition === 'unmatched-email')
-        hr.getStaffEmails.mockResolvedValue(
-          new Map([['09005001', 'different@example.test']]),
-        );
+  it('額外員編只需可信信箱，資格來源不可用仍允許，不查組織樹或逐人資格', async () => {
+    const { service, departments, upstream } = setup();
+    await expect(
+      service.allowedRecipients(['allowed@example.test', 'other@example.test']),
+    ).resolves.toEqual(new Set(['allowed@example.test']));
+    expect(departments.getOrgChart).not.toHaveBeenCalled();
+    expect(upstream.get).not.toHaveBeenCalled();
+    expect(upstream.post).toHaveBeenCalledWith(
+      '/api/v1/hr/staff_emails',
+      { person_empids: ['09005001'] },
+      { timeoutMs: 10_000 },
+    );
+  });
+
+  it.each([{ rows: [] }, { rows: [{ person_empid: '09005001', email: '' }] }])(
+    '沒有可信有效信箱時不放行：%j',
+    async ({ rows }) => {
+      const { service, upstream } = setup();
+      upstream.post.mockResolvedValue(rows);
       await expect(
-        service.allowedRecipients([
-          'allowed@example.test',
-          'other@example.test',
-        ]),
+        service.allowedRecipients(['allowed@example.test']),
       ).resolves.toEqual(new Set());
+      expect(upstream.get).not.toHaveBeenCalled();
     },
   );
 
-  it('追加規則後可寄、撤銷後阻擋；DB／組織／資格來源失敗都不回部分允許集合', async () => {
-    const { service, rules, departments, hr } = setup();
-    rules.findActive.mockResolvedValueOnce([]);
+  it('同公司網域或 caller 聲稱不能讓未匹配地址進入允許集合', async () => {
+    const { service, upstream } = setup();
+    await expect(
+      service.allowedRecipients(['forged@example.test']),
+    ).resolves.toEqual(new Set());
+    expect(upstream.get).not.toHaveBeenCalled();
+  });
+
+  it('每次重讀規則，新增可寄、撤銷後立即阻擋；空規則不查 HR', async () => {
+    const { service, rules, departments, upstream } = setup();
+    rules.findActiveRules.mockResolvedValueOnce([]);
     await expect(
       service.allowedRecipients(['allowed@example.test']),
     ).resolves.toEqual(new Set());
+    expect(upstream.post).not.toHaveBeenCalled();
     await expect(
       service.allowedRecipients(['allowed@example.test']),
     ).resolves.toEqual(new Set(['allowed@example.test']));
-    rules.findActive.mockRejectedValueOnce(new Error('SQL秘密'));
+    rules.findActiveRules.mockResolvedValueOnce([]);
     await expect(
       service.allowedRecipients(['allowed@example.test']),
-    ).rejects.toThrow('寄送白名單檢查失敗');
-    rules.findActive.mockResolvedValueOnce([
-      { type: 'department', value: 'D01' },
-    ]);
-    departments.getOrgChart.mockRejectedValue(new Error('HR秘密'));
-    await expect(
-      service.allowedRecipients(['allowed@example.test']),
-    ).rejects.toBeInstanceOf(MailWhitelistCheckFailedError);
-    hr.lookupMailEligibleStaff.mockRejectedValue(new Error('歧義'));
-    await expect(
-      service.allowedRecipients(['allowed@example.test']),
-    ).rejects.toBeInstanceOf(MailWhitelistCheckFailedError);
+    ).resolves.toEqual(new Set());
+    expect(rules.findActiveRules).toHaveBeenCalledTimes(3);
+    expect(upstream.post).toHaveBeenCalledTimes(1);
+    expect(departments.getOrgChart).not.toHaveBeenCalled();
+    expect(upstream.get).not.toHaveBeenCalled();
   });
 
-  it('部門外的額外員編獨立允許，缺部門仍可依員編匹配且不查本機 User', async () => {
-    const { service, rules, departments } = setup();
-    rules.findActive.mockResolvedValue([
+  it('精確部門只收直接員工，額外員編獨立加入，不另查目前部門', async () => {
+    const { service, rules, departments, upstream } = setup();
+    rules.findActiveRules.mockResolvedValue([
       { type: 'department', value: 'D01' },
       { type: 'employee', value: '09005001' },
     ]);
     departments.getOrgChart.mockResolvedValue([
-      { department_ch_id: 'D01', employees: [], children: [] },
-    ]);
-    await expect(
-      service.allowedRecipients(['allowed@example.test']),
-    ).resolves.toEqual(new Set(['allowed@example.test']));
-  });
-
-  it('候選超過100人分批，資格最多4並行，同信箱歧義與來源故障整次不放行', async () => {
-    const { service, rules, hr } = setup();
-    const ids = Array.from({ length: 105 }, (_, i) =>
-      String(i).padStart(5, '0'),
-    );
-    rules.findActive.mockResolvedValue(
-      ids.map((value) => ({ type: 'employee', value })),
-    );
-    hr.getStaffEmails.mockImplementation((batch: string[]) => {
-      if (batch.length > 100) throw new Error('批次超限');
-      return Promise.resolve(
-        new Map(batch.map((id) => [id, `${id}@example.test`])),
-      );
-    });
-    let active = 0;
-    let peak = 0;
-    hr.lookupMailEligibleStaff.mockImplementation(async (id: string) => {
-      active += 1;
-      peak = Math.max(peak, active);
-      await new Promise((resolve) => setImmediate(resolve));
-      active -= 1;
-      return {
-        status: 'eligible',
-        staff: { person_empid: id, department_id: null },
-      };
-    });
-    const emails = ids.map((id) => `${id}@example.test`);
-    await expect(service.allowedRecipients(emails)).resolves.toEqual(
-      new Set(emails),
-    );
-    expect(
-      hr.getStaffEmails.mock.calls.map(([batch]: [string[]]) => batch.length),
-    ).toEqual([100, 5]);
-    expect(peak).toBeGreaterThan(1);
-    expect(peak).toBeLessThanOrEqual(4);
-    rules.findActive.mockResolvedValue([
-      { type: 'employee', value: '00001' },
-      { type: 'employee', value: '00002' },
-    ]);
-    hr.getStaffEmails.mockResolvedValue(
-      new Map([
-        ['00001', 'shared@example.test'],
-        ['00002', 'shared@example.test'],
-      ]),
-    );
-    await expect(
-      service.allowedRecipients(['shared@example.test']),
-    ).rejects.toBeInstanceOf(MailWhitelistCheckFailedError);
-    hr.getStaffEmails.mockRejectedValue(new Error('秘密來源內容'));
-    await expect(service.allowedRecipients(emails)).rejects.toThrow(
-      '寄送白名單檢查失敗',
-    );
-  });
-
-  it('精確部門只收直接員工且重查目前部門，子部門與已轉出不能放行', async () => {
-    const { service, rules, departments, hr } = setup();
-    rules.findActive.mockResolvedValue([{ type: 'department', value: 'D01' }]);
-    departments.getOrgChart.mockResolvedValue([
       {
         department_ch_id: 'ROOT',
-        employees: [],
+        employees: [{ person_empid: 'ROOT01' }],
         children: [
           {
             department_ch_id: 'D01',
-            employees: [{ person_empid: '0001' }, { person_empid: '0002' }],
+            employees: [{ person_empid: '0001' }, { person_empid: '09005001' }],
             children: [
               {
                 department_ch_id: 'D0101',
-                employees: [{ person_empid: '0003' }],
+                employees: [{ person_empid: '0002' }],
                 children: [],
               },
             ],
@@ -164,41 +108,133 @@ describe('寄信收件人政策', () => {
         ],
       },
     ]);
-    hr.getStaffEmails.mockResolvedValue(
-      new Map([
-        ['0001', 'one@example.test'],
-        ['0002', 'two@example.test'],
-      ]),
-    );
-    hr.lookupMailEligibleStaff.mockImplementation((id: string) =>
-      Promise.resolve({
-        status: 'eligible',
-        staff: {
-          person_empid: id,
-          department_id: id === '0001' ? 'D01' : 'D02',
-        },
-      }),
-    );
+    upstream.post.mockResolvedValue([
+      { person_empid: '09005001', email: 'allowed@example.test' },
+      { person_empid: '0001', email: 'one@example.test' },
+    ]);
     await expect(
       service.allowedRecipients([
+        'allowed@example.test',
         'one@example.test',
         'two@example.test',
-        'three@example.test',
       ]),
-    ).resolves.toEqual(new Set(['one@example.test']));
-    expect(hr.getStaffEmails).toHaveBeenCalledWith(['0001', '0002']);
+    ).resolves.toEqual(new Set(['allowed@example.test', 'one@example.test']));
+    expect(upstream.post).toHaveBeenCalledWith(
+      '/api/v1/hr/staff_emails',
+      { person_empids: ['09005001', '0001'] },
+      { timeoutMs: 10_000 },
+    );
+    expect(departments.getOrgChart).toHaveBeenCalledTimes(1);
+    expect(upstream.get).not.toHaveBeenCalled();
+    // 組織樹移除直接員工後，下次檢查只剩額外允許員編。
+    departments.getOrgChart.mockResolvedValue([]);
+    upstream.post.mockResolvedValue([
+      { person_empid: '09005001', email: 'allowed@example.test' },
+    ]);
+    await expect(
+      service.allowedRecipients(['allowed@example.test', 'one@example.test']),
+    ).resolves.toEqual(new Set(['allowed@example.test']));
   });
 
-  it('完整員編規則允許可信信箱，撤銷後下一次立即阻擋且不查 HR', async () => {
-    const { service, rules, hr } = setup();
-    await expect(
-      service.allowedRecipients(['allowed@example.test', 'other@example.test']),
-    ).resolves.toEqual(new Set(['allowed@example.test']));
-    rules.findActive.mockResolvedValue([]);
+  it.each([101, 300])(
+    '候選 %i 人時按100人分批，不因收件人數追加逐人請求',
+    async (count) => {
+      const { service, rules, departments, upstream } = setup();
+      const ids = Array.from({ length: count }, (_, i) =>
+        String(i).padStart(5, '0'),
+      );
+      rules.findActiveRules.mockResolvedValue([
+        { type: 'department', value: 'D01' },
+      ]);
+      departments.getOrgChart.mockResolvedValue([
+        {
+          department_ch_id: 'D01',
+          employees: ids.map((person_empid) => ({ person_empid })),
+          children: [],
+        },
+      ]);
+      upstream.post.mockImplementation(
+        (_path: string, body: { person_empids: string[] }) =>
+          Promise.resolve(
+            body.person_empids.map((person_empid) => ({
+              person_empid,
+              email: `${person_empid}@example.test`,
+            })),
+          ),
+      );
+      const emails = ids.slice(0, 50).map((id) => `${id}@example.test`);
+      await expect(service.allowedRecipients(emails)).resolves.toEqual(
+        new Set(emails),
+      );
+      expect(rules.findActiveRules).toHaveBeenCalledTimes(1);
+      expect(departments.getOrgChart).toHaveBeenCalledTimes(1);
+      expect(
+        upstream.post.mock.calls.map(
+          ([, body]: [string, { person_empids: string[] }]) =>
+            body.person_empids.length,
+        ),
+      ).toEqual(count === 101 ? [100, 1] : [100, 100, 100]);
+      expect(upstream.get).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([2, 101])(
+    '%i 個候選員編共用信箱時只保留一個地址，跨批次亦去重',
+    async (count) => {
+      const { service, rules, upstream } = setup();
+      const ids = Array.from({ length: count }, (_, index) =>
+        String(index).padStart(5, '0'),
+      );
+      rules.findActiveRules.mockResolvedValue(
+        ids.map((value) => ({ type: 'employee', value })),
+      );
+      upstream.post.mockImplementation(
+        (_path: string, body: { person_empids: string[] }) =>
+          Promise.resolve(
+            body.person_empids.map((person_empid) => ({
+              person_empid,
+              email: 'shared@example.test',
+            })),
+          ),
+      );
+      await expect(
+        service.allowedRecipients([
+          'shared@example.test',
+          'other@example.test',
+        ]),
+      ).resolves.toEqual(new Set(['shared@example.test']));
+      expect(upstream.post).toHaveBeenCalledTimes(Math.ceil(count / 100));
+      expect(upstream.get).not.toHaveBeenCalled();
+    },
+  );
+
+  it('必要來源故障不放行，也不回傳先前批次已解析的部分名單', async () => {
+    const { service, rules, departments, upstream } = setup();
+    rules.findActiveRules.mockRejectedValueOnce(new Error('SQL秘密'));
     await expect(
       service.allowedRecipients(['allowed@example.test']),
-    ).resolves.toEqual(new Set());
-    expect(hr.getStaffEmails).toHaveBeenCalledTimes(1);
-    expect(hr.getStaffEmails).toHaveBeenCalledWith(['09005001']);
+    ).rejects.toThrow('寄送白名單檢查失敗');
+    rules.findActiveRules.mockResolvedValueOnce([
+      { type: 'department', value: 'D01' },
+    ]);
+    departments.getOrgChart.mockRejectedValueOnce(new Error('HR秘密'));
+    await expect(
+      service.allowedRecipients(['allowed@example.test']),
+    ).rejects.toBeInstanceOf(MailWhitelistCheckFailedError);
+    rules.findActiveRules.mockResolvedValue(
+      Array.from({ length: 101 }, (_, i) => ({
+        type: 'employee',
+        value: String(i).padStart(5, '0'),
+      })),
+    );
+    upstream.post
+      .mockResolvedValueOnce([
+        { person_empid: '00000', email: 'allowed@example.test' },
+      ])
+      .mockRejectedValueOnce(new Error('HR秘密'));
+    await expect(
+      service.allowedRecipients(['allowed@example.test']),
+    ).rejects.toThrow('寄送白名單檢查失敗');
+    expect(upstream.get).not.toHaveBeenCalled();
   });
 });

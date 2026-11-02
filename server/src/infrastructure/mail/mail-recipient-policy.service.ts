@@ -6,6 +6,11 @@ import { FeastogetherHrService } from '#app/infrastructure/http-client/feastoget
 import { MailRecipientWhitelistRepository } from './mail-recipient-whitelist.repository';
 import { MailWhitelistCheckFailedError } from './mail-recipient-policy.errors';
 
+interface RecipientWhitelistRules {
+  employeeIds: ReadonlySet<string>;
+  departmentIds: ReadonlySet<string>;
+}
+
 @Injectable()
 export class MailRecipientPolicyService {
   constructor(
@@ -18,65 +23,89 @@ export class MailRecipientPolicyService {
   /** 每次寄送重新讀取，查詢結果只在本次呼叫共用。 */
   async allowedRecipients(emails: readonly string[]): Promise<Set<string>> {
     try {
-      const rules = await this.rules.findActive(this.mysql.getManager());
-      const employeeRules = new Set(
-        rules
-          .filter((rule) => rule.type === 'employee')
-          .map((rule) => rule.value),
+      const rules = await this.loadActiveRules();
+      const employeeIds = await this.collectCandidateEmployeeIds(rules);
+      if (!employeeIds.size) return new Set();
+
+      const matchedRecipients = await this.matchRecipientEmails(
+        employeeIds,
+        emails,
       );
-      const departmentRules = new Set(
-        rules
-          .filter((rule) => rule.type === 'department')
-          .map((rule) => rule.value),
-      );
-      const employees = new Set(employeeRules);
-      if (departmentRules.size) {
-        const visit = (nodes: OrgDepartmentDto[]) => {
-          for (const node of nodes) {
-            if (departmentRules.has(node.department_ch_id))
-              for (const employee of node.employees)
-                employees.add(employee.person_empid);
-            visit(node.children);
-          }
-        };
-        visit(await this.departments.getOrgChart());
-      }
-      if (!employees.size) return new Set();
-      const ids = [...employees];
-      const requestedEmails = new Set(emails);
-      const matched = new Map<string, string>();
-      const addresses = new Set<string>();
-      for (let offset = 0; offset < ids.length; offset += 100) {
-        const mapped = await this.hr.getStaffEmails(
-          ids.slice(offset, offset + 100),
-        );
-        for (const [id, email] of mapped) {
-          if (!email || !requestedEmails.has(email)) continue;
-          if (addresses.has(email)) throw new MailWhitelistCheckFailedError();
-          addresses.add(email);
-          matched.set(id, email);
-        }
-      }
-      const allowed = new Set<string>();
-      const candidates = [...matched];
-      for (let offset = 0; offset < candidates.length; offset += 4) {
-        await Promise.all(
-          candidates.slice(offset, offset + 4).map(async ([id, email]) => {
-            const result = await this.hr.lookupMailEligibleStaff(id);
-            if (
-              result.status === 'eligible' &&
-              result.staff.person_empid === id &&
-              (employeeRules.has(id) ||
-                (result.staff.department_id &&
-                  departmentRules.has(result.staff.department_id)))
-            )
-              allowed.add(email);
-          }),
-        );
-      }
-      return allowed;
+      return matchedRecipients;
     } catch {
       throw new MailWhitelistCheckFailedError();
     }
+  }
+
+  /** 將最新有效規則分為完整員編與精確部門代碼。 */
+  private async loadActiveRules(): Promise<RecipientWhitelistRules> {
+    const rules = await this.rules.findActiveRules(this.mysql.getManager());
+    return {
+      employeeIds: new Set(
+        rules
+          .filter((rule) => rule.type === 'employee')
+          .map((rule) => rule.value),
+      ),
+      departmentIds: new Set(
+        rules
+          .filter((rule) => rule.type === 'department')
+          .map((rule) => rule.value),
+      ),
+    };
+  }
+
+  /** 合併額外允許員編與白名單部門的直接員工。 */
+  private async collectCandidateEmployeeIds(
+    rules: RecipientWhitelistRules,
+  ): Promise<Set<string>> {
+    const employeeIds = new Set(rules.employeeIds);
+    if (rules.departmentIds.size) {
+      const departments = await this.departments.getOrgChart();
+      this.collectDepartmentEmployeeIds(
+        departments,
+        rules.departmentIds,
+        employeeIds,
+      );
+    }
+    return employeeIds;
+  }
+
+  /** 走訪所有節點尋找精確部門，不因上層命中而放行子部門。 */
+  private collectDepartmentEmployeeIds(
+    departments: readonly OrgDepartmentDto[],
+    allowedDepartmentIds: ReadonlySet<string>,
+    employeeIds: Set<string>,
+  ): void {
+    for (const department of departments) {
+      if (allowedDepartmentIds.has(department.department_ch_id)) {
+        for (const employee of department.employees) {
+          employeeIds.add(employee.person_empid);
+        }
+      }
+      this.collectDepartmentEmployeeIds(
+        department.children,
+        allowedDepartmentIds,
+        employeeIds,
+      );
+    }
+  }
+
+  /** 分批取得可信信箱，只保留本次收件人，重複信箱由 Set 去重。 */
+  private async matchRecipientEmails(
+    employeeIds: ReadonlySet<string>,
+    emails: readonly string[],
+  ): Promise<Set<string>> {
+    const ids = [...employeeIds];
+    const requestedEmails = new Set(emails);
+    const addresses = new Set<string>();
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const mapped = await this.hr.getStaffEmails(
+        ids.slice(offset, offset + 100),
+      );
+      for (const email of mapped.values()) {
+        if (email && requestedEmails.has(email)) addresses.add(email);
+      }
+    }
+    return addresses;
   }
 }

@@ -1,6 +1,6 @@
 # Phase 0 Research: 寄送邊界與可信收件人
 
-**狀態**：以下保留規劃階段研究與決策，無待釐清需求；當時只讀程式與先前 Portal 部門結果。後續實作與隔離驗證結果見 quickstart.md，未呼叫真實 SMTP。
+**狀態**：第 3 節已依使用者本次指示修訂，取消逐人資格查詢；其餘決策沿用。簡化程式與測試已同步，歷史與本次驗證結果分列於 quickstart.md。
 
 ## 1. 單一具體 sender 保護兩種 driver
 
@@ -15,14 +15,14 @@
 - **Rationale**：支援無須重啟的增刪，避免同時出現有效與撤銷的同一規則。無需 is_active 或 environment。
 - **Alternatives considered**：環境變數需重啟；DB 加 Email 快照會在信箱異動時殘留；管理頁/API 尚無需求。
 
-## 3. 信箱集合解析，不能只核對員編聲稱
+## 3. 依白名單解析允許信箱（2026-11-02 修訂）
 
-- **Decision**：每次非 production 檢查：讀有效規則；有部門規則才查 org_chart，走訪尋找精確節點但只收其直接 employees，不合併 children；與額外 employee 規則合併候選員編。依每批最多 100 員編呼叫 staff_emails，找與本次實際收件地址相同的候選，再用 lookupEligibleStaff 精確核對這些候選的有效資格、當前部門及命中規則，最後確認地址仍來自該完整員編的可信回應。
-- **Rationale**：sender 只有地址，沒有可信 Email→員工 API；先解析候選信箱可避免對每個部門所有人都逐一查 eligibility。真正準備放行的員工仍需核對目前資格與部門，不把 org chart 舊位置或 staff_emails 的稀疏 map 視為在職證據。
-- **Alternatives considered**：只看本機 User 漏掉未登入員工；只看 email domain、caller userId 或文件部門不代表實際收件人。每封信先抓全公司信箱造成過度查詢。
-- **細節**：信箱沿既有 trim＋lowercase 正規化，但不解析顯示名稱為多地址，也不擴張 plus alias 或網域規則。候選去重；相同實際地址若無法唯一核對可信對象，不寄送並列檢查失敗。明確查得無員工、非有效資格、轉出允許部門且無員編例外，為 blocked；上游網路／格式／多筆歧義為 check-failed，不能把所有 lookupEligibleStaff 的 AppException 都當同一種失敗。必要時在既有 HR service 補內部 typed lookup 結果，不改既有登入對外錯誤契約。
-- **效能**：同一次群發共享規則／候選／來源結果；staff_emails 批次序列，匹配候選資格核對最多 4 個並行、每員編只核對一次，沿既有 timeout，不新增 env 或跨呼叫 cache。空規則直接 blocked，不查 HR。必要來源中途故障時此次尚未交 SMTP 的檢查整批失敗，禁止部分解析結果誤放行。
-- **Limits**：上游資料是查詢時點的可信狀態，不是 DB／HR／SMTP 分散式交易；規則撤銷適用下次開始的檢查，已交 SMTP 無法追回。
+- **Decision**：每次非 production 檢查讀有效規則；有部門規則才查 org_chart，僅收精確節點的直接 employees，與額外 employee 規則聯集去重。每批最多 100 員編查 staff_emails，與本次實際地址取交集，直接產生允許集合。
+- **Rationale**：使用者要求測試環境以避免寄給白名單外地址為目的，不承擔逐人再次確認在職資格及部門的成本。部門以本次組織樹為準，額外員編由白名單維護，不改登入或簽署資格驗證。
+- **已撤回方案**：原先對匹配員工逐人呼叫 lookupEligibleStaff／lookupMailEligibleStaff 會形成 N+1；最多 4 個並行只有限流效果。此方案已被使用者本次指示取代，不再是實作要求。
+- **細節**：信箱沿既有 trim＋lowercase 正規化，不解析顯示名稱為多地址、不擴張 plus alias 或網域規則。多個候選員編對應同一可信信箱時直接去重，不額外驗證唯一員工身分。無候選或無可信有效信箱為 blocked；必要 DB／組織樹／信箱查詢的連線或格式錯誤為 check-failed。
+- **效能**：同次群發共用規則及解析結果；staff_emails 每批最多 100、依序查詢。只有員編規則時不查組織樹；空規則不查 HR；逐人資格查詢數必須為 0。不新增快取、排程、環境變數或上游 API。來源中途故障仍整次不寄，不使用部分解析結果放行。
+- **Limits**：本政策不額外偵測停用／離職或組織樹更新延遲。實際地址仍在規則解析的允許集合內即可寄送；若需停止，撤銷規則或維護上游名單／信箱。規則提交後下次開始的檢查生效，已交 SMTP 無法追回。
 
 ## 4. 區分政策與投遞結果
 
@@ -51,4 +51,4 @@
 
 ## 審查結果
 
-使用一個唯讀研究代理交叉檢查 sender／worker／OTP／HR，已補上原 invitation recovery 無次數上限的缺口。全部決策已納入 plan 與 contracts；無未解決需求或額外產品範圍。
+原版本曾以唯讀研究交叉檢查 sender／worker／OTP／HR 並補上 recovery 上限。本次第 3 節的簡化決策已同步至 spec、plan 與 contracts；其後已同步程式並重驗，結果另記於 quickstart.md；原雙軸審查紀錄仍屬修訂前版本。

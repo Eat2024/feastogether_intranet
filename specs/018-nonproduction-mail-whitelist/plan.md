@@ -4,11 +4,11 @@
 
 **Input**: Spec 018；setup-plan feature 識別為 `018-nonproduction-mail-whitelist`，實際 Git 分支如上。
 
-**Status**: 依已確認的本機 tickets 01–05 實作並全部整合結案；完整驗證與雙軸 code review 已完成。未部署或寄送真實郵件。
+**Status**: 簡化政策程式與測試已同步，本輪驗證另記於 quickstart.md；原 tickets 01–05 的結案與雙軸審查紀錄保留為修訂前歷史，未部署。
 
 ## Summary
 
-新增使用者確認的七欄白名單表。只有 production 略過政策，其餘合法環境在每次 send／sendOtp／sendInternalGroup 前讀有效規則並核對實際信箱。以一個具體共用寄信入口套住既有 SMTP／fake adapters，不建立泛用授權框架。規則使用可信 HR 員編／部門與信箱，與文件部門權限及 Spec 017 無相依。
+新增使用者確認的七欄白名單表。只有 production 略過政策，其餘合法環境在每次 send／sendOtp／sendInternalGroup 前讀有效規則並核對實際信箱。以一個具體共用寄信入口套住既有 SMTP／fake adapters，不建立泛用授權框架。規則使用本次組織樹白名單部門的直接員工及額外員編，再批次解析可信信箱；不逐人查詢在職資格或再次確認部門。與文件部門權限及 Spec 017 無相依。
 
 blocked 明確跳過、不重試；資料來源故障屬確定未寄送的檢查失敗；SMTP 已開始後仍沿既有不明結果與防重寄語意。OTP blocked 不存新碼、不回報 sent。
 
@@ -26,7 +26,7 @@ blocked 明確跳過、不重試；資料來源故障屬確定未寄送的檢查
 
 **Project Type**: pnpm workspace 的 Web／worker 系統。
 
-**Performance Goals**: 每次寄送呼叫讀一次有效規則；同次群發共用解析，不為每個地址重抓組織樹；staff_emails 每批最多 100 員編。授權查詢不得跨呼叫快取，避免撤銷無法立即反映。
+**Performance Goals**: 每次寄送呼叫讀一次有效規則；同次群發共用解析，不為每個地址重抓組織樹；staff_emails 每批最多 100 員編，不呼叫 staff_lookup／lookupMailEligibleStaff／lookupEligibleStaff 做白名單判定。若候選數為 C，有部門規則時 D=1、否則 D=0，成功檢查的 HR 請求數為 D + ceil(C/100)，無逐人追加查詢。解析結果不得跨呼叫快取，避免撤銷無法立即反映。
 
 **Constraints**: 僅七個核准欄位；無管理 API／頁、無 env 開關、無自動同步或排程、無測試轉寄；production 不執行僅為白名單新增的 DB／HR 查詢。
 
@@ -43,7 +43,7 @@ blocked 明確跳過、不重試；資料來源故障屬確定未寄送的檢查
 | 清楚邊界 | 通過：單一公開寄送 token、內部 adapters 不提供旁路，OTP／worker 明確消費結果 |
 | 驗證 | 通過：env、撤銷、混合群發、來源故障、OTP、retry 與 migration 皆有驗收設計 |
 
-全部需求已確認，無待釐清的產品決策。未知上游真實容量以合成負載驗證，不新增未經確認的 SLA。
+本次依使用者明確指示取消逐人資格覆核，保留必要的白名單與信箱解析。上游組織樹／信箱的更新時點不由本政策再驗證；不新增未經確認的 SLA。
 
 ## Project Structure
 
@@ -85,11 +85,18 @@ client/src/features/esign-documents/notificationLabels.ts
 ## 實作順序
 
 1. **Schema／維護**：七欄、唯一鍵與 constraint、schema.sql、up/down；獨立一次性四筆初始資料步驟，不能每次啟動 seed。缺表或查詢失敗不得放行。
-2. **環境／解析政策**：明確 NODE_ENV 必填；production 直接走原 sender，其他合法值查 DB／HR；取得允許信箱集合，與實際地址比對。
+2. **環境／解析政策**：明確 NODE_ENV 必填；production 直接走原 sender，其他合法值查 DB／HR；依組織樹直接員工與額外員編形成候選，批次取得允許信箱集合並與實際地址比對，不追加逐人資格查詢。
 3. **共用寄送入口**：send／sendOtp 保留 Promise<void>，blocked／檢查故障用型別化錯誤；group 增加 blocked／check-failed 結果，過濾後才交 adapter，再合併逐人狀態。
 4. **結果整合**：worker 三條通知路徑補 skipped／failed 與租約清理；OTP 補 recipient-blocked 結果與對外一般失敗頁，成功語意不變。
 5. **初始資料與 UI**：受控一次性維護步驟加入三部門、一員編；既有通知畫面顯示原因。無新增維護 UI/API。
 6. **驗證**：產生假 HR／SMTP 的合成環境與故障案例，所有非 production E2E fixtures 需經政策，不用全域 mock 成允許；完成 lint／單元／schema／E2E／build。
+
+## 本次簡化的實作調整
+
+- `allowedRecipients()` 完成規則解析與可信信箱匹配後直接回傳允許集合；移除 `filterEligibleRecipients()`／`isEligibleEmployee()` 的逐人 HR 覆核。
+- 寄信政策不再呼叫 `lookupMailEligibleStaff()`；已確認無其他用途並移除該 helper 與專屬測試，保留登入等既有 `lookupEligibleStaff()` 流程及離職拒絕測試。
+- 測試改驗證組織樹直接員工、額外員編、可信信箱與規則撤銷；逐人資格 API 設為不可呼叫，驗證呼叫數為 0，並核對信箱每批最多 100 筆。
+- 保留來源故障不寄送、群發結果、OTP、防重寄與敏感資料邊界的既有驗收。本次驗證結果另列 quickstart.md。
 
 ## Seed 與部署
 
@@ -112,4 +119,4 @@ client/src/features/esign-documents/notificationLabels.ts
 
 ## 實作追蹤
 
-本功能未另外建立 tasks.md；使用者確認後採 `.scratch/018-nonproduction-mail-whitelist/issues/` 的五張 tickets 追蹤相依與驗收。01 維護 → 02 共用政策／單人邀請 → 03 群發／催簽與 04 OTP → 05 整合驗證。正式環境操作依 [maintenance.md](maintenance.md)，驗證紀錄見 [quickstart.md](quickstart.md)。
+本功能未另外建立 tasks.md；使用者確認後採 `.scratch/018-nonproduction-mail-whitelist/issues/` 的五張 tickets 追蹤相依與驗收。01 維護 → 02 共用政策／單人邀請 → 03 群發／催簽與 04 OTP → 05 整合驗證。原票單驗收及結案歷史保留，不回寫成新政策已實作；本輪差異以本文件「本次簡化的實作調整」追蹤。正式環境操作依 [maintenance.md](maintenance.md)，歷史驗證紀錄與待驗收項目見 [quickstart.md](quickstart.md)。

@@ -31,16 +31,6 @@ describe.each([
       const upstream = {
         get: jest.fn((path: string) => {
           if (path === '/api/v1/hr/org_chart') return Promise.resolve([]);
-          if (path === `/api/v1/hr/staff_lookup?person_empid=${empid}`)
-            return Promise.resolve([
-              {
-                person_empid: empid,
-                person_name: '合成收件人',
-                person_status: 1,
-                person_status_name: '正式',
-                department_id: null,
-              },
-            ]);
           throw new Error('未安排的合成 HR 查詢');
         }),
         post: jest.fn((path: string, body: { person_empids: string[] }) => {
@@ -122,7 +112,10 @@ describe.each([
         );
         if (environment === 'production') {
           readRules = jest
-            .spyOn(module.get(MailRecipientWhitelistRepository), 'findActive')
+            .spyOn(
+              module.get(MailRecipientWhitelistRepository),
+              'findActiveRules',
+            )
             .mockRejectedValue(new Error('合成 DB 故障'));
           upstream.get.mockImplementation(() => {
             throw new Error('合成 HR 故障');
@@ -218,6 +211,8 @@ describe.each([
             expect(fakeSend).not.toHaveBeenCalled();
           }
         }
+        // 員編規則不需組織樹，也不得逐人查詢資格；所有寄送種類均適用。
+        expect(upstream.get).not.toHaveBeenCalled();
       } finally {
         readRules?.mockRestore();
         await manager.delete(MailRecipientWhitelist, {

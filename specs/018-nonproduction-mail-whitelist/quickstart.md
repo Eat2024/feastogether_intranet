@@ -1,12 +1,12 @@
 # Quickstart: 非 production 白名單驗證
 
-程式已實作；以下為隔離測試與受控切換指南，執行結果另列於本文末。不得藉此指令對 UAT 寫入或寄送真實郵件。
+簡化政策的程式與測試已同步；本文件分別記錄修訂前與本次驗證證據。不得藉此指令對 UAT 寫入或寄送真實郵件。
 
 ## 前置條件
 
 - pnpm workspace、既有 MySQL／Redis；測試 DB 只能使用 feastogether_intranet_test 前綴，不能用 UAT。
 - 依 server/.env.example 設定明確合法 NODE_ENV 與既有 driver；不得印出或提交密碼／API key。
-- HR org_chart／staff_emails／完整員編查詢使用合成 stub，SMTP transporter 使用攔截 spy；不使用真實員工地址或真的 SMTP。
+- HR org_chart／staff_emails 使用合成 stub，SMTP transporter 使用攔截 spy；白名單檢查中的逐人員工資格查詢應設為不可呼叫並確認呼叫數為 0，不使用真實員工地址或真的 SMTP。
 - 測試具體 guarded sender，底層 fake observer 只記允許地址。不要將公開 token 全域 override 成繞過政策的 fake，也不要將測試 NODE_ENV 改 production 求通過。
 - 現有本機 MySQL 憑證驗證失敗，實作驗證改用一次性本機 MySQL 8.4 容器與獨立 Redis；保留測試 DB 前綴及 Redis DB 非 0 保護。
 
@@ -30,9 +30,17 @@
 
 1. 部門命中或額外員編命中可寄，兩者皆不命中 blocked。
 2. 額外員編前導零保留；同名部門、上層／子部門、同公司網域、caller 偽造身分均不放行。
-3. 員工轉出且不在員編規則時 blocked；離職／停用不得因舊 email mapping 通過。
+3. 本次組織樹不再含該部門員工、且沒有額外員編規則時 blocked；仍命中額外員編且取得可信信箱時可寄。僅在逐人資格來源設定離職／停用或不同部門，不影響本政策，因該來源根本不應被呼叫。
 4. 不要求本機 User 存在；外部 email 若是允許員工可信信箱可過，其他外部信箱不過。
-5. 必要 DB／HR 故障或歧義為 check-failed；沒有正常結果的地址不能從部分解析名單放行。
+5. 必要 DB／HR 連線或格式錯誤為 check-failed；沒有正常結果的地址不能從部分解析名單放行。
+
+## 查詢成本與簡化驗收
+
+- 將 staff_lookup／lookupMailEligibleStaff／lookupEligibleStaff 設為呼叫即失敗；邀請、群發、催簽及 OTP 的白名單檢查仍可正常判定，且三者呼叫數為 0。既有登入等業務呼叫另行觀察，不計入白名單政策。
+- 空規則：一次規則查詢，HR 呼叫 0 次；只有員編規則：不查組織樹，信箱每批最多 100 人。
+- 有部門規則、去重候選 300 人、本次收件 50 人：一次規則查詢、一次組織樹、三次信箱查詢；不得再出現 50 次資格查詢。
+- 候選 101 人時，信箱查詢批次為 100＋1；每次寄送重新讀取規則，不以跨呼叫快取降低測試次數。
+- 移除舊測試中「逐人資格查詢最多 4 並行」與「以額外資格查詢拒絕離職／轉部門」的預期，改驗證上述零逐人查詢與組織樹／規則判定。
 
 ## 群發與 worker
 
@@ -79,7 +87,9 @@ pnpm build
 
 既有兩個跨台北午夜案例在移動測試時鐘後重新核發測試 session，保留正式 session TTL 與 auth guard；基線曾因此出現 401。6000 人容量案例保留，基線完整 E2E 約 161 秒，需等待 worker 完成逐批紀錄。
 
-## 2026-11-02 實作驗證紀錄
+## 2026-11-02 原版本實作驗證紀錄（簡化修訂前）
+
+以下保留修訂前歷史證據；本次零逐人資格查詢的驗證另列於後續章節。
 
 - TDD：原核心寄送案例改經真實白名單後，未安排合成名單時 17 項失敗（403），加入明確 fixture 後 25 項核心案例全數通過，不能將 fake 成功當作送達。
 - 原生環境矩陣：AppModule／WorkerModule × development／test／staging／production，共 8 項通過；暫時還原成舊未保護 adapter 時 8 項全數失敗，實驗後已還原。
@@ -88,3 +98,20 @@ pnpm build
 - `pnpm -C server test --runInBand`：108 suites／1,006 tests 通過；`pnpm lint` 通過（既有 warnings、0 errors）；`pnpm -C server build` 通過。
 - `pnpm -C server test:e2e`：32 suites／345 tests 通過，162.123 秒，包含 6000 人完整發起與群發。整合分支 `pnpm build` 前後端通過；正式 Standards／Spec review 各 0 項發現，範圍為 `fb3c4ea...8546772`。
 - 未執行 UAT／production migration、seed、部署或真實 HR／SMTP 呼叫。正式切換仍須依維護程序操作。
+
+## 2026-11-02 簡化政策實作驗證紀錄
+
+- `allowedRecipients()` 現在直接回傳批次解析的可信收件信箱；移除 `filterEligibleRecipients()`、`isEligibleEmployee()` 與無其他用途的 `lookupMailEligibleStaff()`。登入等既有 `lookupEligibleStaff()` 保留。
+- 白名單單元測試使用真實 HR service 搭配合成上游，逐人 GET 一旦被呼叫即失敗；驗證組織樹直接員工、額外員編、規則撤銷、空／無效信箱、重複信箱去重與來源故障。
+- 候選 101 人的信箱批次為 100＋1；候選 300 人、實際收件 50 人時為一次組織樹及三次信箱查詢，逐人資格查詢 0 次。來源故障仍不回傳先前批次已解析的部分允許集合。
+- 原生 HTTP／worker 四環境矩陣與 OTP 測試移除可用的逐人資格替身，明確斷言 GET 呼叫 0 次；worker 的逐人查詢替身也設為呼叫即失敗。
+- `pnpm -C server test --runInBand`：108 suites／1,003 tests 通過；最後測試型別清理後重跑白名單政策 10 項通過。原寄信資格專用案例移除，登入離職拒絕案例保留。
+- `pnpm -C server test:e2e`：32 suites／345 tests 通過，161.151 秒，包含 6,000 人容量案例。
+- `pnpm -C server test:e2e:security`：13 suites／73 tests 通過；`pnpm -C server test:schema`：3 suites／14 tests 通過。
+- `pnpm -C server lint:check` 與 `pnpm -C server build` 通過；本次修改的 policy／HR／fixture／E2E 檔案另外直接執行 ESLint，0 errors、0 warnings。
+- 使用一次性本機 MySQL 8.4／Redis 與合成 HR／SMTP，未操作 UAT／production 或寄真實郵件。本輪無前端、migration、dependency 或環境設定變更；原雙軸 code review 結果仍僅適用修訂前版本。
+
+### 後續簡化：重複信箱只去重
+
+- 多個候選員編對應同一可信信箱時，允許集合直接以 Set 去重；保留空值及本次實際收件地址的過濾，不再因共享信箱回報檢查失敗。
+- 同批 2 人與跨批 101 人共用信箱的案例通過；完整單元測試 108 suites／1,004 tests、server lint（0 errors，既有 warnings）及 build 通過。本次未重跑 DB E2E，上述 E2E／安全／schema 紀錄屬去重調整前的驗證。

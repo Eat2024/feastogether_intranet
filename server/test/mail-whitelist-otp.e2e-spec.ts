@@ -27,20 +27,9 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
   const email = `${empid.toLowerCase()}@example.test`;
   const transport = jest.spyOn(FakeInvitationMailSender.prototype, 'sendOtp');
   const hr = {
-    get: (path: string) => {
-      if (sourceFailed) throw new Error('synthetic-upstream-secret');
-      if (path === `/api/v1/hr/staff_lookup?person_empid=${empid}`)
-        return Promise.resolve([
-          {
-            person_empid: empid,
-            person_name: '合成白名單員工',
-            person_status: 1,
-            person_status_name: '正式',
-            department_id: null,
-          },
-        ]);
-      throw new Error('未安排的合成上游查詢');
-    },
+    get: jest.fn(() => {
+      throw new Error('OTP 白名單不得逐人查詢資格');
+    }),
     post: (path: string, body: { person_empids: string[] }) => {
       if (sourceFailed) throw new Error('synthetic-upstream-secret');
       if (path === '/api/v1/hr/staff_emails')
@@ -77,6 +66,9 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
       .get(MysqlService)
       .getManager()
       .delete(MailRecipientWhitelist, { type: 'employee', value: empid });
+  });
+  afterEach(() => {
+    expect(hr.get).not.toHaveBeenCalled();
   });
   afterAll(async () => {
     transport.mockRestore();

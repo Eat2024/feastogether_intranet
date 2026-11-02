@@ -49,23 +49,8 @@ async function fixture(ds: DataSource) {
         staff.filter((item) => body.person_empids.includes(item.person_empid)),
       ),
     ),
-    get: jest.fn((path: string) => {
-      const id = new URL(path, 'https://hr.example.test').searchParams.get(
-        'person_empid',
-      );
-      return Promise.resolve(
-        staff
-          .filter((item) => item.person_empid === id)
-          .map((item) => ({
-            person_empid: item.person_empid,
-            person_name: '合成員工',
-            department_id: null,
-            department_name: null,
-            title: null,
-            person_status: 1,
-            person_status_name: '正式',
-          })),
-      );
+    get: jest.fn(() => {
+      throw new Error('員編白名單的 worker 不得逐人查詢資格');
     }),
   };
   const policy = new MailRecipientPolicyService(

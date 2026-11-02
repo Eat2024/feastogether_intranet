@@ -72,7 +72,7 @@ describe('白名單 schema 與維護', () => {
         );
       }
       expect(
-        await new MailRecipientWhitelistRepository().findActive(ds.manager),
+        await new MailRecipientWhitelistRepository().findActiveRules(ds.manager),
       ).toHaveLength(4);
     });
   });
@@ -88,7 +88,7 @@ describe('白名單 schema 與維護', () => {
         'utf8',
       );
       await ds.query(seed);
-      const rules = await repository.findActive(ds.manager);
+      const rules = await repository.findActiveRules(ds.manager);
       expect(rules.map(({ type, value }) => [type, value]).sort()).toEqual([
         ['department', '1029010000'],
         ['department', '1029030000'],
@@ -107,7 +107,7 @@ describe('白名單 schema 與維護', () => {
       expect(
         await ds.query('SELECT * FROM mail_recipient_whitelist ORDER BY id'),
       ).toEqual(revoked);
-      expect(await repository.findActive(ds.manager)).toHaveLength(3);
+      expect(await repository.findActiveRules(ds.manager)).toHaveLength(3);
       await expect(
         ds.query(
           "INSERT INTO mail_recipient_whitelist(type,value) VALUES ('employee','09005001')",
@@ -117,7 +117,7 @@ describe('白名單 schema 與維護', () => {
         "UPDATE mail_recipient_whitelist SET deleted_at=NULL, updated_at=UTC_TIMESTAMP(6) WHERE type='employee' AND value='09005001'",
       );
       expect(
-        (await repository.findActive(ds.manager)).find(
+        (await repository.findActiveRules(ds.manager)).find(
           (rule) => rule.type === 'employee',
         )?.id,
       ).toBe(employee?.id);

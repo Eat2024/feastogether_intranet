@@ -86,23 +86,6 @@ export class SyntheticMailFixture {
           Promise.resolve(
             new Map(ids.map((id) => [id, this.staff.get(id) ?? null])),
           );
-        hr.lookupMailEligibleStaff = (id) =>
-          Promise.resolve(
-            this.staff.has(id)
-              ? {
-                  status: 'eligible',
-                  staff: {
-                    person_empid: id,
-                    person_name: '合成收件員工',
-                    person_status: 1,
-                    person_status_name: '正式',
-                    department_id: this.department,
-                    department_name: '合成寄信部門',
-                    title: null,
-                  },
-                }
-              : { status: 'ineligible' },
-          );
         this.config ??= config;
         const policy = new MailRecipientPolicyService(
           mysql,

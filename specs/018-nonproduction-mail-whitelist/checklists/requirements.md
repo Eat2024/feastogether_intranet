@@ -26,8 +26,10 @@
 ## Feature Readiness
 
 - [x] US1 非正式環境限制、US2 維護規則、US3 群發結果、US4 OTP 各有獨立驗收。
-- [x] FR-001～FR-014 可對應情境與 SC-001～SC-006。
-- [x] 七欄資料表已獲使用者確認；plan／research／data-model／contracts／quickstart 已完成，可進入 speckit-tasks。
+- [x] FR-001～FR-014 可對應情境與 SC-001～SC-007。
+- [x] 簡化需求已同步至 spec／plan／research／contracts／quickstart／impact-analysis；七欄資料模型不變，程式與測試已同步，驗證結果見 quickstart.md。
+- [x] 明確取消逐人資格／目前部門覆核，保留可信信箱及有效規則判定，列出零逐人查詢的可測驗收。
+- [x] 原版本測試與結案紀錄標示為歷史，不當作本修訂已驗收。
 
 ## Notes
 

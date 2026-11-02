@@ -65,6 +65,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
       new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         {} as never,
+        {} as never,
       ),
       new PdfValidationService(),
       storage as never,

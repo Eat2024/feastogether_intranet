@@ -37,3 +37,11 @@
 - server build、修改檔案 ESLint（0 errors/warnings）、diff check 通過。
 - schema.sql 由隔離 MySQL mysqldump 產出，只有三欄及一索引；up/down/up、精確代碼、NULL 舊資料及證據不變均通過。
 - User.departmentName 與既有 nullable signer.departmentSnapshot 補上 TS null 型別，不改既有資料庫欄位。
+
+## Ticket 03（T006–T010）
+
+- 登入同步新增14個行為斷言先紅後綠，相關3 suites／65 tests通過；OAuth使用現有HR且無需新增provider。
+- 政策先確認缺少新方法／constructor參數失敗，再實作後47 tests通過；涵蓋精確字串、NULL／空白、失效員工、調職建立人讀取與匯出差異、交易鎖User。
+- 完整server unit 108 suites／1,032 tests通過，server lint 0 errors／267 warnings，server build通過。既有policy constructor mocks僅補新增repository依賴。
+- 合成fixtures與E2E／security收集規則已建立，HTTP功能案例待ticket04建立執行；三種登入E2E待ticket09，不宣稱已驗收。
+- 前後端新增 ESIGN_DEPARTMENT_UNAVAILABLE／409；無新env／session格式。未連線UAT。

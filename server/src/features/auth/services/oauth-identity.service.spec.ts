@@ -11,16 +11,24 @@ describe('OauthIdentityService', () => {
       saveUser: jest.fn(),
     };
     const logger = { info: jest.fn() };
+    const hr = {
+      lookupEligibleStaff: jest.fn().mockResolvedValue({
+        department_id: '001a_B-02',
+        department_name: '合成部門',
+      }),
+    };
     const mysql = {
       transaction: jest.fn((run: (value: never) => unknown) => run(manager)),
     };
     return {
       service: new OauthIdentityService(
-        repo as never,
+        repo,
         logger as never,
         mysql as never,
+        hr as never,
       ),
       repo,
+      hr,
       logger,
       mysql,
     };
@@ -46,14 +54,93 @@ describe('OauthIdentityService', () => {
     expect(repo.createUser.mock.calls[0][0]).not.toHaveProperty('roleId');
   });
 
+  it('新增帳號先以驗證員編查 HR 並保存可信部門，不使用 profile 欄位', async () => {
+    const { service, repo, hr } = setup();
+    repo.findUserByEmpIdForUpdate.mockResolvedValue(null);
+    repo.createUser.mockResolvedValue({ id: 9, empid: '00123' });
+    const untrustedExtra = { ...profile, departmentCode: 'FORGED' };
+    await service.resolve(untrustedExtra);
+    expect(hr.lookupEligibleStaff).toHaveBeenCalledWith('00123');
+    expect(repo.createUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        departmentCode: '001a_B-02',
+        departmentName: '合成部門',
+      }),
+      manager,
+    );
+  });
+
+  it.each([null, undefined, '', '  '])(
+    'HR 缺部門 %p 寫入 NULL 清除舊值',
+    async (code) => {
+      const { service, repo, hr } = setup();
+      repo.findUserByEmpIdForUpdate.mockResolvedValue({
+        id: 9,
+        empid: '00123',
+        name: '舊姓名',
+        isActive: true,
+        deletedAt: null,
+        departmentId: 42,
+        departmentCode: 'OLD',
+        departmentName: '舊部門',
+      });
+      hr.lookupEligibleStaff.mockResolvedValue({
+        department_id: code,
+        department_name: null,
+      });
+      await service.resolve(profile);
+      expect(repo.saveUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          departmentId: 42,
+          departmentCode: null,
+          departmentName: null,
+        }),
+        manager,
+      );
+    },
+  );
+
+  it('重新登入更新可信部門，保留代碼大小寫與前導零', async () => {
+    const { service, repo } = setup();
+    repo.findUserByEmpIdForUpdate.mockResolvedValue({
+      id: 9,
+      empid: '00123',
+      name: '舊姓名',
+      isActive: true,
+      deletedAt: null,
+      departmentCode: 'OLD',
+      departmentName: '舊部門',
+    });
+    await service.resolve(profile);
+    expect(repo.saveUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        departmentCode: '001a_B-02',
+        departmentName: '合成部門',
+      }),
+      manager,
+    );
+  });
+
+  it('HR 上游失敗原樣拒絕且不開資料庫交易', async () => {
+    const { service, hr, mysql, repo } = setup();
+    const failure = new Error('合成上游失敗');
+    hr.lookupEligibleStaff.mockRejectedValue(failure);
+    repo.createUser.mockResolvedValue({ id: 9, empid: '00123' });
+    await expect(service.resolve(profile)).rejects.toBe(failure);
+    expect(mysql.transaction).not.toHaveBeenCalled();
+    expect(repo.createUser).not.toHaveBeenCalled();
+    expect(repo.saveUser).not.toHaveBeenCalled();
+  });
+
   it('缺員編時拒絕', async () => {
-    const { service } = setup();
+    const { service, hr } = setup();
     await expect(
       service.resolve({ ...profile, userNumber: null }),
     ).rejects.toMatchObject({
       code: AppErrorCode.OAUTH_RESPONSE_INVALID,
       status: HttpStatus.UNAUTHORIZED,
     });
+    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
   });
 
   it.each([

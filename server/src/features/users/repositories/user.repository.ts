@@ -8,6 +8,16 @@ export class UserRepository {
     return manager.findOne(User, { where: { id }, withDeleted: true });
   }
 
+  /** 文件建立交易先鎖員工，再建立文件，與登入同步維持相同鎖順序。 */
+  findByIdForUpdate(id: number, manager: EntityManager): Promise<User | null> {
+    return manager
+      .createQueryBuilder(User, 'user')
+      .withDeleted()
+      .setLock('pessimistic_write')
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
   /** 包含軟刪除帳號，讓呼叫端統一判斷是否可指定為簽署人。 */
   findByIds(ids: number[], manager: EntityManager): Promise<User[]> {
     if (ids.length === 0) return Promise.resolve([]);

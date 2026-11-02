@@ -36,7 +36,10 @@ export class OauthIdentityRepository {
   }
 
   createUser(
-    fields: Pick<User, 'empid' | 'name' | 'lastLoginAt'>,
+    fields: Pick<
+      User,
+      'empid' | 'name' | 'lastLoginAt' | 'departmentCode' | 'departmentName'
+    >,
     manager: EntityManager,
   ): Promise<User> {
     return manager.save(manager.create(User, { ...fields, isActive: true }));

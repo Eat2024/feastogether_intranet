@@ -76,7 +76,7 @@ describe('AuthService WebView SSO', () => {
     return {
       service: new AuthService(
         config as never,
-        sessions as never,
+        sessions,
         users as never,
         mysql as never,
         hr as never,
@@ -104,6 +104,72 @@ describe('AuthService WebView SSO', () => {
     expect(sessions.createActive).toHaveBeenCalledTimes(1);
     expect(result.session.user.empId).toBe('00123');
     expect(result.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it.each(['001a_B-02', 'IT'])(
+    '新增帳號保存可信部門原字串 %s',
+    async (code) => {
+      const { service, hr, users } = setup();
+      hr.lookupEligibleStaff.mockResolvedValue({
+        person_empid: '00123',
+        person_name: '合成員工',
+        person_status: 1,
+        person_status_name: '正式',
+        department_id: code,
+        department_name: '合成部門',
+        title: null,
+      });
+      await service.login('00123', 'synthetic-password');
+      expect(users.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          departmentCode: code,
+          departmentName: '合成部門',
+        }),
+        manager,
+      );
+    },
+  );
+
+  it.each([null, undefined, '', '  '])(
+    '缺部門 %p 清除既有代碼與名稱，不沿用舊授權',
+    async (code) => {
+      const { service, hr, users, user } = setup();
+      users.findByEmpidForUpdate.mockResolvedValue({
+        ...user,
+        departmentId: 42,
+        departmentCode: 'OLD',
+        departmentName: '舊部門',
+      });
+      hr.lookupEligibleStaff.mockResolvedValue({
+        person_empid: '00123',
+        person_name: '合成員工',
+        person_status: 1,
+        person_status_name: '正式',
+        department_id: code,
+        department_name: null,
+        title: null,
+      });
+      await service.login('00123', 'synthetic-password');
+      expect(users.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          departmentId: 42,
+          departmentCode: null,
+          departmentName: null,
+        }),
+        manager,
+      );
+    },
+  );
+
+  it('HR 同步失敗不寫入帳號或建立 session', async () => {
+    const { service, hr, users, sessions } = setup();
+    const failure = new Error('合成上游失敗');
+    hr.lookupEligibleStaff.mockRejectedValue(failure);
+    await expect(service.login('00123', 'synthetic-password')).rejects.toBe(
+      failure,
+    );
+    expect(users.save).not.toHaveBeenCalled();
+    expect(sessions.createActive).not.toHaveBeenCalled();
   });
 
   it('錯誤密碼不查員工也不建立 session', async () => {
@@ -341,6 +407,7 @@ describe('AuthService WebView SSO', () => {
         localOnly: '保留',
         name: '王小明',
         departmentName: '資訊部',
+        departmentCode: 'IT',
         titleName: '工程師',
       }),
       manager,

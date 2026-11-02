@@ -94,6 +94,7 @@ describe('EsignReopeningService', () => {
       new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         documents,
+        {} as never,
       ),
       new EsignDocumentValidationService(),
       expiry,

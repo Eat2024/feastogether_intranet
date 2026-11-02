@@ -1,3 +1,7 @@
+import {
+  MailRecipientBlockedError,
+  MailWhitelistCheckFailedError,
+} from '#app/infrastructure/mail/mail-recipient-policy.errors';
 import { createHash } from 'node:crypto';
 import { ExternalOtpService } from './external-otp.service';
 
@@ -50,7 +54,8 @@ function fakeRedis() {
 
 function setup() {
   const redis = fakeRedis();
-  const service = new ExternalOtpService(redis as never);
+  const logger = { warn: jest.fn() };
+  const service = new ExternalOtpService(redis as never, logger as never);
   /** 寄出新驗證碼並回傳寄信內容中的驗證碼 */
   const issue = async (signerId = 7) => {
     let sent = '';
@@ -62,7 +67,7 @@ function setup() {
     ).resolves.toEqual({ status: 'sent', retryAfterSeconds: 60 });
     return sent;
   };
-  return { service, store: redis.store, issue };
+  return { service, store: redis.store, issue, logger };
 }
 
 /** 推進系統時間（Redis 到期以系統時間判斷） */
@@ -156,6 +161,40 @@ describe('ExternalOtpService', () => {
     ).resolves.toMatchObject({ status: 'hourly-limit' });
   });
 
+  it.each([
+    new MailRecipientBlockedError(),
+    new MailWhitelistCheckFailedError(),
+  ])('政策失敗保留舊有效碼與剩餘次數，且不消耗成功額度：%s', async (error) => {
+    const { service, issue } = setup();
+    let previous = '';
+    for (let index = 0; index < 4; index++) {
+      previous = await issue();
+      elapse(60);
+    }
+    const wrong = previous === '000000' ? '000001' : '000000';
+    await service.verify(7, wrong);
+    await expect(
+      service.issue(7, () => Promise.reject(error)),
+    ).resolves.toEqual({
+      status:
+        error instanceof MailRecipientBlockedError
+          ? 'recipient-blocked'
+          : 'delivery-failed',
+    });
+    await expect(service.verify(7, wrong)).resolves.toEqual({
+      status: 'wrong',
+      remainingAttempts: 3,
+    });
+    await expect(service.verify(7, previous)).resolves.toEqual({
+      status: 'verified',
+    });
+    await issue();
+    elapse(60);
+    await expect(
+      service.issue(7, () => Promise.resolve()),
+    ).resolves.toMatchObject({ status: 'hourly-limit' });
+  });
+
   it('同一簽署人同時要求寄送時只寄出一封', async () => {
     const { service } = setup();
     const deliver = jest.fn(() => Promise.resolve());
@@ -170,6 +209,21 @@ describe('ExternalOtpService', () => {
       'sent',
     ]);
     expect(deliver).toHaveBeenCalledTimes(1);
+  });
+
+  it('白名單阻擋不保存新碼且可立即重新申請', async () => {
+    const { service, issue } = setup();
+    let unsent = '';
+    await expect(
+      service.issue(7, (code) => {
+        unsent = code;
+        return Promise.reject(new MailRecipientBlockedError());
+      }),
+    ).resolves.toEqual({ status: 'recipient-blocked' });
+    await expect(service.verify(7, unsent)).resolves.toEqual({
+      status: 'expired',
+    });
+    await issue();
   });
 
   it('寄送失敗時不保存新驗證碼', async () => {
@@ -288,4 +342,19 @@ describe('ExternalOtpService', () => {
     expect(service.isCodeFormat('１２３４５６')).toBe(false);
     expect(service.isCodeFormat(undefined as unknown as string)).toBe(false);
   });
+});
+
+it('白名單來源故障記錄穩定分類且不記錄原始例外', async () => {
+  const { service, logger } = setup();
+  const error = new MailWhitelistCheckFailedError();
+  error.message = 'synthetic-secret@example.test';
+  await expect(service.issue(7, () => Promise.reject(error))).resolves.toEqual({
+    status: 'delivery-failed',
+  });
+  expect(logger.warn).toHaveBeenCalledWith({
+    event: 'esign.otp_mail_policy_failed',
+    context: 'ExternalOtpService',
+    metadata: { reasonCode: 'MAIL_WHITELIST_CHECK_FAILED' },
+  });
+  expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(error.message);
 });

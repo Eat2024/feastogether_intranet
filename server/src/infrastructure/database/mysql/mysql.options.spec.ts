@@ -78,6 +78,7 @@ describe('buildMysqlOptions', () => {
       'InternalEmailInvitations1792454405000',
       'ExportHistory1792454406000',
       'MailRecipientWhitelist1793577600000',
+      'DepartmentDocumentVisibility1793664000000',
     ]);
   });
 

@@ -71,13 +71,24 @@ export class User extends AuditableEntity {
   department?: Department;
 
   @Column({
+    name: 'department_code',
+    type: 'varchar',
+    length: 50,
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_0900_bin',
+    nullable: true,
+    comment: '可信上游部門代碼',
+  })
+  departmentCode?: string | null;
+
+  @Column({
     name: 'department_name',
     type: 'varchar',
     length: 150,
     nullable: true,
     comment: '部門名稱顯示值',
   })
-  departmentName?: string;
+  departmentName?: string | null;
 
   @Column({
     name: 'title_name',

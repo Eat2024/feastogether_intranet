@@ -30,3 +30,10 @@
 ## 實作決策差異
 
 - Spec 018 已使用 migration timestamp 1793577600000；Spec 017 改用後續唯一 timestamp 1793664000000，功能及 schema 範圍不變。
+
+## Ticket 02（T003–T005）
+
+- Metadata 先紅（缺三欄）、schema 先紅（Unknown column department_code），實作後 metadata 2 suites／64 tests、schema 3 suites／15 tests 通過。
+- server build、修改檔案 ESLint（0 errors/warnings）、diff check 通過。
+- schema.sql 由隔離 MySQL mysqldump 產出，只有三欄及一索引；up/down/up、精確代碼、NULL 舊資料及證據不變均通過。
+- User.departmentName 與既有 nullable signer.departmentSnapshot 補上 TS null 型別，不改既有資料庫欄位。

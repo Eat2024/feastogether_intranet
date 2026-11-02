@@ -1,3 +1,4 @@
+import { MailRecipientWhitelistRepository } from '#app/infrastructure/mail/mail-recipient-whitelist.repository';
 import { ExportJobRepository } from '#app/features/esign/repositories/export-job.repository';
 // mysql.module.ts
 import { Module } from '@nestjs/common';
@@ -17,6 +18,7 @@ import { MysqlProvider } from './mysql.provider';
 import { MysqlService } from './mysql.service';
 
 const repositories = [
+  MailRecipientWhitelistRepository,
   ExportJobRepository,
   UserRepository,
   OauthIdentityRepository,

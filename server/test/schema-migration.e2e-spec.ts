@@ -5,6 +5,7 @@ import { revertAfter } from './schema-migration.helper';
 
 const BUSINESS_TABLES = [
   'hr_departments',
+  'mail_recipient_whitelist',
   'users',
   'auth_sessions',
   'esign_documents',
@@ -212,6 +213,7 @@ describe('e-sign schema migrations', () => {
           "UPDATE esign_export_jobs SET scope_description='全部簽署人（重新整理）' WHERE id=1",
         );
 
+        await revertAfter(ds, 'ExportHistory1792454406000');
         await ds.undoLastMigration();
         expect(await exportJobsShape(ds, database)).toEqual(reverted);
         expect(reverted).toMatchObject({
@@ -252,6 +254,7 @@ describe('e-sign schema migrations', () => {
           );
           const shape = await exportJobsShape(ds, database);
 
+          await revertAfter(ds, 'ExportHistory1792454406000');
           await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
           expect(
             await ds.query('SELECT * FROM esign_export_jobs ORDER BY id'),
@@ -272,7 +275,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(60);
+        expect(first.timeColumns).toHaveLength(63);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(
@@ -295,7 +298,9 @@ describe('e-sign schema migrations', () => {
 
         await dataSource.undoLastMigration();
         expect(await listBusinessTables(dataSource, database)).toEqual(
-          BUSINESS_TABLES,
+          BUSINESS_TABLES.filter(
+            (table) => table !== 'mail_recipient_whitelist',
+          ),
         );
         expect(
           await hasColumn(
@@ -350,7 +355,10 @@ async function schemaSnapshot(dataSource: DataSource, database: string) {
   );
   const missingTimeIndexes: string[] = [];
   for (const column of timeColumns) {
-    if (column.TABLE_NAME === 'auth_sessions') continue;
+    if (
+      ['auth_sessions', 'mail_recipient_whitelist'].includes(column.TABLE_NAME)
+    )
+      continue;
     const expectedName = `idx_${column.TABLE_NAME}_${column.COLUMN_NAME}`;
     const rows = await dataSource.query<Array<{ count: number }>>(
       `SELECT COUNT(*) count FROM information_schema.statistics

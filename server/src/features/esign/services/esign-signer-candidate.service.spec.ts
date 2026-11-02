@@ -45,7 +45,7 @@ describe('簽署人組織樹快取', () => {
     expect(redis.set).toHaveBeenCalledWith(
       expect.any(String),
       { version: 1, data: [] },
-      7_200,
+      1_800,
     );
   });
   it('不同來源／環境隔離快取 namespace，不包含來源明文', async () => {
@@ -72,28 +72,53 @@ describe('簽署人組織樹快取', () => {
       else process.env.NODE_ENV = previous;
     }
   });
-  it('T+7,199 命中，T+7,200 後新請求更新，無請求不自動刷新', async () => {
+  it('T+1,799 命中，T+1,800 後新請求更新，讀取不續期且無請求不刷新', async () => {
     jest.useFakeTimers();
     try {
       const { service, redis, departments } = setup();
-      const expiresAt = Date.now() + 7_200_000;
+      let cached: { raw: string; expiresAt: number } | null = null;
       redis.get.mockImplementation(() =>
         Promise.resolve(
-          Date.now() < expiresAt
-            ? JSON.stringify({ version: 1, data: [] })
-            : null,
+          cached && Date.now() < cached.expiresAt ? cached.raw : null,
         ),
       );
-      await jest.advanceTimersByTimeAsync(7_199_000);
+      redis.set.mockImplementation(
+        (_key: string, value: unknown, ttl: number) => {
+          cached = {
+            raw: JSON.stringify(value),
+            expiresAt: Date.now() + ttl * 1000,
+          };
+          return Promise.resolve();
+        },
+      );
       await service.getOrgChart();
-      expect(departments.getOrgChart).not.toHaveBeenCalled();
-      await jest.advanceTimersByTimeAsync(1_001);
-      expect(departments.getOrgChart).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1_799_000);
       await service.getOrgChart();
       expect(departments.getOrgChart).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(departments.getOrgChart).toHaveBeenCalledTimes(1);
+      await service.getOrgChart();
+      expect(departments.getOrgChart).toHaveBeenCalledTimes(2);
     } finally {
       jest.useRealTimers();
     }
+  });
+  it('不沿用 v1 的兩小時快取，以 v2 取得新資料且維持 payload version 1', async () => {
+    const { service, redis, departments } = setup();
+    redis.get.mockImplementation((key: string) =>
+      Promise.resolve(
+        key.startsWith('esign:org-chart:v1:')
+          ? JSON.stringify({ version: 1, data: [] })
+          : null,
+      ),
+    );
+    await expect(service.getOrgChart()).resolves.toEqual([]);
+    expect(departments.getOrgChart).toHaveBeenCalledTimes(1);
+    expect(redis.set).toHaveBeenCalledWith(
+      expect.stringMatching(/^esign:org-chart:v2:/),
+      { version: 1, data: [] },
+      1_800,
+    );
   });
   it.each(['get', 'set'] as const)(
     'Redis %s 失敗回 503，不直連 fallback',

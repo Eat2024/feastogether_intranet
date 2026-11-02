@@ -4,12 +4,12 @@
 
 **Blocked by:** 02 單人邀請只寄給白名單允許的收件人
 
-**Status:** claimed
+**Status:** resolved
 
-- [ ] 允許員工可信信箱可走外部 OTP，不要求本地 User；recipient-blocked 回 403 安全頁，check-failed 與真正寄送失敗回 503。
-- [ ] 阻擋不存本次新 code、不增加成功 hourly、不寫 external_otp.sent；釋放本次冷卻 claim，依既有失敗語意保留舊有效碼。
-- [ ] 保留 Origin／邀請資格、endpoint 節流、TTL、驗證次數及冷卻；不新增自動重試，不落到 429 新碼輸入或成功頁。
-- [ ] 錯誤與 log 不揭露完整白名單／員編／OTP／token／上游 body；服務及 HTTP 整合測試驗證政策與結果。
+- [x] 允許員工可信信箱可走外部 OTP，不要求本地 User；recipient-blocked 回 403 安全頁，check-failed 與真正寄送失敗回 503。
+- [x] 阻擋不存本次新 code、不增加成功 hourly、不寫 external_otp.sent；釋放本次冷卻 claim，依既有失敗語意保留舊有效碼。
+- [x] 保留 Origin／邀請資格、endpoint 節流、TTL、驗證次數及冷卻；不新增自動重試，不落到 429 新碼輸入或成功頁。
+- [x] 錯誤與 log 不揭露完整白名單／員編／OTP／token／上游 body；服務及 HTTP 整合測試驗證政策與結果。
 
 ## 實作與驗證紀錄
 
@@ -18,4 +18,6 @@
 - 單元：108 suites／1,006 tests 通過；涵蓋新碼不存、失敗不消耗額度、舊碼及錯誤次數保留、冷卻釋放與安全紀錄。
 - 專用 HTTP E2E：mail-whitelist-otp 5 tests 通過。原生 MailModule 與 guarded sender 未覆寫，只替換 HR 上游並觀測底層 fake 傳輸；使用本機隔離 MySQL 13318、Redis 16318／DB 4。驗證 403、503、動態新增／撤銷、無本機 User 也可寄送、稽核、舊碼驗證、Origin 與 IP 節流。測試已加入一般與安全 E2E 收集設定。
 - server lint:check：0 errors；server build 通過。廣泛既有 E2E fixture 遷移與整體矩陣由票 05 整合驗證。
-- 未執行 UAT 資料異動或真實寄信。待 merger 整合後改 resolved。
+- 未執行 UAT 資料異動或真實寄信。已整合至功能分支並結案。
+
+- 實作與快轉整合 commit：`c5a2767`（`implement/spec018-04` → `docs/spec-018-mail-whitelist`）；原生 HTTP E2E 的 5 個案例已通過，OTP 的一般／安全 E2E 收集設定均已保留。

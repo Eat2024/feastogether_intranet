@@ -1,3 +1,4 @@
+import type { EsignExportJob } from './esignExports';
 // 電子簽文件（server/src/features/esign/dto/esign-common.dto.ts、document-query.dto.ts）
 
 /**
@@ -128,6 +129,7 @@ export interface EsignFieldView extends EsignFieldPlacement {
 
 /** GET esign/documents/:id：建立人的文件詳情 */
 export interface EsignDocumentDetail extends Omit<EsignDocumentListItem, 'signStartAt' | 'signEndAt' | 'createdBy'> {
+  exportSummary: EsignExportJob | null;
   createdBy: { name: string; employeeNo: string } | null;
   sourceFile?: { fileName: string; size: number; pageCount: number; sha256: string };
   signStartAt: string | null;

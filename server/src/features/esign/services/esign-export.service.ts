@@ -18,7 +18,7 @@ import {
   type EsignExportJob,
   type ExportSnapshotEntry,
 } from '../entities/esign-export-job.entity';
-import { type ExportQueryDto } from '../dto/export.dto';
+import { type ExportQueryDto, type ExportJobViewDto } from '../dto/export.dto';
 import {
   ESIGN_EXPORT_QUEUE,
   exportJobArguments,
@@ -61,7 +61,7 @@ export class EsignExportService {
     if (!document)
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
 
-    const reusable = await this.jobs.reusable(documentId, new Date(), manager);
+    const reusable = await this.jobs.reusable(documentId, manager);
     if (reusable) return { job: reusable, reused: true };
 
     const snapshot = await this.createExportSnapshot(documentId, manager);
@@ -147,7 +147,8 @@ export class EsignExportService {
 
   /** 已完成工作先確認成果仍可用；等待中的工作則確保已送入 queue。 */
   private async ensureAvailableOrEnqueue(job: EsignExportJob): Promise<void> {
-    if (job.status === 'completed') await this.assertAvailable(job);
+    if (job.completedAt || ['completed', 'expired'].includes(job.status))
+      await this.assertAvailable(job);
     if (['pending', 'waiting'].includes(job.status)) await this.enqueue(job.id);
   }
 
@@ -179,9 +180,14 @@ export class EsignExportService {
       if (!original?.snapshotJson)
         throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
 
-      const other = await this.jobs.reusable(documentId, new Date(), manager);
+      const other = await this.jobs.reusable(documentId, manager);
 
-      if (other && other.id !== original.id && other.status !== 'failed')
+      if (
+        other &&
+        (other.completedAt ||
+          ['completed', 'expired'].includes(other.status) ||
+          (other.id !== original.id && other.status !== 'failed'))
+      )
         return other;
 
       if (['pending', 'waiting', 'processing'].includes(original.status))
@@ -199,8 +205,7 @@ export class EsignExportService {
       original.processedCount = 0;
       return this.jobs.save(original, manager);
     });
-    if (job.status === 'completed') await this.assertAvailable(job);
-    else await this.enqueue(job.id);
+    await this.ensureAvailableOrEnqueue(job);
     return this.view(job);
   }
 
@@ -227,22 +232,21 @@ export class EsignExportService {
     };
   }
 
-  async view(job: EsignExportJob) {
-    const expired = job.expiresAt && job.expiresAt <= new Date();
+  async view(job: EsignExportJob): Promise<ExportJobViewDto> {
     const files = await this.jobs.files(job.id, this.mysql.getManager());
     return {
       id: job.publicId!,
       documentId: String(job.documentId),
-      status: expired ? 'expired' : job.status,
+      status: job.status,
       snapshotAt: job.snapshotAt?.toISOString() ?? null,
       expectedCount: Number(job.recordCount ?? 0),
       processedCount: job.processedCount ?? 0,
       waitingCount: job.waitingCount ?? 0,
       completedAt: job.completedAt?.toISOString() ?? null,
-      expiresAt: job.expiresAt?.toISOString() ?? null,
+      expiresAt: null,
       failureCode: job.failureCode ?? null,
       files:
-        job.status === 'completed' && !expired
+        job.status === 'completed' && job.completedAt !== null
           ? files.map((f) => ({
               id: String(f.id),
               fileName: f.originalFileName ?? 'signed-copies.zip',
@@ -254,29 +258,35 @@ export class EsignExportService {
     };
   }
 
+  async documentSummary(documentId: number) {
+    return this.summary(
+      await this.jobs.latest(documentId, this.mysql.getManager()),
+    );
+  }
+
   async summary(job: EsignExportJob | null) {
-    return job?.snapshotJson ? this.view(job) : null;
+    return job ? this.view(job) : null;
   }
 
   async download(documentId: number, publicId: string, fileId: number) {
     const job = await this.find(documentId, publicId);
-    if (
-      job.status === 'expired' ||
-      (job.expiresAt && job.expiresAt <= new Date())
-    )
-      throw new AppException(...AppErrors.ESIGN_EXPORT_EXPIRED);
+    if (job.completedAt || ['completed', 'expired'].includes(job.status))
+      await this.assertAvailable(job);
     const files = await this.jobs.files(job.id, this.mysql.getManager());
     const file = files.find((f) => f.id === fileId);
     if (job.status !== 'completed')
       throw new AppException(...AppErrors.ESIGN_EXPORT_NOT_READY);
     if (!file) throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
-    await this.assertAvailable(job);
     return file;
   }
 
   async assertAvailable(job: EsignExportJob) {
     try {
+      if (job.status !== 'completed' || !job.completedAt)
+        throw new Error('原匯出成果不可用');
       const files = await this.jobs.files(job.id, this.mysql.getManager());
+      if (files.some((file) => file.archiveStatus !== 'active'))
+        throw new Error('匯出成果未啟用');
       if (files.length !== 1 || !this.storage.stat)
         throw new Error('缺少匯出成果');
       for (const file of files)

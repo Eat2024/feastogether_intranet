@@ -259,9 +259,7 @@ export class DocumentExportProcessor
         current.status = 'completed';
         current.failureCode = null;
         current.completedAt = new Date();
-        current.expiresAt = new Date(
-          current.completedAt.getTime() + 7 * 24 * 60 * 60_000,
-        );
+        current.expiresAt = null;
         current.processedCount = current.recordCount ?? 0;
         current.waitingCount = 0;
         current.leaseToken = null;
@@ -317,15 +315,6 @@ export class DocumentExportProcessor
         const job = await this.jobs.byId(row.id, m, true);
         if (!job) return null;
         if (
-          (job.status === 'completed' || job.status === 'expired') &&
-          job.expiresAt &&
-          job.expiresAt <= now
-        ) {
-          job.status = 'expired';
-          await this.jobs.save(job, m);
-          return { kind: 'expire' as const, id: job.id };
-        }
-        if (
           job.status === 'processing' &&
           job.leaseExpiresAt &&
           job.leaseExpiresAt <= now
@@ -340,14 +329,6 @@ export class DocumentExportProcessor
           : null;
       });
       // 慢 storage／Redis I/O 不占用業務交易鎖。
-      if (action?.kind === 'expire') {
-        const files = await this.jobs.files(action.id, this.mysql.getManager());
-        for (const file of files)
-          if (file.archiveStatus === 'active') {
-            await this.storage.delete(file);
-            await this.jobs.archiveFile(file.id, this.mysql.getManager());
-          }
-      }
       if (action?.kind === 'enqueue')
         await this.queue.add(...exportJobArguments(action.id));
     }

@@ -1,3 +1,4 @@
+import { EsignExportService } from './esign-export.service';
 import type { EsignSigner } from '../entities/esign-signer.entity';
 import type { EsignNotificationLog } from '../entities/esign-notification-log.entity';
 import { reminderEligibility } from './esign-reminder-policy';
@@ -46,6 +47,7 @@ export class EsignDocumentQueryService {
     private readonly users: UserRepository,
     private readonly records: SignatureRecordRepository,
     private readonly tokens: EsignTokenService,
+    private readonly exports: EsignExportService,
   ) {}
 
   private reminderSummary(
@@ -228,6 +230,7 @@ export class EsignDocumentQueryService {
       allowReject: document.allowReject,
       stopReason: document.stopReason ?? null,
       createdBy: this.mapper.creator(creator),
+      exportSummary: await this.exports.documentSummary(documentId),
       signers: signers.map((signer) => ({
         ...this.mapper.signer(
           signer,

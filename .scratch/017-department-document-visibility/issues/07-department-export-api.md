@@ -14,19 +14,19 @@
 
 ## 驗收條件
 
-- [ ] T027／T028 先紅後綠；exportable documents、historyPage／Counts 與單筆查詢先限文件部門再分頁計數，外部或已調職匯出者不改歸屬。
-- [ ] ZIP 建立／重用／狀態／重試／Range 下載全傳 userId；授權及 document/job/file 關係檢查早於 snapshot、DB 寫入、enqueue、metadata、ETag 或 stream。
-- [ ] Excel 紀錄與重下載、PDF 歷史與一般 completed-file/downloads 皆限同部門；跨部門 filter 空 items／0 counts，指定資源拒絕且無新增紀錄／工作／檔案 bytes。
-- [ ] 原建立人調職亦不得一般匯出舊文件；本人任務、內外部本人副本及邀請驗證保持原獨立資格，不放寬也不被部門封鎖。
+- [x] T027／T028 先紅後綠；exportable documents、historyPage／Counts 與單筆查詢先限文件部門再分頁計數，外部或已調職匯出者不改歸屬。
+- [x] ZIP 建立／重用／狀態／重試／Range 下載全傳 userId；授權及 document/job/file 關係檢查早於 snapshot、DB 寫入、enqueue、metadata、ETag 或 stream。
+- [x] Excel 紀錄與重下載、PDF 歷史與一般 completed-file/downloads 皆限同部門；跨部門 filter 空 items／0 counts，指定資源拒絕且無新增紀錄／工作／檔案 bytes。
+- [x] 原建立人調職亦不得一般匯出舊文件；本人任務、內外部本人副本及邀請驗證保持原獨立資格，不放寬也不被部門封鎖。
 
 ## 原始任務範圍
 
-- [ ] T027 [P] [US4] 在 `server/test/esign-export.e2e-spec.ts` 補同部門可建立／重用／查詢／重試／Range 下載 ZIP、跨部門全部拒絕、錯置 document/job/file ID、調職後舊 URL 失效測試；原全員成功測試改成同部門 fixture，不刪除負向斷言。
-- [ ] T028 [P] [US4] 在 `server/test/esign-export-history.e2e-spec.ts` 補 Excel／PDF 紀錄與重下載、total／typeTotals 同部門過濾、跨部門 documentId filter 空資料、外部匯出人按文件部門歸屬及拒絕無紀錄 side effect 測試。
-- [ ] T029 [US4] 修改 `server/src/features/esign/repositories/export-job.repository.ts` 的 exportable documents／historyPage／historyCounts／單筆讀取介面，透過文件快照加同部門條件；列表先限部門再分頁與計數，不以 exporter 部門判斷、不新增匯出部門欄位。
-- [ ] T030 [US4] 在 `server/src/features/esign/controllers/exports.controller.ts` 所有列表／request／detail／retry／download 傳入 userId；`server/src/features/esign/services/esign-export.service.ts` 於讀 snapshot、重用 job、寫入／enqueue、檔案 metadata／Range／stream 前驗證同部門與 ID 關係，不能給建立人跨部門例外。
-- [ ] T031 [US4] 在 `server/src/features/esign/controllers/export-history.controller.ts` 及 `server/src/features/esign/services/esign-export-history.service.ts` 對列表、Excel 記錄／重下載、PDF 歷史重下載套用同部門政策；未授權 404 或契約定義的空列表，檔案未就緒等錯誤必須在授權後判斷。
-- [ ] T032 [US4] 釐清並調整 `server/src/features/esign/services/esign-export-history.service.ts`、`esign-completion-access.service.ts` 及 `server/src/features/esign/controllers/documents.controller.ts` 的一般 completed-file/downloads 路徑為同部門；不能放寬 `server/src/features/esign/controllers/signing-tasks.controller.ts`／`external-signature.controller.ts` 的本人副本或邀請驗證。
+- [x] T027 [P] [US4] 在 `server/test/esign-export.e2e-spec.ts` 補同部門可建立／重用／查詢／重試／Range 下載 ZIP、跨部門全部拒絕、錯置 document/job/file ID、調職後舊 URL 失效測試；原全員成功測試改成同部門 fixture，不刪除負向斷言。
+- [x] T028 [P] [US4] 在 `server/test/esign-export-history.e2e-spec.ts` 補 Excel／PDF 紀錄與重下載、total／typeTotals 同部門過濾、跨部門 documentId filter 空資料、外部匯出人按文件部門歸屬及拒絕無紀錄 side effect 測試。
+- [x] T029 [US4] 修改 `server/src/features/esign/repositories/export-job.repository.ts` 的 exportable documents／historyPage／historyCounts／單筆讀取介面，透過文件快照加同部門條件；列表先限部門再分頁與計數，不以 exporter 部門判斷、不新增匯出部門欄位。
+- [x] T030 [US4] 在 `server/src/features/esign/controllers/exports.controller.ts` 所有列表／request／detail／retry／download 傳入 userId；`server/src/features/esign/services/esign-export.service.ts` 於讀 snapshot、重用 job、寫入／enqueue、檔案 metadata／Range／stream 前驗證同部門與 ID 關係，不能給建立人跨部門例外。
+- [x] T031 [US4] 在 `server/src/features/esign/controllers/export-history.controller.ts` 及 `server/src/features/esign/services/esign-export-history.service.ts` 對列表、Excel 記錄／重下載、PDF 歷史重下載套用同部門政策；未授權 404 或契約定義的空列表，檔案未就緒等錯誤必須在授權後判斷。
+- [x] T032 [US4] 釐清並調整 `server/src/features/esign/services/esign-export-history.service.ts`、`esign-completion-access.service.ts` 及 `server/src/features/esign/controllers/documents.controller.ts` 的一般 completed-file/downloads 路徑為同部門；不能放寬 `server/src/features/esign/controllers/signing-tasks.controller.ts`／`external-signature.controller.ts` 的本人副本或邀請驗證。
 
 ## 實作驗證紀錄（待整合）
 

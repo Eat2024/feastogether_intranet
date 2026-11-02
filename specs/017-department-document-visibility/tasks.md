@@ -2,7 +2,7 @@
 
 **Input**: `specs/017-department-document-visibility/` 的 spec.md、plan.md、research.md、data-model.md、contracts/department-access.md、quickstart.md。
 
-**日期**：2026-11-02；**狀態**：待實作，所有 checkbox 保持未完成。
+**日期**：2026-11-02；**狀態**：46 項實作與隔離驗證完成；真實 UAT 尚未執行。
 
 **Tests**: 依 plan／quickstart 與專案憲章，權限、登入同步、migration、回填與直接下載需要單元／整合／E2E 驗證。測試先於對應實作建立，確認因預期缺少功能而失敗；環境或登入失敗不能冒充有效紅燈。client 無測試框架，不新增框架；以 lint/build 與雙帳號實際流程驗收。
 
@@ -104,11 +104,11 @@
 
 ## Phase 7: Polish & Cross-Cutting
 
-- [ ] T042 [P] 更新 `specs/003-core-esign-flow/contracts/openapi.yaml` 與 `specs/003-core-esign-flow/spec.md`，記錄 dep、isCreator 與唯讀 DTO／建立快照；更新 `specs/015-export-history/spec.md`、`specs/015-export-history/contracts/export-history-http-api.md`，明確由 Spec 017 取代全員匯出規則；對齊 `specs/002-webview-sso-session/spec.md`、`specs/014-account-password-login/spec.md` 的登入同步敘述，不抹除歷史決策。
-- [ ] T043 [P] 在隔離代表性資料對 `server/src/features/esign/repositories/document.repository.ts`、`export-job.repository.ts` 查詢跑 EXPLAIN，於 `specs/017-department-document-visibility/validation.md` 記錄部門條件、索引與分頁／計數一致性；若需要調整索引，同步 migration/schema/data-model，不新增 pagination 或快取架構。
-- [ ] T044 依 `specs/017-department-document-visibility/quickstart.md` 執行受影響 server 單元測試、schema、E2E、安全 E2E、root pnpm lint 與 pnpm build，將命令、結果與未完成限制記錄於 `specs/017-department-document-visibility/validation.md`；有失敗先定位修復，不把環境失敗標成通過。
-- [ ] T045 依 `specs/017-department-document-visibility/contracts/department-access.md` 逐項檢查所有讀取／寫入／匯出入口與前端直接路由，確認無其他跨部門旁路、無 token／signature／Email 非必要洩漏；將 FR／SC 對照和最終 UI 雙帳號驗收補入 `specs/017-department-document-visibility/validation.md`。
-- [ ] T046 以 `specs/017-department-document-visibility/validation.md` 與 `uat-cutover.md` 產出交付摘要，分列 client／server／migration-config、已執行檢查、未執行 UAT 動作與回滾限制；核對無新增表／dependency／env／排程，tasks 只勾選有證據完成的項目。
+- [x] T042 [P] 更新 `specs/003-core-esign-flow/contracts/openapi.yaml` 與 `specs/003-core-esign-flow/spec.md`，記錄 dep、isCreator 與唯讀 DTO／建立快照；更新 `specs/015-export-history/spec.md`、`specs/015-export-history/contracts/export-history-http-api.md`，明確由 Spec 017 取代全員匯出規則；對齊 `specs/002-webview-sso-session/spec.md`、`specs/014-account-password-login/spec.md` 的登入同步敘述，不抹除歷史決策。
+- [x] T043 [P] 在隔離代表性資料對 `server/src/features/esign/repositories/document.repository.ts`、`export-job.repository.ts` 查詢跑 EXPLAIN，於 `specs/017-department-document-visibility/validation.md` 記錄部門條件、索引與分頁／計數一致性；若需要調整索引，同步 migration/schema/data-model，不新增 pagination 或快取架構。
+- [x] T044 依 `specs/017-department-document-visibility/quickstart.md` 執行受影響 server 單元測試、schema、E2E、安全 E2E、root pnpm lint 與 pnpm build，將命令、結果與未完成限制記錄於 `specs/017-department-document-visibility/validation.md`；有失敗先定位修復，不把環境失敗標成通過。
+- [x] T045 依 `specs/017-department-document-visibility/contracts/department-access.md` 逐項檢查所有讀取／寫入／匯出入口與前端直接路由，確認無其他跨部門旁路、無 token／signature／Email 非必要洩漏；將 FR／SC 對照和最終 UI 雙帳號驗收補入 `specs/017-department-document-visibility/validation.md`。
+- [x] T046 以 `specs/017-department-document-visibility/validation.md` 與 `uat-cutover.md` 產出交付摘要，分列 client／server／migration-config、已執行檢查、未執行 UAT 動作與回滾限制；核對無新增表／dependency／env／排程，tasks 只勾選有證據完成的項目。
 
 ## Dependencies & Execution Order
 
@@ -155,6 +155,6 @@ Setup T001–T002
 | US3 登入與 UAT 切換 | T037–T041 | FR-009/012，SC-005 |
 | 全面回歸與交付 | T042–T046 | 全部 FR／SC、constitution |
 
-共 46 項：Setup 2、Foundation 8、US1 11、US2 5、US4 10、US3 5、Polish 5。完成品質檢查不代表任務已執行；本次產生清單時全部未勾選。
+共 46 項：Setup 2、Foundation 8、US1 11、US2 5、US4 10、US3 5、Polish 5。各項已依 validation.md 的實測證據完成；切分當時全部未勾選，現在勾選代表本機實作與驗證，不代表 UAT 部署。
 
 `.specify/extensions.yml` 不存在，無 before_tasks／after_tasks hooks 需執行。

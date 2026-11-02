@@ -25,13 +25,13 @@ plan.md 的「尚未產生 tasks」及 spec.md 的 planning 狀態是前階段�
 | [09](issues/09-cutover-rehearsal.md) | 正式登入回歸與 UAT 切換程序演練 | T037–T041 | 05、06、08 |
 | [10](issues/10-integration-handoff.md) | 契約同步、查詢驗證與整合交付 | T042–T046 | 09 |
 
-每項 task 僅有一張主責 ticket。原始任務逐項保留於票內，重跑前置測試是回歸驗證，不是重複分派。所有票初始狀態為 ready-for-agent；只有前置皆 resolved 才可實作，目前可先處理 01。
+每項 task 僅有一張主責 ticket。原始任務逐項保留於票內，重跑前置測試是回歸驗證，不是重複分派。所有票初始狀態為 ready-for-agent，依前置順序實作；目前 01–10 全部 resolved，46 項 tasks 完成並經本機隔離驗證。
 
 04 完成後 05 與 06 可分開處理；07 等 06 完成，08 等 05／07 完成。06 的調職讀取驗收需要 04，因此明列額外依賴。09 的回填文件可以提早準備，但完整票的開始與驗收仍依依賴；10 收尾全部整合驗證。只完成 05／06 是本機 MVP，不代表部門隔離可上線；必須同時完成匯出保護與切換演練。
 
 ## 共用實作與驗證約定
 
-- 使用單一功能整合分支；各票可獨立 commit／分支審查，不自動建立遠端 PR。遵循 root 及修改 package 的 AGENTS.md。
+- 使用單一功能整合分支；各票可獨立 commit／分支審查，遠端 PR 依使用者後續要求「開發完畢請進 PR review」建立供審查。遵循 root 及修改 package 的 AGENTS.md。
 - 測試先於對應實作，紅燈必須來自預期缺少功能；環境或登入失敗不可算有效紅燈。只用合成資料及 feastogether_intranet_test 前綴測試 DB，不使用 UAT DB。
 - 共用 validation.md、E2E config、policy、query service 及前端共用檔案要序列整合；會重設同一 DB 的 schema／E2E 不可同時跑。可拆分工作不等於要求啟動多代理。
 - 驗證先依修改 package 執行 lint／相關測試／build；server 檢查使用 lint:check。跨前後端與最後整合執行 root pnpm lint、pnpm build 及規劃的測試套件。client 不另增測試框架，以 lint/build、雙帳號流程與回應內容驗收。
@@ -39,3 +39,20 @@ plan.md 的「尚未產生 tasks」及 spec.md 的 planning 狀態是前階段�
 - 不新增表、dependency、env、fallback、排程或通用 RBAC；不提交 secret、cookie、token、組織個資、簽名圖檔或真實備份。
 - 09 僅產出可審查 SQL／程序與隔離演練；真實 UAT 回填、部署與恢復對外服務留待使用者部署指示。通用 schema migration 不混入 UAT 特定回填。
 - 每張票將驗證證據追加到票內與 specs/017-department-document-visibility/validation.md；驗收並整合後才改 resolved。最後交付分列前端、後端、migration/config 與未完成限制，不把已產生 tickets 當成已實作。
+
+## 實作追蹤
+
+| Ticket | 整合提交 |
+|---|---|
+| 01 | 2f1eacb |
+| 02 | 9fe7128 |
+| 03 | ed16786 |
+| 04 | adb85f4 |
+| 05 | e5f1de2 |
+| 06 | e6df515 |
+| 07 | 3bf47e9 |
+| 08 | e32dcda（client 共用部分先整合於 e5f1de2） |
+| 09 | 3338e8d |
+| 10 | `git log --grep="complete integration validation"` |
+
+交付與測試：[validation](../../specs/017-department-document-visibility/validation.md)；獨立雙軸 [review](../../specs/017-department-document-visibility/review.md)。真實 UAT 盤點、回填及部署尚未執行。

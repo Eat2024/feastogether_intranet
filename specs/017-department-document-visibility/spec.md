@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-02
 
-**Status**: Ready for planning — 部門瀏覽、發起人管理、匯出部門限制與 UAT 歸屬皆已確認
+**Status**: Implemented and locally validated — 部門瀏覽、發起人管理、匯出限制與切換演練完成；真實 UAT 尚未執行
 
 **Input**: 使用者確認同部門員工應看到該部門全部電子簽，列表改為 `role=dep`；建立文件時保存建立人部門。先開 spec，盤點修改位置、API 與 DB 欄位，不實作功能。
 

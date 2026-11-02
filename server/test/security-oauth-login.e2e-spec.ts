@@ -10,6 +10,7 @@ import { OauthLoginService } from '#app/features/auth/services/oauth-login.servi
 import { OauthTransactionService } from '#app/features/auth/services/oauth-transaction.service';
 import { InfrastructureModule } from '#app/infrastructure/infrastructure.module';
 import { OauthModule } from '#app/infrastructure/http-client/oauth/oauth.module';
+import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
@@ -49,7 +50,7 @@ class AuthTestingModule {}
 const oauthTransactions = new Map<string, string>();
 
 describe('dormant SSO/session testing module', () => {
-  const empid = 'SYN-SPEC1';
+  const empid = 'SYNSPEC1';
 
   beforeAll(() => {
     oauthTransactions.clear();
@@ -72,7 +73,22 @@ describe('dormant SSO/session testing module', () => {
 
     const testingModule = await Test.createTestingModule({
       imports: [AuthTestingModule],
-    }).compile();
+    })
+      .overrideProvider(FeastogetherClient)
+      .useValue({
+        get: jest.fn().mockResolvedValue([
+          {
+            person_empid: empid,
+            person_name: '合成安全測試員工',
+            person_status: 1,
+            person_status_name: '正式',
+            department_id: 'SECURITY-OAUTH',
+            department_name: '合成安全測試部門',
+            title: null,
+          },
+        ]),
+      })
+      .compile();
     await testingModule.init();
     const dataSource = testingModule.get<DataSource>(MYSQL_MAIN);
     try {

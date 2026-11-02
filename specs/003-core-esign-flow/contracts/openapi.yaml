@@ -33,11 +33,12 @@ paths:
   /esign/documents:
     get:
       operationId: listDocuments
-      summary: 列出目前員工建立或被指定的文件
+      summary: 列出目前部門或個人文件
+      description: role=dep 以目前 User 可信代碼精確比對文件建立部門快照；created/assigned 與未指定時的個人聯集保留。不接受 all 或 caller 自報部門。
       parameters:
         - name: role
           in: query
-          schema: { type: string, enum: [created, assigned] }
+          schema: { type: string, enum: [dep, created, assigned] }
         - name: status
           in: query
           schema: { type: string, enum: [draft, active, expired, finalizing, completed, stopped] }
@@ -48,9 +49,11 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DocumentListSuccess" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/DepartmentUnavailable" }
     post:
       operationId: createDraftDocument
       summary: 上傳 PDF 並建立草稿，可一併帶入草稿欄位
+      description: 同交易固定目前可信部門代碼與名稱為文件建立快照；缺少代碼回 409 且不留下文件、檔案或稽核。快照不因建立人調職而回寫。
       requestBody:
         required: true
         content:
@@ -81,6 +84,7 @@ paths:
               schema: { $ref: "#/components/schemas/DocumentWriteSuccess" }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/DepartmentUnavailable" }
         "413": { $ref: "#/components/responses/FileTooLarge" }
 
   /esign/documents/{documentId}:
@@ -88,15 +92,23 @@ paths:
       - $ref: "#/components/parameters/DocumentId"
     get:
       operationId: getDocument
-      summary: creator 取得文件管理詳情；assigned signer 改用 signing-task resource
+      summary: 建立人取得管理詳情，同部門員工取得唯讀詳情；另提供獨立授權的匯出視角
+      description: 一般讀取允許建立人或目前同部門；草稿也適用。view=export 必須目前同部門且非草稿，建立人無例外，回完整 Excel 資料加 status，不產生業務寫入。canExport 僅供 UI 呈現，匯出 API 每次重新授權。
+      parameters:
+        - { name: view, in: query, required: false, schema: { type: string, enum: [export] } }
       responses:
         "200":
-          description: creator 可見的文件、簽署人 snapshot 與狀態；不含簽名圖
+          description: 一般詳情依 isCreator 裁切；view=export 回獨立 Excel 預覽，均不含簽名圖
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DocumentDetailSuccess" }
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/DocumentDetailSuccess"
+                  - $ref: "#/components/schemas/ExportPreviewSuccess"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "409": { $ref: "#/components/responses/DepartmentUnavailable" }
     patch:
       operationId: updateDraftDocument
       summary: 替換草稿標題、PDF 或欄位，僅 creator + draft
@@ -382,10 +394,11 @@ paths:
       - $ref: "#/components/parameters/DocumentId"
     get:
       operationId: downloadDocumentSourceFile
-      summary: creator、active 期間的 assigned signer，或已簽 signer 下載原 PDF；stopped 的 pending signer 不可讀取
+      summary: 建立人或目前同部門員工下載原 PDF（含草稿）；本人簽署原檔另走 signing-task resource
       responses:
         "200": { $ref: "#/components/responses/PdfFile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/DepartmentUnavailable" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /esign/documents/{documentId}/history:
@@ -393,14 +406,15 @@ paths:
       - $ref: "#/components/parameters/DocumentId"
     get:
       operationId: getDocumentHistory
-      summary: creator 或該文件 signer 取得已裁切的不可變歷程
+      summary: 建立人、目前同部門員工或該文件 signer 取得已裁切的不可變歷程
       responses:
         "200":
-          description: creator 可見文件層級事件；signer 只可見文件狀態與本人事件，不含其他人身分或簽名
+          description: 建立人與同部門員工可見文件層級事件；signer 可見文件狀態與本人事件，同部門資格不增加其他人的事件，不含其他人身分或簽名
           content:
             application/json:
               schema: { $ref: "#/components/schemas/HistorySuccess" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/DepartmentUnavailable" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /esign/documents/{documentId}/signers/{signerPublicId}/completed-file/downloads:
@@ -409,8 +423,8 @@ paths:
       - $ref: "#/components/parameters/SignerPublicId"
     post:
       operationId: downloadSignerCompletedFile
-      summary: 建立人依簽署人下載 ready 個人副本
-      description: 必須驗證 signer 屬於指定文件且目前員工為建立人；active、expired、finalizing、completed、stopped 均可取得 ready 副本。未授權或目標不存在為 404；尚未 ready 為 409。Spec 015 改為 POST 子資源（需同源 Origin），送出前寫入 pdf 匯出紀錄，原本的 GET …/completed-file 已移除；詳見 specs/015-export-history/contracts/export-history-http-api.md。
+      summary: 目前同部門員工依簽署人下載 ready 個人副本
+      description: 必須驗證 signer 屬於指定文件且目前員工部門符合文件建立快照，建立人無例外；缺少部門回 409 ESIGN_DEPARTMENT_UNAVAILABLE，授權先於 ready、檔案讀取與紀錄寫入；active、expired、finalizing、completed、stopped 均可取得 ready 副本。未授權或目標不存在為 404；尚未 ready 為 409。Spec 015 改為 POST 子資源（需同源 Origin），送出前寫入 pdf 匯出紀錄，原本的 GET …/completed-file 已移除；詳見 specs/015-export-history/contracts/export-history-http-api.md。
       responses:
         "200": { $ref: "#/components/responses/PdfFile" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -660,8 +674,13 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    DepartmentUnavailable:
+      description: ESIGN_DEPARTMENT_UNAVAILABLE；無法取得您的部門資料，請重新登入或聯絡系統管理員
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
     StateConflict:
-      description: 文件／簽署人狀態、期限、hash 或冪等結果不允許此操作
+      description: 文件／簽署人狀態、期限、hash 或冪等結果不允許此操作；一般匯出缺少可信部門亦回 ESIGN_DEPARTMENT_UNAVAILABLE
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
@@ -784,7 +803,6 @@ components:
 
     DocumentSummary:
       type: object
-      additionalProperties: false
       required: [id, docNumber, title, status, createdAt, pendingCount, signedCount, signEndAt, originalSignEndAt, isReopened]
       properties:
         id: { type: string }
@@ -805,6 +823,23 @@ components:
       allOf:
         - $ref: "#/components/schemas/DocumentSummary"
         - type: object
+          required: [signStartAt, signEndAt, createdBy, isCreator]
+          properties:
+            isCreator: { type: boolean }
+            signStartAt: { type: [string, "null"], format: date-time }
+            signEndAt: { type: [string, "null"], format: date-time }
+            createdBy:
+              type: [object, "null"]
+              additionalProperties: false
+              required: [name, employeeNo]
+              properties:
+                name: { type: string }
+                employeeNo: { type: string }
+    SigningTaskDocument:
+      description: 文件列表項目；摘要再加上簽署期間與建立人（僅員工 session 的列表回傳）
+      allOf:
+        - $ref: "#/components/schemas/DocumentSummary"
+        - type: object
           required: [signStartAt, signEndAt, createdBy]
           properties:
             signStartAt: { type: [string, "null"], format: date-time }
@@ -817,10 +852,20 @@ components:
                 name: { type: string }
                 employeeNo: { type: string }
     DocumentDetail:
+      oneOf:
+        - $ref: "#/components/schemas/ManagedDocumentDetail"
+        - $ref: "#/components/schemas/ReadonlyDocumentDetail"
+    ManagedDocumentDetail:
+      unevaluatedProperties: false
       allOf:
         - $ref: "#/components/schemas/DocumentSummary"
         - type: object
+          required: [isCreator, canExport, createdBy, signStartAt, stopReason, signers, fields, watermark, allowReject]
           properties:
+            isCreator: { type: boolean, const: true }
+            canExport: { type: boolean }
+            watermark: { type: boolean }
+            allowReject: { type: boolean }
             createdBy:
               description: 建立人；帳號不存在時為 null
               type: [object, "null"]
@@ -842,10 +887,51 @@ components:
             stopReason: { type: [string, "null"] }
             signers:
               type: array
-              items: { $ref: "#/components/schemas/SignerView" }
+              items: { $ref: "#/components/schemas/ManagedSignerView" }
             fields:
               type: array
               items: { $ref: "#/components/schemas/FieldView" }
+    ReadonlyDocumentDetail:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: "#/components/schemas/DocumentSummary"
+        - type: object
+          required: [isCreator, canExport, createdBy, signStartAt, stopReason, signers]
+          properties:
+            isCreator: { type: boolean, const: false }
+            canExport: { type: boolean }
+            createdBy:
+              description: 建立人；帳號不存在時為 null
+              type: [object, "null"]
+              additionalProperties: false
+              required: [name, employeeNo]
+              properties:
+                name: { type: string }
+                employeeNo: { type: string }
+            sourceFile:
+              type: object
+              required: [fileName, size, pageCount, sha256]
+              properties:
+                fileName: { type: string }
+                size: { type: integer }
+                pageCount: { type: integer }
+                sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+            signStartAt: { type: [string, "null"], format: date-time }
+            signEndAt: { type: [string, "null"], format: date-time }
+            stopReason: { type: [string, "null"] }
+            signers:
+              type: array
+              items: { $ref: "#/components/schemas/ReadonlySignerView" }
+    ReadonlySignerView:
+      type: object
+      additionalProperties: false
+      required: [publicId, name, status, signedAt, rejectedAt]
+      properties:
+        publicId: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string, enum: [pending, signed, rejected] }
+        signedAt: { type: [string, "null"], format: date-time }
+        rejectedAt: { type: [string, "null"], format: date-time }
     SignerView:
       type: object
       additionalProperties: false
@@ -858,10 +944,50 @@ components:
         department: { type: [string, "null"] }
         title: { type: [string, "null"] }
         email: { type: [string, "null"], format: email }
-        status: { type: string, enum: [pending, signed] }
+        status: { type: string, enum: [pending, signed, rejected] }
         signedAt: { type: [string, "null"], format: date-time }
+        rejectedAt: { type: [string, "null"], format: date-time }
+        rejectReason: { type: [string, "null"] }
         completion: { $ref: "#/components/schemas/PersonalCompletion" }
+        verificationUrl: { type: [string, "null"], format: uri }
         invitationDelivery: { type: [string, "null"], enum: [pending, delivered, failed, null], description: 補簽輪為 null，不沿用初次邀請投遞結果 }
+    ManagedSignerView:
+      type: object
+      additionalProperties: false
+      required: [publicId, type, name, status, completion]
+      properties:
+        publicId: { type: string, format: uuid }
+        type: { type: string, enum: [user, email] }
+        name: { type: string }
+        employeeNo: { type: [string, "null"] }
+        department: { type: [string, "null"] }
+        title: { type: [string, "null"] }
+        email: { type: [string, "null"], format: email }
+        status: { type: string, enum: [pending, signed, rejected] }
+        signedAt: { type: [string, "null"], format: date-time }
+        rejectedAt: { type: [string, "null"], format: date-time }
+        rejectReason: { type: [string, "null"] }
+        completion: { $ref: "#/components/schemas/PersonalCompletion" }
+        verificationUrl: { type: [string, "null"], format: uri }
+        invitationDelivery: { type: [string, "null"], enum: [pending, delivered, failed, null], description: 補簽輪為 null，不沿用初次邀請投遞結果 }
+        note: { type: string }
+        latestInvitation: { $ref: "#/components/schemas/LatestNotification" }
+        latestReminder: { $ref: "#/components/schemas/LatestNotification" }
+        deliveredReminderCount: { type: integer, minimum: 0 }
+        reminderEligibility:
+          type: object
+          required: [eligible, reasonCode, nextEligibleAt]
+          properties:
+            eligible: { type: boolean }
+            reasonCode: { type: [string, "null"] }
+            nextEligibleAt: { type: [string, "null"], format: date-time }
+    LatestNotification:
+      type: [object, "null"]
+      required: [status, completedAt, reasonCode]
+      properties:
+        status: { type: string }
+        completedAt: { type: [string, "null"], format: date-time }
+        reasonCode: { type: [string, "null"] }
     FieldView:
       type: object
       additionalProperties: false
@@ -892,7 +1018,7 @@ components:
         document:
           description: 內部簽署人的任務另含簽署期間與發起人（DocumentListItem）；外部簽署人只有摘要
           anyOf:
-            - $ref: "#/components/schemas/DocumentListItem"
+            - $ref: "#/components/schemas/SigningTaskDocument"
             - $ref: "#/components/schemas/DocumentSummary"
         signer: { $ref: "#/components/schemas/SignerView" }
         fields:
@@ -1016,3 +1142,47 @@ components:
                   signEndAt: { type: string, format: date-time, description: 補簽事件的新有效期限 }
                   actor: { type: [string, "null"], description: 裁切後的「建立人／本人／系統」類別；簽署人所見補簽事件省略此欄位 }
                   reason: { type: [string, "null"], description: 補簽原因只對 creator 揭露；簽署人補簽事件只含 type／occurredAt／signEndAt }
+
+    ExportPreviewSuccess:
+      allOf:
+        - $ref: "#/components/schemas/SuccessBase"
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: "#/components/schemas/ExportPreviewDocument" }
+    ExportPreviewDocument:
+      type: object
+      additionalProperties: false
+      required: [id, title, docNumber, status, signStartAt, signEndAt, originalSignEndAt, isReopened, createdBy, signers]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        docNumber: { type: string }
+        status: { type: string, enum: [active, expired, finalizing, completed, stopped] }
+        signStartAt: { type: [string, "null"], format: date-time }
+        signEndAt: { type: [string, "null"], format: date-time }
+        originalSignEndAt: { type: [string, "null"], format: date-time }
+        isReopened: { type: boolean }
+        createdBy:
+          type: [object, "null"]
+          required: [name, employeeNo]
+          properties:
+            name: { type: string }
+            employeeNo: { type: string }
+        signers:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, name, employeeNo, department, title, email, status, signedAt, rejectedAt, rejectReason]
+            properties:
+              type: { type: string, enum: [user, email] }
+              name: { type: string }
+              employeeNo: { type: [string, "null"] }
+              department: { type: [string, "null"] }
+              title: { type: [string, "null"] }
+              email: { type: [string, "null"] }
+              status: { type: string, enum: [pending, signed, rejected] }
+              signedAt: { type: [string, "null"], format: date-time }
+              rejectedAt: { type: [string, "null"], format: date-time }
+              rejectReason: { type: [string, "null"] }

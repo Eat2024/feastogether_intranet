@@ -1,6 +1,6 @@
 # HTTP 契約：歷史匯出紀錄
 
-`/api/esign/history/export` 底下的路由都需要有效員工 session，外部簽署 session 一律拒絕。寫入路由都需同源（`OriginGuard`）。錯誤沿用既有 envelope 與錯誤碼。
+`/api/esign/history/export` 底下的路由都需要有效員工 session，外部簽署 session 一律拒絕。Spec017 起，一般匯出每次以目前 User 的可信部門代碼精確比對文件建立部門快照；建立人、原匯出人皆無例外，軟刪除文件不可存取。寫入路由都需同源（`OriginGuard`）。錯誤沿用既有 envelope 與錯誤碼。
 
 ## 類型
 
@@ -21,9 +21,9 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 | `type` | 必填，上表三者之一 |
 | `page` | 選填，正整數，預設 1 |
 | `pageSize` | 選填，1–100，預設 10（與現有畫面相同） |
-| `documentId` | 選填，限定單一文件；同時套用到 `typeTotals` |
+| `documentId` | 選填，限定單一文件；同時套用到 `typeTotals`。跨部門或已刪除文件回空清單與零筆數 |
 
-依匯出時間由新到舊，時間相同時以紀錄流水號由大到小。
+先以目前部門篩選未刪除文件，才計算 items、total、typeTotals 與分頁；依匯出時間由新到舊，時間相同時以紀錄流水號由大到小。
 
 ```json
 {
@@ -94,7 +94,7 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 | 欄位 | 規則 |
 |---|---|
 | `type` | 只接受 `excel`；其他類型由後端自行記錄 |
-| `documentId` | 文件存在、未刪除且已發起，否則 404 `ESIGN_RESOURCE_NOT_FOUND`；不檢查建立人 |
+| `documentId` | 文件存在、未刪除、已發起且目前同部門，否則 404 `ESIGN_RESOURCE_NOT_FOUND`；建立人無跨部門例外 |
 | `scope` | 畫面顯示用範圍說明，trim 後 1–2,000 字；超過 255 字時依字元存成前 254 字加「…」 |
 | `count` | 匯出筆數，0 以上整數 |
 | `conditions.statuses` | `pending`／`signed`／`rejected` 的子集，空陣列表示全部 |
@@ -113,21 +113,21 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 
 | 路由 | 身分與權限 | 匯出人 |
 |---|---|---|
-| `POST /api/esign/documents/{documentId}/signers/{signerPublicId}/completed-file/downloads` | 員工 session，只限建立人（同原本） | 建立人 |
+| `POST /api/esign/documents/{documentId}/signers/{signerPublicId}/completed-file/downloads` | 員工 session，目前部門與文件建立快照一致，且 signer 屬於指定文件 | 目前員工 |
 | `POST /api/esign/signing-tasks/{signerPublicId}/completed-file/downloads` | 員工 session，只限已簽的本人（同 016） | 該員工 |
 | `POST /api/external-signing-task/completed-file/downloads` | Email OTP 存取 cookie，只限已簽的外部簽署人本人（同 016） | 該外部簽署人；`created_by_user_id` 為 NULL |
-| `POST /api/esign/history/export/{id}/downloads` | 員工 session，任何員工 | 目前使用者 |
+| `POST /api/esign/history/export/{id}/downloads` | 員工 session，目前部門與紀錄所屬文件建立快照一致 | 目前使用者 |
 
 `POST /api/esign/history/export/{id}/downloads` 的補充規則：
 - 只接受 `pdf` 紀錄，其他類型或不存在回 404 `ESIGN_RESOURCE_NOT_FOUND`。
-- 回該簽署人目前的已簽副本；新紀錄的文件、簽署人與範圍沿用原紀錄。
+- 必須驗證紀錄類型、簽署人與文件關聯，並先通過目前部門授權；ID 錯置回 404。回該簽署人目前的已簽副本；新紀錄的文件、簽署人與範圍沿用原紀錄。
 
 ## Excel 重新下載資料
 
 `GET /api/esign/history/export/{id}/document`
 
 - 只接受 `excel` 紀錄，其他類型或不存在回 404 `ESIGN_RESOURCE_NOT_FOUND`。
-- 唯讀，不新增紀錄。
+- 依紀錄所屬未刪除文件檢查目前部門；跨部門或 ID 錯置回 404。唯讀，不新增紀錄。
 - 回文件目前的資料，只含產生 Excel 需要的欄位，欄位名稱與文件詳情相同：
 
 ```json
@@ -152,6 +152,19 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 
 前端流程：依原紀錄的 `conditions` 篩選 → 呼叫 `POST /api/esign/history/export` 記錄 → 成功後以 `buildExportXlsx` 產生並下載。
 
+## 首次 Excel 匯出預覽（Spec017）
+
+`GET /api/esign/documents/{documentId}?view=export` 沿用既有文件路徑，獨立執行一般匯出授權；只接受目前同部門、未刪除且非草稿文件，無建立人例外。回應為上節完整 Excel 文件資料加 `status`，不新增紀錄；前端在 POST 記錄成功後才產生下載。一般文件詳情的 `isCreator: false` 僅提供裁切後簽署人欄位，不能作為 Excel 資料來源；`canExport` 只是按鈕呈現提示，每個 API 仍重新授權。
+
+## 部門授權與錯誤（Spec017）
+
+- 無效／失效員工 session：401。缺少可信部門代碼：409 `ESIGN_DEPARTMENT_UNAVAILABLE`，訊息「無法取得您的部門資料，請重新登入或聯絡系統管理員」。
+- 跨部門、已刪除、資源不存在、record/type 或 document/job/file、document/signer 關聯不符：指定資源回 404 `ESIGN_RESOURCE_NOT_FOUND`，不洩漏存在性；清單採前述空集合規則。
+- 不接受 caller 自報部門或 `all` 範圍；未知欄位與非法參數回 400。
+- ZIP list/request/detail/retry/file、歷史 list/count、Excel record/redownload、一般 PDF 與歷史 PDF 下載均適用。授權先於工作重用／建立／重試、ready 判斷、Range／stat／stream 與紀錄寫入；拒絕時不產生 DB、queue 或檔案 bytes 副作用。
+- 成功登入同步調職後，舊 session 立即以目前 User 部門判斷；既有 ZIP 工作快照與文件部門快照不回寫。
+- 本人內部與外部副本入口仍依本人授權，不因缺少部門或調職而改套一般匯出限制；舊 GET 副本下載路由依下節維持移除。
+
 ## 移除
 
 | 路由 | 取代 |
@@ -163,9 +176,11 @@ ZIP 申請路由 `POST /api/esign/documents/{documentId}/exports` 的 body `{ "t
 
 移除後一律 404。
 
-## 前端交接
+## 前端交接歷史（2026-10-29）
 
-本 spec 只做後端。後端已完成，前端尚未串接，以下由前端工程師處理；`/export-history` 目前仍是 mock。後端與契約的差異、未明定行為與限制見 [implementation-notes.md](../implementation-notes.md)。
+> 以下保存當時後端交接內容，不代表目前待辦。Spec017 的一般文件詳情已採 managed／readonly union，Excel 預覽已改用 `view=export` 的獨立授權資料，歷史清單／筆數與所有重下載遵守上述部門規則；權限失敗不得以快取舊清單或舊筆數呈現。
+
+當時本 spec 只做後端。後端已完成，前端尚未串接，以下由前端工程師處理；`/export-history` 目前仍是 mock。後端與契約的差異、未明定行為與限制見 [implementation-notes.md](../implementation-notes.md)。
 
 上線時必須跟後端一起部署（後端移除舊路由後，這四處會立刻失效）：
 - `ZipExportPanel`：

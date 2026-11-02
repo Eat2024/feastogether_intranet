@@ -14,17 +14,17 @@
 
 ## 驗收條件
 
-- [ ] 同部門非建立人可使用 server 授權的完整 Excel 資料，不能拿已裁切唯讀 DTO 產生缺欄 Excel；沿用既有 API 與記錄流程。
-- [ ] 列表／詳情／簽署人表格／ZIP 面板／歷史頁依部門匯出能力呈現，不以 isCreator 代替匯出資格；保留非建立人不可修改與既有 409／404 錯誤處理。
-- [ ] 安全 E2E 涵蓋直接 URL、ID 錯置、無效 cookie、缺部門、調職舊 session、軟刪除及敏感欄位；拒絕時無 DB／queue／bytes 副作用。
-- [ ] T027／T028／T035 與內部 Portal、內部 Email、外部副本原測試通過；確認 worker 固定快照不變、領取時重新授權，validation.md 記錄逐入口與 Excel 內容比對結果。
+- [x] 同部門非建立人可使用 server 授權的完整 Excel 資料，不能拿已裁切唯讀 DTO 產生缺欄 Excel；沿用既有 API 與記錄流程。
+- [x] 列表／詳情／簽署人表格／ZIP 面板／歷史頁依部門匯出能力呈現，不以 isCreator 代替匯出資格；保留非建立人不可修改與既有 409／404 錯誤處理。
+- [x] 安全 E2E 涵蓋直接 URL、ID 錯置、無效 cookie、缺部門、調職舊 session、軟刪除及敏感欄位；拒絕時無 DB／queue／bytes 副作用。
+- [x] T027／T028／T035 與內部 Portal、內部 Email、外部副本原測試通過；確認 worker 固定快照不變、領取時重新授權，validation.md 記錄逐入口與 Excel 內容比對結果。
 
 ## 原始任務範圍
 
-- [ ] T033 [US4] 修改 `client/src/features/esign-documents/DocumentExportView.tsx`、`buildExportXlsx.ts` 及 `client/src/api/types/esignExports.ts`／既有 request，確保同部門非建立人匯出使用 server 授權的完整 Excel 匯出資料，不拿 US1 已裁切詳情產生缺欄 Excel；沿用既有 API 路徑與授權後記錄流程。
-- [ ] T034 [US4] 在 `client/src/features/esign-documents/DocumentRowActions.tsx`、`DocumentDetailView.tsx`、`DocumentSignerTable.tsx`、`ZipExportPanel.tsx` 與 `client/src/features/export-history/ExportHistoryView.tsx` 接同部門匯出／下載能力，不能以 isCreator 作匯出資格；保持非建立人不可修改文件，409／404 走既有錯誤處理，無法取得資格時不 fallback 全公司資料。
-- [ ] T035 [US4] 在 `server/test/security-esign-department.e2e-spec.ts` 擴充所有匯出直接 URL、ID 關係、cookie 無效、缺代碼、調職舊 session、文件軟刪除與欄位洩漏案例；同時跑 `server/test/internal-portal-completion.e2e-spec.ts`、`server/test/internal-email-copy.e2e-spec.ts` 及外部副本原測試，證明本人留存資格未被部門規則封鎖。
-- [ ] T036 [US4] 執行 T027／T028／T035，驗證 worker 固定快照未改且檔案領取重新授權；在 `specs/017-department-document-visibility/validation.md` 記錄每一匯出入口、筆數、拒絕無 DB／queue／bytes side effect 的結果與前端 Excel 內容比對。
+- [x] T033 [US4] 修改 `client/src/features/esign-documents/DocumentExportView.tsx`、`buildExportXlsx.ts` 及 `client/src/api/types/esignExports.ts`／既有 request，確保同部門非建立人匯出使用 server 授權的完整 Excel 匯出資料，不拿 US1 已裁切詳情產生缺欄 Excel；沿用既有 API 路徑與授權後記錄流程。
+- [x] T034 [US4] 在 `client/src/features/esign-documents/DocumentRowActions.tsx`、`DocumentDetailView.tsx`、`DocumentSignerTable.tsx`、`ZipExportPanel.tsx` 與 `client/src/features/export-history/ExportHistoryView.tsx` 接同部門匯出／下載能力，不能以 isCreator 作匯出資格；保持非建立人不可修改文件，409／404 走既有錯誤處理，無法取得資格時不 fallback 全公司資料。
+- [x] T035 [US4] 在 `server/test/security-esign-department.e2e-spec.ts` 擴充所有匯出直接 URL、ID 關係、cookie 無效、缺代碼、調職舊 session、文件軟刪除與欄位洩漏案例；同時跑 `server/test/internal-portal-completion.e2e-spec.ts`、`server/test/internal-email-copy.e2e-spec.ts` 及外部副本原測試，證明本人留存資格未被部門規則封鎖。
+- [x] T036 [US4] 執行 T027／T028／T035，驗證 worker 固定快照未改且檔案領取重新授權；在 `specs/017-department-document-visibility/validation.md` 記錄每一匯出入口、筆數、拒絕無 DB／queue／bytes side effect 的結果與前端 Excel 內容比對。
 
 ## Ticket 08（T033–T036）
 

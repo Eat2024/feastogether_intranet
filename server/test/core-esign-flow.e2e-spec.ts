@@ -112,7 +112,7 @@ describe('核心電子簽 US1', () => {
           person_name: empid === creatorEmpid ? '建立人' : '未參與員工',
           person_status: 1,
           person_status_name: '正式',
-          department_id: 'D003',
+          department_id: empid === outsiderEmpid ? 'D003-OUTSIDE' : 'D003',
           department_name: '測試部',
           title: '測試員工',
         })),

@@ -4,7 +4,7 @@
 
 **Input**: `specs/017-department-document-visibility/spec.md`
 
-**Status**: Phase 1 設計完成；同部門瀏覽及匯出、發起人管理、UAT 舊文件歸屬皆已確認。尚未產生 tasks 或實作。
+**Status**: Phase 1 設計完成；同部門瀏覽及匯出、發起人管理、UAT 舊文件歸屬皆已確認。T001–T046 已完成實作及隔離驗證，詳見 validation.md；未執行真實 UAT 回填或部署。
 
 ## Summary
 

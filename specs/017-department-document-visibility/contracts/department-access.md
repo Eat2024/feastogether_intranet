@@ -1,6 +1,6 @@
 # Department Access Contract
 
-**狀態**：Phase 1 設計，尚未實作。沿用所有既有路徑、session 與 response envelope，不新增 API 路徑。
+**狀態**：已實作並完成本機隔離驗證，詳見 ../validation.md。沿用所有既有路徑、session 與 response envelope，不新增 API 路徑。
 
 ## 授權矩陣
 

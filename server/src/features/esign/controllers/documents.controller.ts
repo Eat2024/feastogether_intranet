@@ -36,7 +36,10 @@ import { AppException } from '#app/common/errors/app.exception';
 import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { ReplaceFieldsDto } from '../dto/field.dto';
-import { ListDocumentsQueryDto } from '../dto/document-query.dto';
+import {
+  ListDocumentsQueryDto,
+  ReadDocumentQueryDto,
+} from '../dto/document-query.dto';
 import { InitiateDocumentDto } from '../dto/initiation.dto';
 import {
   CreateDocumentDto,
@@ -76,7 +79,8 @@ export class DocumentsController {
   // 依角色與狀態列出目前員工可見的電子簽文件。
   @ApiOperation({
     summary: '列出電子簽文件',
-    description: '依角色與狀態查詢目前員工可見的文件。',
+    description:
+      'dep 為同部門；created／assigned 為本人範圍，未帶 role 合併本人範圍。不接受呼叫者指定部門。',
   })
   @Get()
   list(@CurrentUserId() userId: number, @Query() query: ListDocumentsQueryDto) {
@@ -111,13 +115,19 @@ export class DocumentsController {
 
   // 取得建立人可見的文件明細與簽署狀態。
   @ApiOperation({
-    summary: '取得建立人的文件詳情',
+    summary: '取得文件詳情或同部門匯出資料',
     description:
-      '驗證文件建立人後，回傳文件狀態、簽署人、欄位與來源 PDF 資訊。',
+      '建立人回傳管理詳情；同部門非建立人回傳裁切的唯讀詳情。view=export 另驗證同部門後只提供 Excel 匯出資料，不新增紀錄。',
   })
   @Get(':documentId')
-  detail(@Param('documentId') id: string, @CurrentUserId() userId: number) {
-    return this.queries.creatorDetail(this.id(id), userId);
+  detail(
+    @Param('documentId') id: string,
+    @CurrentUserId() userId: number,
+    @Query() query: ReadDocumentQueryDto,
+  ) {
+    return query.view === 'export'
+      ? this.queries.exportDocument(this.id(id), userId)
+      : this.queries.detail(this.id(id), userId);
   }
 
   // 更新草稿內容，並在提供新 PDF 時替換原檔。
@@ -172,7 +182,7 @@ export class DocumentsController {
   ) {
     const documentId = this.id(id);
     await this.signerService.draftSave(documentId, userId, body);
-    return (await this.queries.creatorDetail(documentId, userId)).signers;
+    return (await this.queries.detail(documentId, userId)).signers;
   }
 
   // 完整暫存草稿的簽署人名單、期間與選項。
@@ -186,7 +196,7 @@ export class DocumentsController {
   ) {
     const documentId = this.id(id);
     await this.signerService.saveDraftSettings(documentId, userId, body);
-    return this.queries.creatorDetail(documentId, userId);
+    return this.queries.detail(documentId, userId);
   }
 
   // 整批取代草稿的共用簽署欄位。
@@ -203,7 +213,10 @@ export class DocumentsController {
   ) {
     const documentId = this.id(id);
     await this.fieldService.replace(documentId, userId, body.fields);
-    return (await this.queries.creatorDetail(documentId, userId)).fields;
+    const detail = await this.queries.detail(documentId, userId);
+    if (!detail.isCreator)
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    return detail.fields;
   }
 
   // 發起簽署
@@ -242,7 +255,7 @@ export class DocumentsController {
       watermark: body.watermark,
       allowReject: body.allowReject,
     });
-    return this.queries.creatorDetail(documentId, userId);
+    return this.queries.detail(documentId, userId);
   }
 
   // 由建立人重新開放到期文件補簽，並寄出待簽者的新邀請。
@@ -288,10 +301,10 @@ export class DocumentsController {
     return this.queries.reopeningInvitations(this.id(id), userId);
   }
 
-  // 供建立人讀取文件原始 PDF。
+  // 供建立人或同部門讀取文件原始 PDF。
   @ApiOperation({
-    summary: '讀取建立人的原始 PDF',
-    description: '驗證建立人權限後回傳原始 PDF 串流，供預覽使用。',
+    summary: '讀取授權文件的原始 PDF',
+    description: '驗證建立人或同部門唯讀權限後回傳原始 PDF 串流，供預覽使用。',
   })
   @Get(':documentId/source-file')
   @Header('Cache-Control', 'private, no-store')
@@ -301,7 +314,7 @@ export class DocumentsController {
     @CurrentUserId() userId: number,
     @Res() reply: FastifyReply,
   ) {
-    const file = await this.queries.creatorSource(this.id(id), userId);
+    const file = await this.queries.source(this.id(id), userId);
     if (!file) {
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     }
@@ -330,10 +343,15 @@ export class DocumentsController {
   ) {
     const documentId = this.id(id);
     await this.stoppages.stopByCreator(documentId, userId, body.reason);
-    return this.queries.creatorDetail(documentId, userId);
+    return this.queries.detail(documentId, userId);
   }
 
   // 回傳目前員工可見的歷程與中文說明。
+  @ApiOperation({
+    summary: '查詢文件簽署歷程',
+    description:
+      '建立人取得管理事件；同部門取得文件層級事件，保留本人簽署事件可見規則。',
+  })
   @Get(':documentId/history')
   @ApiOperation({
     summary: '查詢可見的簽署歷程',
@@ -366,11 +384,11 @@ export class DocumentsController {
     );
   }
 
-  // 供建立人下載指定簽署人的已簽副本；送出前寫入 pdf 匯出紀錄。
+  // 供同部門員工下載指定簽署人的已簽副本；送出前寫入 pdf 匯出紀錄。
   @ApiOperation({
     summary: '下載指定簽署人的個人 PDF',
     description:
-      '僅建立人可依簽署人下載已產製完成的個人副本，回 200 application/pdf 附件。送出前新增一筆 pdf 匯出紀錄（匯出人為建立人、範圍為簽署人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、非建立人或簽署人不屬於此文件回 404、副本未產製完成回 409，都不記錄。取代已移除的 GET …/completed-file。',
+      '同部門員工可依簽署人下載已產製完成的個人副本，回 200 application/pdf 附件。送出前新增一筆 pdf 匯出紀錄（匯出人為目前員工、範圍為簽署人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、跨部門或簽署人不屬於此文件回 404、副本未產製完成回 409，都不記錄。取代已移除的 GET …/completed-file。',
   })
   @Post(':documentId/signers/:signerPublicId/completed-file/downloads')
   @CompletedPdfDownload()
@@ -382,7 +400,7 @@ export class DocumentsController {
   ) {
     sendCompletedPdf(
       reply,
-      await this.exportHistory.downloadCreatorCopy(
+      await this.exportHistory.downloadDepartmentCopy(
         this.id(id),
         signerPublicId,
         userId,

@@ -1,9 +1,9 @@
 'use client';
 
 // 匯出簽署紀錄（後端文件）：畫面與 mock 版 /forms/[id]/export 相同，條件記在網址上。
-// Excel 以 GET /api/esign/documents/:id 的簽署人在瀏覽器端產生，產生前先記錄到歷史匯出（Spec 015）。
-import { useGetDocumentQuery } from '@/api/queries';
-import type { EsignDocumentDetail, EsignSignerStatus } from '@/api/types';
+// Excel 以 GET /api/esign/documents/:id?view=export 的授權匯出資料在瀏覽器端產生，產生前先記錄到歷史匯出（Spec 015）。
+import { useGetDocumentExportPreviewQuery } from '@/api/queries';
+import type { EsignExportPreviewDocument, EsignSignerStatus } from '@/api/types';
 import LinkPagination from '@/components/LinkPagination';
 import PageHeader from '@/components/PageHeader';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
@@ -68,7 +68,7 @@ function Section({ step, title, children }: { step: number; title: string; child
 }
 
 export default function DocumentExportView({ documentId }: { documentId: string }) {
-  const { data: doc, isPending, isError, error, refetch, isFetching } = useGetDocumentQuery(documentId);
+  const { data: doc, isPending, isError, error, refetch, isFetching } = useGetDocumentExportPreviewQuery(documentId);
 
   if (isPending) {
     return (
@@ -92,18 +92,10 @@ export default function DocumentExportView({ documentId }: { documentId: string 
       </Alert>
     );
   }
-  // 草稿尚無簽署資料可匯出
-  if (doc.status === 'draft') {
-    return (
-      <Alert severity="info" action={<Button href={`/forms/${doc.id}/signers`}>前往設定簽署</Button>}>
-        「{doc.title}」尚未發起簽署，還沒有簽署資料可以匯出。
-      </Alert>
-    );
-  }
   return <ExportPage doc={doc} />;
 }
 
-function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
+function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
   const router = useRouter();
   const params = useSearchParams();
   const { showSnackbar } = useSnackbar();
@@ -284,8 +276,8 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    preview.items.map((r) => (
-                      <TableRow key={r.publicId}>
+                    preview.items.map((r, index) => (
+                      <TableRow key={index}>
                         {fields.map((f) => (
                           <TableCell key={f.key} sx={{ whiteSpace: f.key === 'rejectReason' ? 'normal' : 'nowrap' }}>
                             {f.value(r) || '—'}

@@ -1,7 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { getQueueToken } from '@nestjs/bullmq';
 import { type INestApplicationContext } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import { type Job, type Queue } from 'bullmq';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
@@ -24,7 +23,6 @@ import {
   ESIGN_EXTERNAL_INVITATION_QUEUE,
   ESIGN_MAINTENANCE_QUEUE,
 } from '#app/features/esign/esign-queue.constants';
-import { WorkerModule } from '#app/worker.module';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import {
   PRIVATE_FILE_STORAGE,
@@ -39,6 +37,8 @@ import {
 } from './signature-verification.helper';
 import {
   createSecurityE2eApp,
+  mailFixture,
+  createSyntheticWorker,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -73,6 +73,12 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
           }),
       }),
     );
+    mailFixture(ctx).allowEmails([
+      'copy@example.test',
+      'copy0@example.test',
+      'copy1@example.test',
+      'copy2@example.test',
+    ]);
     // 真實 worker 由測試逐次驅動，避免背景 consumer 搶先產製或清除邀請密文。
     for (const name of [
       ESIGN_DOCUMENT_FINALIZATION_QUEUE,
@@ -83,9 +89,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       await queue.pause();
       queues.push(queue);
     }
-    worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    worker = await createSyntheticWorker(ctx);
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = randomBytes(5).toString('hex');
     users = await manager.save(
@@ -95,6 +99,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
           empid: `C${prefix}${i}`,
           name: `合成副本員工${i}`,
           isActive: true,
+          departmentCode: `TEST017-${i}`,
         }),
       ),
     );

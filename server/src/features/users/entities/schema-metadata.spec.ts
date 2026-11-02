@@ -5,6 +5,26 @@ import { User } from './user.entity';
 describe('user schema metadata', () => {
   const storage = getMetadataArgsStorage();
 
+  it('可信部門代碼保留 NULL 舊值與精確字串比較，不取代本機部門外鍵', () => {
+    const column = storage.columns.find(
+      (item) => item.target === User && item.propertyName === 'departmentCode',
+    );
+    expect(column?.options).toMatchObject({
+      name: 'department_code',
+      type: 'varchar',
+      length: 50,
+      nullable: true,
+      charset: 'utf8mb4',
+      collation: 'utf8mb4_0900_bin',
+    });
+    expect(column?.options.default).toBeUndefined();
+    expect(
+      storage.columns.find(
+        (item) => item.target === User && item.propertyName === 'departmentId',
+      )?.options.type,
+    ).toBe('bigint');
+  });
+
   it.each([
     [Department, 'hr_departments'],
     [User, 'users'],

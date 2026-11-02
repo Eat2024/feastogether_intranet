@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
+import {
+  FeastogetherClient,
+  FeastogetherApiError,
+} from '#app/infrastructure/http-client/feastogether/feastogether.client';
+import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
+import { User } from '#app/features/users/entities/user.entity';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { OauthClient } from '#app/infrastructure/http-client/oauth/oauth.client';
 import { apiData } from './api-response.helper';
@@ -10,39 +16,64 @@ import {
   type SecurityE2eContext,
 } from './security-e2e.helper';
 
-/** 只替換上游 OIDC 網路；正式 AuthModule、Redis 交易、MySQL session 與 guard 全部實際執行。 */
+/** 只替換上游 OIDC 與 HR 網路，保留正式 HR 格式解析；正式 AuthModule、Redis 交易、MySQL session 與 guard 全部實際執行。 */
 describe('OAuth 登入 HTTP 整合', () => {
   const empid = 'E2EOAUTHLOGIN';
   let ctx: SecurityE2eContext;
   let db: DataSource;
+  let departmentCode: string | null = 'OA017A';
+  const documentIds: number[] = [];
+  const hr = {
+    get: jest.fn((_path: string) =>
+      Promise.resolve([
+        {
+          person_empid: empid,
+          person_name: '合成OAuth員工',
+          person_status: 1,
+          person_status_name: '正式',
+          department_id: departmentCode,
+          department_name: departmentCode ? '合成OAuth部門' : null,
+          title: null,
+        },
+      ]),
+    ),
+  };
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(OauthClient).useValue({
-        createLoginChallenge: () => ({
-          state: randomUUID(),
-          nonce: randomUUID(),
-        }),
-        buildAuthorizationUrl: ({ state }: { state: string }) =>
-          Promise.resolve(`https://auth.example.test/authorize?state=${state}`),
-        exchangeCode: () =>
-          Promise.resolve({
-            accessToken: 'synthetic-provider-token',
-            sub: 'synthetic-sub',
+      builder
+        .overrideProvider(OauthClient)
+        .useValue({
+          createLoginChallenge: () => ({
+            state: randomUUID(),
+            nonce: randomUUID(),
           }),
-        fetchUserInfo: () =>
-          Promise.resolve({
-            sub: 'synthetic-sub',
-            userNumber: empid,
-            name: '登入測試員工',
-          }),
-      }),
+          buildAuthorizationUrl: ({ state }: { state: string }) =>
+            Promise.resolve(
+              `https://auth.example.test/authorize?state=${state}`,
+            ),
+          exchangeCode: () =>
+            Promise.resolve({
+              accessToken: 'synthetic-provider-token',
+              sub: 'synthetic-sub',
+            }),
+          fetchUserInfo: () =>
+            Promise.resolve({
+              sub: 'synthetic-sub',
+              userNumber: empid,
+              name: '登入測試員工',
+            }),
+        })
+        .overrideProvider(FeastogetherClient)
+        .useValue(hr),
     );
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
   });
 
   afterAll(async () => {
     if (!ctx) return;
+    if (documentIds.length)
+      await db.manager.delete(EsignDocument, { id: In(documentIds) });
     await db.query(
       'DELETE FROM auth_sessions WHERE user_id = (SELECT id FROM users WHERE empid = ?)',
       [empid],
@@ -107,6 +138,101 @@ describe('OAuth 登入 HTTP 整合', () => {
       .get('/api/auth/session')
       .set('Cookie', cookie.split(';')[0])
       .expect(401);
+  });
+
+  it('OAuth 依已驗證員編查可信HR部門；調職與NULL同步立即影響舊session，上游失敗不發session', async () => {
+    const enter = async (expected = 200) => {
+      const started = await request(ctx.server)
+        .post('/api/auth/oauth/start')
+        .set('Origin', 'http://localhost:3000')
+        .send({})
+        .expect(200);
+      const state = new URL(
+        apiData<{ authorizationUrl: string }>(started).authorizationUrl,
+      ).searchParams.get('state');
+      const raw: unknown = started.headers['set-cookie'];
+      const tx: unknown = Array.isArray(raw) ? raw[0] : raw;
+      if (typeof tx !== 'string') throw new Error('缺少交易cookie');
+      return request(ctx.server)
+        .post('/api/auth/oauth/callback')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', tx.split(';')[0])
+        .send({ state, code: 'synthetic-code' })
+        .expect(expected);
+    };
+    departmentCode = 'OA017A';
+    const original = await enter();
+    const raw: unknown = original.headers['set-cookie'];
+    if (!Array.isArray(raw)) throw new Error('缺少登入cookie');
+    const cookie: unknown = raw.find(
+      (value: unknown) =>
+        typeof value === 'string' && value.startsWith('FT_ESIGN_SESSION='),
+    );
+    if (typeof cookie !== 'string') throw new Error('缺少登入cookie');
+    const user = await db.manager.findOneByOrFail(User, { empid });
+    expect(user.departmentCode).toBe('OA017A');
+    expect(hr.get).toHaveBeenLastCalledWith(
+      `/api/v1/hr/staff_lookup?person_empid=${empid}`,
+    );
+    const docs = await db.manager.save(
+      EsignDocument,
+      ['OA017A', 'OA017B'].map((code) =>
+        db.manager.create(EsignDocument, {
+          docNumber: randomUUID(),
+          title: '合成OAuth部門文件',
+          status: 'draft',
+          createdByUserId: user.id,
+          createdByDepartmentCode: code,
+        }),
+      ),
+    );
+    documentIds.push(...docs.map((doc) => doc.id));
+    const visible = () =>
+      request(ctx.server)
+        .get('/api/esign/documents?role=dep')
+        .set('Cookie', cookie.split(';')[0]);
+    expect(
+      apiData<Array<{ id: string }>>(await visible().expect(200)).map(
+        (doc) => doc.id,
+      ),
+    ).toEqual([String(docs[0].id)]);
+    departmentCode = 'OA017B';
+    await enter();
+    expect(
+      apiData<Array<{ id: string }>>(await visible().expect(200)).map(
+        (doc) => doc.id,
+      ),
+    ).toEqual([String(docs[1].id)]);
+    const before = await db.query<Array<{ total: number }>>(
+      'SELECT COUNT(*) total FROM auth_sessions WHERE user_id=?',
+      [user.id],
+    );
+    hr.get.mockRejectedValueOnce(
+      new FeastogetherApiError(503, null, '合成HR失敗'),
+    );
+    const failed = await enter(502);
+    expect(String(failed.headers['set-cookie'] ?? '')).not.toContain(
+      'FT_ESIGN_SESSION=',
+    );
+    expect(
+      await db.query(
+        'SELECT COUNT(*) total FROM auth_sessions WHERE user_id=?',
+        [user.id],
+      ),
+    ).toEqual(before);
+    expect(
+      (await db.manager.findOneByOrFail(User, { id: user.id })).departmentCode,
+    ).toBe('OA017B');
+    departmentCode = null;
+    await enter();
+    expect(
+      await db.manager.findOneByOrFail(User, { id: user.id }),
+    ).toMatchObject({ departmentCode: null, departmentName: null });
+    await visible().expect(409);
+    await request(ctx.server)
+      .get('/api/auth/session')
+      .set('Cookie', cookie.split(';')[0])
+      .expect(200);
   });
 
   it('跨站發起登入會被拒絕', async () => {

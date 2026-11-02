@@ -1,8 +1,6 @@
 import { getQueueToken } from '@nestjs/bullmq';
 import type { INestApplicationContext } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import type { Job, Queue } from 'bullmq';
-import { WorkerModule } from '#app/worker.module';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import {
   ESIGN_DOCUMENT_FINALIZATION_QUEUE,
@@ -28,6 +26,7 @@ import { apiData } from './api-response.helper';
 import { esignTestPng } from './esign-test-png';
 import {
   createSecurityE2eApp,
+  createSyntheticWorker,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -65,9 +64,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
       await queue.pause();
       queues.push(queue);
     }
-    worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    worker = await createSyntheticWorker(ctx);
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = randomBytes(5).toString('hex');
     users = await manager.save(
@@ -77,6 +74,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
           empid: `S${prefix}${index}`,
           name: `合成人員${index}`,
           isActive: true,
+          departmentCode: `TEST017-${index}`,
         }),
       ),
     );
@@ -263,6 +261,9 @@ describe('Spec016 員工拒簽與本人副本', () => {
   );
   it('真實 worker 產製本人副本；到期仍下載相同 PDF，跨人及損毀 fail closed', async () => {
     const f = await fixture();
+    const beforeCompletion = await manager().findOneByOrFail(EsignDocument, {
+      id: Number(f.document.id),
+    });
     const id = f.signers[0]!.publicId;
     const download = (cookie = cookies[0]) =>
       request(ctx.server)
@@ -277,6 +278,16 @@ describe('Spec016 員工拒簽與本人副本', () => {
     await worker.get(DocumentFinalizationProcessor).process({
       data: { documentId: Number(f.document.id), signerId: f.signers[0]!.id },
     } as Job<{ documentId: number; signerId: number }>);
+    const completedDocument = await manager().findOneByOrFail(EsignDocument, {
+      id: Number(f.document.id),
+    });
+    expect(completedDocument).toMatchObject({
+      createdByUserId: beforeCompletion.createdByUserId,
+      createdByDepartmentCode: beforeCompletion.createdByDepartmentCode,
+      createdByDepartmentName: beforeCompletion.createdByDepartmentName,
+      signingPayloadJson: beforeCompletion.signingPayloadJson,
+      signingPayloadSha256: beforeCompletion.signingPayloadSha256,
+    });
     const pdf = await download().expect(200);
     expect(pdf.headers['content-type']).toContain('application/pdf');
     expect(pdf.headers['content-disposition']).toContain('attachment');

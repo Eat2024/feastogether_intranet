@@ -1,6 +1,5 @@
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
-import { NestFactory } from '@nestjs/core';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import type { Job, Queue } from 'bullmq';
@@ -20,10 +19,11 @@ import {
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
-import { WorkerModule } from '#app/worker.module';
 import { EsignMaintenanceProcessor } from '#app/worker/esign/esign-maintenance.processor';
 import { apiData } from './api-response.helper';
 import {
+  mailFixture,
+  createSyntheticWorker,
   closeSecurityE2eApp,
   createSecurityE2eApp,
   type SecurityE2eContext,
@@ -73,6 +73,7 @@ describe('核心電子簽真實 queue e2e', () => {
         ),
       }),
     );
+    mailFixture(ctx).allowEmails(['queue-candidate@example.test']);
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
     storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
     invitationQueue = ctx.app.get<Queue<InvitationJobData>>(
@@ -217,9 +218,7 @@ describe('核心電子簽真實 queue e2e', () => {
       /queue-candidate|token|email|pdf|png/i,
     );
 
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       const workerQueue = worker.get<Queue>(
         getQueueToken(ESIGN_DOCUMENT_FINALIZATION_QUEUE),

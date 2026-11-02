@@ -25,6 +25,36 @@ describe('esign schema metadata', () => {
     [EsignExportJob, 'esign_export_jobs'],
   ] as const;
 
+  it('建立部門快照可容納舊資料並使用精確代碼與部門排序索引', () => {
+    const column = (propertyName: string) =>
+      storage.columns.find(
+        (item) =>
+          item.target === EsignDocument && item.propertyName === propertyName,
+      )?.options;
+    expect(column('createdByDepartmentCode')).toMatchObject({
+      name: 'created_by_department_code',
+      type: 'varchar',
+      length: 50,
+      nullable: true,
+      charset: 'utf8mb4',
+      collation: 'utf8mb4_0900_bin',
+    });
+    expect(column('createdByDepartmentName')).toMatchObject({
+      name: 'created_by_department_name',
+      type: 'varchar',
+      length: 150,
+      nullable: true,
+    });
+    expect(column('createdByDepartmentCode')?.default).toBeUndefined();
+    expect(
+      storage.indices.find(
+        (item) =>
+          item.target === EsignDocument &&
+          item.name === 'idx_esign_documents_department_deleted_updated_id',
+      )?.columns,
+    ).toEqual(['createdByDepartmentCode', 'deletedAt', 'updatedAt', 'id']);
+  });
+
   it.each(tables)('%p 對應 %s 且欄位有繁中 comment', (target, name) => {
     const table = storage.tables.find((item) => item.target === target);
     expect(table?.name).toBe(name);

@@ -1,5 +1,7 @@
 # Feature Specification: WebView SSO 與員工 Session
 
+> **Spec017 交互契約（2026-11-02）**：WebView、帳密與 OAuth 成功可信登入均同步目前部門代碼／名稱；只採既有 HR 來源，OAuth 以已驗證員編查詢，不接受 client、JWT profile 或 OAuth profile 自報部門。HR 失敗沿既有登入失敗規則，不以舊值或其他來源 fallback。session 格式不變；部門授權逐請求讀目前 User，因此成功調職同步後，舊 session 也立即依新部門判斷。缺少部門不新增一般登入資格限制，但部門列表、新建與一般匯出回 409 `ESIGN_DEPARTMENT_UNAVAILABLE`；本人簽署／副本入口維持原規則。既有文件建立部門及簽署身分快照均不得回寫。
+
 **Feature Branch**: `[002-webview-sso-session]`
 
 **Created**: 2026-10-12
@@ -106,7 +108,7 @@
 - **FR-010**: FGAPI 查詢結果 MUST 以正規化後的完整員工編號精確比對；只有恰好一筆完全相符且符合第一版登入資格的結果可以繼續。
 - **FR-011**: FGAPI 查無完全相符結果、回傳多筆完全相符結果、結果不具登入資格或欄位格式不合法時，系統 MUST 拒絕建立 session。
 - **FR-012**: FGAPI 無法連線、逾時或回傳不可判讀結果時，系統 MUST 採安全失敗，不得改用 JWT 自帶 profile 或本地舊 User 當作存在性證明。
-- **FR-013**: 系統 MUST 對 FGAPI 回應執行允許欄位與格式驗證，再將員工編號、姓名、人員狀態、部門名稱及職稱映射至本地 User。FGAPI 的字串部門代碼 MUST 驗證格式，但第一版 MUST NOT 將它直接寫入代表本地 `hr_departments.id` 的 `users.department_id`；本地部門外鍵保留原值，待後續組織主檔同步建立明確映射。
+- **FR-013**: 系統 MUST 對 FGAPI 回應執行允許欄位與格式驗證，再將員工編號、姓名、人員狀態、部門名稱及職稱映射至本地 User。FGAPI 的部門代碼依既有格式驗證後 MUST 同步至獨立的 `users.department_code`，名稱同步至 `department_name`；非空白代碼保留原字串，不 trim 或改大小寫。已通過上游驗證的缺值或空白代碼 MUST 清為 SQL NULL，不保留舊值；上游本身拒絕的格式仍依原錯誤規則處理。MUST NOT 將字串代碼寫入代表本地 `hr_departments.id` 的 `users.department_id`；本地部門外鍵保留原值。
 - **FR-014**: 本地不存在該員工時，系統 MUST 以 FGAPI 驗證資料建立唯一 User；本地已存在時，只能更新核准的目前員工資料與最近登入時間。
 - **FR-015**: 員工建立或更新 MUST 保留既有歷史文件、簽署快照、稽核關聯與非 FGAPI 管理欄位，不得以外部回應整列覆蓋。
 - **FR-016**: 同一員工編號的並發首次登入 MUST 最終對應同一筆本地 User，不得建立重複員工主體。

@@ -1,6 +1,8 @@
 # 功能規格：歷史匯出紀錄 API（history/export）
 
-> **契約更新（Spec 019）**：本文件的重新下載與 ZIP 保存政策已由 [Spec 019](../019-esign-uat-refinements/spec.md) US1／US2 取代：歷史 Excel／PDF／ZIP 重新下載不新增紀錄、不更動原紀錄；Excel 沿用當時條件取得目前資料，PDF／ZIP 沿用原產物。新匯出仍依既有流程記錄；ZIP 無期限、固定最新曾完成工作，不納入後續簽署、不因缺檔改選舊檔或重建，未曾成功的失敗工作才可重試。部門授權另依 Spec 017，仍須整合驗收。下文保留當時決策與測試證據。
+> **契約更新（Spec 019）**：本文件的重新下載與 ZIP 保存政策已由 [Spec 019](../019-esign-uat-refinements/spec.md) US1／US2 取代：歷史 Excel／PDF／ZIP 重新下載不新增紀錄、不更動原紀錄；Excel 沿用當時條件取得目前資料，PDF／ZIP 沿用原產物。新匯出仍依既有流程記錄；ZIP 無期限、固定最新曾完成工作，不納入後續簽署、不因缺檔改選舊檔或重建，未曾成功的失敗工作才可重試。部門授權另依 Spec 017，本次同步整合驗收。下文保留當時決策與測試證據。
+
+> **Spec017 更新（2026-11-02）**：有效的一般匯出規則改為目前 User 可信部門代碼與文件建立部門快照精確相符；不以建立人、原匯出人、Portal 可進入資格或部門名稱取代授權。下列 2026-10-28／29 Clarifications 為歷史決策，其中全員可讀、重新下載不擋權限、非建立人只能重下載等規則已被取代。本人內部／外部副本入口保持原本授權。
 
 **Feature Branch**: 未建立專用分支；目前為 `dev`
 
@@ -40,7 +42,7 @@
 
 ## User Scenarios & Testing
 
-### User Story 1 - 依類型查看所有人的匯出紀錄 (Priority: P1)
+### User Story 1 - 依類型查看同部門文件的匯出紀錄 (Priority: P1)
 
 有效員工在歷史匯出文件頁切換頁籤，查看各類型的匯出紀錄，並以頁碼翻頁。
 
@@ -50,7 +52,7 @@
 
 **Acceptance Scenarios**:
 
-1. **Given** 有效員工 session，**When** 以某個 `type` 查詢，**Then** 依匯出時間由新到舊回傳該類型的紀錄，不限建立人或匯出人。
+1. **Given** 有效員工 session，**When** 以某個 `type` 查詢，**Then** 依匯出時間由新到舊回傳該類型的紀錄，僅限目前同部門文件，不以建立人或匯出人身分放寬。
 2. **Given** 任一類型的紀錄超過一頁，**When** 指定頁碼，**Then** 回傳該頁資料與總筆數，翻頁不漏不重。
 3. **Given** 頁籤需要顯示各類型筆數，**When** 查詢任一類型，**Then** 回應同時附上各類型的總筆數。
 4. **Given** 每筆紀錄，**Then** 包含匯出時間、文件名稱、文件編號、匯出範圍、筆數與匯出人。匯出人是員工時顯示姓名與員工編號，是外部簽署人時顯示姓名與 Email。
@@ -82,7 +84,7 @@
 
 **Acceptance Scenarios**:
 
-1. **Given** 建立人在檢視頁下載某位簽署人的副本，**When** 後端回傳檔案，**Then** 新增一筆紀錄，匯出人為建立人，範圍為該簽署人，筆數為 1。
+1. **Given** 同部門員工在檢視頁下載某位簽署人的副本，**When** 後端回傳檔案，**Then** 新增一筆紀錄，匯出人為目前員工，範圍為該簽署人，筆數為 1。
 2. **Given** 內部員工以員工 session 在「我的電子簽」下載本人副本，**When** 後端回傳檔案，**Then** 新增一筆紀錄，匯出人與範圍都是該員工（姓名、員工編號）。
 3. **Given** 外部簽署人完成 Email OTP 後在外部簽署頁下載本人副本，**When** 後端回傳檔案，**Then** 新增一筆紀錄，匯出人與範圍都是該外部簽署人（姓名、Email）。
 4. **Given** 原本的 GET 下載路由，**When** 呼叫，**Then** 回 404，不能繞過紀錄取得副本。
@@ -93,7 +95,7 @@
 
 ### User Story 4 - 從紀錄重新下載 (Priority: P2)
 
-有效員工在歷史頁對任一紀錄重新下載，不限建立人或原匯出人。Excel 與單人 PDF 每次重新下載都新增一筆紀錄。
+有效員工在歷史頁對同部門文件的紀錄重新下載，不限建立人或原匯出人。Excel 與單人 PDF 每次重新下載都新增一筆紀錄。
 
 **Acceptance Scenarios**:
 
@@ -107,19 +109,19 @@
 
 - **FR-001**: 系統 MUST 提供 `GET /api/esign/history/export`，以必填 `type` 篩選，依匯出時間由新到舊、以頁碼分頁，回傳總筆數及各類型總筆數。
 - **FR-002**: `type` MUST 只接受 `excel`（簽署紀錄清單 Excel）、`pdf`（單人已簽 PDF）、`zip`（已簽署副本 ZIP）；簽到表本次不提供。
-- **FR-003**: 查詢 MUST 可選擇以 `documentId` 限定單一文件，供建立人匯出頁的 ZIP 面板取得該文件最近一次匯出。
-- **FR-004**: 所有有效員工 session MUST 能查看與重新下載全部類型的紀錄，不限建立人或匯出人；外部簽署 session 與未登入者 MUST 拒絕。
+- **FR-003**: 查詢 MUST 可選擇以 `documentId` 限定單一文件，供同部門員工匯出頁的 ZIP 面板取得該文件最近一次匯出。
+- **FR-004**: 有效員工 session MUST 只查看與重新下載目前同部門、未軟刪除文件的紀錄；清單、total、typeTotals 與分頁先套相同授權。跨部門 documentId 篩選回空清單與零筆數；指定紀錄／檔案回 404。無可信代碼回 409 `ESIGN_DEPARTMENT_UNAVAILABLE`；外部簽署 session 與未登入者拒絕。
 - **FR-005**: 每筆紀錄 MUST 回傳紀錄識別、類型、文件識別／名稱／編號、匯出人、匯出時間、範圍說明與筆數；ZIP 另回 Spec 009 的工作狀態欄位。
-- **FR-006**: 系統 MUST 提供記錄 Excel 匯出的 API。有效員工 session 即可記錄，文件須存在且已發起；後端保存匯出人（取自 session，不由前端傳入）、文件、時間、範圍說明、筆數與匯出條件。
+- **FR-006**: 系統 MUST 提供記錄 Excel 匯出的 API。有效員工 session 且目前同部門才可記錄，文件須存在、未刪除且已發起；後端保存匯出人（取自 session，不由前端傳入）、文件、時間、範圍說明、筆數與匯出條件。
 - **FR-007**（前端交接）: 前端 MUST 在 Excel 記錄成功後才觸發下載；記錄失敗不下載。
 - **FR-008**: 下列下載成功時，後端 MUST 在同一請求中新增一筆 `pdf` 紀錄，寫入失敗則不回傳檔案：
-  - 建立人下載簽署人副本。
+  - 同部門員工由一般入口下載簽署人副本。
   - 內部員工以員工 session 下載本人副本。
   - 外部簽署人在 Email OTP 簽署頁下載本人副本。
   - 從 `pdf` 紀錄重新下載。
-- **FR-009**: 系統 MUST 提供 Excel 重新下載所需的資料：依紀錄回傳文件目前的名稱、編號、建立人與全部簽署人，供所有有效員工使用。
+- **FR-009**: 系統 MUST 提供 Excel 重新下載所需的資料：依紀錄回傳文件目前的名稱、編號、建立人與全部簽署人，僅供目前同部門員工使用。首次 Excel 預覽由 `GET /api/esign/documents/{documentId}?view=export` 獨立授權，回完整 Excel 資料加 status；草稿回 404，GET 不寫入紀錄。
 - **FR-010**: Excel 重新下載 MUST 透過 FR-006 新增紀錄。
-- **FR-011**: `GET /api/esign/exports` MUST 移除；ZIP 面板改用 FR-003。ZIP 的申請、查詢、重試與下載路由不變。
+- **FR-011**: `GET /api/esign/exports` MUST 移除；ZIP 面板改用 FR-003。ZIP 的申請、查詢、重試與下載路由不變，但每次均重新檢查目前部門；建立人、原申請人與七天重用工作不構成授權例外。
 - **FR-012**: `excel`、`pdf` 紀錄 MUST NOT 被 ZIP 背景工作、重試掃描、到期清理、七天重用或「最近一次匯出」判斷處理。
 - **FR-013**: 紀錄只新增，不提供修改或刪除。
 - **FR-014**: 會寫入紀錄的 PDF 下載 MUST 使用 POST 並直接回傳 PDF；原本的 `GET /api/esign/documents/{documentId}/signers/{signerPublicId}/completed-file`、`GET /api/esign/signing-tasks/{signerPublicId}/completed-file` 與 `GET /api/external-signing-task/completed-file` MUST 移除，避免繞過紀錄下載。
@@ -132,7 +134,7 @@
 
 - **SC-001**: Excel 匯出、單人 PDF 下載（含本人下載）與兩者的重新下載，每次都在歷史中有且只有一筆紀錄；ZIP 每個匯出工作一筆。
 - **SC-002**: 紀錄存在 DB，伺服器重啟後仍在；前端改串接後，歷史頁不再讀取前端記憶體的示意資料。
-- **SC-003**: 各類型的總筆數與分頁結果一致，翻頁不漏不重。
+- **SC-003**: 各類型在相同部門範圍內的總筆數與分頁結果一致，翻頁不漏不重。
 - **SC-004**: 外部簽署 session 與未登入者查詢、記錄、重新下載的嘗試全部被拒，且不留紀錄。
 
 ## Assumptions
@@ -140,7 +142,7 @@
 - 沿用既有的 `esign_export_jobs`（匯出工作），以 `export_type` 區分類型，不新增 table。Excel 條件與單人 PDF 的簽署人如何保存、是否需要新欄位或索引，在 plan 階段決定。
 - `esign_export_jobs.created_by_user_id` 目前是 NOT NULL 且連到員工，外部簽署人不是員工。記錄外部簽署人下載需要 migration：改為可 NULL，NULL 代表外部簽署人本人下載，匯出人由簽署人推導。內部員工本人下載有員工 session，照常記錄員工。
 - 既有 ZIP 紀錄的 `export_type` 是 `signed_copies_zip`；DB 值要改成與 API 相同的 `zip`（需要 migration），或保留原值並在後端對應，在 plan 階段決定。ZIP 申請路由 body 的 `{ "type": "signed_copies_zip" }` 屬於 Spec 009 的既有契約，本次不變。
-- 資料開放範圍由 Portal 決定：能進入電子簽的有效員工都能查看紀錄、重新下載單人副本，並透過 Excel 重新下載取得任一文件的簽署人清單（含 Email、拒絕原因）。本專案不另判斷角色；電子簽加上 role／permission 後再限制。
+- Spec017 由伺服器對每個一般匯出入口判斷目前部門與文件快照。只有授權後的 Excel 資料含完整簽署人欄位（含 Email、拒絕原因）；一般唯讀詳情不得據此放寬。
 - Excel 紀錄由前端回報，後端只能驗證身分與文件，範圍說明與筆數以前端為準；不做冪等，網路重試造成的重複紀錄可接受。
 - 文件名稱與編號取文件目前的資料。已發起的文件不能改名，文件刪除受外鍵限制，不需要另存匯出當時的名稱。
 - 本 spec 只交付後端。所有前端改動（歷史頁、Excel 回報紀錄、ZIP 面板、PDF 下載改用 POST）由前端工程師在後端完成後處理，交接內容見 contract。
@@ -149,7 +151,7 @@
 ## Out of Scope
 
 - 簽到表匯出與其紀錄。
-- `GET /api/esign/exportable-documents` 跨建立人文件查找（行為不變；唯一差異是帶未知的 `documentId` 參數改回 400，見 Assumptions）。
+- `GET /api/esign/exportable-documents` 跨建立人文件查找（本規格原範圍外；Spec017 已另改為同部門篩選，未知 `documentId` 仍回 400）。
 - 人資角色或管理者權限機制。
 - 所有前端改動（交給前端工程師，見 contract「前端交接」）。
 - 歷史頁的 ZIP 頁籤（由前端工程師評估）。

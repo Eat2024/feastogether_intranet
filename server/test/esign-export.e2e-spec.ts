@@ -1,3 +1,4 @@
+import { User } from '#app/features/users/entities/user.entity';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DocumentExportProcessor } from '#app/worker/esign/document-export.processor';
@@ -5,8 +6,6 @@ import { EsignExportJob } from '#app/features/esign/entities/esign-export-job.en
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { ESIGN_EXPORT_QUEUE } from '#app/features/esign/esign-queue.constants';
-import { NestFactory } from '@nestjs/core';
-import { WorkerModule } from '#app/worker.module';
 import {
   PRIVATE_FILE_STORAGE,
   type PrivateFileStorage,
@@ -23,6 +22,7 @@ import { FeastogetherHrService } from '#app/infrastructure/http-client/feastoget
 import { apiData } from './api-response.helper';
 import {
   createSecurityE2eApp,
+  createSyntheticWorker,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -34,6 +34,8 @@ describe('Spec009 匯出 API', () => {
   let db: DataSource;
   let cookie: string;
   let other: string;
+  let outsider: string;
+  let missing: string;
   let id: string;
   let ownerId: string;
   const origin = 'http://localhost:3000';
@@ -47,7 +49,12 @@ describe('Spec009 匯出 API', () => {
             person_name: '草稿測試員工',
             person_status: 1,
             person_status_name: '正式',
-            department_id: 'D009',
+            department_id:
+              empid === 'EXPORT00903'
+                ? 'OTHER009'
+                : empid === 'EXPORT00904'
+                  ? null
+                  : 'D009',
             department_name: '測試部',
             title: '測試員工',
           }),
@@ -56,6 +63,8 @@ describe('Spec009 匯出 API', () => {
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
     cookie = await login('EXPORT00901');
     other = await login('EXPORT00902');
+    outsider = await login('EXPORT00903');
+    missing = await login('EXPORT00904');
     const users = await db.query<Array<{ id: number }>>(
       "SELECT id FROM users WHERE empid='EXPORT00901'",
     );
@@ -79,7 +88,38 @@ describe('Spec009 匯出 API', () => {
     if (ctx) await closeSecurityE2eApp(ctx);
   });
 
-  it('員工可跨建立人查找，但空文件不能匯出', async () => {
+  it('部門隔離：跨部門查找不可見，建立／重用請求拒絕且無 DB 或 queue 副作用', async () => {
+    const list = apiData<{ items: Array<{ documentId: string }> }>(
+      await request(ctx.server)
+        .get('/api/esign/exportable-documents')
+        .set('Cookie', outsider)
+        .expect(200),
+    );
+    expect(list.items.some((item) => item.documentId === id)).toBe(false);
+    const before = await db.manager.count(EsignExportJob);
+    const queue = ctx.app.get<Queue>(getQueueToken(ESIGN_EXPORT_QUEUE));
+    const enqueue = jest.spyOn(queue, 'add');
+    try {
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/exports`)
+        .set('Cookie', outsider)
+        .set('Origin', origin)
+        .send({ type: 'signed_copies_zip' })
+        .expect(404);
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/exports`)
+        .set('Cookie', missing)
+        .set('Origin', origin)
+        .send({ type: 'signed_copies_zip' })
+        .expect(409);
+      expect(await db.manager.count(EsignExportJob)).toBe(before);
+      expect(enqueue).not.toHaveBeenCalled();
+    } finally {
+      enqueue.mockRestore();
+    }
+  });
+
+  it('同部門員工可跨建立人查找，但空文件不能匯出', async () => {
     const list = apiData<{ items: Array<{ documentId: string }> }>(
       await request(ctx.server)
         .get('/api/esign/exportable-documents')
@@ -196,9 +236,7 @@ describe('Spec009 匯出 API', () => {
     const job = apiData<{ id: string; expectedCount: number }>(a);
     expect(apiData<{ id: string }>(b).id).toBe(job.id);
     expect(job.expectedCount).toBe(1);
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       await worker.get(DocumentExportProcessor).maintain();
       let result:
@@ -224,6 +262,49 @@ describe('Spec009 匯出 API', () => {
       }
       expect(result?.status).toBe('completed');
       const file = result!.files[0];
+      const beforeDenied = await db.manager.count(EsignExportJob);
+      const queueBeforeDenied = await producerQueue.getJobCounts();
+      await request(ctx.server)
+        .get(`/api/esign/documents/${id}/exports/${job.id}`)
+        .set('Cookie', outsider)
+        .expect(404);
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/exports/${job.id}/retries`)
+        .set('Cookie', outsider)
+        .set('Origin', origin)
+        .expect(404);
+      await make(outsider).expect(404);
+      await request(ctx.server)
+        .get(file.downloadPath)
+        .set('Cookie', outsider)
+        .set('Range', 'bytes=0-3')
+        .expect(404);
+      await request(ctx.server)
+        .get(file.downloadPath)
+        .set('Cookie', missing)
+        .expect(409);
+      expect(await db.manager.count(EsignExportJob)).toBe(beforeDenied);
+      expect(await producerQueue.getJobCounts()).toEqual(queueBeforeDenied);
+      // 原建立人調職後不能藉建立人或舊網址取得一般匯出；同部門同事仍可下載。
+      await db.manager.update(
+        User,
+        { id: Number(ownerId) },
+        { departmentCode: 'OTHER009' },
+      );
+      try {
+        await request(ctx.server)
+          .get(file.downloadPath)
+          .set('Cookie', cookie)
+          .expect(404);
+        await make(cookie).expect(404);
+      } finally {
+        await db.manager.update(
+          User,
+          { id: Number(ownerId) },
+          { departmentCode: 'D009' },
+        );
+      }
+
       const download = await request(ctx.server)
         .get(file.downloadPath)
         .set('Cookie', other)
@@ -353,6 +434,50 @@ describe('Spec009 匯出 API', () => {
           .expect(200),
       );
       expect(detail.exportSummary.id).toBe(job.id);
+      await db.query(
+        "UPDATE esign_documents SET status='active',sign_start_at=UTC_TIMESTAMP(),sign_end_at=DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY) WHERE id=?",
+        [id],
+      );
+      // Spec017 × Spec019：同部門唯讀與匯出預覽採同一固定工作。
+      for (const suffix of ['', '?view=export']) {
+        const peer = apiData<{ exportSummary: { id: string } }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}${suffix}`)
+            .set('Cookie', other)
+            .expect(200),
+        );
+        expect(peer.exportSummary.id).toBe(job.id);
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}${suffix}`)
+          .set('Cookie', outsider)
+          .expect(404);
+      }
+      await db.manager.update(
+        User,
+        { id: Number(ownerId) },
+        { departmentCode: 'TRANSFERRED' },
+      );
+      try {
+        const moved = apiData<{ canExport: boolean; exportSummary: unknown }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}`)
+            .set('Cookie', cookie)
+            .expect(200),
+        );
+        expect(moved.canExport).toBe(false);
+        expect(moved.exportSummary).toBeNull();
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}?view=export`)
+          .set('Cookie', cookie)
+          .expect(404);
+      } finally {
+        await db.manager.update(
+          User,
+          { id: Number(ownerId) },
+          { departmentCode: 'D009' },
+        );
+      }
+
       expect(
         apiData(
           await request(ctx.server)
@@ -693,8 +818,8 @@ describe('Spec009 匯出 API', () => {
     const queue = ctx.app.get<Queue>(getQueueToken(ESIGN_EXPORT_QUEUE));
     await queue.pause();
     const workers = await Promise.all([
-      NestFactory.createApplicationContext(WorkerModule, { logger: false }),
-      NestFactory.createApplicationContext(WorkerModule, { logger: false }),
+      createSyntheticWorker(ctx),
+      createSyntheticWorker(ctx),
     ]);
     let active = 0;
     let peak = 0;
@@ -901,9 +1026,7 @@ describe('Spec009 匯出 API', () => {
         .send({ type: 'signed_copies_zip' })
         .expect(202),
     );
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     const waitFor = async (status: string) => {
       for (let i = 0; i < 100; i++) {
         const value = apiData<{

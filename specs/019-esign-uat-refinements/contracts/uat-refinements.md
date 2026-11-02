@@ -22,7 +22,7 @@ PDF 歷史重下載 file=null 仍回 ESIGN_PERSONAL_COPY_NOT_READY（409）；�
 - 前端保留 pending/waiting/processing 每 3 秒輪詢，completed/failed 停止；不新增輪詢端點。
 - 移除「保存至」「七天」「到期重新產生」，明列 ZIP 固定且不含後續新簽署。匯出面板的固定結果選擇須與 server 一致，不能以純最新歷史時間替代。
 
-- GET `/api/esign/documents/:documentId` 的文件管理詳情新增 `exportSummary: EsignExportJob | null`，僅投影既有狀態與檔案資訊，不帶內部快照、object key、不建立工作；沿用詳情／匯出讀取權限。供 ZipExportPanel 初始選取固定工作，後續仍由既有單工作 endpoint 輪詢。需依 Spec017 權限裁切，不能對無匯出讀取資格的視角新增資訊。
+- GET `/api/esign/documents/:documentId` 的文件管理詳情新增 `exportSummary: EsignExportJob | null`，僅投影既有狀態與檔案資訊，不帶內部快照、object key、不建立工作；沿用詳情／匯出讀取權限。供 ZipExportPanel 初始選取固定工作，後續仍由既有單工作 endpoint 輪詢。已與 Spec017 整合：同部門管理／唯讀詳情皆可取得，跨部門原建立人 canExport=false 時 exportSummary=null，且不查詢匯出工作；其他跨部門詳情仍404。GET 同一路徑的 view=export 預覽同樣回傳 exportSummary，並維持同部門／非草稿條件，供匯出頁載入固定工作。
 
 ## US3：搜尋與分頁
 

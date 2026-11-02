@@ -361,6 +361,11 @@ export const AppErrors = {
     '個人副本尚未產生',
     HttpStatus.CONFLICT,
   ],
+  ESIGN_DEPARTMENT_UNAVAILABLE: [
+    AppErrorCode.ESIGN_DEPARTMENT_UNAVAILABLE,
+    '無法取得您的部門資料，請重新登入或聯絡系統管理員',
+    HttpStatus.CONFLICT,
+  ],
   ESIGN_RESOURCE_NOT_FOUND: [
     AppErrorCode.ESIGN_RESOURCE_NOT_FOUND,
     '找不到電子簽資源',

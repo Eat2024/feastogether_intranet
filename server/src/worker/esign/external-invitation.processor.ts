@@ -1,4 +1,8 @@
 import {
+  MailRecipientBlockedError,
+  MailWhitelistCheckFailedError,
+} from '#app/infrastructure/mail/mail-recipient-policy.errors';
+import {
   INTERNAL_PORTAL_LOGIN_URL,
   INTERNAL_NOTIFICATION_RECIPIENT_LIMIT,
 } from '#app/features/esign/esign.constants';
@@ -76,8 +80,8 @@ export class ExternalInvitationProcessor extends WorkerHost {
 
     try {
       await this.sendInvitation(claim);
-    } catch {
-      await this.finishFailed(id, claim);
+    } catch (error) {
+      await this.finishFailed(id, claim, error);
       return;
     }
 
@@ -143,18 +147,22 @@ export class ExternalInvitationProcessor extends WorkerHost {
             (item) => item.recipientEmail.trim().toLowerCase() === email,
           );
           const result = matches.length === 1 ? matches[0] : undefined;
-          log.result =
-            result?.status === 'accepted'
-              ? 'delivered'
-              : result?.status === 'rejected'
-                ? 'failed'
-                : 'unknown';
-          log.errorCode =
-            log.result === 'delivered'
-              ? null
-              : log.result === 'failed'
-                ? 'MAIL_NOT_ACCEPTED'
-                : 'DELIVERY_OUTCOME_UNKNOWN';
+          if (result?.status === 'accepted') {
+            log.result = 'delivered';
+            log.errorCode = null;
+          } else if (result?.status === 'blocked') {
+            log.result = 'skipped';
+            log.errorCode = 'MAIL_RECIPIENT_NOT_WHITELISTED';
+          } else if (result?.status === 'check-failed') {
+            log.result = 'failed';
+            log.errorCode = 'MAIL_WHITELIST_CHECK_FAILED';
+          } else if (result?.status === 'rejected') {
+            log.result = 'failed';
+            log.errorCode = 'MAIL_NOT_ACCEPTED';
+          } else {
+            log.result = 'unknown';
+            log.errorCode = 'DELIVERY_OUTCOME_UNKNOWN';
+          }
           log.completedAt = now;
           log.processingStartedAt = null;
           log.leaseToken = null;
@@ -346,6 +354,11 @@ export class ExternalInvitationProcessor extends WorkerHost {
         manager,
       );
       if (log?.errorCode === 'INVITATION_SUPERSEDED') return null;
+      if (
+        log?.errorCode === 'MAIL_WHITELIST_CHECK_FAILED' &&
+        log.attemptCount >= 3
+      )
+        return null;
       if (log?.signer?.signerType === 'user')
         return { internalBatchId: log.batchId };
       if (log?.batch?.kind === 'reminder') return { reminder: true } as const;
@@ -581,7 +594,8 @@ export class ExternalInvitationProcessor extends WorkerHost {
       };
     });
     if (!claim) return;
-    let outcome: 'delivered' | 'failed' | 'unknown' = 'delivered';
+    let outcome: 'delivered' | 'failed' | 'unknown' | 'skipped' = 'delivered';
+    let errorCode: string | null = null;
     try {
       await this.mailer.send({
         recipientEmail: claim.recipientEmail,
@@ -592,7 +606,19 @@ export class ExternalInvitationProcessor extends WorkerHost {
         kind: 'reminder',
       });
     } catch (error) {
-      outcome = isDefinitelyUnsent(error) ? 'failed' : 'unknown';
+      if (error instanceof MailRecipientBlockedError) {
+        outcome = 'skipped';
+        errorCode = error.reasonCode;
+      } else if (error instanceof MailWhitelistCheckFailedError) {
+        outcome = 'failed';
+        errorCode = error.reasonCode;
+      } else {
+        outcome = isDefinitelyUnsent(error) ? 'failed' : 'unknown';
+        errorCode =
+          outcome === 'failed'
+            ? 'MAIL_NOT_ACCEPTED'
+            : 'DELIVERY_OUTCOME_UNKNOWN';
+      }
     }
     await this.mysql.transaction(async (manager) => {
       const log = await this.notifications.findInvitationContextForUpdate(
@@ -603,12 +629,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
         return;
       const now = new Date();
       log.result = outcome;
-      log.errorCode =
-        outcome === 'delivered'
-          ? null
-          : outcome === 'failed'
-            ? 'MAIL_NOT_ACCEPTED'
-            : 'DELIVERY_OUTCOME_UNKNOWN';
+      log.errorCode = errorCode;
       log.completedAt = now;
       log.processingStartedAt = null;
       log.leaseToken = null;
@@ -647,6 +668,7 @@ export class ExternalInvitationProcessor extends WorkerHost {
   private async finishFailed(
     id: number,
     claim: ClaimedInvitation,
+    error?: unknown,
   ): Promise<void> {
     await this.mysql.transaction(async (manager) => {
       const log = await this.notifications.findInvitationContextForUpdate(
@@ -660,6 +682,27 @@ export class ExternalInvitationProcessor extends WorkerHost {
         log.invitationGenerationSha256 !== claim.generation ||
         log.signer?.invitationTokenSha256 !== claim.generation
       ) {
+        return;
+      }
+      if (
+        error instanceof MailRecipientBlockedError ||
+        error instanceof MailWhitelistCheckFailedError
+      ) {
+        const blocked = error instanceof MailRecipientBlockedError;
+        const terminal = blocked || log.attemptCount >= 3;
+        log.result = blocked ? 'skipped' : 'failed';
+        log.errorCode = error.reasonCode;
+        log.completedAt = new Date();
+        log.processingStartedAt = null;
+        log.leaseToken = null;
+        log.nextAttemptAt = terminal
+          ? null
+          : new Date(Date.now() + 30_000 * 2 ** (log.attemptCount - 1));
+        if (terminal && log.signer) {
+          log.signer.invitationTokenCiphertext = null;
+          await this.signers.save(log.signer, manager);
+        }
+        await this.notifications.saveLog(log, manager);
         return;
       }
       log.result = 'failed';

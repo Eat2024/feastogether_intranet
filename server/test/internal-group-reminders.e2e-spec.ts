@@ -18,6 +18,7 @@ import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitati
 import { apiData } from './api-response.helper';
 import {
   createSecurityE2eApp,
+  mailFixture,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -40,6 +41,10 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
         .overrideProvider(EsignJobProducerService)
         .useValue(jobs),
     );
+    mailFixture(ctx).allowEmails([
+      'shared@example.test',
+      'external@example.test',
+    ]);
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = randomBytes(5).toString('hex');
     users = await manager.save(
@@ -49,8 +54,12 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
           empid: `G${prefix}${index}`,
           name: `合成員工${index}`,
           isActive: true,
+          departmentCode: `TEST017-${index}`,
         }),
       ),
+    );
+    mailFixture(ctx).allowEmails(
+      users.map((user) => `${user.empid.toLowerCase()}@example.test`),
     );
     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     http.post.mockImplementation(
@@ -160,7 +169,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
         ctx.app.get(EsignAuditService),
-        mailer,
+        mailFixture(ctx).guard(mailer),
       ),
     };
   }
@@ -223,18 +232,15 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
     }>;
   }
   const batchLogs = (publicId: string) =>
-    ctx.app
-      .get(MysqlService)
-      .getManager()
-      .query<
-        Array<{
-          id: number;
-          batchId: number;
-          signerType: string;
-          reminderToken: string | null;
-          generation: string | null;
-        }>
-      >('SELECT l.id,l.batch_id batchId,s.signer_type signerType,l.reminder_token_sha256 reminderToken,l.invitation_generation_sha256 generation FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id JOIN esign_signers s ON s.id=l.signer_id WHERE b.public_id=? ORDER BY l.id', [publicId]);
+    ctx.app.get(MysqlService).getManager().query<
+      Array<{
+        id: number;
+        batchId: number;
+        signerType: string;
+        reminderToken: string | null;
+        generation: string | null;
+      }>
+    >('SELECT l.id,l.batch_id batchId,s.signer_type signerType,l.reminder_token_sha256 reminderToken,l.invitation_generation_sha256 generation FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id JOIN esign_signers s ON s.id=l.signer_id WHERE b.public_id=? ORDER BY l.id', [publicId]);
 
   it('選取內部子集合只群寄本批，外部逐人；重送重用batch且每日限額按人', async () => {
     const { documentId } = await initiate(3, true);
@@ -306,6 +312,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
     const clock = new Date();
     clock.setUTCHours(15, 59, 50, 0);
     at(clock);
+    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     const { documentId } = await initiate(2);
     const firstRequestId = randomUUID();
     const first = apiData<Batch>(
@@ -499,6 +506,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
     const clock = new Date();
     clock.setUTCHours(15, 59, 50, 0);
     at(clock);
+    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     const { documentId } = await initiate(2);
     const batch = apiData<Batch>(
       await remind(documentId, randomUUID()).expect(202),

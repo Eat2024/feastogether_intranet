@@ -70,7 +70,7 @@ function fixture(lockAsInternal = false) {
     } as never,
     documents,
     new SignerRepository(),
-    new EsignAccessPolicyService(validation, documents),
+    new EsignAccessPolicyService(validation, documents, {} as never),
     validation,
     new EsignAuditService(new AuditEventRepository()),
     new EsignJobProducerService(

@@ -26,7 +26,7 @@ export function useGetDocumentsQuery<TData = Awaited<ReturnType<typeof getDocume
   });
 }
 
-/** 建立人的文件詳情；id 為 null 時不查詢 */
+/** 文件管理或同部門唯讀詳情；id 為 null 時不查詢 */
 export function useGetDocumentQuery<TData = Awaited<ReturnType<typeof getDocument>>, TError = AxiosError>(
   id: string | null,
   options?: Omit<UseQueryOptions<Awaited<ReturnType<typeof getDocument>>, TError, TData>, 'queryKey' | 'queryFn'>,

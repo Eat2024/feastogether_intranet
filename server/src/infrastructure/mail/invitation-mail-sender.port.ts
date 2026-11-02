@@ -38,6 +38,7 @@ export interface SendInternalGroupMailInput {
 
 export interface InternalMailRecipientResult {
   recipientEmail: string;
-  status: 'accepted' | 'rejected' | 'unknown';
+  status: 'accepted' | 'rejected' | 'unknown' | 'blocked' | 'check-failed';
+  reasonCode?: 'MAIL_RECIPIENT_NOT_WHITELISTED' | 'MAIL_WHITELIST_CHECK_FAILED';
   retryable: boolean;
 }

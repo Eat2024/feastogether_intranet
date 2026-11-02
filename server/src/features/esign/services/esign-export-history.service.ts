@@ -1,3 +1,4 @@
+import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
@@ -47,17 +48,23 @@ export class EsignExportHistoryService {
     private readonly mapper: EsignViewMapper,
     private readonly completions: EsignCompletionAccessService,
     private readonly external: ExternalAccessService,
+    private readonly access: EsignAccessPolicyService,
   ) {}
 
-  async list(q: ExportHistoryQueryDto): Promise<ExportHistoryPageDto> {
+  async list(
+    q: ExportHistoryQueryDto,
+    userId: number,
+  ): Promise<ExportHistoryPageDto> {
     const documentId = q.documentId ? Number(q.documentId) : undefined;
     // 計數與分頁使用同一讀取快照，先導正頁碼才計算 offset，避免巨大請求頁碼溢位。
     const result = await this.mysql
       .getManager()
       .transaction('REPEATABLE READ', async (manager) => {
+        const user = await this.access.requireDepartment(userId, manager);
         const counts = await this.jobs.historyCounts(
           Object.values(EXPORT_TYPE_COLUMN),
           documentId,
+          user.departmentCode,
           manager,
           q.q,
         );
@@ -73,6 +80,7 @@ export class EsignExportHistoryService {
           {
             exportType: EXPORT_TYPE_COLUMN[q.type],
             documentId,
+            departmentCode: user.departmentCode,
             q: q.q,
             offset: (page - 1) * q.pageSize,
             limit: q.pageSize,
@@ -92,16 +100,18 @@ export class EsignExportHistoryService {
     };
   }
 
-  /** 記錄前端產生的 Excel：任何員工可記錄已發起文件，匯出人取自 session。 */
+  /** 記錄前端產生的 Excel：同部門員工可記錄已發起文件，匯出人取自 session。 */
   async recordExcel(
     userId: number,
     body: CreateExcelExportRecordDto,
   ): Promise<ExportHistoryItemDto> {
     const manager = this.mysql.getManager();
+    const user = await this.access.requireDepartment(userId, manager);
     const document = await this.documents.findById(
       Number(body.documentId),
       manager,
     );
+    await this.access.checkDepartmentDocument(document, userId, manager);
     // 已發起的文件不會再回到草稿或被刪除，不需鎖定。
     if (!document || document.status === 'draft')
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
@@ -116,23 +126,29 @@ export class EsignExportHistoryService {
     const record = await this.jobs.historyRecord(
       publicId!,
       EXPORT_TYPE_COLUMN.excel,
+      user.departmentCode,
       manager,
     );
     return this.toHistoryItem(record!, 'excel');
   }
 
-  /** Excel 重新下載資料：任何員工可依 excel 紀錄取得文件目前的資料；唯讀，不新增紀錄。 */
-  async excelDocument(publicId: string): Promise<ExcelExportDocumentDto> {
+  /** Excel 重新下載資料：同部門員工可依 excel 紀錄取得文件目前的資料；唯讀，不新增紀錄。 */
+  async excelDocument(
+    publicId: string,
+    userId: number,
+  ): Promise<ExcelExportDocumentDto> {
     const manager = this.mysql.getManager();
+    const user = await this.access.requireDepartment(userId, manager);
     const record = await this.jobs.historyRecord(
       publicId,
       EXPORT_TYPE_COLUMN.excel,
+      user.departmentCode,
       manager,
     );
     const document = record
       ? await this.documents.findById(record.documentId!, manager)
       : null;
-    if (!document)
+    if (!document || document.status === 'draft')
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     const [creator, signers] = await Promise.all([
       this.users.findById(document.createdByUserId, manager),
@@ -141,13 +157,13 @@ export class EsignExportHistoryService {
     return this.mapper.excelExportDocument(document, creator, signers);
   }
 
-  /** 建立人下載簽署人副本：匯出人為建立人；副本未產生時沿用建立人下載的錯誤。 */
-  async downloadCreatorCopy(
+  /** 同部門員工下載簽署人副本：匯出人為目前員工；副本未產生時沿用建立人下載的錯誤。 */
+  async downloadDepartmentCopy(
     documentId: number,
     signerPublicId: string,
     userId: number,
   ): Promise<PersonalCopyFile> {
-    const copy = await this.completions.creatorFile(
+    const copy = await this.completions.departmentFile(
       documentId,
       signerPublicId,
       userId,
@@ -174,17 +190,19 @@ export class EsignExportHistoryService {
   }
 
   /**
-   * 從 pdf 紀錄重新下載：任何員工都能取得該簽署人目前的副本。
+   * 從 pdf 紀錄重新下載：同部門員工都能取得該簽署人目前的副本。
    * 沿用既有紀錄，不新增或改寫匯出歷史。
    */
   async redownloadPdf(
     publicId: string,
-    _userId: number,
+    userId: number,
   ): Promise<PersonalCopyFile> {
     const manager = this.mysql.getManager();
+    const user = await this.access.requireDepartment(userId, manager);
     const record = await this.jobs.historyRecord(
       publicId,
       EXPORT_TYPE_COLUMN.pdf,
+      user.departmentCode,
       manager,
     );
     const signer = record
@@ -193,7 +211,12 @@ export class EsignExportHistoryService {
     const document = signer
       ? await this.documents.findById(signer.documentId, manager)
       : null;
-    if (!record || !signer || !document)
+    if (
+      !record ||
+      !signer ||
+      !document ||
+      record.documentId !== signer.documentId
+    )
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     const file = await this.completions.personalCopy(document, signer);
     if (!file)

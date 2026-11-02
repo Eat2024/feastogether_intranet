@@ -19,6 +19,7 @@ import { esignTestPng } from './esign-test-png';
 import { otpMails, requestOtp, submitOtp } from './external-session.helper';
 import {
   createSecurityE2eApp,
+  mailFixture,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -45,6 +46,11 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
     ctx = await createSecurityE2eApp((builder) =>
       builder.overrideProvider(HttpService).useValue(http),
     );
+    mailFixture(ctx).allowEmails([
+      'shared@example.test',
+      'shared0@example.test',
+      'shared1@example.test',
+    ]);
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = randomBytes(5).toString('hex');
     users = await manager.save(
@@ -54,6 +60,7 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
           empid: `S${prefix}${index}`,
           name: `合成人員${index}`,
           isActive: true,
+          departmentCode: `TEST017-${index}`,
         }),
       ),
     );
@@ -92,17 +99,15 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
         .set('Cookie', cookies[0])
         .set('Origin', origin)
         .send({
-          signers: users
-            .slice(0, 2)
-            .map((user, index) =>
-              external
-                ? {
-                    type: 'email',
-                    name: user.name,
-                    email: `shared${index}@example.test`,
-                  }
-                : { type: 'user', userId: String(user.id) },
-            ),
+          signers: users.slice(0, 2).map((user, index) =>
+            external
+              ? {
+                  type: 'email',
+                  name: user.name,
+                  email: `shared${index}@example.test`,
+                }
+              : { type: 'user', userId: String(user.id) },
+          ),
           fields: [
             {
               type: 'signature',

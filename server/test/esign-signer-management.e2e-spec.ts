@@ -62,7 +62,7 @@ describe('Spec009 管理備註與歷程 API', () => {
             person_name: '草稿測試員工',
             person_status: 1,
             person_status_name: '正式',
-            department_id: 'D009',
+            department_id: empid === 'NOTE00903' ? 'OTHER009' : 'D009',
             department_name: '測試部',
             title: '測試員工',
           }),

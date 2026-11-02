@@ -2,7 +2,7 @@
 
 **Input**: `specs/019-esign-uat-refinements/` 的 spec、plan、research、data-model、contracts 與 quickstart。
 **Created**: 2026-11-02
-**Status**: 43/44 項完成；T042 等待 Spec017 部門政策整合，未執行 UAT 切換。
+**Status**: 44/44 項完成；T042 已整合 dev 的 Spec017 部門政策並驗證，未執行 UAT 切換。
 
 **Tests**: 依 spec 驗收與憲章要求，為檔案存取、授權、DB查詢、快取與稽核提供必要測試。新增/更新測試先確認能抓到舊行為，再實作；既有正確行為只做回歸。client 無測試框架，使用 lint/build 與瀏覽器驗收。
 
@@ -105,7 +105,7 @@
 六個故事驗收後，完成跨故事權限及交付文件。
 
 - [x] T041 核對並同步 `specs/006-signer-candidate-org-chart/spec.md`、`specs/010-internal-email-signing/spec.md`、`specs/015-export-history/spec.md` 與其相關contracts中的TTL/預檢/重下載/ZIP舊說明，標記被Spec019取代的範圍；不改寫既有測試證據，最終合約更新於 `specs/019-esign-uat-refinements/contracts/uat-refinements.md`。
-- [ ] T042 完成Spec017整合後，在 `server/test/esign-export-history.e2e-spec.ts`、`server/test/esign-export.e2e-spec.ts` 驗證同部門list/count/Excel/PDF/ZIP/status/exportSummary與本人例外；核對Spec018白名單未被預檢移除繞過，記錄 `specs/019-esign-uat-refinements/quickstart.md`，依賴未滿足不得勾完成。
+- [x] T042 完成Spec017整合後，在 `server/test/esign-export-history.e2e-spec.ts`、`server/test/esign-export.e2e-spec.ts` 驗證同部門list/count/Excel/PDF/ZIP/status/exportSummary與本人例外；核對Spec018白名單未被預檢移除繞過，記錄 `specs/019-esign-uat-refinements/quickstart.md`，依賴未滿足不得勾完成。
 - [x] T043 依 `specs/019-esign-uat-refinements/quickstart.md` 執行server lint/unit/e2e、client lint、root build/lint及瀏覽器驗收；測試不可執行時如實記錄，不重複擴大無關測試，不聲稱client不存在的test script通過。
 - [x] T044 核對 `specs/019-esign-uat-refinements/tasks.md`、`plan.md`、`data-model.md` 與實際變更一致，更新 `quickstart.md` 驗證證據及部署/回滾步驟；區分完成的程式與尚未執行的UAT ZIP轉換，產出可review差異，不自動部署或寄信。
 
@@ -149,4 +149,4 @@
 
 ## 執行紀錄（2026-11-02）
 
-功能實作、工具、必要測試與review修正已整合至 `impl/019-uat-refinements`；實測與限制見 quickstart.md、code-review.md。本檔已依實際執行結果更新，T042 保留未勾選：Spec017 尚未實作，本次未擴張成其實作。UAT切換是另行操作，不因工具完成而視為已部署。
+功能實作、工具、必要測試與review修正已整合至 `impl/019-uat-refinements`；實測與限制見 quickstart.md、code-review.md。本檔已依實際執行結果更新，T042 已在 PR40 與 dev 的整合中補驗完成；沿用 dev 既有 Spec017 實作。UAT切換是另行操作，不因工具完成而視為已部署。

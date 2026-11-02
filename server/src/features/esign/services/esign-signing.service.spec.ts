@@ -97,6 +97,7 @@ describe('EsignSigningService', () => {
     const policy = new EsignAccessPolicyService(
       new EsignDocumentValidationService(),
       {} as never,
+      {} as never,
     );
     access.assertInternalSigner.mockImplementation(
       (...args: Parameters<EsignAccessPolicyService['assertInternalSigner']>) =>

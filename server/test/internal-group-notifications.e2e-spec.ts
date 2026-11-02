@@ -18,6 +18,7 @@ import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitati
 import { apiData } from './api-response.helper';
 import {
   createSecurityE2eApp,
+  mailFixture,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -40,6 +41,10 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
         .overrideProvider(EsignJobProducerService)
         .useValue(jobs),
     );
+    mailFixture(ctx).allowEmails([
+      'shared@example.test',
+      'external@example.test',
+    ]);
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = randomBytes(5).toString('hex');
     users = await manager.save(
@@ -49,8 +54,12 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
           empid: `G${prefix}${index}`,
           name: `合成員工${index}`,
           isActive: true,
+          departmentCode: `TEST017-${index}`,
         }),
       ),
+    );
+    mailFixture(ctx).allowEmails(
+      users.map((user) => `${user.empid.toLowerCase()}@example.test`),
     );
     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     http.post.mockImplementation(
@@ -154,7 +163,7 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
         ctx.app.get(EsignAuditService),
-        mailer,
+        mailFixture(ctx).guard(mailer),
       ),
     };
   }
@@ -193,7 +202,7 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
     [50, [50]],
     [51, [50, 1]],
   ])('%s人群寄只依不同地址上限拆信', async (count, sizes) => {
-    const { batchId, documentId } = await initiate(count as number);
+    const { batchId, documentId } = await initiate(count);
     const { processor, mailer } = worker();
     await processor.process({ data: { notificationBatchId: batchId } } as Job);
     expect(

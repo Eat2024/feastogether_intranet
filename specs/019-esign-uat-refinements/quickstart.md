@@ -62,4 +62,27 @@ Plan 階段僅檢查文件結構、FR/SC 對應、連結及空白差異，當時
 
 Review 修正後：新增「較新 expired 缺少 completedAt，不改選較舊 completed」回歸。修正前該案例失敗（fixed=false）；修正工具選取條件後，retention e2e 1 suite／8 tests 通過，驗證異常工作保持 fixed/unavailable、apply 不推測完成時間。修正後 server build 與 root lint 通過（0 errors／267 warnings）；此輪 client 僅修改註解，未重跑完整 client build。
 
-尚未完成的交付依賴：Spec 017 部門政策整合與不同部門查詢／計數／下載驗收（T042）；本機通過不能視為部門政策已交付。未在 UAT 執行備份、dry-run、apply、舊 worker 排空或發布。部署前仍須依上述切換順序執行。Code review 原始結論與修復範圍見 [審查紀錄](code-review.md)。
+原交付依賴 Spec017 部門整合（T042）已於下列 PR40/dev 整合驗證補齊。未在 UAT 執行備份、dry-run、apply、舊 worker 排空或發布。部署前仍須依上述切換順序執行。Code review 原始結論與修復範圍見 [審查紀錄](code-review.md)。
+
+
+## PR40 與 dev 衝突整合（2026-11-02）
+
+以 PR40 `3a44fbf` 合併 `dev` 的 `7d25c1a`（含 PR41／Spec017），在獨立 worktree 操作，未切換使用者主工作區、未修改其本機資料庫。
+
+- 解決14個衝突檔案，保留019的重下載不新增歷史、固定ZIP、搜尋與頁碼導正、移除Email預檢、中文歷程；同時保留017的目前部門授權、唯讀DTO及本人副本資格。
+- 歷史 page/count 在同一讀取快照套用部門與關鍵字；跨部門搜尋即使文字匹配也回空列表／0 counts。
+- 詳情與 view=export 預覽都提供已授權的固定 exportSummary；原建立人調職後仍可管理，但 canExport=false、exportSummary=null且不查匯出工作。直接預覽／下載仍重新授權。
+- 修正自動合併殘留的 ZipExportPanel.latest 引用、PDF 重下載 userId 參數，以及新增／移除 E2E 套件清單；中文歷程預期值同步，陌生員工負向fixture改不同部門以保留404斷言。
+- OpenAPI 同步 exportSummary 的裁切與欄位，YAML及163個本地引用驗證通過。
+
+最終驗證：server unit109 suites／1,081 tests；一般 E2E32 suites／363 tests，加上兩套白名單補跑14 tests，合計34 suites／377 tests；security14 suites／83 tests；root lint（0 errors／268 warnings）、server/client build、diff check通過。一般E2E涵蓋固定ZIP過期後沿用、歷史重下載不新增、搜尋分頁、同部門／跨部門／NULL／調職／本人例外；安全套件保留Spec018白名單與無副作用驗證。
+
+驗證使用專用MySQL13317與Redis16317，DB `feastogether_intranet_test040verified`／Redis7，storage `/tmp/pr40-esign-verified`；安全測試獨立DB `feastogether_intranet_test040security`／Redis5。命令前綴：
+
+```bash
+DB_MYSQL_HOST=127.0.0.1 DB_MYSQL_PORT=13317 DB_MYSQL_USER=root DB_MYSQL_PASS='' DB_MYSQL_DB=feastogether_intranet_test040verified DB_MYSQL_SSL='' DB_MYSQL_SSL_CA_B64='' REDIS_HOST=127.0.0.1 REDIS_PORT=16317 REDIS_PASSWORD='' REDIS_DB=7 ESIGN_STORAGE_ROOT=/tmp/pr40-esign-verified FEASTOGETHER_BASE_URL=http://127.0.0.1:1 FEASTOGETHER_API_KEY=synthetic-test pnpm -C server test:e2e
+```
+
+初輪失敗已分開記錄：worktree共用node_modules的symlink被Turbopack拒絕，改為獨立離線frozen-lockfile安裝；合成HR設定缺漏補齊，不使用真實憑證；兩個舊斷言及新增非草稿fixture期間已修正。另有一次既有多人並行完成簽署的完整性測試失敗，其runtime與dev無差異，獨立重跑2套31 tests及最後32套功能回歸通過；沒有以放寬斷言掩蓋失敗，此時序敏感案例仍需持續留意。最後兩套白名單測試因測試DB名稱加隨機後綴超過MySQL 64字元而未能執行，改用較短的 feastogether_intranet_test040／Redis4 補跑14項通過；不是將環境失敗當成成功。
+
+本次未重做先前瀏覽器與S3模擬驗收；保留前次證據。沒有新增表、env、dependency或排程，未執行真實UAT轉換、回填或部署。

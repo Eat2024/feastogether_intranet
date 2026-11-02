@@ -1,6 +1,6 @@
 import { queryKeys } from '@/api/query-keys';
 import { queryOptions } from '@/api/query-options';
-import { getDocumentExport, getExportHistory } from '@/api/requests';
+import { getDocumentExport, getDocumentExportPreview, getExportHistory } from '@/api/requests';
 import type { ExportHistoryPage, ExportHistoryParams, ExportHistoryType } from '@/api/types';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
@@ -34,5 +34,14 @@ export function useGetDocumentExportQuery<TData = Awaited<ReturnType<typeof getD
     refetchIntervalInBackground: true,
     ...queryOptions.useGetDocumentExportQuery,
     ...options,
+  });
+}
+
+/** 匯出資料與一般文件詳情分開快取，每次進入重新驗證部門資格。 */
+export function useGetDocumentExportPreviewQuery(id: string) {
+  return useQuery({
+    queryKey: [queryKeys.ESIGN_DOCUMENT_EXPORT_PREVIEW, id],
+    queryFn: () => getDocumentExportPreview(id),
+    ...queryOptions.useGetDocumentExportPreviewQuery,
   });
 }

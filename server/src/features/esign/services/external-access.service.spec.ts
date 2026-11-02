@@ -37,6 +37,7 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
     const access = new EsignAccessPolicyService(
       new EsignDocumentValidationService(),
       {} as never,
+      {} as never,
     );
     // Redis 以 Map 模擬，TTL 只記錄設定值、不會到期（到期由真 Redis 負責，e2e 另驗）
     const store = new Map<string, string>();
@@ -100,7 +101,7 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       audit as never,
       {} as never,
       completions as never,
-      new ExternalOtpService(redis as never),
+      new ExternalOtpService(redis as never, { warn: jest.fn() } as never),
       mailer,
       credentials,
     );

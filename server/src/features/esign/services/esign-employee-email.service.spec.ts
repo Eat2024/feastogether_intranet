@@ -31,6 +31,7 @@ function fixture() {
   const service = new EsignEmployeeEmailService(
     new MysqlService({ manager } as never),
     new UserRepository(),
+
     new FeastogetherHrService(client),
   );
   return { service, manager, http };

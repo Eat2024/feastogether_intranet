@@ -1,7 +1,7 @@
 // 在瀏覽器端產生簽署紀錄清單 Excel（格式與 mock 版 features/forms/export/buildXlsx.ts 相同）。
 // exceljs 套件較大，由呼叫端在點擊匯出時以 dynamic import 載入本檔。
 import { createExcelExportRecord } from '@/api/requests';
-import type { EsignDocumentDetail } from '@/api/types';
+import type { ExcelExportDocument } from '@/api/types';
 import { color } from '@/theme/tokens';
 import dayjs from 'dayjs';
 import ExcelJS from 'exceljs';
@@ -16,9 +16,9 @@ import {
   type ExportSigner,
 } from './exportQuery';
 
-/** 產生 Excel 用到的文件欄位（文件詳情與歷史匯出的重新下載資料都有） */
+/** 產生 Excel 用到的文件欄位（同部門匯出預覽與歷史重新下載資料都有） */
 export type ExportDocument = Pick<
-  EsignDocumentDetail,
+  ExcelExportDocument,
   'title' | 'docNumber' | 'createdBy' | 'signStartAt' | 'signEndAt' | 'originalSignEndAt' | 'isReopened'
 > & { signers: ExportSigner[] };
 

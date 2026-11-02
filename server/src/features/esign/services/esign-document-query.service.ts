@@ -16,6 +16,8 @@ import {
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 import type {
   EsignHistoryItemDto,
+  EsignDocumentDetailDto,
+  EsignSourceFileDto,
   EsignInvitationDelivery,
 } from '../dto/esign-common.dto';
 import type { EsignDocument } from '../entities/esign-document.entity';
@@ -102,7 +104,7 @@ export class EsignDocumentQueryService {
 
   async list(
     userId: number,
-    role?: 'created' | 'assigned',
+    role?: 'dep' | 'created' | 'assigned',
     status?:
       | 'draft'
       | 'active'
@@ -113,11 +115,17 @@ export class EsignDocumentQueryService {
   ) {
     const now = new Date();
     const manager = this.mysql.getManager();
+    const department =
+      role === 'dep'
+        ? await this.policy.requireDepartment(userId, manager)
+        : null;
     const [created, assignedSigners] = await Promise.all([
-      role === 'assigned'
-        ? Promise.resolve([])
-        : this.documents.findCreatedByUser(userId, manager),
-      role === 'created'
+      department
+        ? this.documents.findByDepartment(department.departmentCode, manager)
+        : role === 'assigned'
+          ? Promise.resolve([])
+          : this.documents.findCreatedByUser(userId, manager),
+      role === 'created' || role === 'dep'
         ? Promise.resolve([])
         : this.signers.findAssignedToUser(userId, manager),
     ]);
@@ -157,22 +165,61 @@ export class EsignDocumentQueryService {
           this.count(signers),
           creators.get(document.createdByUserId),
           now,
+          userId,
         );
       }),
     );
     return items.filter((document) => !status || document.status === status);
   }
 
-  async creatorDetail(documentId: number, userId: number) {
+  async detail(
+    documentId: number,
+    userId: number,
+  ): Promise<EsignDocumentDetailDto> {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
-    this.policy.checkEsignCreator(document, userId);
-    const [signers, fields, source, creator] = await Promise.all([
+    const readable = await this.policy.readableDocument(
+      document,
+      userId,
+      manager,
+    );
+    const isCreator = readable.createdByUserId === userId;
+    const [signers, fields, source, creator, canExport] = await Promise.all([
       this.signers.findByDocument(documentId, manager),
-      this.fields.findByDocument(documentId, manager),
+      isCreator
+        ? this.fields.findByDocument(documentId, manager)
+        : Promise.resolve([]),
       this.files.findDocumentFile(documentId, 'source_pdf', manager),
-      this.users.findById(document.createdByUserId, manager),
+      this.users.findById(readable.createdByUserId, manager),
+      this.policy.canExportDocument(readable, userId, manager),
     ]);
+    let sourceFile: EsignSourceFileDto | undefined;
+    if (source) {
+      const bytes = await readPrivateFile(this.storage, source);
+      const metadata = await this.pdf.validatePersistedPdf(bytes);
+      this.validation.assertSourceIntegrity(readable, source, metadata.sha256);
+      sourceFile = this.mapper.sourceFile(source, metadata.pageCount);
+    }
+    const summary = this.mapper.documentSummary(readable, this.count(signers));
+    const common = {
+      ...summary,
+      canExport,
+      exportSummary: canExport
+        ? await this.exports.documentSummary(documentId, userId)
+        : null,
+      sourceFile,
+      signStartAt: readable.signStartAt?.toISOString() ?? null,
+      signEndAt: readable.signEndAt?.toISOString() ?? null,
+      stopReason: readable.stopReason ?? null,
+      createdBy: this.mapper.creator(creator),
+    };
+    if (!isCreator) {
+      return {
+        ...common,
+        isCreator: false,
+        signers: signers.map((signer) => this.mapper.readonlySigner(signer)),
+      };
+    }
     const signerIds = signers.map((signer) => signer.id);
     const [logs, records] = await Promise.all([
       this.notifications.findBySignerIds(signerIds, manager),
@@ -216,24 +263,11 @@ export class EsignDocumentQueryService {
         deliveryBySigner.set(log.signerId, result);
       }
     }
-    let sourceFile;
-    if (source) {
-      const bytes = await readPrivateFile(this.storage, source);
-      const metadata = await this.pdf.validatePersistedPdf(bytes);
-      this.validation.assertSourceIntegrity(document, source, metadata.sha256);
-      sourceFile = this.mapper.sourceFile(source, metadata.pageCount);
-    }
-    const summary = this.mapper.documentSummary(document, this.count(signers));
     return {
-      ...summary,
-      sourceFile,
-      signStartAt: document.signStartAt?.toISOString() ?? null,
-      signEndAt: document.signEndAt?.toISOString() ?? null,
-      watermark: document.watermarkEnabled,
-      allowReject: document.allowReject,
-      stopReason: document.stopReason ?? null,
-      createdBy: this.mapper.creator(creator),
-      exportSummary: await this.exports.documentSummary(documentId),
+      ...common,
+      isCreator: true,
+      watermark: readable.watermarkEnabled,
+      allowReject: readable.allowReject,
       signers: signers.map((signer) => ({
         ...this.mapper.signer(
           signer,
@@ -241,7 +275,7 @@ export class EsignDocumentQueryService {
           codeBySigner.get(signer.id),
         ),
         ...this.reminderSummary(
-          document,
+          readable,
           signer,
           logs.filter((l) => l.signerId === signer.id),
         ),
@@ -297,10 +331,14 @@ export class EsignDocumentQueryService {
     });
   }
 
-  async creatorSource(documentId: number, userId: number) {
+  async source(documentId: number, userId: number) {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
-    this.policy.checkEsignCreator(document, userId);
+    const readable = await this.policy.readableDocument(
+      document,
+      userId,
+      manager,
+    );
     const source = await this.files.findDocumentFile(
       documentId,
       'source_pdf',
@@ -309,7 +347,7 @@ export class EsignDocumentQueryService {
     if (!source) return null;
     const bytes = await readPrivateFile(this.storage, source);
     const metadata = await this.pdf.validatePersistedPdf(bytes);
-    this.validation.assertSourceIntegrity(document, source, metadata.sha256);
+    this.validation.assertSourceIntegrity(readable, source, metadata.sha256);
     return { bytes, fileName: source.originalFileName ?? 'document.pdf' };
   }
 
@@ -323,9 +361,10 @@ export class EsignDocumentQueryService {
       ? await this.signers.findByDocument(documentId, manager)
       : [];
     const signer = signers.find((candidate) => candidate.userId === userId);
-    if (!document || (document.createdByUserId !== userId && !signer)) {
-      this.policy.checkEsignCreator(document, userId);
+    if (!document || document.deletedAt) {
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     }
+    if (!signer) await this.policy.readableDocument(document, userId, manager);
     const events = await this.audits.findDocumentEvents(documentId, manager);
     const isCreator = document?.createdByUserId === userId;
     const bySignerId = new Map(signers.map((item) => [item.id, item]));
@@ -359,7 +398,7 @@ export class EsignDocumentQueryService {
         (event) =>
           isCreator ||
           documentEvents.has(event.eventType) ||
-          event.signerId === signer?.id,
+          (!!signer && event.signerId === signer.id),
       )
       .map((event) => {
         if (event.eventType === 'document.reopened') {
@@ -409,6 +448,28 @@ export class EsignDocumentQueryService {
               : null,
         };
       });
+  }
+
+  /** 匯出資料與一般詳情分離授權，不產生匯出紀錄或回傳管理憑證。 */
+  async exportDocument(documentId: number, userId: number) {
+    const manager = this.mysql.getManager();
+    const document = await this.policy.checkDepartmentDocument(
+      await this.documents.findById(documentId, manager),
+      userId,
+      manager,
+    );
+    if (document.status === 'draft') {
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    }
+    const [creator, signers] = await Promise.all([
+      this.users.findById(document.createdByUserId, manager),
+      this.signers.findByDocument(documentId, manager),
+    ]);
+    return {
+      ...this.mapper.excelExportDocument(document, creator, signers),
+      exportSummary: await this.exports.documentSummary(documentId, userId),
+      status: this.mapper.documentSummary(document, this.count(signers)).status,
+    };
   }
 
   private count(signers: Array<{ status: string }>) {

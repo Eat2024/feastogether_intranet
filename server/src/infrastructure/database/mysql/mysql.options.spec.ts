@@ -40,7 +40,7 @@ describe('buildMysqlOptions', () => {
   it('明確註冊電子簽 entities、AuthSession 與拒簽 migration', () => {
     const options = buildMysqlOptions(readEnv);
 
-    expect(options.entities).toHaveLength(13);
+    expect(options.entities).toHaveLength(14);
     expect(
       (options.migrations as Array<{ name: string }>).map(
         (migration) => migration.name,
@@ -56,6 +56,7 @@ describe('buildMysqlOptions', () => {
         'User',
         'AuthSession',
         'EsignDocument',
+        'MailRecipientWhitelist',
       ]),
     );
     expect(
@@ -76,6 +77,8 @@ describe('buildMysqlOptions', () => {
       'SignerNote1792454404000',
       'InternalEmailInvitations1792454405000',
       'ExportHistory1792454406000',
+      'MailRecipientWhitelist1793577600000',
+      'DepartmentDocumentVisibility1793664000000',
     ]);
   });
 

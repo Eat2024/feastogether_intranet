@@ -111,6 +111,21 @@ describe('FeastogetherHrService', () => {
     },
   );
 
+  it('登入仍拒絕離職員工，不受寄信白名單簡化影響', async () => {
+    const { service, client } = build();
+    client.get.mockResolvedValue([
+      {
+        person_empid: '00123',
+        person_name: '測試員工',
+        person_status: 2,
+        person_status_name: '離職',
+      },
+    ]);
+    await expect(service.lookupEligibleStaff('00123')).rejects.toMatchObject({
+      code: AppErrorCode.AUTH_EXCHANGE_FAILED,
+    });
+  });
+
   it('getShift：帶 Bearer token + 日期區間 query', async () => {
     const { service, client } = build();
     client.get.mockResolvedValue([]);

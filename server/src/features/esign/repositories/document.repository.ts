@@ -24,6 +24,13 @@ export class DocumentRepository {
     });
   }
 
+  findByDepartment(createdByDepartmentCode: string, manager: EntityManager) {
+    return manager.find(EsignDocument, {
+      where: { createdByDepartmentCode, deletedAt: IsNull() },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    });
+  }
+
   create(fields: DeepPartial<EsignDocument>, manager: EntityManager) {
     return manager.create(EsignDocument, fields);
   }

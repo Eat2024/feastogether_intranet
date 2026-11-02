@@ -1,3 +1,6 @@
+import { DepartmentDocumentVisibility1793664000000 } from '../migrations/1793664000000-DepartmentDocumentVisibility';
+import { MailRecipientWhitelist } from '#app/infrastructure/mail/mail-recipient-whitelist.entity';
+import { MailRecipientWhitelist1793577600000 } from '../migrations/1793577600000-MailRecipientWhitelist';
 import { LocalZipExports1792454403000 } from '../migrations/1792454403000-LocalZipExports';
 import { InternalEmailInvitations1792454405000 } from '../migrations/1792454405000-InternalEmailInvitations';
 import { ExportHistory1792454406000 } from '../migrations/1792454406000-ExportHistory';
@@ -90,6 +93,7 @@ export function buildMysqlOptions(
       EsignNotificationBatch,
       EsignNotificationLog,
       EsignExportJob,
+      MailRecipientWhitelist,
     ],
     migrations: [
       InitialEsignSchema1791763200000,
@@ -105,6 +109,8 @@ export function buildMysqlOptions(
       SignerNote1792454404000,
       InternalEmailInvitations1792454405000,
       ExportHistory1792454406000,
+      MailRecipientWhitelist1793577600000,
+      DepartmentDocumentVisibility1793664000000,
     ],
 
     extra: {

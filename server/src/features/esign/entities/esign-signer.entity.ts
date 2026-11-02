@@ -159,7 +159,7 @@ export class EsignSigner extends UserAuditableEntity {
     nullable: true,
     comment: '部門快照',
   })
-  departmentSnapshot?: string;
+  departmentSnapshot?: string | null;
 
   @Column({
     name: 'title_snapshot',

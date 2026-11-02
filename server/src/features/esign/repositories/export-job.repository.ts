@@ -18,7 +18,7 @@ export class ExportJobRepository {
     lock = false,
   ) {
     return manager.findOne(EsignExportJob, {
-      where: { publicId, documentId },
+      where: { publicId, documentId, exportType: 'signed_copies_zip' },
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
@@ -89,12 +89,16 @@ export class ExportJobRepository {
   }
   documents(
     q: { cursor?: string; limit: number; status?: string; q?: string },
+    departmentCode: string,
     manager: EntityManager,
   ) {
     const query = manager
       .createQueryBuilder(EsignDocument, 'document')
       .leftJoinAndSelect('document.createdByUser', 'creator')
-      .where('document.deletedAt IS NULL');
+      .where('document.deletedAt IS NULL')
+      .andWhere('document.createdByDepartmentCode = :departmentCode', {
+        departmentCode,
+      });
     if (q.cursor)
       query.andWhere('document.id < :cursor', { cursor: Number(q.cursor) });
     if (q.status)
@@ -112,6 +116,7 @@ export class ExportJobRepository {
   historyPage(
     q: {
       exportType: EsignExportType;
+      departmentCode: string;
       documentId?: number;
       q?: string;
       offset: number;
@@ -119,7 +124,12 @@ export class ExportJobRepository {
     },
     manager: EntityManager,
   ) {
-    return this.historyRecordsQuery(q.documentId, manager, q.q)
+    return this.historyRecordsQuery(
+      q.documentId,
+      q.departmentCode,
+      manager,
+      q.q,
+    )
       .andWhere('job.exportType = :exportType', { exportType: q.exportType })
       .orderBy('job.createdAt', 'DESC')
       .addOrderBy('job.id', 'DESC')
@@ -132,9 +142,10 @@ export class ExportJobRepository {
   historyRecord(
     publicId: string,
     exportType: EsignExportType,
+    departmentCode: string,
     manager: EntityManager,
   ) {
-    return this.historyRecordsQuery(undefined, manager)
+    return this.historyRecordsQuery(undefined, departmentCode, manager)
       .andWhere('job.publicId = :publicId', { publicId })
       .andWhere('job.exportType = :exportType', { exportType })
       .getOne();
@@ -144,10 +155,16 @@ export class ExportJobRepository {
   async historyCounts(
     exportTypes: EsignExportType[],
     documentId: number | undefined,
+    departmentCode: string,
     manager: EntityManager,
     q?: string,
   ) {
-    const rows = await this.visibleHistoryQuery(documentId, manager, q)
+    const rows = await this.visibleHistoryQuery(
+      documentId,
+      departmentCode,
+      manager,
+      q,
+    )
       .andWhere('job.exportType IN (:...exportTypes)', { exportTypes })
       .select('job.exportType', 'exportType')
       .addSelect('COUNT(*)', 'count')
@@ -159,11 +176,12 @@ export class ExportJobRepository {
   /** 列表與單筆紀錄共用的查詢：可見的紀錄，帶出文件、匯出員工與簽署人的顯示欄位。 */
   private historyRecordsQuery(
     documentId: number | undefined,
+    departmentCode: string,
     manager: EntityManager,
     q?: string,
   ) {
     return (
-      this.visibleHistoryQuery(documentId, manager, q)
+      this.visibleHistoryQuery(documentId, departmentCode, manager, q)
         // 不載入 ZIP 快照與已固定副本清單，單筆可達數千項。
         .select([
           'job.id',
@@ -205,6 +223,7 @@ export class ExportJobRepository {
    */
   private visibleHistoryQuery(
     documentId: number | undefined,
+    departmentCode: string,
     manager: EntityManager,
     q?: string,
   ) {
@@ -214,6 +233,9 @@ export class ExportJobRepository {
       .innerJoin('job.document', 'document', 'document.deletedAt IS NULL')
       .where('(job.exportType <> :zipType OR job.snapshotJson IS NOT NULL)', {
         zipType: EXPORT_TYPE_COLUMN.zip,
+      })
+      .andWhere('document.createdByDepartmentCode = :departmentCode', {
+        departmentCode,
       });
     if (documentId)
       query.andWhere('job.documentId = :documentId', { documentId });

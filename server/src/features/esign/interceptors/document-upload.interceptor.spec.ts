@@ -42,7 +42,7 @@ const file = { name: 'file', filename: 'test.pdf', value: '%PDF-test' };
 describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
   let app: NestFastifyApplication;
   const drafts = { create: jest.fn(), update: jest.fn() };
-  const queries = { creatorDetail: jest.fn() };
+  const queries = { detail: jest.fn() };
   const verifySessionToken = jest.fn();
 
   beforeAll(async () => {
@@ -102,7 +102,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
     verifySessionToken.mockResolvedValue({ userId: 7 });
     drafts.create.mockResolvedValue({ id: 9 });
     drafts.update.mockResolvedValue(undefined);
-    queries.creatorDetail.mockResolvedValue({ id: '9', status: 'draft' });
+    queries.detail.mockResolvedValue({ id: '9', status: 'draft' });
   });
   afterAll(async () => {
     await app.close();
@@ -139,13 +139,13 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
       contentType: 'application/pdf',
     });
     expect(response.json()).toEqual({ id: '9' });
-    expect(queries.creatorDetail).not.toHaveBeenCalled();
+    expect(queries.detail).not.toHaveBeenCalled();
   });
   it('修改可僅傳標題，不要求 PDF', async () => {
     const response = await send([title], 'PATCH');
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ id: '9' });
-    expect(queries.creatorDetail).not.toHaveBeenCalled();
+    expect(queries.detail).not.toHaveBeenCalled();
     expect(drafts.update).toHaveBeenCalledWith(9, 7, {
       title: title.value,
       file: undefined,

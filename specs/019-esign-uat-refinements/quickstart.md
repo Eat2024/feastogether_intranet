@@ -13,7 +13,7 @@
 ```bash
 pnpm -C server lint:check
 pnpm -C server test -- --runInBand
-pnpm -C server test:e2e --testPathPatterns='esign-export|export-history|export-retention|org-chart|esign-initiation|esign-capacity|esign-signer-management'
+pnpm -C server test:e2e --testPathPatterns='esign-export|export-history|export-retention|org-chart|internal-email-initiation|internal-email-capacity|esign-signer-management'
 pnpm -C client lint
 pnpm build
 pnpm lint

@@ -87,7 +87,7 @@ export async function buildExportXlsx(
 
 /**
  * 匯出簽署紀錄 Excel：先以 POST /api/esign/history/export 記錄匯出，成功後才產生並下載。
- * 匯出頁與歷史匯出的重新下載共用；範圍與筆數依文件目前的資料計算。
+ * 僅供新匯出使用；歷史重新下載直接產檔，不再次記錄。
  */
 export async function recordAndDownloadExcel(doc: ExportDocument & { id: string }, query: ExportQuery) {
   const rows = exportRows(doc.signers, query);

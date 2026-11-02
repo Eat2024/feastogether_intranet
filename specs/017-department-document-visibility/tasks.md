@@ -96,11 +96,11 @@
 
 **Independent Test**：隔離資料模擬切換前 ID 清單、軟刪除與切換後新文件；舊集合歸 1029030000，新建依實際部門，User／證據不變，重跑與回復可驗證。
 
-- [ ] T037 [P] [US3] 在 `server/test/password-login.e2e-spec.ts`、`server/test/webview-session.e2e-spec.ts`、`server/test/oauth-login.e2e-spec.ts` 增補既有帳號補代碼、缺值清空、調職及舊 session 後續讀 DB 新值的測試；dev-login fixtures 明確使用合成部門，不新增通用測試登入旁路。
-- [ ] T038 [P] [US3] 建立 `specs/017-department-document-visibility/uat-cutover.md`，提供可審查的一次性唯讀盤點、維護窗口、備份、顯式 ID 清單回填及按原值回復的 SQL／執行步驟；固定字串 `1029030000`／「IT策略本部系統開發部」，包含軟刪除舊文件、不更新 User／createdByUserId／updated_at／證據、不呼叫 HR 於 migration、不提交真實備份，真實 UAT 寫入留待部署指示。
-- [ ] T039 [US3] 建立 `server/test/department-backfill.e2e-spec.ts` 並加入 `server/test/jest-schema.json` 收集規則，在隔離 DB 驗證 T038 的實際 SQL／同一資料操作：精確 ID 集合、重跑、非預期非空值停止、回復原值、切換後資料不被覆蓋、代碼精確比對、影響筆數及證據摘要不變。
-- [ ] T040 [US3] 將 `specs/017-department-document-visibility/uat-cutover.md` 與 `quickstart.md` 的順序對齊：先停寫／停下載、備份與 schema、盤點舊集合、確認指定代碼對應、回填核對、部署相容程式、正式重登入同步後驗收再開放；回滾不得直接讓舊全員下載版本恢復對外服務。
-- [ ] T041 [US3] 執行 T037／T039 與隔離切換演練，將新舊文件筆數、回填／回復結果、各登入入口與既有 session 驗收摘要寫入 `specs/017-department-document-visibility/validation.md`；明確區分「隔離演練完成」與「尚未執行 UAT 回填」。
+- [x] T037 [P] [US3] 在 `server/test/password-login.e2e-spec.ts`、`server/test/webview-session.e2e-spec.ts`、`server/test/oauth-login.e2e-spec.ts` 增補既有帳號補代碼、缺值清空、調職及舊 session 後續讀 DB 新值的測試；dev-login fixtures 明確使用合成部門，不新增通用測試登入旁路。
+- [x] T038 [P] [US3] 建立 `specs/017-department-document-visibility/uat-cutover.md`，提供可審查的一次性唯讀盤點、維護窗口、備份、顯式 ID 清單回填及按原值回復的 SQL／執行步驟；固定字串 `1029030000`／「IT策略本部系統開發部」，包含軟刪除舊文件、不更新 User／createdByUserId／updated_at／證據、不呼叫 HR 於 migration、不提交真實備份，真實 UAT 寫入留待部署指示。
+- [x] T039 [US3] 建立 `server/test/department-backfill.e2e-spec.ts` 並加入 `server/test/jest-schema.json` 收集規則，在隔離 DB 驗證 T038 的實際 SQL／同一資料操作：精確 ID 集合、重跑、非預期非空值停止、回復原值、切換後資料不被覆蓋、代碼精確比對、影響筆數及證據摘要不變。
+- [x] T040 [US3] 將 `specs/017-department-document-visibility/uat-cutover.md` 與 `quickstart.md` 的順序對齊：先停寫／停下載、備份與 schema、盤點舊集合、確認指定代碼對應、回填核對、部署相容程式、正式重登入同步後驗收再開放；回滾不得直接讓舊全員下載版本恢復對外服務。
+- [x] T041 [US3] 執行 T037／T039 與隔離切換演練，將新舊文件筆數、回填／回復結果、各登入入口與既有 session 驗收摘要寫入 `specs/017-department-document-visibility/validation.md`；明確區分「隔離演練完成」與「尚未執行 UAT 回填」。
 
 ## Phase 7: Polish & Cross-Cutting
 

@@ -83,3 +83,12 @@
 - 本人副本：internal-portal-completion + internal-email-copy共15 tests通過；原外部與交付安全：security-core-esign-flow + esign-document-delivery-security共16 tests通過。
 - Worker固定快照與領取時重新授權已有07 ZIP回歸證據；檔案lint 0 errors/warnings及diff check通過。
 - 尚未執行UAT回填或部署。
+
+## Ticket 09（T037–T041）
+
+- 正式帳密、WebView、OAuth 登入 E2E：3 suites／14 tests 通過（`pnpm -C server test:e2e --runTestsByPath test/password-login.e2e-spec.ts test/webview-session.e2e-spec.ts test/oauth-login.e2e-spec.ts`）。A→B→NULL 同步後舊 cookie 仍有效，文件權限依目前 User 改變；HR 失敗不覆寫已知部門、不發新 session，保留本機 departmentId。
+- OAuth 使用合成 HR HTTP client stub，保留真正 HR parser，未連外部 HR。Server build 通過，lint 無錯誤。
+- 完整 `pnpm -C server test:schema`：4 suites／24 tests 通過，含直接解析 uat-cutover.md SQL 的 9 個回填測試。
+- 目標3筆舊文件含1軟刪除與1已同值，首次實改2、重跑0、原值回復2、再次回復0；第4筆後建文件、User／建立人／簽署證據摘要與微秒 updated_at 不變。
+- 缺失／重複 ID、不完整備份、未知非空值與回復衝突皆整批拒絕。移除 valid_count 防護後3個負向案例確實轉紅，已還原。新測試 lint 與 diff check 通過。
+- 隔離切換演練完成；尚未執行真實 UAT 盤點、備份、回填或部署。回滾不可直接重開舊全員下載版本。

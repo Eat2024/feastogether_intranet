@@ -53,8 +53,9 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     },
   };
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherClient).useValue(hr),
+    ctx = await createSecurityE2eApp(
+      (builder) => builder.overrideProvider(FeastogetherClient).useValue(hr),
+      null,
     );
     const manager = ctx.app.get(MysqlService).getManager();
     creator = await manager.save(

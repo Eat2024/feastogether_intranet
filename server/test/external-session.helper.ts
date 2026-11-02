@@ -1,11 +1,7 @@
 import request from 'supertest';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
-import type { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
-import {
-  INVITATION_MAIL_SENDER,
-  type SendOtpMailInput,
-} from '#app/infrastructure/mail/invitation-mail-sender.port';
-import type { SecurityE2eContext } from './security-e2e.helper';
+import { type SendOtpMailInput } from '#app/infrastructure/mail/invitation-mail-sender.port';
+import { mailFixture, type SecurityE2eContext } from './security-e2e.helper';
 import { randomClientIp } from './signature-verification.helper';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
@@ -45,8 +41,7 @@ export function submitOtp(
 
 /** test 環境的 fake mailer 攔截到的驗證碼信（不寄出真實信件） */
 export function otpMails(ctx: SecurityE2eContext): SendOtpMailInput[] {
-  return ctx.app.get<FakeInvitationMailSender>(INVITATION_MAIL_SENDER)
-    .otpDeliveries;
+  return mailFixture(ctx).adapter.otpDeliveries;
 }
 
 /**

@@ -19,4 +19,6 @@
 - 既有 E2E 以測試明確登錄的有限合成 HR 名單執行真實政策，不從寄送輸入或文件快照自動授權；兩個跨午夜 session fixture 已修復，未更動正式 TTL。
 - 隔離 MySQL 8.4（本機13318）、Redis（本機16318、非0 DB），未呼叫真實 HR／SMTP、未操作 UAT／production。
 - schema 3 suites／14 tests、security 13 suites／73 tests、unit 108 suites／1,006 tests 通過；root lint 0 errors（既有 warnings）、server build 通過。
-- 完整 E2E：32 suites／345 tests 通過，162.123 秒。client build 與 Standards／Spec 正式審查由整合分支完成，故狀態保留 claimed。
+- 完整 E2E：32 suites／345 tests 通過，162.123 秒。整合後原工作目錄的 `pnpm build` 前後端均通過；Standards／Spec 正式審查仍待完成，狀態保留 claimed。
+
+- 快轉整合點：`8546772`（`implement/spec018-05` → `docs/spec-018-mail-whitelist`），包含最新 `origin/dev`；root build 已補驗證通過。敏感資料邊界與正式 code review 的最終確認由整合分支審查完成後勾選。

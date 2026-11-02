@@ -97,7 +97,13 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         User,
         employeeNos
           .slice(offset, offset + 500)
-          .map((empid) => ({ empid, name: '合成容量員工', isActive: true })),
+          .map((empid) => ({
+            empid,
+            name: '合成容量員工',
+            isActive: true,
+            departmentCode: 'CAPACITY-SYNTHETIC',
+            departmentName: '合成容量部門',
+          })),
       );
     users = await manager.find(User, {
       where: { empid: In(employeeNos) },

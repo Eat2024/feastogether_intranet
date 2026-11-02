@@ -58,7 +58,7 @@ export class EsignDraftService {
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly fieldService: EsignFieldService,
-  ) { }
+  ) {}
 
   listCreatedBy(userId: number) {
     return this.documents.findCreatedByUser(userId, this.mysql.getManager());
@@ -115,12 +115,20 @@ export class EsignDraftService {
     creatorUserId: number,
     manager: EntityManager,
   ): Promise<EsignDocument> {
+    // 先鎖定員工再建立文件，與登入同步使用相同鎖順序；舊文件不重新取部門。
+    const creator = await this.access.requireDepartment(
+      creatorUserId,
+      manager,
+      true,
+    );
     const draft = this.documents.create(
       {
         docNumber,
         title,
         status: 'draft',
         createdByUserId: creatorUserId,
+        createdByDepartmentCode: creator.departmentCode,
+        createdByDepartmentName: creator.departmentName ?? null,
         watermarkEnabled: false,
         allowReject: false,
       },

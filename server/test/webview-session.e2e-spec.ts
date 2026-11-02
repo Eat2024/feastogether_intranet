@@ -1,8 +1,13 @@
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
+import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
+import { User } from '#app/features/users/entities/user.entity';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import {
+  FeastogetherHrService,
+  staffLookupError,
+} from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
 import { apiData } from './api-response.helper';
 import {
   closeSecurityE2eApp,
@@ -19,6 +24,7 @@ describe('WebView session happy path', () => {
   const empid = 'E2E00201';
   let ctx: SecurityE2eContext;
   let db: DataSource;
+  const documentIds: number[] = [];
   const lookupEligibleStaff = jest.fn().mockResolvedValue({
     person_empid: empid,
     person_name: '測試員工',
@@ -39,6 +45,8 @@ describe('WebView session happy path', () => {
   });
 
   afterAll(async () => {
+    if (documentIds.length)
+      await db.manager.delete(EsignDocument, { id: In(documentIds) });
     await db.query(
       'DELETE FROM auth_sessions WHERE user_id = (SELECT id FROM users WHERE empid = ?)',
       [empid],
@@ -166,23 +174,110 @@ describe('WebView session happy path', () => {
     const users = await db.query<
       Array<{
         department_id: number;
+        department_code: string;
         department_name: string;
         name: string;
         person_status: string;
         title_name: string;
       }>
     >(
-      `SELECT department_id, department_name, name, person_status, title_name
+      `SELECT department_id, department_code, department_name, name, person_status, title_name
         FROM users WHERE empid = ?`,
       [empid],
     );
     expect(users[0]).toMatchObject({
       department_id: departmentId,
+      department_code: 'UPSTREAM-NOT-LOCAL-ID',
       department_name: '更新後部門顯示',
       name: '更新後姓名',
       person_status: '試用',
       title_name: '更新後職稱',
     });
+  });
+
+  it('部門同步更新、缺值清空與舊 session 重新讀 DB，不更改本機部門外鍵', async () => {
+    const staff = (code: string | null) => ({
+      person_empid: empid,
+      person_name: '合成WebView員工',
+      person_status: 1,
+      person_status_name: '正式',
+      department_id: code,
+      department_name: code ? '合成同名部門' : null,
+      title: null,
+    });
+    const enter = async (code: string | null) => {
+      lookupEligibleStaff.mockResolvedValueOnce(staff(code));
+      const launch = await request(ctx.server)
+        .post('/api/auth/webview-launches')
+        .set('Authorization', `Bearer ${createLaunchJwt(empid)}`)
+        .expect(201);
+      const exchange = new URL(
+        apiData<LaunchView>(launch).launchUrl,
+      ).searchParams.get('code');
+      const activated = await request(ctx.server)
+        .post('/api/auth/session')
+        .type('form')
+        .send({ code: exchange })
+        .expect(303);
+      const raw: unknown = activated.headers['set-cookie'];
+      const cookie: unknown = Array.isArray(raw) ? raw[0] : raw;
+      if (typeof cookie !== 'string') throw new Error('缺少登入 cookie');
+      return cookie;
+    };
+    const cookie = await enter('WV017A');
+    const user = await db.manager.findOneByOrFail(User, { empid });
+    const localDepartmentId = user.departmentId;
+    expect(user.departmentCode).toBe('WV017A');
+    const docs = await db.manager.save(
+      EsignDocument,
+      ['WV017A', 'WV017B'].map((code) =>
+        db.manager.create(EsignDocument, {
+          docNumber: randomUUID(),
+          title: '合成WebView部門文件',
+          status: 'draft',
+          createdByUserId: user.id,
+          createdByDepartmentCode: code,
+        }),
+      ),
+    );
+    documentIds.push(...docs.map((doc) => doc.id));
+    const visible = () =>
+      request(ctx.server)
+        .get('/api/esign/documents?role=dep')
+        .set('Cookie', cookie);
+    expect(
+      apiData<Array<{ id: string }>>(await visible().expect(200)).map(
+        (doc) => doc.id,
+      ),
+    ).toEqual([String(docs[0].id)]);
+    await enter('WV017B');
+    expect(
+      apiData<Array<{ id: string }>>(await visible().expect(200)).map(
+        (doc) => doc.id,
+      ),
+    ).toEqual([String(docs[1].id)]);
+    lookupEligibleStaff.mockRejectedValueOnce(staffLookupError());
+    const failed = await request(ctx.server)
+      .post('/api/auth/webview-launches')
+      .set('Authorization', `Bearer ${createLaunchJwt(empid)}`)
+      .expect(502);
+    expect(failed.headers['set-cookie']).toBeUndefined();
+    expect(
+      (await db.manager.findOneByOrFail(User, { id: user.id })).departmentCode,
+    ).toBe('WV017B');
+    await enter(null);
+    expect(
+      await db.manager.findOneByOrFail(User, { id: user.id }),
+    ).toMatchObject({
+      departmentCode: null,
+      departmentName: null,
+      departmentId: localDepartmentId,
+    });
+    await visible().expect(409);
+    await request(ctx.server)
+      .get('/api/auth/session')
+      .set('Cookie', cookie)
+      .expect(200);
   });
 
   it.each([

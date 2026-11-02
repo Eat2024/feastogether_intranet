@@ -60,6 +60,7 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
           empid: `S${prefix}${index}`,
           name: `合成人員${index}`,
           isActive: true,
+          departmentCode: `TEST017-${index}`,
         }),
       ),
     );

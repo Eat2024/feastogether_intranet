@@ -30,11 +30,14 @@ export class ExportsController {
   ) {}
 
   // 查詢可匯出簽署副本的文件。
-  @Get('exportable-documents') list(@Query() query: ExportQueryDto) {
-    return this.exports.listDocuments(query);
+  @Get('exportable-documents') list(
+    @Query() query: ExportQueryDto,
+    @CurrentUserId() userId: number,
+  ) {
+    return this.exports.listDocuments(query, userId);
   }
 
-  // 由建立人申請文件副本 ZIP 匯出，回傳既有或新建的匯出狀態。
+  // 由同部門員工申請文件副本 ZIP 匯出，回傳既有或新建的匯出狀態。
   @Post('documents/:documentId/exports')
   @UseGuards(OriginGuard)
   async request(
@@ -52,19 +55,21 @@ export class ExportsController {
   @Get('documents/:documentId/exports/:exportId') detail(
     @Param('documentId') id: string,
     @Param('exportId') exportId: string,
+    @CurrentUserId() userId: number,
   ) {
-    return this.exports.detail(numericId(id), exportId);
+    return this.exports.detail(numericId(id), exportId, userId);
   }
 
-  // 由建立人重試文件副本匯出工作。
+  // 由同部門員工重試文件副本匯出工作。
   @Post('documents/:documentId/exports/:exportId/retries')
   @UseGuards(OriginGuard)
   async retry(
     @Param('documentId') id: string,
     @Param('exportId') exportId: string,
+    @CurrentUserId() userId: number,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const result = await this.exports.retry(numericId(id), exportId);
+    const result = await this.exports.retry(numericId(id), exportId, userId);
     reply.status(result.status === 'completed' ? 200 : 202);
     return result;
   }
@@ -74,6 +79,7 @@ export class ExportsController {
   async download(
     @Param('documentId') id: string,
     @Param('exportId') exportId: string,
+    @CurrentUserId() userId: number,
     @Param('fileId') fileId: string,
     @Headers('range') range: string | undefined,
     @Headers('if-range') ifRange: string | undefined,
@@ -83,6 +89,7 @@ export class ExportsController {
       numericId(id),
       exportId,
       numericId(fileId),
+      userId,
     );
     const size = Number(file.fileSize);
     const etag = `"${file.sha256}"`;

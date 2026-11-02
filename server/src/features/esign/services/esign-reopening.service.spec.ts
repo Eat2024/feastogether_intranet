@@ -33,6 +33,8 @@ describe('EsignReopeningService', () => {
     const document = Object.assign(new EsignDocument(), {
       id: 1,
       createdByUserId: 2,
+      createdByDepartmentCode: '00A',
+      createdByDepartmentName: '建立時部門',
       status: 'expired',
       signEndAt: end,
       signingPayloadJson: payload,
@@ -94,6 +96,7 @@ describe('EsignReopeningService', () => {
       new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         documents,
+        {} as never,
       ),
       new EsignDocumentValidationService(),
       expiry,
@@ -268,6 +271,11 @@ describe('EsignReopeningService', () => {
     const result = await service.reopen(1, 2, input);
     expect(result.pendingCount).toBe(1);
     expect(queued).toHaveLength(1);
+    expect(document).toMatchObject({
+      createdByUserId: 2,
+      createdByDepartmentCode: '00A',
+      createdByDepartmentName: '建立時部門',
+    });
     expect(document.signingPayloadJson).toBe(payload);
     expect(document.signingPayloadSha256).toBe(hash);
     expect(frozen.map((s) => s.invitationTokenSha256)).toEqual([

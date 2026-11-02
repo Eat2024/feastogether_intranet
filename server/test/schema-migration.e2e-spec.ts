@@ -28,6 +28,102 @@ const optionsFor = (database: string) =>
 describe('e-sign schema migrations', () => {
   jest.setTimeout(60_000);
 
+  it('部門 migration 的 NULL 舊資料、精確代碼與 up/down/up 不改簽署證據', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = await new DataSource(optionsFor(database)).initialize();
+      try {
+        await ds.runMigrations();
+        await revertAfter(ds, 'MailRecipientWhitelist1793577600000');
+        await seedExportDocument(ds);
+        await ds.query(
+          "UPDATE esign_documents SET signing_payload_json=JSON_OBJECT('evidence','unchanged'), signing_payload_sha256=? WHERE id=1",
+          ['a'.repeat(64)],
+        );
+        const evidenceSql =
+          'SELECT created_by_user_id, updated_at, signing_payload_json, signing_payload_sha256 FROM esign_documents WHERE id=1';
+        const before: unknown = await ds.query(evidenceSql);
+        await ds.runMigrations();
+        expect(
+          await ds.query('SELECT department_code FROM users WHERE id=1'),
+        ).toEqual([{ department_code: null }]);
+        expect(
+          await ds.query(
+            'SELECT created_by_department_code, created_by_department_name FROM esign_documents WHERE id=1',
+          ),
+        ).toEqual([
+          {
+            created_by_department_code: null,
+            created_by_department_name: null,
+          },
+        ]);
+        const code = '00Ab';
+        await ds.query('UPDATE users SET department_code=? WHERE id=1', [code]);
+        // 顯式保留業務時間，這裡只驗證資料庫比較規則。
+        await ds.query(
+          'UPDATE esign_documents SET created_by_department_code=?, created_by_department_name=?, updated_at=updated_at WHERE id=1',
+          [code, '合成部門'],
+        );
+        for (const table of ['users', 'esign_documents']) {
+          const column =
+            table === 'users'
+              ? 'department_code'
+              : 'created_by_department_code';
+          for (const [candidate, expected] of [
+            [code, 1],
+            ['00ab', 0],
+            ['Ab', 0],
+            ['00Ab ', 0],
+          ] as const) {
+            const rows = await ds.query<Array<{ count: number }>>(
+              `SELECT COUNT(*) count FROM ${table} WHERE ${column}=?`,
+              [candidate],
+            );
+            expect(Number(rows[0].count)).toBe(expected);
+          }
+        }
+        const columns = await ds.query<Array<{ COLUMN_NAME: string }>>(
+          "SELECT COLUMN_NAME FROM information_schema.statistics WHERE TABLE_SCHEMA=? AND TABLE_NAME='esign_documents' AND INDEX_NAME='idx_esign_documents_department_deleted_updated_id' ORDER BY SEQ_IN_INDEX",
+          [database],
+        );
+        expect(columns.map((row) => row.COLUMN_NAME)).toEqual([
+          'created_by_department_code',
+          'deleted_at',
+          'updated_at',
+          'id',
+        ]);
+        expect(await ds.query(evidenceSql)).toEqual(before);
+        await ds.undoLastMigration();
+        expect(await hasColumn(ds, database, 'users', 'department_code')).toBe(
+          false,
+        );
+        expect(
+          await hasColumn(
+            ds,
+            database,
+            'esign_documents',
+            'created_by_department_code',
+          ),
+        ).toBe(false);
+        expect(
+          await hasColumn(
+            ds,
+            database,
+            'esign_documents',
+            'created_by_department_name',
+          ),
+        ).toBe(false);
+        expect(await ds.query(evidenceSql)).toEqual(before);
+        await ds.runMigrations();
+        expect(await ds.query(evidenceSql)).toEqual(before);
+        expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual(
+          [],
+        );
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
+
   it('內部邀請 migration 前置 schema 不符時，任何 DDL 前拒絕', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
       const ds = await new DataSource(optionsFor(database)).initialize();
@@ -139,13 +235,15 @@ describe('e-sign schema migrations', () => {
               ['a'.repeat(64)],
             );
           const before: unknown = await ds.query(
-            'SELECT * FROM esign_documents',
+            'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
           );
           await revertAfter(ds, 'ExpiredDocuments1792368000000');
           await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
-          expect(await ds.query('SELECT * FROM esign_documents')).toEqual(
-            before,
-          );
+          expect(
+            await ds.query(
+              'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
+            ),
+          ).toEqual(before);
         } finally {
           await ds.destroy();
         }
@@ -165,10 +263,16 @@ describe('e-sign schema migrations', () => {
         await ds.query(
           "INSERT INTO esign_documents (doc_number,title,created_by_user_id,sign_start_at) VALUES ('00000000-0000-4000-8000-000000000009','單端草稿',1,'2020-01-01')",
         );
-        const before: unknown = await ds.query('SELECT * FROM esign_documents');
+        const before: unknown = await ds.query(
+          'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
+        );
         await revertAfter(ds, 'DraftSettings1792454400000');
         await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
-        expect(await ds.query('SELECT * FROM esign_documents')).toEqual(before);
+        expect(
+          await ds.query(
+            'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
+          ),
+        ).toEqual(before);
       } finally {
         await ds.destroy();
       }
@@ -298,9 +402,7 @@ describe('e-sign schema migrations', () => {
 
         await dataSource.undoLastMigration();
         expect(await listBusinessTables(dataSource, database)).toEqual(
-          BUSINESS_TABLES.filter(
-            (table) => table !== 'mail_recipient_whitelist',
-          ),
+          BUSINESS_TABLES,
         );
         expect(
           await hasColumn(

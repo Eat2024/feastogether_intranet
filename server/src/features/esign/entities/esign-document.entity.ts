@@ -26,6 +26,12 @@ import { User } from '#app/features/users/entities/user.entity';
   'updatedAt',
   'id',
 ])
+@Index('idx_esign_documents_department_deleted_updated_id', [
+  'createdByDepartmentCode',
+  'deletedAt',
+  'updatedAt',
+  'id',
+])
 @Index('idx_esign_documents_sign_start_at', ['signStartAt'])
 @Index('idx_esign_documents_sign_end_at', ['signEndAt'])
 @Index('idx_esign_documents_initiated_at', ['initiatedAt'])
@@ -65,6 +71,26 @@ export class EsignDocument extends AuditableEntity {
     comment: '建立人 ID',
   })
   createdByUserId!: number;
+
+  @Column({
+    name: 'created_by_department_code',
+    type: 'varchar',
+    length: 50,
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_0900_bin',
+    nullable: true,
+    comment: '建立時部門代碼快照',
+  })
+  createdByDepartmentCode?: string | null;
+
+  @Column({
+    name: 'created_by_department_name',
+    type: 'varchar',
+    length: 150,
+    nullable: true,
+    comment: '建立時部門名稱快照',
+  })
+  createdByDepartmentName?: string | null;
 
   @ManyToOne(() => User, { onDelete: 'RESTRICT' })
   @JoinColumn({

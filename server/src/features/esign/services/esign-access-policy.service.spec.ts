@@ -1,3 +1,4 @@
+import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
@@ -6,6 +7,7 @@ import { EsignDocumentValidationService } from './esign-document-validation.serv
 describe('EsignAccessPolicyService', () => {
   const policy = new EsignAccessPolicyService(
     new EsignDocumentValidationService(),
+    {} as never,
     {} as never,
   );
   const now = new Date('2026-10-13T12:00:00.000Z');
@@ -52,6 +54,7 @@ describe('EsignAccessPolicyService', () => {
       const locking = new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         documents as never,
+        {} as never,
       );
       return { locking, documents };
     };
@@ -344,5 +347,134 @@ describe('EsignAccessPolicyService', () => {
         ),
       ).toThrow('外部簽署存取已失效');
     });
+  });
+});
+
+describe('部門文件授權', () => {
+  const manager = {} as never;
+  const user = () =>
+    Object.assign(new User(), {
+      id: 10,
+      isActive: true,
+      departmentCode: '00Aa',
+      departmentName: '合成部門',
+    });
+  const document = () =>
+    Object.assign(new EsignDocument(), {
+      id: 1,
+      createdByUserId: 20,
+      createdByDepartmentCode: '00Aa',
+      status: 'draft',
+    });
+  const setup = (employee: User | null = user()) => {
+    const users = {
+      findById: jest.fn().mockResolvedValue(employee),
+      findByIdForUpdate: jest.fn().mockResolvedValue(employee),
+    };
+    return {
+      users,
+      policy: new EsignAccessPolicyService(
+        new EsignDocumentValidationService(),
+        {} as never,
+        users as never,
+      ),
+    };
+  };
+
+  it('同部門可讀但不能修改，一般匯出須獨立檢查', async () => {
+    const { policy } = setup();
+    const doc = document();
+    await expect(policy.readableDocument(doc, 10, manager)).resolves.toBe(doc);
+    await expect(
+      policy.checkDepartmentDocument(doc, 10, manager),
+    ).resolves.toBe(doc);
+    expect(() => policy.checkEsignCreator(doc, 10)).toThrow('找不到電子簽資源');
+  });
+  it('代碼精確比對，不以同名、前綴或大小寫放寬', async () => {
+    const { policy } = setup();
+    for (const code of ['00aa', '00Aa1', '00', null]) {
+      const doc = Object.assign(document(), { createdByDepartmentCode: code });
+      await expect(
+        policy.readableDocument(doc, 10, manager),
+      ).rejects.toMatchObject({ status: 404 });
+      await expect(
+        policy.checkDepartmentDocument(doc, 10, manager),
+      ).rejects.toMatchObject({ status: 404 });
+    }
+  });
+  it.each([null, undefined, '', '   '])(
+    '缺部門 %p 不互相授權，仍保留建立人管理',
+    async (departmentCode) => {
+      const { policy } = setup(Object.assign(user(), { departmentCode }));
+      const doc = Object.assign(document(), {
+        createdByUserId: 10,
+        createdByDepartmentCode: null,
+      });
+      await expect(policy.requireDepartment(10, manager)).rejects.toMatchObject(
+        { status: 409, code: 'ESIGN_DEPARTMENT_UNAVAILABLE' },
+      );
+      await expect(policy.readableDocument(doc, 10, manager)).resolves.toBe(
+        doc,
+      );
+      await expect(
+        policy.checkDepartmentDocument(doc, 10, manager),
+      ).rejects.toMatchObject({ status: 409 });
+      await expect(policy.canExportDocument(doc, 10, manager)).resolves.toBe(
+        false,
+      );
+    },
+  );
+  it('調職建立人可管理舊文件但不可一般匯出', async () => {
+    const { policy, users } = setup();
+    const doc = Object.assign(document(), { createdByUserId: 10 });
+    users.findById.mockResolvedValue(
+      Object.assign(user(), { departmentCode: 'NEW' }),
+    );
+    await expect(policy.readableDocument(doc, 10, manager)).resolves.toBe(doc);
+    await expect(
+      policy.checkDepartmentDocument(doc, 10, manager),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(policy.canExportDocument(doc, 10, manager)).resolves.toBe(
+      false,
+    );
+  });
+  it.each([
+    null,
+    Object.assign(user(), { isActive: false }),
+    Object.assign(user(), { deletedAt: new Date() }),
+  ])('無效員工不得因建立人身分讀取', async (employee) => {
+    const { policy } = setup(employee);
+    await expect(
+      policy.readableDocument(
+        Object.assign(document(), { createdByUserId: 10 }),
+        10,
+        manager,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(policy.requireDepartment(10, manager)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+  it('已刪除與不存在的文件拒絕', async () => {
+    const { policy } = setup();
+    for (const doc of [
+      null,
+      Object.assign(document(), { deletedAt: new Date() }),
+    ]) {
+      await expect(
+        policy.readableDocument(doc, 10, manager),
+      ).rejects.toMatchObject({ status: 404 });
+      await expect(
+        policy.checkDepartmentDocument(doc, 10, manager),
+      ).rejects.toMatchObject({ status: 404 });
+    }
+  });
+  it('建立交易先鎖 User，回傳可信代碼且保留前導零', async () => {
+    const { policy, users } = setup();
+    await expect(
+      policy.requireDepartment(10, manager, true),
+    ).resolves.toMatchObject({ departmentCode: '00Aa' });
+    expect(users.findByIdForUpdate).toHaveBeenCalledWith(10, manager);
+    expect(users.findById).not.toHaveBeenCalled();
   });
 });

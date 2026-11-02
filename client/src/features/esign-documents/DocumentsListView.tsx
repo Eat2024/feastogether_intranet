@@ -1,6 +1,6 @@
 'use client';
 
-// 電子簽列表（後端資料）：GET /api/esign/documents?role=created 取得目前員工建立的文件，
+// 電子簽列表（後端資料）：GET /api/esign/documents?role=dep 取得目前員工所屬部門的文件，
 // 搜尋、篩選、排序與分頁依網址參數在前端處理。
 import { useGetDocumentsQuery } from '@/api/queries';
 import LinkPagination from '@/components/LinkPagination';
@@ -30,7 +30,7 @@ export default function DocumentsListView() {
   const params = useSearchParams();
   const filters = useMemo(() => parseDocumentFilters(params), [params]);
   const sort = useMemo(() => parseDocumentSort(params), [params]);
-  const { data, isPending, isError, error, refetch, isFetching } = useGetDocumentsQuery({ role: 'created' });
+  const { data, isPending, isError, error, refetch, isFetching } = useGetDocumentsQuery({ role: 'dep' });
 
   const docs = useMemo(() => {
     return sortDocuments(filterDocuments(data ?? [], filters), sort);

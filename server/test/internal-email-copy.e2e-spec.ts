@@ -99,6 +99,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
           empid: `C${prefix}${i}`,
           name: `合成副本員工${i}`,
           isActive: true,
+          departmentCode: `TEST017-${i}`,
         }),
       ),
     );

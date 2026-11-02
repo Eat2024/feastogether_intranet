@@ -80,15 +80,14 @@ describe('EsignSignerService', () => {
       new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         documents as never,
+        {} as never,
       ),
       new DocumentRepository(),
     );
     const update = jest.spyOn(service, 'updateSigners');
     await expect(
       service.draftSave(3, 7, {
-        signers: [
-          { type: 'email', name: '測試', email: 'test@example.test' },
-        ],
+        signers: [{ type: 'email', name: '測試', email: 'test@example.test' }],
       }),
     ).rejects.toMatchObject({ status: owner !== 7 ? 404 : 409 });
     expect(update).not.toHaveBeenCalled();
@@ -289,6 +288,7 @@ describe('草稿完整設定', () => {
       new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         new DocumentRepository(),
+        {} as never,
       ),
       new DocumentRepository(),
     );

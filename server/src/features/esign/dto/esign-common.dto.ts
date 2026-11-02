@@ -40,6 +40,7 @@ export class EsignDocumentCreatorDto {
 
 /** 文件列表項目：摘要再加上簽署期間與建立人（僅供員工 session 的列表使用） */
 export class EsignDocumentListItemDto extends EsignDocumentSummaryDto {
+  isCreator!: boolean;
   signStartAt!: string | null;
   /** 建立人帳號不存在時為 null */
   createdBy!: EsignDocumentCreatorDto | null;
@@ -125,7 +126,30 @@ export class EsignManagedSignerViewDto extends EsignSignerViewDto {
   };
 }
 
-export class EsignDocumentDetailDto extends EsignDocumentSummaryDto {
+export class EsignReadonlySignerViewDto {
+  publicId!: string;
+  name!: string;
+  status!: EsignSignerStatus;
+  signedAt!: string | null;
+  rejectedAt!: string | null;
+}
+
+/** 同部門可讀的文件；不含管理欄位或個別簽署人的身分資料。 */
+export class EsignReadonlyDocumentDetailDto extends EsignDocumentSummaryDto {
+  isCreator!: false;
+  canExport!: boolean;
+  createdBy!: EsignDocumentCreatorDto | null;
+  sourceFile?: EsignSourceFileDto;
+  signStartAt!: string | null;
+  stopReason!: string | null;
+  signers!: EsignReadonlySignerViewDto[];
+}
+
+export class EsignManagedDocumentDetailDto extends EsignDocumentSummaryDto {
+  isCreator!: true;
+  canExport!: boolean;
+  watermark!: boolean;
+  allowReject!: boolean;
   /** 建立人帳號不存在時為 null */
   createdBy!: EsignDocumentCreatorDto | null;
   sourceFile?: EsignSourceFileDto;
@@ -147,3 +171,7 @@ export class EsignHistoryItemDto {
   actor!: EsignHistoryActorDto;
   reason!: string | null;
 }
+
+export type EsignDocumentDetailDto =
+  | EsignManagedDocumentDetailDto
+  | EsignReadonlyDocumentDetailDto;

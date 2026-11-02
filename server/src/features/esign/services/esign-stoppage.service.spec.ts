@@ -8,6 +8,8 @@ describe('EsignStoppageService', () => {
       id: 3,
       status,
       createdByUserId: 7,
+      createdByDepartmentCode: '00A',
+      createdByDepartmentName: '建立時部門',
       signEndAt: new Date('2026-10-13T12:00:00.000Z'),
     };
     const signers = [
@@ -68,6 +70,9 @@ describe('EsignStoppageService', () => {
       await expect(service.stopByCreator(3, 7, '資料有誤')).resolves.toBe(true);
       expect(access.checkEsignCreator).toHaveBeenCalled();
       expect(document).toMatchObject({
+        createdByUserId: 7,
+        createdByDepartmentCode: '00A',
+        createdByDepartmentName: '建立時部門',
         status: 'stopped',
         stopReason: '資料有誤',
       });

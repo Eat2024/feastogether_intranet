@@ -5,7 +5,7 @@
 // 備註呼叫 PATCH /api/esign/documents/:id/signers/:signerPublicId/note 儲存。
 // 邀請信寄送結果顯示在「通知紀錄」，個人副本產製狀態顯示在操作欄的匯出按鈕。
 import { queryKeys } from '@/api/query-keys';
-import type { EsignDocumentDetail, EsignManagedSignerView, EsignSignerStatus, EsignSignerView } from '@/api/types';
+import type { EsignDocumentDetail, EsignManagedSignerView, EsignReadonlySignerView, EsignSignerStatus, EsignSignerView } from '@/api/types';
 import { downloadSignerCompletedFile, saveSignerNote } from '@/api/requests';
 import SortableHeaderCell from '@/components/SortableHeaderCell';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
@@ -83,6 +83,7 @@ export default function DocumentSignerTable({
   sort,
   sortHrefs,
   canNotify,
+  canExport,
   eligibleIds,
   emptyText,
 }: {
@@ -95,6 +96,7 @@ export default function DocumentSignerTable({
   sortHrefs: Record<SignerSortKey, string>;
   /** 文件為簽署中時顯示批次通知列 */
   canNotify: boolean;
+  canExport: boolean;
   /** 整份文件目前可催簽的簽署人（待簽署、在簽署期間內、今天還沒催簽） */
   eligibleIds: string[];
   emptyText: string;
@@ -116,10 +118,12 @@ export default function DocumentSignerTable({
     onSuccess: (result) => {
       // 先更新畫面上的備註，再重新取得文件詳情
       queryClient.setQueryData<EsignDocumentDetail>([queryKeys.ESIGN_DOCUMENT, documentId], (old) =>
-        old && {
-          ...old,
-          signers: old.signers.map((s) => (s.publicId === result.signerPublicId ? { ...s, note: result.note } : s)),
-        },
+        old?.isCreator
+          ? {
+              ...old,
+              signers: old.signers.map((s) => (s.publicId === result.signerPublicId ? { ...s, note: result.note } : s)),
+            }
+          : old,
       );
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, documentId] });
     },
@@ -135,15 +139,7 @@ export default function DocumentSignerTable({
     }
   };
   const download = useMutation({
-    mutationFn: async (s: EsignSignerView) => {
-      const blob = await downloadSignerCompletedFile({ id: documentId, signerPublicId: s.publicId });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${fileNamePrefix}_${s.name}${s.employeeNo ?? ''}_已簽署.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    },
+    mutationFn: (signer: EsignSignerView) => saveCompletedCopy(documentId, fileNamePrefix, signer),
     meta: { suppressGlobalErrorToast: true },
     onError: (err) => showSnackbar(getErrorMessage(err, '匯出失敗，請稍後再試'), 'error'),
   });
@@ -194,7 +190,7 @@ export default function DocumentSignerTable({
             ) : (
               rows.map((s) => {
                 const status = STATUS_META[s.status];
-                const canDownload = s.status === 'signed' && s.completion.status === 'ready';
+                const canDownload = canExport && s.status === 'signed' && s.completion.status === 'ready';
                 return (
                   <TableRow key={s.publicId} hover>
                     <TableCell padding="checkbox">
@@ -358,5 +354,88 @@ export default function DocumentSignerTable({
         </Box>
       )}
     </>
+  );
+}
+
+
+/** 一般文件頁下載仍由 server 重新檢查部門及副本是否就緒。 */
+async function saveCompletedCopy(
+  documentId: string,
+  fileNamePrefix: string,
+  signer: EsignReadonlySignerView & { employeeNo?: string | null },
+) {
+  const blob = await downloadSignerCompletedFile({ id: documentId, signerPublicId: signer.publicId });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${fileNamePrefix}_${signer.name}${signer.employeeNo ?? ''}_已簽署.pdf`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** 同部門唯讀進度；不掛載備註、催簽或通知查詢。 */
+export function ReadonlyDocumentSignerTable({
+  documentId,
+  fileNamePrefix,
+  rows,
+  sort,
+  sortHrefs,
+  canExport,
+  emptyText,
+}: {
+  documentId: string;
+  fileNamePrefix: string;
+  rows: EsignReadonlySignerView[];
+  sort: SignerSort;
+  sortHrefs: Record<SignerSortKey, string>;
+  canExport: boolean;
+  emptyText: string;
+}) {
+  const { showSnackbar } = useSnackbar();
+  const download = useMutation({
+    mutationFn: (signer: EsignReadonlySignerView) => saveCompletedCopy(documentId, fileNamePrefix, signer),
+    meta: { suppressGlobalErrorToast: true },
+    onError: (error) => showSnackbar(getErrorMessage(error, '下載失敗，請稍後再試'), 'error'),
+  });
+  const columns: { key: SignerSortKey; label: string }[] = [
+    { key: 'name', label: '簽署人' },
+    { key: 'status', label: '狀態' },
+    { key: 'time', label: '簽署／拒絕時間' },
+  ];
+  return (
+    <TableContainer component={Paper} variant="outlined">
+      <Table>
+        <TableHead><TableRow>
+          {columns.map((column) => (
+            <SortableHeaderCell key={column.key} active={sort?.key === column.key} order={sort?.order ?? 'asc'} href={sortHrefs[column.key]}>
+              {column.label}
+            </SortableHeaderCell>
+          ))}
+          {canExport && <TableCell>下載</TableCell>}
+        </TableRow></TableHead>
+        <TableBody>
+          {rows.length === 0 ? (
+            <TableRow><TableCell colSpan={canExport ? 4 : 3} align="center" sx={{ py: 6 }}>
+              <Typography variant="description">{emptyText}</Typography>
+            </TableCell></TableRow>
+          ) : rows.map((signer) => (
+            <TableRow key={signer.publicId} hover>
+              <TableCell>{signer.name}</TableCell>
+              <TableCell><Chip size="small" variant="soft" label={STATUS_META[signer.status].label} color={STATUS_META[signer.status].color} /></TableCell>
+              <TableCell>{formatTime(signer.signedAt ?? signer.rejectedAt)}</TableCell>
+              {canExport && <TableCell>
+                <TooltipIconButton
+                  label={download.isPending && download.variables?.publicId === signer.publicId ? '下載中…' : '下載已簽署文件'}
+                  icon={<FileDownloadRoundedIcon />}
+                  color="info"
+                  disabled={signer.status !== 'signed' || download.isPending}
+                  onClick={() => download.mutate(signer)}
+                />
+              </TableCell>}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 }

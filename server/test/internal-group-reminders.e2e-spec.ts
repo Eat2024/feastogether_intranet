@@ -54,6 +54,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
           empid: `G${prefix}${index}`,
           name: `合成員工${index}`,
           isActive: true,
+          departmentCode: `TEST017-${index}`,
         }),
       ),
     );

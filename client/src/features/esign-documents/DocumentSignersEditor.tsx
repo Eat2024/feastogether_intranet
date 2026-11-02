@@ -13,7 +13,7 @@ import {
   saveDraftSettings,
 } from "@/api/requests";
 import type {
-  EsignDocumentDetail,
+  EsignManagedDocumentDetail,
   EsignSignerInput,
   EsignSignerView,
   InitiateDocumentBody,
@@ -45,7 +45,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import dayjs from "dayjs";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const DEADLINE_REQUIRED = "請選擇簽署期間的開始日與結束日";
 const DEADLINE_START_PAST = "開始日不得早於今天，請重新選擇";
@@ -170,13 +170,12 @@ export default function DocumentSignersEditor({
     refetch,
     isFetching,
   } = useGetDocumentQuery(documentId);
-  const orgChart = useGetSignerOrgChartQuery();
-  const org = useMemo(
-    () => (orgChart.data ? toOrgTree(orgChart.data) : null),
-    [orgChart.data],
-  );
+  const router = useRouter();
+  useEffect(() => {
+    if (doc && !doc.isCreator) router.replace(`/forms/${doc.id}`);
+  }, [doc, router]);
 
-  if (isPending || orgChart.isPending) {
+  if (isPending) {
     return (
       <Box
         sx={{
@@ -188,7 +187,7 @@ export default function DocumentSignersEditor({
         }}
       >
         <CircularProgress size={20} />
-        <Typography variant="description">載入文件與組織架構中…</Typography>
+        <Typography variant="description">載入文件中…</Typography>
       </Box>
     );
   }
@@ -211,6 +210,7 @@ export default function DocumentSignersEditor({
       </Alert>
     );
   }
+  if (!doc.isCreator) return <Alert severity="info">正在前往文件檢視頁…</Alert>;
   if (doc.status !== "draft") {
     return (
       <Alert severity="info" action={<Button href="/forms">返回列表</Button>}>
@@ -218,6 +218,17 @@ export default function DocumentSignersEditor({
       </Alert>
     );
   }
+  return <LoadOrganization doc={doc} />;
+}
+
+/** 確認建立人後才讀取簽署設定所需的組織資料。 */
+function LoadOrganization({ doc }: { doc: EsignManagedDocumentDetail }) {
+  const orgChart = useGetSignerOrgChartQuery();
+  const org = useMemo(
+    () => (orgChart.data ? toOrgTree(orgChart.data) : null),
+    [orgChart.data],
+  );
+  if (orgChart.isPending) return <Typography variant="description">載入組織架構中…</Typography>;
   if (orgChart.isError || !org) {
     return (
       <Alert
@@ -240,7 +251,7 @@ export default function DocumentSignersEditor({
   return <Editor doc={doc} org={org} />;
 }
 
-function Editor({ doc, org }: { doc: EsignDocumentDetail; org: OrgDept[] }) {
+function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const staff = useMemo(() => staffIndex(org), [org]);

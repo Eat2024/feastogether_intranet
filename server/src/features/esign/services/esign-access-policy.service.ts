@@ -1,3 +1,5 @@
+import { User } from '#app/features/users/entities/user.entity';
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import { Injectable } from '@nestjs/common';
@@ -30,7 +32,78 @@ export class EsignAccessPolicyService {
   constructor(
     private readonly documents: EsignDocumentValidationService,
     private readonly documentRepository: DocumentRepository,
+    private readonly users: UserRepository,
   ) {}
+
+  /** 每次從 DB 讀取目前可信部門；建立文件時先鎖員工，避免與登入同步交錯。 */
+  async requireDepartment(
+    userId: number,
+    manager: EntityManager,
+    lock = false,
+  ): Promise<User & { departmentCode: string }> {
+    const user = lock
+      ? await this.users.findByIdForUpdate(userId, manager)
+      : await this.users.findById(userId, manager);
+    this.assertActiveEmployee(user);
+    if (!user.departmentCode?.trim()) {
+      throw new AppException(...AppErrors.ESIGN_DEPARTMENT_UNAVAILABLE);
+    }
+    return { ...user, departmentCode: user.departmentCode };
+  }
+
+  /** 唯讀資格不放寬任何既有建立人寫入檢查。 */
+  async readableDocument(
+    document: EsignDocument | null,
+    userId: number,
+    manager: EntityManager,
+  ): Promise<EsignDocument> {
+    if (!document || document.deletedAt) throw this.notFound();
+    const user = await this.users.findById(userId, manager);
+    this.assertActiveEmployee(user);
+    if (document.createdByUserId === userId) return document;
+    if (!user.departmentCode?.trim()) {
+      throw new AppException(...AppErrors.ESIGN_DEPARTMENT_UNAVAILABLE);
+    }
+    if (document.createdByDepartmentCode !== user.departmentCode)
+      throw this.notFound();
+    return document;
+  }
+
+  /** 一般匯出沒有建立人或原匯出人的跨部門例外。 */
+  async checkDepartmentDocument(
+    document: EsignDocument | null,
+    userId: number,
+    manager: EntityManager,
+  ): Promise<EsignDocument> {
+    const user = await this.requireDepartment(userId, manager);
+    if (
+      !document ||
+      document.deletedAt ||
+      document.createdByDepartmentCode !== user.departmentCode
+    ) {
+      throw this.notFound();
+    }
+    return document;
+  }
+
+  /** 僅供 UI 呈現能力；實際匯出仍必須重新授權。 */
+  async canExportDocument(
+    document: EsignDocument,
+    userId: number,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    const user = await this.users.findById(userId, manager);
+    this.assertActiveEmployee(user);
+    return (
+      !document.deletedAt &&
+      !!user.departmentCode?.trim() &&
+      document.createdByDepartmentCode === user.departmentCode
+    );
+  }
+
+  private assertActiveEmployee(user: User | null): asserts user is User {
+    if (!user || !user.isActive || user.deletedAt) throw this.notFound();
+  }
 
   /**
    * 沿用呼叫端交易，以悲觀鎖鎖定文件並驗證建立人與草稿狀態。

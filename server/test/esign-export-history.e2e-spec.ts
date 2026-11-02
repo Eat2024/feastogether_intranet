@@ -69,7 +69,11 @@ describe('Spec015 歷史匯出紀錄 API', () => {
   let creator: User;
   let exporter: User;
   let internalUser: User;
-  /** 非建立人、非匯出人的員工，用來確認所有員工都看得到全部紀錄。 */
+  let outsiderCookie: string;
+  let missingCookie: string;
+  let viewerUser: User;
+  const departmentCode = `H017${randomBytes(4).toString('hex')}`;
+  /** 非建立人、非匯出人的員工，用來確認同部門員工看得到文件所屬部門紀錄。 */
   let viewerCookie: string;
   let externalCookie: string;
   let docA: EsignDocument;
@@ -88,13 +92,28 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           empid: `H${prefix}${index}`,
           name: `合成${name}`,
           isActive: true,
+          departmentCode,
         }),
       ),
     );
     creator = creatorUser;
     exporter = exporterUser;
     internalUser = internal;
+    viewerUser = viewer;
     viewerCookie = await employeeCookie(viewer);
+    const outsiders = await manager.save(
+      User,
+      ['OTHER017', null].map((code, index) =>
+        manager.create(User, {
+          empid: `O${prefix}${index}`,
+          name: '合成不同部門員工',
+          isActive: true,
+          departmentCode: code,
+        }),
+      ),
+    );
+    outsiderCookie = await employeeCookie(outsiders[0]);
+    missingCookie = await employeeCookie(outsiders[1]);
     docA = await createDocument('合成歷史文件 A');
     docB = await createDocument('合成歷史文件 B');
     internalSigner = await createSigner({
@@ -132,6 +151,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         title,
         status: 'active',
         createdByUserId: creator.id,
+        createdByDepartmentCode: departmentCode,
         signStartAt: new Date(Date.now() - 86_400_000),
         signEndAt: new Date(Date.now() + 86_400_000),
       }),
@@ -188,6 +208,62 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       docNumber: document.docNumber,
     };
   }
+
+  it('部門隔離：跨部門 Excel 寫入與歷史讀取拒絕，counts 不洩漏且沒有紀錄副作用', async () => {
+    const body = {
+      type: 'excel',
+      documentId: String(docA.id),
+      scope: '合成範圍',
+      count: 0,
+      conditions: { statuses: [], depts: [], fields: ['name'] },
+    };
+    const before = await manager.count(EsignExportJob);
+    await request(ctx.server)
+      .post(historyPath)
+      .set('Cookie', outsiderCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send(body)
+      .expect(404);
+    await request(ctx.server)
+      .post(historyPath)
+      .set('Cookie', missingCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send(body)
+      .expect(409);
+    expect(await manager.count(EsignExportJob)).toBe(before);
+    const created = apiData<HistoryItem>(
+      await request(ctx.server)
+        .post(historyPath)
+        .set('Cookie', viewerCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send(body)
+        .expect(201),
+    );
+    const denied = apiData<HistoryPage>(
+      await request(ctx.server)
+        .get(`${historyPath}?type=excel&documentId=${docA.id}`)
+        .set('Cookie', outsiderCookie)
+        .expect(200),
+    );
+    expect(denied).toMatchObject({
+      items: [],
+      total: 0,
+      typeTotals: { excel: 0, pdf: 0, zip: 0 },
+    });
+    await request(ctx.server)
+      .get(`${historyPath}/${created.id}/document`)
+      .set('Cookie', outsiderCookie)
+      .expect(404);
+    await request(ctx.server)
+      .get(`${historyPath}/${created.id}/document`)
+      .set('Cookie', missingCookie)
+      .expect(409);
+    await request(ctx.server)
+      .get(`${historyPath}/${created.id}/document`)
+      .set('Cookie', viewerCookie)
+      .expect(200);
+    await manager.delete(EsignExportJob, { publicId: created.id });
+  });
 
   describe('查詢紀錄', () => {
     const conditions: ExportConditions = {
@@ -444,6 +520,57 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       ]);
     });
 
+    it('部門範圍在分頁與計數前套用，不依匯出員工目前部門或外部身分改變歸屬', async () => {
+      const before = await history('type=excel&pageSize=1');
+      const foreign = await createDocument('不同部門文件');
+      await manager.update(
+        EsignDocument,
+        { id: foreign.id },
+        { createdByDepartmentCode: 'FOREIGN017' },
+      );
+      await insertRecord(
+        {
+          exportType: 'excel',
+          documentId: foreign.id,
+          createdByUserId: creator.id,
+          scopeDescription: '外部部門',
+          recordCount: 0,
+          conditionsJson: conditions,
+        },
+        new Date(),
+      );
+      const after = await history('type=excel&pageSize=1');
+      expect(after.total).toBe(before.total);
+      expect(after.typeTotals).toEqual(before.typeTotals);
+      expect(after.items.map((item) => item.id)).toEqual(
+        before.items.map((item) => item.id),
+      );
+      expect(
+        await history(`type=excel&documentId=${foreign.id}`),
+      ).toMatchObject({
+        items: [],
+        total: 0,
+        typeTotals: { excel: 0, pdf: 0, zip: 0 },
+      });
+      await manager.update(
+        User,
+        { id: exporter.id },
+        { departmentCode: 'FOREIGN017' },
+      );
+      try {
+        expect(
+          (await history(`type=excel&documentId=${docA.id}`)).items,
+        ).toHaveLength(10);
+        expect(
+          (await history(`type=pdf&documentId=${docA.id}`)).items.some(
+            (item) => item.exportedBy.email === externalSigner.email,
+          ),
+        ).toBe(true);
+      } finally {
+        await manager.update(User, { id: exporter.id }, { departmentCode });
+      }
+    });
+
     it('匯出員工已軟刪除時，excel 與 pdf 紀錄仍以該員工為匯出人', async () => {
       const document = await createDocument('合成已刪除匯出員工文件');
       const signer = await createSigner({
@@ -548,6 +675,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         title,
         status: 'active',
         createdByUserId: creator.id,
+        createdByDepartmentCode: departmentCode,
         signStartAt: new Date(Date.now() - 86_400_000),
         signEndAt: new Date(Date.now() + 86_400_000),
         signingPayloadJson: payload,
@@ -829,7 +957,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       expect(scope).toBe(`${name}（${email}`.slice(0, 255));
     });
 
-    it('任何員工都能從 pdf 紀錄重新下載：回目前的副本，新紀錄沿用文件、簽署人與範圍，匯出人為目前使用者', async () => {
+    it('同部門員工能從 pdf 紀錄重新下載：回目前的副本，新紀錄沿用文件、簽署人與範圍，匯出人為目前使用者', async () => {
       const original = await insertRecord(
         {
           exportType: 'pdf',
@@ -861,6 +989,91 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       expect(page.items[0].id).not.toBe(original.publicId);
     });
 
+    it('同部門非建立人可下載；跨部門、錯置紀錄及調職舊網址拒絕且不寫紀錄', async () => {
+      expectCompletedPdf(
+        await download(creatorPath(internalCopy.signer), viewerCookie).expect(
+          200,
+        ),
+        internalCopy,
+      );
+      const before = await manager.count(EsignExportJob);
+      await download(creatorPath(internalCopy.signer), outsiderCookie).expect(
+        404,
+      );
+      await download(
+        redownloadPath(records.pdf.publicId!),
+        outsiderCookie,
+      ).expect(404);
+      await download(
+        redownloadPath(records.pdf.publicId!),
+        missingCookie,
+      ).expect(409);
+      expect(await manager.count(EsignExportJob)).toBe(before);
+      const mismatched = await insertRecord(
+        {
+          exportType: 'pdf',
+          documentId: docA.id,
+          createdByUserId: creator.id,
+          signerId: internalCopy.signer.id,
+          scopeDescription: '錯置文件',
+          recordCount: 1,
+        },
+        new Date(),
+      );
+      const afterMismatch = await manager.count(EsignExportJob);
+      await download(redownloadPath(mismatched.publicId!), viewerCookie).expect(
+        404,
+      );
+      expect(await manager.count(EsignExportJob)).toBe(afterMismatch);
+      await manager.update(
+        User,
+        { id: creator.id },
+        { departmentCode: 'OTHER017' },
+      );
+      try {
+        await download(creatorPath(internalCopy.signer), creatorCookie).expect(
+          404,
+        );
+        await download(
+          redownloadPath(records.pdf.publicId!),
+          creatorCookie,
+        ).expect(404);
+        expect(await manager.count(EsignExportJob)).toBe(afterMismatch);
+      } finally {
+        await manager.update(User, { id: creator.id }, { departmentCode });
+      }
+      // 指派本人副本不受調職影響；同一員工的一般下載則拒絕。
+      await manager.update(
+        User,
+        { id: internalUser.id },
+        { departmentCode: 'OTHER017' },
+      );
+      try {
+        const ownCookie = await employeeCookie(internalUser);
+        await download(creatorPath(internalCopy.signer), ownCookie).expect(404);
+        expectCompletedPdf(
+          await download(selfPath(internalCopy.signer), ownCookie).expect(200),
+          internalCopy,
+        );
+      } finally {
+        await manager.update(User, { id: internalUser.id }, { departmentCode });
+      }
+      // 已讀取的 Excel 歷史網址亦須以 DB 當前部門重新驗證。
+      await manager.update(
+        User,
+        { id: viewerUser.id },
+        { departmentCode: 'OTHER017' },
+      );
+      try {
+        await request(ctx.server)
+          .get(`${historyPath}/${records.excel.publicId}/document`)
+          .set('Cookie', viewerCookie)
+          .expect(404);
+      } finally {
+        await manager.update(User, { id: viewerUser.id }, { departmentCode });
+      }
+    });
+
     const withoutOrigin = (path: string, cookie: string) =>
       request(ctx.server).post(path).set('Cookie', cookie);
     it.each<{
@@ -871,8 +1084,8 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       message?: string;
     }>([
       {
-        name: '非建立人以建立人路由下載',
-        send: () => download(creatorPath(internalCopy.signer), viewerCookie),
+        name: '跨部門以一般文件路由下載',
+        send: () => download(creatorPath(internalCopy.signer), outsiderCookie),
         status: 404,
         code: 'ESIGN_RESOURCE_NOT_FOUND',
       },
@@ -1080,6 +1293,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           empid: `R${randomBytes(4).toString('hex')}`,
           name: '合成記錄員工',
           isActive: true,
+          departmentCode,
         }),
       );
       recorderCookie = await employeeCookie(recorder);
@@ -1144,6 +1358,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
             title: '合成 Excel 草稿',
             status: 'draft',
             createdByUserId: creator.id,
+            createdByDepartmentCode: departmentCode,
           }),
         );
         const deleted = await createDocument('合成 Excel 已刪除文件');
@@ -1297,6 +1512,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
             title: '合成 Excel 重新下載文件',
             status: 'active',
             createdByUserId: creator.id,
+            createdByDepartmentCode: departmentCode,
             signStartAt: new Date(Date.now() - 86_400_000),
             // 重新開放後的截止時間晚於發起時固定的截止時間。
             signEndAt: new Date(originalEndAt.getTime() + 86_400_000),

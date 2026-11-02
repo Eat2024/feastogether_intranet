@@ -105,6 +105,7 @@ describe('Spec016 內部發起與邀請', () => {
           empid: `I${prefix}${index}`,
           name: `合成員工${index}`,
           isActive: true,
+          departmentCode: `TEST017-${index}`,
         }),
       ),
     );
@@ -651,6 +652,7 @@ describe('Spec016 內部發起與邀請', () => {
             empid: `B${prefix}${index}`,
             name: `批次合成${index}`,
             isActive: true,
+            departmentCode: `TEST017-${index}`,
           }),
         ),
       );

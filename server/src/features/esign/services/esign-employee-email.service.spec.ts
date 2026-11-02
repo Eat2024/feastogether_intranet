@@ -43,7 +43,7 @@ function fixture() {
     new MysqlService({ manager } as never),
     new UserRepository(),
     documents,
-    new EsignAccessPolicyService(validation, documents),
+    new EsignAccessPolicyService(validation, documents, {} as never),
     new FeastogetherHrService(client),
   );
   return { service, manager, http };

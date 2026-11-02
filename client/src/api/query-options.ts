@@ -33,6 +33,10 @@ export const queryOptions: Record<
     staleTime: 0,
     gcTime: minutes(5),
   },
+  useGetDocumentExportPreviewQuery: {
+    staleTime: 0,
+    gcTime: 0,
+  },
   useGetDocumentExportQuery: {
     staleTime: 0,
     gcTime: minutes(5),

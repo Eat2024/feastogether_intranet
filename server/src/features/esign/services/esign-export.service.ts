@@ -1,3 +1,4 @@
+import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { canonicalSha256 } from './esign-audit.service';
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
@@ -38,6 +39,7 @@ export class EsignExportService {
     private readonly files: FileObjectRepository,
     @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
     @InjectQueue(ESIGN_EXPORT_QUEUE) private readonly queue: Queue,
+    private readonly access: EsignAccessPolicyService,
   ) {}
 
   async request(documentId: number, userId: number) {
@@ -58,8 +60,7 @@ export class EsignExportService {
       documentId,
       manager,
     );
-    if (!document)
-      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    await this.access.checkDepartmentDocument(document, userId, manager);
 
     const reusable = await this.jobs.reusable(documentId, new Date(), manager);
     if (reusable) return { job: reusable, reused: true };
@@ -151,24 +152,30 @@ export class EsignExportService {
     if (['pending', 'waiting'].includes(job.status)) await this.enqueue(job.id);
   }
 
-  async detail(documentId: number, publicId: string) {
-    return this.view(await this.find(documentId, publicId));
+  async detail(documentId: number, publicId: string, userId: number) {
+    return this.view(await this.find(documentId, publicId, userId));
   }
 
-  async find(documentId: number, publicId: string) {
+  async find(documentId: number, publicId: string, userId: number) {
     const manager = this.mysql.getManager();
-    if (!(await this.jobs.documentExists(documentId, manager)))
-      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    await this.access.checkDepartmentDocument(
+      await this.documents.findById(documentId, manager),
+      userId,
+      manager,
+    );
     const job = await this.jobs.find(publicId, documentId, manager);
     if (!job?.snapshotJson)
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     return job;
   }
 
-  async retry(documentId: number, publicId: string) {
+  async retry(documentId: number, publicId: string, userId: number) {
     const job = await this.mysql.transaction(async (manager) => {
-      if (!(await this.documents.findByIdForUpdate(documentId, manager)))
-        throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+      await this.access.checkDepartmentDocument(
+        await this.documents.findByIdForUpdate(documentId, manager),
+        userId,
+        manager,
+      );
 
       const original = await this.jobs.find(
         publicId,
@@ -204,9 +211,10 @@ export class EsignExportService {
     return this.view(job);
   }
 
-  async listDocuments(q: ExportQueryDto) {
+  async listDocuments(q: ExportQueryDto, userId: number) {
     const manager = this.mysql.getManager();
-    const rows = await this.jobs.documents(q, manager);
+    const user = await this.access.requireDepartment(userId, manager);
+    const rows = await this.jobs.documents(q, user.departmentCode, manager);
     const more = rows.length > q.limit;
     const selected = rows.slice(0, q.limit);
     const items = await Promise.all(
@@ -258,18 +266,23 @@ export class EsignExportService {
     return job?.snapshotJson ? this.view(job) : null;
   }
 
-  async download(documentId: number, publicId: string, fileId: number) {
-    const job = await this.find(documentId, publicId);
+  async download(
+    documentId: number,
+    publicId: string,
+    fileId: number,
+    userId: number,
+  ) {
+    const job = await this.find(documentId, publicId, userId);
+    const files = await this.jobs.files(job.id, this.mysql.getManager());
+    const file = files.find((f) => f.id === fileId);
+    if (!file) throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     if (
       job.status === 'expired' ||
       (job.expiresAt && job.expiresAt <= new Date())
     )
       throw new AppException(...AppErrors.ESIGN_EXPORT_EXPIRED);
-    const files = await this.jobs.files(job.id, this.mysql.getManager());
-    const file = files.find((f) => f.id === fileId);
     if (job.status !== 'completed')
       throw new AppException(...AppErrors.ESIGN_EXPORT_NOT_READY);
-    if (!file) throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     await this.assertAvailable(job);
     return file;
   }

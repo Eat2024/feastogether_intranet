@@ -3,6 +3,7 @@
 // 檢視頁（後端文件）：GET /api/esign/documents/:id 取得文件詳情與簽署人，GET .../history 取得簽署歷程。
 // 簽署人清單的狀態分頁、搜尋、排序與分頁記在網址上，在瀏覽器端處理。
 import { useGetDocumentQuery } from '@/api/queries';
+import { documentSourceFileUrl } from '@/api/requests';
 import type { EsignDocumentDetail } from '@/api/types';
 import LinkPagination from '@/components/LinkPagination';
 import LinkTabs from '@/components/LinkTabs';
@@ -25,7 +26,7 @@ import dayjs from 'dayjs';
 import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import DocumentHistory from './DocumentHistory';
-import DocumentSignerTable from './DocumentSignerTable';
+import DocumentSignerTable, { ReadonlyDocumentSignerTable } from './DocumentSignerTable';
 import { DOCUMENT_STATUS_META, periodText } from './listQuery';
 import {
   countByStatus,
@@ -80,14 +81,6 @@ export default function DocumentDetailView({ documentId }: { documentId: string 
       </Alert>
     );
   }
-  // 草稿還沒有簽署進度，請改用「發起簽署」
-  if (doc.status === 'draft') {
-    return (
-      <Alert severity="info" action={<Button href={`/forms/${doc.id}/signers`}>前往設定簽署</Button>}>
-        「{doc.title}」尚未發起簽署，還沒有簽署進度可以檢視。
-      </Alert>
-    );
-  }
   return <Detail doc={doc} />;
 }
 
@@ -97,9 +90,13 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
   const statusMeta = DOCUMENT_STATUS_META[doc.status];
   const counts = countByStatus(doc.signers);
   // 整份文件目前可催簽的簽署人（批次通知用）；補簽中仍未簽署的簽署人（補簽邀請連結用）
-  const eligibleIds = doc.signers.filter((s) => s.reminderEligibility.eligible).map((s) => s.publicId);
-  const pendingSigners = doc.signers.filter((s) => s.status === 'pending');
-  const { items, page, pageCount, total } = querySigners(doc.signers, query);
+  const eligibleIds = doc.isCreator
+    ? doc.signers.filter((s) => s.reminderEligibility.eligible).map((s) => s.publicId)
+    : [];
+  const result = doc.isCreator
+    ? { isCreator: true as const, ...querySigners(doc.signers, query) }
+    : { isCreator: false as const, ...querySigners(doc.signers, query) };
+  const { page, pageCount, total } = result;
   const percent = counts.all ? Math.round((counts.signed / counts.all) * 100) : 0;
 
   const sortHrefs = Object.fromEntries(
@@ -124,38 +121,43 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
           ))}
         actions={
           <>
-            {/* 後端只允許修改草稿，檢視頁的文件都已發起 */}
-            <Tooltip title="已發起的文件無法修改">
-              <span>
-                <Button size="large" variant="outlined" startIcon={<EditRoundedIcon />} disabled>
-                  編輯
-                </Button>
-              </span>
-            </Tooltip>
-            {/* 簽署中、已到期才能停止 */}
-            <StopDocumentButton
-              doc={doc}
-              variant="button"
-              disabled={doc.status !== 'active' && doc.status !== 'expired'}
-            />
-            {/* 已到期且仍有人未簽署才能補簽 */}
-            <ReopenDocumentButton
-              doc={doc}
-              variant="button"
-              disabled={doc.status !== 'expired' || counts.pending === 0}
-            />
-            {/* 補簽中且仍有人未簽署時，可取得尚未寄達的邀請連結手動轉交（備用） */}
-            {doc.isReopened && doc.status === 'active' && pendingSigners.length > 0 && (
-              <ReopeningInvitationsButton documentId={doc.id} signers={pendingSigners} />
+            {doc.sourceFile && (
+              <Button size="large" variant="outlined" href={documentSourceFileUrl(doc.id)} target="_blank" rel="noreferrer">
+                預覽來源 PDF
+              </Button>
             )}
+            {doc.canExport && doc.status !== 'draft' && (
+              <Button size="large" variant="outlined" href={`/forms/${doc.id}/export`}>匯出</Button>
+            )}
+            {doc.isCreator && <>
+              {doc.status === 'draft' ? (
+                <>
+                  <Button size="large" variant="outlined" href={`/forms/${doc.id}/edit`} startIcon={<EditRoundedIcon />}>編輯</Button>
+                  <Button size="large" variant="contained" href={`/forms/${doc.id}/signers`}>設定簽署</Button>
+                </>
+              ) : (
+                <>
+                  <Tooltip title="已發起的文件無法修改">
+                    <span><Button size="large" variant="outlined" startIcon={<EditRoundedIcon />} disabled>編輯</Button></span>
+                  </Tooltip>
+                  <StopDocumentButton doc={doc} variant="button" disabled={doc.status !== 'active' && doc.status !== 'expired'} />
+                  <ReopenDocumentButton doc={doc} variant="button" disabled={doc.status !== 'expired' || counts.pending === 0} />
+                  {doc.isReopened && doc.status === 'active' && counts.pending > 0 && (
+                    <ReopeningInvitationsButton documentId={doc.id} signers={doc.signers.filter((s) => s.status === 'pending')} />
+                  )}
+                </>
+              )}
+            </>}
           </>
         }
       />
 
+      {doc.status === 'draft' && <Alert severity="info">此文件尚未發起簽署。</Alert>}
+
       {doc.status === 'expired' && (
         <Alert severity="info" variant="outlined">
           此文件已於 {doc.signEndAt ? dayjs(doc.signEndAt).format('YYYY/MM/DD HH:mm') : '—'} 到期，尚有{' '}
-          {counts.pending} 人未簽署，未簽署的人目前無法簽署。可設定新的截止日重新開放補簽，或停止簽署。
+          {counts.pending} 人未簽署，未簽署的人目前無法簽署。{doc.isCreator && '可設定新的截止日重新開放補簽，或停止簽署。'}
         </Alert>
       )}
 
@@ -198,25 +200,38 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
           }))}
         />
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-          <SearchField placeholder="搜尋姓名、員工編號、Email 或部門" />
+          <SearchField placeholder={doc.isCreator ? "搜尋姓名、員工編號、Email 或部門" : "搜尋姓名"} />
           <Typography variant="secondary" component="span" sx={{ flexShrink: 0 }}>
             共 {total} 筆
           </Typography>
         </Box>
-        <DocumentSignerTable
-          documentId={doc.id}
-          fileNamePrefix={`${doc.docNumber}_${doc.title}`}
-          canNotify={doc.status === 'active'}
-          eligibleIds={eligibleIds}
-          rows={items}
-          sort={query.sort}
-          sortHrefs={sortHrefs}
-          emptyText={query.q ? `找不到符合「${query.q}」的簽署人。` : '此分類沒有簽署人。'}
-        />
+        {result.isCreator ? (
+          <DocumentSignerTable
+            documentId={doc.id}
+            fileNamePrefix={`${doc.docNumber}_${doc.title}`}
+            canNotify={doc.status === 'active'}
+            canExport={doc.canExport}
+            eligibleIds={eligibleIds}
+            rows={result.items}
+            sort={query.sort}
+            sortHrefs={sortHrefs}
+            emptyText={query.q ? `找不到符合「${query.q}」的簽署人。` : '此分類沒有簽署人。'}
+          />
+        ) : (
+          <ReadonlyDocumentSignerTable
+            documentId={doc.id}
+            fileNamePrefix={`${doc.docNumber}_${doc.title}`}
+            canExport={doc.canExport}
+            rows={result.items}
+            sort={query.sort}
+            sortHrefs={sortHrefs}
+            emptyText={query.q ? `找不到符合「${query.q}」的簽署人。` : '此分類沒有簽署人。'}
+          />
+        )}
         <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => signerHref(doc.id, query, { page: p }))} />
       </Stack>
 
-      <NotificationHistory documentId={doc.id} />
+      {doc.isCreator && <NotificationHistory documentId={doc.id} />}
       <DocumentHistory documentId={doc.id} />
     </>
   );

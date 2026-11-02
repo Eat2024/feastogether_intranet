@@ -12,6 +12,8 @@ describe('EsignInitiationService', () => {
       title: '採購合約',
       status: 'draft',
       createdByUserId: 7,
+      createdByDepartmentCode: '00A',
+      createdByDepartmentName: '建立時部門',
     };
     const signers = options?.signers ?? [
       {
@@ -191,6 +193,11 @@ describe('EsignInitiationService', () => {
       manager,
     );
     expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(3, 7, manager);
+    expect(document).toMatchObject({
+      createdByUserId: 7,
+      createdByDepartmentCode: '00A',
+      createdByDepartmentName: '建立時部門',
+    });
     expect(document.status).toBe('active');
     expect(document).toMatchObject({
       watermarkEnabled: true,

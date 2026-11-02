@@ -1,3 +1,5 @@
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
 import { Readable } from 'node:stream';
 import { EsignDraftService } from './esign-draft.service';
 
@@ -9,6 +11,8 @@ describe('EsignDraftService', () => {
     title: '文件',
     status: 'draft',
     createdByUserId: 9,
+    createdByDepartmentCode: '00A',
+    createdByDepartmentName: '建立時部門',
   };
   const stored = {
     objectKey: 'esign/random/source.pdf',
@@ -39,7 +43,13 @@ describe('EsignDraftService', () => {
       findDocumentFile: jest.fn(async () => undefined),
       deleteById: jest.fn(),
     };
+    const user = {
+      id: 9,
+      departmentCode: '00A',
+      departmentName: '合成部門' as string | null,
+    };
     const access = {
+      requireDepartment: jest.fn(() => Promise.resolve(user)),
       checkEsignCreator: jest.fn(),
       checkEsignDraftCreator: jest.fn(),
       checkAndLockDraftDoc: jest.fn(async () => document),
@@ -70,11 +80,12 @@ describe('EsignDraftService', () => {
       access as never,
       pdf as never,
       audit as never,
-      storage as never,
+      storage,
       fieldService as never,
     );
     return {
       service,
+      user,
       mysql,
       pdf,
       documents,
@@ -101,6 +112,95 @@ describe('EsignDraftService', () => {
     originalFileName: 'new.pdf',
     contentType: 'application/pdf',
   };
+
+  it('建立前先在同一交易鎖定有效員工，保存可信快照而不採用呼叫端部門', async () => {
+    const { service, access, documents } = setup();
+    const input = {
+      title: '合成文件',
+      creatorUserId: 9,
+      ...pdfFile,
+      createdByDepartmentCode: '偽造部門',
+      createdByDepartmentName: '偽造名稱',
+    };
+    const result = await service.create(input);
+    expect(access.requireDepartment).toHaveBeenCalledWith(9, manager, true);
+    expect(access.requireDepartment.mock.invocationCallOrder[0]).toBeLessThan(
+      documents.create.mock.invocationCallOrder[0],
+    );
+    expect(result).toMatchObject({
+      createdByDepartmentCode: '00A',
+      createdByDepartmentName: '合成部門',
+    });
+  });
+
+  it('名稱缺值仍可建立，代碼不會被名稱或預設部門替代', async () => {
+    const { service, user } = setup();
+    user.departmentName = null;
+    expect(
+      await service.create({ title: '合成文件', creatorUserId: 9, ...pdfFile }),
+    ).toMatchObject({
+      createdByDepartmentCode: '00A',
+      createdByDepartmentName: null,
+    });
+  });
+
+  it.each([
+    AppErrors.ESIGN_DEPARTMENT_UNAVAILABLE,
+    AppErrors.ESIGN_RESOURCE_NOT_FOUND,
+  ])('缺部門或失效帳號拒絕後不寫文件／稽核，清除上傳', async (...error) => {
+    const { service, access, documents, files, audit, storage } = setup();
+    access.requireDepartment.mockRejectedValueOnce(new AppException(...error));
+    await expect(
+      service.create({ title: '合成文件', creatorUserId: 9, ...pdfFile }),
+    ).rejects.toBeInstanceOf(AppException);
+    expect(documents.create).not.toHaveBeenCalled();
+    expect(files.save).not.toHaveBeenCalled();
+    expect(audit.append).not.toHaveBeenCalled();
+    expect(storage.delete).toHaveBeenCalledWith(stored);
+  });
+
+  it('調職後新文件採新部門，舊文件及草稿更新保留建立快照', async () => {
+    const { service, user, access, documents } = setup();
+    const old = await service.create({
+      title: '舊文件',
+      creatorUserId: 9,
+      ...pdfFile,
+    });
+    user.departmentCode = '00B';
+    user.departmentName = '新部門';
+    const current = await service.create({
+      title: '新文件',
+      creatorUserId: 9,
+      ...pdfFile,
+    });
+    expect(old).toMatchObject({
+      createdByDepartmentCode: '00A',
+      createdByDepartmentName: '合成部門',
+    });
+    expect(current).toMatchObject({
+      createdByDepartmentCode: '00B',
+      createdByDepartmentName: '新部門',
+    });
+    access.requireDepartment.mockClear();
+    await service.update(1, 9, { title: '改名' });
+    expect(access.requireDepartment).not.toHaveBeenCalled();
+    expect(documents.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        createdByDepartmentCode: '00A',
+        createdByDepartmentName: '建立時部門',
+      }),
+      manager,
+    );
+  });
+
+  it('建立交易已讀部門後保存失敗仍清除新檔', async () => {
+    const { service, documents, storage } = setup();
+    documents.save.mockRejectedValueOnce(new Error('合成保存失敗'));
+    await expect(
+      service.create({ title: '合成文件', creatorUserId: 9, ...pdfFile }),
+    ).rejects.toThrow('合成保存失敗');
+    expect(storage.delete).toHaveBeenCalledWith(stored);
+  });
 
   it('建立草稿時保存驗證後 PDF metadata 與 audit', async () => {
     const { service, documents, files, storage, audit } = setup();

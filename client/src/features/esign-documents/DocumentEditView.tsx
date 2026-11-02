@@ -13,9 +13,16 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 export default function DocumentEditView({ documentId }: { documentId: string }) {
   const { data: doc, isPending, isError, error, refetch, isFetching } = useGetDocumentQuery(documentId);
+
+  const router = useRouter();
+  useEffect(() => {
+    if (doc && !doc.isCreator) router.replace(`/forms/${doc.id}`);
+  }, [doc, router]);
 
   if (isPending) {
     return (
@@ -39,6 +46,7 @@ export default function DocumentEditView({ documentId }: { documentId: string })
       </Alert>
     );
   }
+  if (!doc.isCreator) return <Alert severity="info">正在前往文件檢視頁…</Alert>;
   if (doc.status !== 'draft') {
     return (
       <Alert severity="info" action={<Button href={`/forms/${doc.id}`}>檢視簽署進度</Button>}>

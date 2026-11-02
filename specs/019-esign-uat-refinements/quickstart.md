@@ -1,6 +1,6 @@
 # Quickstart：實作後驗證與切換
 
-本文件是後續實作驗收指南，以下測試尚未於 plan 階段執行。測試只用合成資料與 `feastogether_intranet_test` 前綴 DB、隔離 Redis namespace；不在 UAT 做破壞性驗證。
+本文件保留實作驗收指南，實際執行結果及尚未驗收的依賴列於文末。測試只用合成資料與 `feastogether_intranet_test` 前綴 DB、隔離 Redis namespace；不在 UAT 做破壞性驗證。
 
 ## 前置條件
 
@@ -13,7 +13,7 @@
 ```bash
 pnpm -C server lint:check
 pnpm -C server test -- --runInBand
-pnpm -C server test:e2e -- --testPathPatterns='esign-export|org-chart|internal-email|esign-signer-management'
+pnpm -C server test:e2e --testPathPatterns='esign-export|export-history|export-retention|org-chart|esign-initiation|esign-capacity|esign-signer-management'
 pnpm -C client lint
 pnpm build
 pnpm lint
@@ -48,6 +48,18 @@ server e2e 清單需同步移除已刪除預檢專用檔名，容量測試移至
 5. 用授權測試帳號核對原 ZIP 的 hash、歷史筆數、搜尋計數及中文歷程，再恢復匯出流量。
 6. 不直接恢復舊 worker；如需回滾，先停止流量，依 data-model 的相容版本或整體備份方案處理，避免永久ZIP被舊清理程序刪除。
 
-## 本階段驗證結果
+## 實際驗證結果（2026-11-02）
 
-僅執行文件結構、FR/SC對應、連結及空白差異檢查。未修改程式，未跑 runtime lint/test/build，未執行資料轉換或快取操作；不將上述預期結果當成測試通過證據。
+Plan 階段僅檢查文件結構、FR/SC 對應、連結及空白差異，當時未跑 runtime 驗證。以下為後續實作階段證據，不代表已部署或完成 UAT 切換。
+
+整合版本 `1940095`（code review 修正前）：
+
+- Server unit：106 suites／998 tests 通過；lint：0 errors／267 warnings。
+- 隔離 MySQL／Redis 的 export、history、retention、org-chart、initiation、capacity、signer-management e2e：7 suites／144 tests 通過（131.5 秒）。
+- 本機 moto 的 S3 export e2e：4 tests 通過。
+- Root `pnpm build` 通過 client 與 server。
+- Playwright 搭配合成 API：兩列表搜尋、清除、換頁、每頁 10 筆、超界頁導正及重整保留條件通過；歷程代表性中文 label、補簽、未知事件顯示通過；固定 ZIP 無期限及完成停止輪詢通過。另驗證 Excel／PDF 各三次歷史重下載成功取得 xlsx／pdf，Excel 不呼叫新增紀錄 API，PDF 僅呼叫既有下載 POST、無額外新增紀錄請求。這是 UI 合成回應驗證，不替代真實後端授權或 UAT 驗收；27 種完整 label 對照由後端測試覆蓋。
+
+Review 修正後：新增「較新 expired 缺少 completedAt，不改選較舊 completed」回歸。修正前該案例失敗（fixed=false）；修正工具選取條件後，retention e2e 1 suite／8 tests 通過，驗證異常工作保持 fixed/unavailable、apply 不推測完成時間。修正後 server build 與 root lint 通過（0 errors／267 warnings）；此輪 client 僅修改註解，未重跑完整 client build。
+
+尚未完成的交付依賴：Spec 017 部門政策整合與不同部門查詢／計數／下載驗收（T042）；本機通過不能視為部門政策已交付。未在 UAT 執行備份、dry-run、apply、舊 worker 排空或發布。部署前仍須依上述切換順序執行。Code review 原始結論與修復範圍見 [審查紀錄](code-review.md)。

@@ -1,5 +1,7 @@
 # Feature Specification: 內部員工 Email 邀請與 OTP 簽署
 
+> **契約更新（Spec 019）**：本文件的員工 Email 預檢與缺信箱阻擋規則已由 [Spec 019](../019-esign-uat-refinements/spec.md) US5 取代：移除 `POST /api/esign/employee-email-checks`；發起／補簽仍在後端查詢 HR 並固定有效信箱，缺信箱仍建立指派、通知記為 skipped 且不寄信；HR 來源失敗仍回 502、保留草稿。既有公開 HR 來源 API、OTP 與有效信箱寄件流程保留。下文及歷史測試證據不代表目前預檢契約。
+
 **Feature Branch**: `feat/010-internal-email-signing`（功能整合分支；未部署）
 
 **Feature Directory**: `specs/010-internal-email-signing`

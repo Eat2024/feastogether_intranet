@@ -1,5 +1,7 @@
 # Feature Specification: 簽署人候選組織架構與兩小時快取
 
+> **契約更新（Spec 019）**：本文件的兩小時／7,200 秒快取契約已由 [Spec 019](../019-esign-uat-refinements/spec.md) US4 取代：有效期為 1,800 秒，按需更新且讀取不續期；Redis key namespace 改為 `esign:org-chart:v2:`，不讀取 v1 舊快取、不新增排程。下文與既有測試紀錄保留當時決策。
+
 **Feature Branch**: `006-signer-candidate-org-chart`
 
 **Created**: 2026-10-19

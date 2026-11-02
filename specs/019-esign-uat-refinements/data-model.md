@@ -11,9 +11,9 @@
 | completed | 不再轉 expired，永久沿用；檔案不存在回不可用 |
 | 舊 expired | 驗證原產物仍在才受控恢復 completed；缺檔保留不可用歷史，不重建 |
 
-同文件的固定選擇為最新曾成功工作（completedAt 非 null，id DESC；正常 completed 亦需納入）。先決定固定工作，再檢查可用性，不能依檔案是否剛好存在跳選其他工作。無曾完成工作才選既有 active/failed 或建立首次工作。request 與 retry 都套用這個規則，避免 retry 舊失敗工作旁路產生第二份。
+同文件的固定選擇為最新曾成功工作（completedAt 非 null 或 status 為 completed／expired，id DESC）。先決定固定工作，再檢查可用性，不能依檔案是否剛好存在跳選其他工作。無曾完成工作才選既有 active/failed 或建立首次工作。request 與 retry 都套用這個規則，避免 retry 舊失敗工作旁路產生第二份。
 
-目前正常資料在成功時同時寫 completedAt；若盤點到 completed 但 completedAt 缺失等異常，列入阻擋清單人工修復，不推測時間或偷偷新增。歷史按各 job ID 仍可下載各自存在的檔案。匯出面板需使用同樣選擇規則：在既有文件詳情 DTO 新增可為 null 的 `exportSummary` 回應欄位，使用同一工作選取函式與既有匯出 view 投影，不載入快照或觸發工作。不可只用歷史 pageSize=1 選到較新失敗工作。此為新增 API 回應欄位，不是既有欄位，也不新增 DB 欄位或專用 endpoint。
+目前正常資料在成功時同時寫 completedAt；若盤點到 completed／expired 但 completedAt 缺失等異常，列入阻擋清單人工修復，不推測時間或偷偷新增。歷史按各 job ID 仍可下載各自存在的檔案。匯出面板需使用同樣選擇規則：在既有文件詳情 DTO 新增可為 null 的 `exportSummary` 回應欄位，使用同一工作選取函式與既有匯出 view 投影，不載入快照或觸發工作。不可只用歷史 pageSize=1 選到較新失敗工作。此為新增 API 回應欄位，不是既有欄位，也不新增 DB 欄位或專用 endpoint。
 
 ## 2. 一次性 ZIP 資料轉換
 

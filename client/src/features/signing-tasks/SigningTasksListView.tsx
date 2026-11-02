@@ -13,8 +13,8 @@ import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { useSearchParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import SigningTasksTable from './SigningTasksTable';
 import {
   filterTasks,
@@ -34,6 +34,8 @@ const EMPTY_TEXT: Record<SigningTab, string> = {
 };
 
 export default function SigningTasksListView() {
+  const router = useRouter();
+  const pathname = usePathname();
   const params = useSearchParams();
   const tab = parseSigningTab(params.get('tab'));
   const sort = useMemo(() => parseSigningSort(params, tab), [params, tab]);
@@ -49,6 +51,18 @@ export default function SigningTasksListView() {
     parsePage(params.get('page') ?? undefined),
     PAGE_SIZE,
   );
+
+  // 等資料載入後才導正超頁，避免載入期間把有效的深連結頁碼改成第一頁。
+  useEffect(() => {
+    if (!data || isError) return;
+    const canonicalPage = page > 1 ? String(page) : null;
+    if (params.get('page') === canonicalPage && params.getAll('page').length <= 1) return;
+    const qs = new URLSearchParams(params);
+    qs.delete('page');
+    if (canonicalPage) qs.set('page', canonicalPage);
+    const queryString = qs.toString();
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+  }, [data, isError, page, params, pathname, router]);
 
   // 沒有資料列時表格內顯示的內容
   const placeholder = isPending ? (

@@ -49,11 +49,13 @@ describe('Spec010 草稿員工信箱檢查 API', () => {
         empid: `${empid}1`,
         name: '信箱測試甲',
         isActive: true,
+        departmentCode: 'TEST017-1',
       }),
       manager.create(User, {
         empid: `${empid}2`,
         name: '信箱測試乙',
         isActive: true,
+        departmentCode: 'TEST017-2',
       }),
     ]);
     [userId, otherId] = users.map((user) => String(user.id));

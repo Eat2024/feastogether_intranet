@@ -54,6 +54,7 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
           empid: `G${prefix}${index}`,
           name: `合成員工${index}`,
           isActive: true,
+          departmentCode: `TEST017-${index}`,
         }),
       ),
     );

@@ -53,6 +53,7 @@ describe('Spec016 員工 session 本人簽署', () => {
           empid: `S${prefix}${index}`,
           name: `合成人員${index}`,
           isActive: true,
+          departmentCode: `TEST017-${index}`,
         }),
       ),
     );

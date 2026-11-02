@@ -53,3 +53,10 @@
 - 正常E2E 7 tests通過：兩部門各兩位建立人×六狀態、NULL舊文件、精確大小寫／同名異碼、來源PDF、DTO裁切、歷程、個人查詢、調職舊session。
 - 全server unit 109 suites／1,041 tests通過，server build、修改檔ESLint 0 errors/warnings通過。
 - 契約補全canExport與既有GET detail的view=export；同部門才可取得完整Excel欄位，草稿404，GET不寫紀錄，不影響一般唯讀裁切。詳見department-access.md。
+
+## Ticket 06（T022–T026）
+
+- TDD：draft unit先紅5案，creation E2E先紅6案（4個未知欄位負向原已通過）；交易以requireDepartment(userId,manager,true)先鎖User再建立Document。
+- Creation E2E 10/10、8套既有fixtures 78/78、completion+creation 16/16、draft單元22/22通過；全server unit109 suites／1,047 tests通過。
+- 缺碼409並清檔、非法multipart欄位拒絕、名稱缺值、保存失敗清檔、調職前後快照與列表／建立人管理驗收通過。發起／補簽／停止／完成流程保留部門與簽署payload。
+- Server build、lint:check（0 errors）及diff check通過。既有8套fixtures逐人明列合成部門，保留跨人負向案例；沒有runtime預設部門。

@@ -67,11 +67,11 @@
 
 **Independent Test**：A 建文件後登入同步到 B，再新建；舊文件快照仍 A，新文件 B；缺代碼新建失敗且無孤立檔案。
 
-- [ ] T022 [P] [US2] 在 `server/src/features/esign/services/esign-draft.service.spec.ts` 先補非空代碼、名稱缺值、建立交易失敗清檔、拒絕前端覆寫、調職後新舊快照及文件流程不覆寫的 service 測試；精確驗證「schema 允許舊資料 NULL，新建成功必須非空」。
-- [ ] T023 [P] [US2] 建立 `server/test/esign-department-creation.e2e-spec.ts` 的 multipart 建立、缺代碼 409、未知部門 body 欄位拒絕、回應不洩漏部門來源及證據不變案例；於 `server/test/jest-e2e.json` 登記收集規則。
-- [ ] T024 [US2] 在 `server/src/features/esign/services/esign-draft.service.ts` 的建立交易取得可信有效 User 部門並保存兩欄快照；需要鎖時沿 `server/src/features/users/repositories/user.repository.ts` 模式，先 User 再新 Document、避免相反鎖順序；缺代碼拒絕並沿既有檔案清理，不新增 caller 可填部門或 IT default。
-- [ ] T025 [US2] 審核 `server/src/features/esign/services/esign-draft.service.ts`、`esign-initiation.service.ts`、`esign-reopening.service.ts`、`esign-stoppage.service.ts` 的更新欄位，確認沒有覆寫建立部門；補 T022 必要斷言，保留原建立人與 signing payload／signature／manifest／PDF。
-- [ ] T026 [US2] 執行 T022／T023，並以 A→B 部門同步驗證原部門同事可讀舊文件、新部門無關者不可讀，原發起人個人管理仍可用；在 `specs/017-department-document-visibility/validation.md` 留存結果而不記錄個資／secret。
+- [x] T022 [P] [US2] 在 `server/src/features/esign/services/esign-draft.service.spec.ts` 先補非空代碼、名稱缺值、建立交易失敗清檔、拒絕前端覆寫、調職後新舊快照及文件流程不覆寫的 service 測試；精確驗證「schema 允許舊資料 NULL，新建成功必須非空」。
+- [x] T023 [P] [US2] 建立 `server/test/esign-department-creation.e2e-spec.ts` 的 multipart 建立、缺代碼 409、未知部門 body 欄位拒絕、回應不洩漏部門來源及證據不變案例；於 `server/test/jest-e2e.json` 登記收集規則。
+- [x] T024 [US2] 在 `server/src/features/esign/services/esign-draft.service.ts` 的建立交易取得可信有效 User 部門並保存兩欄快照；需要鎖時沿 `server/src/features/users/repositories/user.repository.ts` 模式，先 User 再新 Document、避免相反鎖順序；缺代碼拒絕並沿既有檔案清理，不新增 caller 可填部門或 IT default。
+- [x] T025 [US2] 審核 `server/src/features/esign/services/esign-draft.service.ts`、`esign-initiation.service.ts`、`esign-reopening.service.ts`、`esign-stoppage.service.ts` 的更新欄位，確認沒有覆寫建立部門；補 T022 必要斷言，保留原建立人與 signing payload／signature／manifest／PDF。
+- [x] T026 [US2] 執行 T022／T023，並以 A→B 部門同步驗證原部門同事可讀舊文件、新部門無關者不可讀，原發起人個人管理仍可用；在 `specs/017-department-document-visibility/validation.md` 留存結果而不記錄個資／secret。
 
 ## Phase 5: US4 — 同部門匯出與下載（P1）
 

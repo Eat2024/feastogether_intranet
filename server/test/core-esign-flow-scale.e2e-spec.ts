@@ -1,7 +1,6 @@
 import { createHash, createPrivateKey, randomUUID, sign } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { getQueueToken } from '@nestjs/bullmq';
-import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
@@ -19,10 +18,11 @@ import { EsignSigningService } from '#app/features/esign/services/esign-signing.
 import { EsignConsentService } from '#app/features/esign/services/esign-consent.service';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import { ESIGN_DOCUMENT_FINALIZATION_QUEUE } from '#app/features/esign/esign-queue.constants';
-import { WorkerModule } from '#app/worker.module';
 import { apiData } from './api-response.helper';
 import {
   createSecurityE2eApp,
+  mailFixture,
+  createSyntheticWorker,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -90,6 +90,9 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       [prefix + '%'],
     );
     expect(users).toHaveLength(SAVED_COUNT);
+    mailFixture(ctx).allowEmails(
+      users.map((user) => `${user.empid.toLowerCase()}@example.test`),
+    );
     const launch = apiData<{ launchUrl: string }>(
       await request(ctx.server)
         .post('/api/auth/webview-launches')
@@ -104,9 +107,7 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
     const cookies: unknown = session.headers['set-cookie'];
     cookie = String(Array.isArray(cookies) ? cookies[0] : cookies);
     await queue.pause();
-    worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    worker = await createSyntheticWorker(ctx);
   }, 120_000);
 
   afterAll(async () => {

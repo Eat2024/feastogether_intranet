@@ -5,8 +5,6 @@ import { EsignExportJob } from '#app/features/esign/entities/esign-export-job.en
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { ESIGN_EXPORT_QUEUE } from '#app/features/esign/esign-queue.constants';
-import { NestFactory } from '@nestjs/core';
-import { WorkerModule } from '#app/worker.module';
 import {
   PRIVATE_FILE_STORAGE,
   type PrivateFileStorage,
@@ -23,6 +21,7 @@ import { FeastogetherHrService } from '#app/infrastructure/http-client/feastoget
 import { apiData } from './api-response.helper';
 import {
   createSecurityE2eApp,
+  createSyntheticWorker,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -196,9 +195,7 @@ describe('Spec009 匯出 API', () => {
     const job = apiData<{ id: string; expectedCount: number }>(a);
     expect(apiData<{ id: string }>(b).id).toBe(job.id);
     expect(job.expectedCount).toBe(1);
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       await worker.get(DocumentExportProcessor).maintain();
       let result:
@@ -522,8 +519,8 @@ describe('Spec009 匯出 API', () => {
     const queue = ctx.app.get<Queue>(getQueueToken(ESIGN_EXPORT_QUEUE));
     await queue.pause();
     const workers = await Promise.all([
-      NestFactory.createApplicationContext(WorkerModule, { logger: false }),
-      NestFactory.createApplicationContext(WorkerModule, { logger: false }),
+      createSyntheticWorker(ctx),
+      createSyntheticWorker(ctx),
     ]);
     let active = 0;
     let peak = 0;
@@ -730,9 +727,7 @@ describe('Spec009 匯出 API', () => {
         .send({ type: 'signed_copies_zip' })
         .expect(202),
     );
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     const waitFor = async (status: string) => {
       for (let i = 0; i < 100; i++) {
         const value = apiData<{

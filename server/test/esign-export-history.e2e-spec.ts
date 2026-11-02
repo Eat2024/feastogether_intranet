@@ -1,11 +1,9 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { NestFactory } from '@nestjs/core';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import type { EntityManager } from 'typeorm';
-import { WorkerModule } from '#app/worker.module';
 import { DocumentExportProcessor } from '#app/worker/esign/document-export.processor';
 import { AuthService } from '#app/features/auth/services/auth.service';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
@@ -31,6 +29,7 @@ import { apiData, apiError } from './api-response.helper';
 import {
   closeSecurityE2eApp,
   createSecurityE2eApp,
+  createSyntheticWorker,
   type SecurityE2eContext,
 } from './security-e2e.helper';
 
@@ -1581,9 +1580,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         await post(exportsPath).send({ type: 'signed_copies_zip' }).expect(202),
       );
       expect(requested.expectedCount).toBe(1);
-      const worker = await NestFactory.createApplicationContext(WorkerModule, {
-        logger: false,
-      });
+      const worker = await createSyntheticWorker(ctx);
       try {
         expect(await zipJob(requested.id, 'failed')).toMatchObject({
           failureCode: 'ESIGN_EXPORT_UNAVAILABLE',

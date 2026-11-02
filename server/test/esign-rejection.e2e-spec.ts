@@ -14,16 +14,16 @@ import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { DataSource, type EntityManager } from 'typeorm';
-import { NestFactory } from '@nestjs/core';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
-import { WorkerModule } from '#app/worker.module';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { apiData } from './api-response.helper';
 import {
   closeSecurityE2eApp,
   createSecurityE2eApp,
+  mailFixture,
+  createSyntheticWorker,
   type SecurityE2eContext,
 } from './security-e2e.helper';
 import {
@@ -69,6 +69,12 @@ describe('拒簽 HTTP 與結案', () => {
         }),
       }),
     );
+    mailFixture(ctx).allowEmails([
+      'race-a@example.test',
+      'race-b@example.test',
+      'rejection@example.test',
+      'mixed@example.test',
+    ]);
     db = ctx.app.get(MYSQL_MAIN);
     const launch = await request(ctx.server)
       .post('/api/auth/webview-launches')
@@ -227,9 +233,7 @@ describe('拒簽 HTTP 與結案', () => {
       .get('/api/external-signing-task/source-file')
       .set('Cookie', employeeCookies.get(id)!)
       .expect(401);
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       await worker.get(EsignMaintenanceProcessor).process({} as Job);
     } finally {
@@ -346,9 +350,7 @@ describe('拒簽 HTTP 與結案', () => {
       'rejected',
     ]);
     expect(final.status).toBe('finalizing');
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       await worker.get(EsignMaintenanceProcessor).process({} as Job);
     } finally {
@@ -490,9 +492,7 @@ describe('拒簽 HTTP 與結案', () => {
       'SELECT id FROM esign_signers WHERE public_id=?',
       [id],
     );
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       await worker.get(DocumentFinalizationProcessor).process({
         data: { documentId: Number(doc.id), signerId: internal[0].id },

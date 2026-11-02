@@ -6,8 +6,17 @@
 
 **Status:** claimed
 
-- [ ] 每個非 production 環境的邀請／群發／催簽／OTP 均受政策保護；production 不新增政策 DB/HR 呼叫，缺漏與非法環境拒絕。
-- [ ] E2E 使用合成 HR/SMTP 與具體 guarded sender，不全域覆寫公開 token 繞過政策、不冒用 production；新增測試被 Jest 配置收集。
+- [x] 每個非 production 環境的邀請／群發／催簽／OTP 均受政策保護；production 不新增政策 DB/HR 呼叫，缺漏與非法環境拒絕。
+- [x] E2E 使用合成 HR/SMTP 與具體 guarded sender，不全域覆寫公開 token 繞過政策、不冒用 production；新增測試被 Jest 配置收集。
 - [ ] 完成適用單元、schema、E2E、安全、root lint/build，記錄真實結果；確認前後端沒有洩漏敏感資料。
-- [ ] 更新 spec/plan/quickstart 的實作與驗證狀態；交付停止舊 worker/OTP、schema/seed、同步上版、驗證及停止寄信後回滾程序，不執行 UAT 異動或真實寄信。
+- [x] 更新 spec/plan/quickstart 的實作與驗證狀態；交付停止舊 worker/OTP、schema/seed、同步上版、驗證及停止寄信後回滾程序，不執行 UAT 異動或真實寄信。
 - [ ] 完成 Standards 與 Spec code review、修正發現並重驗；整合至功能分支、更新 PR 與票單驗證／commit 紀錄。
+
+## 實作與驗證紀錄
+
+- 實作 commits：8cf26ae（明確合成名單與核心流程）、6357dff（app／worker 政策生命週期）、7191c9b（原生模組環境矩陣）、077578d（既有 E2E 消費端）。
+- 原生 HTTP／worker × 四環境共 8 項驗證，保留真實 MailModule／policy／repository；記憶體 SMTP envelope 與 fake 接受集合均符合規則。暫時還原舊 sender 時 8 項全數失敗，實驗後已復原。
+- 既有 E2E 以測試明確登錄的有限合成 HR 名單執行真實政策，不從寄送輸入或文件快照自動授權；兩個跨午夜 session fixture 已修復，未更動正式 TTL。
+- 隔離 MySQL 8.4（本機13318）、Redis（本機16318、非0 DB），未呼叫真實 HR／SMTP、未操作 UAT／production。
+- schema 3 suites／14 tests、security 13 suites／73 tests、unit 108 suites／1,006 tests 通過；root lint 0 errors（既有 warnings）、server build 通過。
+- 完整 E2E：32 suites／345 tests 通過，162.123 秒。client build 與 Standards／Spec 正式審查由整合分支完成，故狀態保留 claimed。

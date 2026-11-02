@@ -61,7 +61,7 @@ pnpm lint
 pnpm build
 ```
 
-先跑本次相關 sender／policy／worker／OTP 測試，通過後完成相應整體檢查；新 E2E 必須加入現有 regex 收集配置。新檔名與具體任務於 tasks 定義，不能宣稱尚不存在的測試已通過。
+先跑本次相關 sender／policy／worker／OTP 測試，通過後完成相應整體檢查；新 E2E 必須加入現有 regex 收集配置。本功能以本機 tickets 追蹤具體驗收，不能宣稱尚不存在的測試已通過。
 
 ## 非 production 切換
 
@@ -82,5 +82,9 @@ pnpm build
 ## 2026-11-02 實作驗證紀錄
 
 - TDD：原核心寄送案例改經真實白名單後，未安排合成名單時 17 項失敗（403），加入明確 fixture 後 25 項核心案例全數通過，不能將 fake 成功當作送達。
-- 完整驗證結果待本次執行完成後填入；不以本段作為已通過聲明。
+- 原生環境矩陣：AppModule／WorkerModule × development／test／staging／production，共 8 項通過；暫時還原成舊未保護 adapter 時 8 項全數失敗，實驗後已還原。
+- `pnpm -C server test:schema`：3 suites／14 tests 通過。
+- `pnpm -C server test:e2e:security`：13 suites／73 tests 通過。
+- `pnpm -C server test --runInBand`：108 suites／1,006 tests 通過；`pnpm lint` 通過（既有 warnings、0 errors）；`pnpm -C server build` 通過。
+- `pnpm -C server test:e2e`：32 suites／345 tests 通過，162.123 秒，包含 6000 人完整發起與群發。client build 與正式雙軸 review 由整合分支完成。
 - 未執行 UAT／production migration、seed、部署或真實 HR／SMTP 呼叫。正式切換仍須依維護程序操作。

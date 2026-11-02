@@ -68,3 +68,10 @@
 - 23個API請求檢查通過：兩位同部門看到彼此、跨部門不可見；文件／建立人搜尋、狀態、單邊／雙邊日期篩選與清除；草稿來源預覽入口及進度；無Email／note／管理控制；直接edit/signers導回唯讀且無通知／邀請／組織查詢；建立人保留管理；跨部門直接詳情拒絕。
 - 同部門非建立人view=export獨立cache／API取得核准Email欄位，與一般唯讀DTO分離。瀏覽器測試用合成快照與文件，建立交易正確性另由ticket06驗證。
 - 為同一組判別DTO／頁面保持可建置，T033／T034的client修改一併整合：Excel預覽、PDF canExport與history/ZIP失敗顯示；ticket08尚未完成，等待07與全匯出安全回歸，不能宣稱整體隔離可上線。
+
+## Ticket 07（T027–T032）
+
+- 有效紅燈：跨部門ZIP列表洩漏與Excel紀錄錯誤受理201；修正後ZIP／歷史E2E兩套84 tests通過（最後ID錯置錯誤順序修正亦重跑通過）。
+- 所有一般匯出、歷史項目／分頁／total／typeTotals先限制文件部門；指定document/job/file及PDF record/signer/document關係均驗證。原建立人調職不能匯出，現有舊網址重新授權。
+- 同部門非建立人成功、跨部門本人副本仍可使用，worker固定快照／Range下載回歸通過。一般下載更名departmentFile/downloadDepartmentCopy；本人與外部入口維持原資格。
+- CompletionAccess單元17 tests、server build、diff check通過；修改檔ESLint 0 errors／17既有warnings。未執行UAT。

@@ -417,11 +417,11 @@ export class DocumentsController {
     );
   }
 
-  // 供建立人下載指定簽署人的已簽副本；送出前寫入 pdf 匯出紀錄。
+  // 供同部門員工下載指定簽署人的已簽副本；送出前寫入 pdf 匯出紀錄。
   @ApiOperation({
     summary: '下載指定簽署人的個人 PDF',
     description:
-      '僅建立人可依簽署人下載已產製完成的個人副本，回 200 application/pdf 附件。送出前新增一筆 pdf 匯出紀錄（匯出人為建立人、範圍為簽署人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、非建立人或簽署人不屬於此文件回 404、副本未產製完成回 409，都不記錄。取代已移除的 GET …/completed-file。',
+      '同部門員工可依簽署人下載已產製完成的個人副本，回 200 application/pdf 附件。送出前新增一筆 pdf 匯出紀錄（匯出人為目前員工、範圍為簽署人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、跨部門或簽署人不屬於此文件回 404、副本未產製完成回 409，都不記錄。取代已移除的 GET …/completed-file。',
   })
   @Post(':documentId/signers/:signerPublicId/completed-file/downloads')
   @CompletedPdfDownload()
@@ -433,7 +433,7 @@ export class DocumentsController {
   ) {
     sendCompletedPdf(
       reply,
-      await this.exportHistory.downloadCreatorCopy(
+      await this.exportHistory.downloadDepartmentCopy(
         this.id(id),
         signerPublicId,
         userId,

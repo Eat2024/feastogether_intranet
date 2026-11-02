@@ -42,14 +42,17 @@ export class EsignCompletionAccessService {
     private readonly records: SignatureRecordRepository,
   ) {}
 
-  async creatorFile(
+  async departmentFile(
     documentId: number,
     signerPublicId: string,
     userId: number,
   ): Promise<PersonalCopyDownload> {
     const manager = this.mysql.getManager();
-    const document = await this.documents.findById(documentId, manager);
-    this.access.checkEsignCreator(document, userId);
+    const document = await this.access.checkDepartmentDocument(
+      await this.documents.findById(documentId, manager),
+      userId,
+      manager,
+    );
     const signer = await this.signers.findByPublicId(signerPublicId, manager);
     if (!signer || signer.documentId !== documentId) throw this.notFound();
     return { signer, file: await this.personalCopy(document, signer) };

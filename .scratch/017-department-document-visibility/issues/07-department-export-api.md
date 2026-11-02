@@ -4,7 +4,7 @@
 
 **Blocked by:** [04](./04-department-read-api.md)、[06](./06-creation-snapshot.md)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Spec:** [Spec 017](https://github.com/Eat2024/feastogether_intranet/blob/a827699743ccf306900f33a05064c76f954c13b0/specs/017-department-document-visibility/spec.md)；US4；FR-010/011；SC-003。
 
@@ -27,3 +27,14 @@
 - [ ] T030 [US4] 在 `server/src/features/esign/controllers/exports.controller.ts` 所有列表／request／detail／retry／download 傳入 userId；`server/src/features/esign/services/esign-export.service.ts` 於讀 snapshot、重用 job、寫入／enqueue、檔案 metadata／Range／stream 前驗證同部門與 ID 關係，不能給建立人跨部門例外。
 - [ ] T031 [US4] 在 `server/src/features/esign/controllers/export-history.controller.ts` 及 `server/src/features/esign/services/esign-export-history.service.ts` 對列表、Excel 記錄／重下載、PDF 歷史重下載套用同部門政策；未授權 404 或契約定義的空列表，檔案未就緒等錯誤必須在授權後判斷。
 - [ ] T032 [US4] 釐清並調整 `server/src/features/esign/services/esign-export-history.service.ts`、`esign-completion-access.service.ts` 及 `server/src/features/esign/controllers/documents.controller.ts` 的一般 completed-file/downloads 路徑為同部門；不能放寬 `server/src/features/esign/controllers/signing-tasks.controller.ts`／`external-signature.controller.ts` 的本人副本或邀請驗證。
+
+## 實作驗證紀錄（待整合）
+
+- T027／T028 有效紅燈：跨部門 ZIP 列表洩漏、Excel 寫入預期 404 實得 201；2 suites／2 tests 失敗。
+- T029～T032：exportable／history page/count／record 在 SQL 限文件部門；ZIP 所有入口傳 userId，授權早於 snapshot／重用／寫入／enqueue／metadata／Range；一般 PDF 改 departmentFile／downloadDepartmentCopy，保留本人與外部副本獨立資格。PDF 歷史下載驗證 record.documentId 與 signer.documentId。
+- 隔離 DB feastogether_intranet_test017、Redis 0；`pnpm -C server test:e2e --testPathPatterns=esign-export`：2 suites／84 tests 通過，含同部門成功、跨部門全入口拒絕、查詢前過濾／計數、外部匯出人、調職舊 session、PDF 錯置紀錄、跨部門本人副本保留與 ZIP worker 固定快照。
+- `pnpm -C server test --runInBand esign-completion-access.service.spec.ts`：17 tests 通過；server build 通過。指定修改檔 lint：0 errors、17 個原測試既有 warnings；git diff --check 通過。
+- 原全員成功案例改成明確同部門 fixtures；原非建立人拒絕改成跨部門拒絕，另驗同部門非建立人成功，未刪負向條件。
+- 未改 worker、未操作 UAT；shared tasks／validation 由 root 整合。
+
+整合commit：`git log --grep="feat(spec017): restrict exports and history by department"`。

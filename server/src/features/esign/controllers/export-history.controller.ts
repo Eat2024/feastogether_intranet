@@ -37,13 +37,13 @@ import { EsignExportHistoryService } from '../services/esign-export-history.serv
 export class ExportHistoryController {
   constructor(private readonly history: EsignExportHistoryService) {}
 
-  // 依類型以頁碼查詢所有人的匯出紀錄，附各類型總筆數。
+  // 依類型以頁碼查詢同部門文件的匯出紀錄，附各類型總筆數。
   @Get()
   @ApiOperation({
     summary: '查詢歷史匯出紀錄',
     description: [
       '**權限**',
-      '- 需有效員工 session，可查看所有人的紀錄',
+      '- 需有效員工 session，只可查看同部門文件的紀錄',
       '- 外部簽署 session 一律拒絕',
       '',
       '**排序與分頁**',
@@ -72,8 +72,11 @@ export class ExportHistoryController {
     description: 'INVALID_REQUEST：type、page、pageSize 或 documentId 不合法',
   })
   @ApiResponse({ status: 401, description: '需有效員工 session' })
-  list(@Query() query: ExportHistoryQueryDto): Promise<ExportHistoryPageDto> {
-    return this.history.list(query);
+  list(
+    @Query() query: ExportHistoryQueryDto,
+    @CurrentUserId() userId: number,
+  ): Promise<ExportHistoryPageDto> {
+    return this.history.list(query, userId);
   }
 
   // 前端下載 Excel 前回報匯出，由後端寫入紀錄；首次匯出與重新下載共用。
@@ -83,7 +86,7 @@ export class ExportHistoryController {
     summary: '記錄 Excel 匯出',
     description: [
       '**權限**',
-      '- 需有效員工 session 與同源請求，不限建立人',
+      '- 需有效員工 session 與同源請求，文件須同部門，不限建立人',
       '- 匯出人取自 session，不接受前端傳入',
       '',
       '**Body**',
@@ -134,7 +137,7 @@ export class ExportHistoryController {
     summary: '取得 Excel 重新下載資料',
     description: [
       '**權限**',
-      '- 需有效員工 session，任何員工可用，不限建立人或原匯出人',
+      '- 需有效員工 session，同部門員工可用，不限建立人或原匯出人',
       '- 外部簽署 session 一律拒絕',
       '',
       '**規則**',
@@ -163,8 +166,11 @@ export class ExportHistoryController {
     description:
       'ESIGN_RESOURCE_NOT_FOUND：紀錄不存在、不是 excel 紀錄或文件已刪除',
   })
-  excelDocument(@Param('id') id: string): Promise<ExcelExportDocumentDto> {
-    return this.history.excelDocument(id);
+  excelDocument(
+    @Param('id') id: string,
+    @CurrentUserId() userId: number,
+  ): Promise<ExcelExportDocumentDto> {
+    return this.history.excelDocument(id, userId);
   }
 
   // 從單人 PDF 紀錄重新下載；送出前新增一筆紀錄。
@@ -172,7 +178,7 @@ export class ExportHistoryController {
     summary: '從 PDF 紀錄重新下載已簽署副本',
     description: [
       '**權限**',
-      '- 需有效員工 session 與同源請求，任何員工都能重新下載任一 `pdf` 紀錄',
+      '- 需有效員工 session 與同源請求，同部門員工可重新下載該文件的 `pdf` 紀錄',
       '- 外部簽署 session 一律拒絕',
       '',
       '**回應**',

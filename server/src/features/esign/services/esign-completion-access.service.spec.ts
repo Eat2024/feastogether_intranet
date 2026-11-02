@@ -29,6 +29,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
       docNumber: 'ESIGN-2026-001',
       title: '員工保密協議',
       createdByUserId: 7,
+      createdByDepartmentCode: 'A017',
       status,
       signingPayloadJson: payload,
       signingPayloadSha256: canonicalSha256(payload),
@@ -65,7 +66,15 @@ describe('EsignCompletionAccessService 個人下載', () => {
       new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         {} as never,
-        {} as never,
+        {
+          findById: jest.fn((userId: number) =>
+            Promise.resolve({
+              id: userId,
+              isActive: true,
+              departmentCode: userId === 7 ? 'A017' : 'B017',
+            }),
+          ),
+        } as never,
       ),
       new PdfValidationService(),
       storage as never,
@@ -78,7 +87,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
     '%s 的 ready 副本供建立人及本人下載',
     async (status) => {
       const f = await setup(status);
-      const creator = await f.service.creatorFile(4, 'person-a', 7);
+      const creator = await f.service.departmentFile(4, 'person-a', 7);
       expect(creator.file?.bytes).toEqual(f.bytes);
       expect(creator.signer).toBe(f.signer);
       const own = await f.service.signerFile('person-a', 20);
@@ -92,18 +101,18 @@ describe('EsignCompletionAccessService 個人下載', () => {
     },
   );
 
-  it('跨人、非建立人與跨文件查詢在讀檔前拒絕', async () => {
+  it('跨人、跨部門與跨文件查詢在讀檔前拒絕', async () => {
     const f = await setup();
     await expect(f.service.signerFile('person-a', 99)).rejects.toMatchObject({
       status: 404,
     });
     await expect(
-      f.service.creatorFile(4, 'person-a', 20),
+      f.service.departmentFile(4, 'person-a', 20),
     ).rejects.toMatchObject({ status: 404 });
     f.signer.documentId = 5;
-    await expect(f.service.creatorFile(4, 'person-a', 7)).rejects.toMatchObject(
-      { status: 404 },
-    );
+    await expect(
+      f.service.departmentFile(4, 'person-a', 7),
+    ).rejects.toMatchObject({ status: 404 });
     expect(f.storage.openReadStream).not.toHaveBeenCalled();
   });
 
@@ -113,7 +122,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
       const f = await setup();
       f.signer.completionStatus = status;
       await expect(
-        f.service.creatorFile(4, 'person-a', 7),
+        f.service.departmentFile(4, 'person-a', 7),
       ).resolves.toMatchObject({ file: null });
       expect(f.files.findCompletedFile).not.toHaveBeenCalled();
       expect(f.files.findDocumentFile).not.toHaveBeenCalled();
@@ -169,7 +178,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
       if (change === 'size') f.file.fileSize += 1;
       if (change === 'evidence') f.record.signingPayloadSha256 = '0'.repeat(64);
       await expect(
-        f.service.creatorFile(4, 'person-a', 7),
+        f.service.departmentFile(4, 'person-a', 7),
       ).rejects.toMatchObject({
         status: 409,
       });

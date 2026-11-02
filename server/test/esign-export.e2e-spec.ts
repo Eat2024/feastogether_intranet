@@ -1,3 +1,4 @@
+import { User } from '#app/features/users/entities/user.entity';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DocumentExportProcessor } from '#app/worker/esign/document-export.processor';
@@ -33,6 +34,8 @@ describe('Spec009 匯出 API', () => {
   let db: DataSource;
   let cookie: string;
   let other: string;
+  let outsider: string;
+  let missing: string;
   let id: string;
   let ownerId: string;
   const origin = 'http://localhost:3000';
@@ -46,7 +49,12 @@ describe('Spec009 匯出 API', () => {
             person_name: '草稿測試員工',
             person_status: 1,
             person_status_name: '正式',
-            department_id: 'D009',
+            department_id:
+              empid === 'EXPORT00903'
+                ? 'OTHER009'
+                : empid === 'EXPORT00904'
+                  ? null
+                  : 'D009',
             department_name: '測試部',
             title: '測試員工',
           }),
@@ -55,6 +63,8 @@ describe('Spec009 匯出 API', () => {
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
     cookie = await login('EXPORT00901');
     other = await login('EXPORT00902');
+    outsider = await login('EXPORT00903');
+    missing = await login('EXPORT00904');
     const users = await db.query<Array<{ id: number }>>(
       "SELECT id FROM users WHERE empid='EXPORT00901'",
     );
@@ -78,7 +88,38 @@ describe('Spec009 匯出 API', () => {
     if (ctx) await closeSecurityE2eApp(ctx);
   });
 
-  it('員工可跨建立人查找，但空文件不能匯出', async () => {
+  it('部門隔離：跨部門查找不可見，建立／重用請求拒絕且無 DB 或 queue 副作用', async () => {
+    const list = apiData<{ items: Array<{ documentId: string }> }>(
+      await request(ctx.server)
+        .get('/api/esign/exportable-documents')
+        .set('Cookie', outsider)
+        .expect(200),
+    );
+    expect(list.items.some((item) => item.documentId === id)).toBe(false);
+    const before = await db.manager.count(EsignExportJob);
+    const queue = ctx.app.get<Queue>(getQueueToken(ESIGN_EXPORT_QUEUE));
+    const enqueue = jest.spyOn(queue, 'add');
+    try {
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/exports`)
+        .set('Cookie', outsider)
+        .set('Origin', origin)
+        .send({ type: 'signed_copies_zip' })
+        .expect(404);
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/exports`)
+        .set('Cookie', missing)
+        .set('Origin', origin)
+        .send({ type: 'signed_copies_zip' })
+        .expect(409);
+      expect(await db.manager.count(EsignExportJob)).toBe(before);
+      expect(enqueue).not.toHaveBeenCalled();
+    } finally {
+      enqueue.mockRestore();
+    }
+  });
+
+  it('同部門員工可跨建立人查找，但空文件不能匯出', async () => {
     const list = apiData<{ items: Array<{ documentId: string }> }>(
       await request(ctx.server)
         .get('/api/esign/exportable-documents')
@@ -221,6 +262,49 @@ describe('Spec009 匯出 API', () => {
       }
       expect(result?.status).toBe('completed');
       const file = result!.files[0];
+      const beforeDenied = await db.manager.count(EsignExportJob);
+      const queueBeforeDenied = await producerQueue.getJobCounts();
+      await request(ctx.server)
+        .get(`/api/esign/documents/${id}/exports/${job.id}`)
+        .set('Cookie', outsider)
+        .expect(404);
+      await request(ctx.server)
+        .post(`/api/esign/documents/${id}/exports/${job.id}/retries`)
+        .set('Cookie', outsider)
+        .set('Origin', origin)
+        .expect(404);
+      await make(outsider).expect(404);
+      await request(ctx.server)
+        .get(file.downloadPath)
+        .set('Cookie', outsider)
+        .set('Range', 'bytes=0-3')
+        .expect(404);
+      await request(ctx.server)
+        .get(file.downloadPath)
+        .set('Cookie', missing)
+        .expect(409);
+      expect(await db.manager.count(EsignExportJob)).toBe(beforeDenied);
+      expect(await producerQueue.getJobCounts()).toEqual(queueBeforeDenied);
+      // 原建立人調職後不能藉建立人或舊網址取得一般匯出；同部門同事仍可下載。
+      await db.manager.update(
+        User,
+        { id: Number(ownerId) },
+        { departmentCode: 'OTHER009' },
+      );
+      try {
+        await request(ctx.server)
+          .get(file.downloadPath)
+          .set('Cookie', cookie)
+          .expect(404);
+        await make(cookie).expect(404);
+      } finally {
+        await db.manager.update(
+          User,
+          { id: Number(ownerId) },
+          { departmentCode: 'D009' },
+        );
+      }
+
       const download = await request(ctx.server)
         .get(file.downloadPath)
         .set('Cookie', other)

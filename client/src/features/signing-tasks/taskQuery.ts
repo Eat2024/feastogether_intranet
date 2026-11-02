@@ -16,6 +16,15 @@ export function parseSigningTab(value: string | null): SigningTab {
   return SIGNING_TABS.some((t) => t.key === value) ? (value as SigningTab) : 'pending';
 }
 
+/** 關鍵字篩選：文件名稱、文件編號、建立人姓名或員工編號包含關鍵字（不分大小寫）；空字串表示不篩選 */
+export function filterTasks(tasks: EsignSigningTask[], query: string): EsignSigningTask[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return tasks;
+  return tasks.filter(({ document: d }) =>
+    [d.title, d.docNumber, d.createdBy?.name ?? '', d.createdBy?.employeeNo ?? ''].some((v) => v.toLowerCase().includes(q)),
+  );
+}
+
 /**
  * 依分頁整理任務並排出預設順序：
  * 待簽署為本人未簽、文件簽署中或已到期（已到期仍列出，顯示已逾期、等待補簽），依結束時間由近到遠；
@@ -106,9 +115,10 @@ export function sortTasks(tasks: EsignSigningTask[], sort: SigningSort): EsignSi
   return sort ? sortByValue(tasks, SORT_VALUE[sort.key], sort.order) : tasks;
 }
 
-/** 未指定頁碼時回到第 1 頁 */
-export function signingHref(tab: SigningTab, sort: SigningSort, page = 1) {
+/** 未指定頁碼時回到第 1 頁；query 為搜尋關鍵字，切換分頁、排序與換頁時保留 */
+export function signingHref(tab: SigningTab, sort: SigningSort, page = 1, query = '') {
   const qs = new URLSearchParams({ tab });
+  if (query) qs.set('q', query);
   if (sort) {
     qs.set('sort', sort.key);
     qs.set('order', sort.order);

@@ -10,22 +10,20 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "新增電子簽文件" };
 
-// TODO: 後端完成簽到表後改為串接 API，並拿掉「尚未完成」標示與提示
+// TODO: 後端完成簽到表後改為 true 重新開放，並改為串接 API、拿掉「尚未完成」標示與提示
+const SHEET_ENABLED = false;
+
 const TYPES = [
   { value: "upload", label: "一般文件（上傳）", href: "/forms/new" },
-  {
-    value: "sheet",
-    label: "簽到表（尚未完成）",
-    href: "/forms/new?type=sheet",
-    // 後端尚未支援簽到表，先停用此分頁
-    disabled: true,
-  },
+  // 後端尚未支援簽到表，先隱藏此分頁
+  ...(SHEET_ENABLED ? [{ value: "sheet", label: "簽到表（尚未完成）", href: "/forms/new?type=sheet" }] : []),
 ];
 
 export default async function NewFormPage({
   searchParams,
 }: PageProps<"/forms/new">) {
-  const isSheet = (await searchParams).type === "sheet";
+  // 隱藏期間直接輸入 ?type=sheet 也顯示一般文件
+  const isSheet = SHEET_ENABLED && (await searchParams).type === "sheet";
 
   return (
     <>
@@ -48,7 +46,8 @@ export default async function NewFormPage({
             : "上傳 PDF 文件，逐頁預覽並指定簽名要落在哪裡。"
         }
       />
-      <LinkTabs value={isSheet ? "sheet" : "upload"} tabs={TYPES} />
+      {/* 只有一種文件類型時不顯示分頁 */}
+      {TYPES.length > 1 && <LinkTabs value={isSheet ? "sheet" : "upload"} tabs={TYPES} />}
       {/* 簽到表仍是前端原型（mock store），尚未串接後端 */}
       {isSheet && (
         <Alert severity="warning" variant="outlined">

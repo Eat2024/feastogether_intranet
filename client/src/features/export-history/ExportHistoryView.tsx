@@ -2,7 +2,7 @@
 
 // 歷史匯出文件：GET /api/esign/history/export（Spec 015，所有人的匯出紀錄，依匯出時間由新到舊）。
 // 依類型分頁標籤（Excel／PDF／ZIP），頁碼分頁；分頁與頁碼記在網址參數 tab、page。
-// 簽到表後端尚未完成，分頁先停用。
+// 簽到表後端尚未完成，分頁先隱藏。
 import { useGetExportHistoryQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
 import {
@@ -49,12 +49,14 @@ import type { ReactNode } from 'react';
 
 type HistoryTab = ExportHistoryType | 'sheet';
 
-const TABS: { value: HistoryTab; label: string; disabled?: boolean }[] = [
+// TODO: 後端完成簽到表後改為 true 並串接 API
+const SHEET_ENABLED = false;
+
+const TABS: { value: HistoryTab; label: string }[] = [
   { value: 'excel', label: '簽署紀錄清單 Excel' },
   { value: 'pdf', label: '已簽署文件 PDF' },
   { value: 'zip', label: '已簽署文件 ZIP' },
-  // TODO: 後端完成簽到表後改為串接 API
-  { value: 'sheet', label: '簽到表 PDF（尚未完成）', disabled: true },
+  ...(SHEET_ENABLED ? [{ value: 'sheet' as const, label: '簽到表 PDF（尚未完成）' }] : []),
 ];
 
 const historyHref = (tab: HistoryTab, page = 1) => {
@@ -303,7 +305,6 @@ export default function ExportHistoryView() {
           value: t.value,
           label: t.value !== 'sheet' && data ? `${t.label}（${data.typeTotals[t.value]}）` : t.label,
           href: historyHref(t.value),
-          disabled: t.disabled,
         }))}
       />
       {type === 'zip' && (

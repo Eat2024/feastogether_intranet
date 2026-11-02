@@ -3,7 +3,8 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 type PageHeaderProps = {
-  title: ReactNode;
+  /** 不給時只顯示說明（例如文件檢視頁的資訊已含文件名稱） */
+  title?: ReactNode;
   /** 標題下方的頁面說明 */
   description?: ReactNode;
   /** 右側操作區（按鈕等） */
@@ -28,12 +29,14 @@ export default function PageHeader({
       sx={{ alignItems: "center", justifyContent: "space-between" }}
     >
       <Stack spacing={1} sx={{ minWidth: 0 }}>
-        <Typography
-          variant="pageTitle"
-          className={hideTitleWhenEmbedded ? "hide-when-embedded" : undefined}
-        >
-          {title}
-        </Typography>
+        {title && (
+          <Typography
+            variant="pageTitle"
+            className={hideTitleWhenEmbedded ? "hide-when-embedded" : undefined}
+          >
+            {title}
+          </Typography>
+        )}
         {description && <Typography variant="description">{description}</Typography>}
       </Stack>
       {actions && (

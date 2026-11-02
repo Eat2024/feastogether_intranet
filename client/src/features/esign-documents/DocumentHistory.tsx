@@ -12,33 +12,6 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import dayjs from 'dayjs';
 
-/** 後端事件類型（server/src/features/esign/services 的 audit eventType）對照的中文說明；未列出的直接顯示類型 */
-const EVENT_LABEL: Record<string, string> = {
-  'internal_invitation.delivered': '已寄出內部簽署邀請通知',
-  'internal_reminder.delivered': '已寄出內部催簽通知',
-  'internal_notification.protocol_error': '內部通知寄送結果異常',
-  'document.created': '建立草稿',
-  'document.draft_updated': '更新草稿',
-  'document.initiated': '發起簽署',
-  'signer.assigned': '指派簽署人',
-  'external_otp.sent': '寄送驗證碼給外部簽署人',
-  'external_otp.failed': '外部簽署人輸入的驗證碼錯誤',
-  'external_otp.locked': '外部簽署人驗證碼錯誤次數已滿，驗證碼失效',
-  'external_otp.verified': '外部簽署人通過驗證碼',
-  'external_invitation.opened': '外部簽署人開啟邀請連結',
-  'document.opened': '簽署人開啟文件',
-  'consent.accepted': '簽署人同意電子簽名條款',
-  'signature.submitted': '簽署人送出簽名',
-  'signer.rejected': '簽署人拒絕簽署',
-  'signature.completed': '簽署人完成簽署',
-  'signer.copy_completed': '個人簽署副本產生完成',
-  'document.completed': '所有簽署人皆已完成簽署或拒簽',
-  'document.expired': '簽署期限已到，文件已到期',
-  'document.reopened': '建立人設定補簽，重新開放未簽署者簽署',
-  'document.stopped_by_creator': '建立人停止簽署',
-  'document.stopped_by_deadline': '簽署期限已到，系統自動停止',
-};
-
 /** 需要特別標示的事件 */
 const EVENT_COLOR: Record<string, string> = {
   'document.completed': 'success.dark',
@@ -119,7 +92,7 @@ export default function DocumentHistory({ documentId }: { documentId: string }) 
                   component="div"
                   sx={EVENT_COLOR[e.type] ? { color: EVENT_COLOR[e.type] } : undefined}
                 >
-                  {EVENT_LABEL[e.type] ?? e.type}
+                  {e.label}
                   {e.count > 1 && `（${e.count} 筆）`}
                   <Typography variant="helper" component="span" sx={{ ml: 1 }}>
                     {e.actor.name}

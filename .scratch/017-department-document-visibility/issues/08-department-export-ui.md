@@ -4,7 +4,7 @@
 
 **Blocked by:** [05](./05-department-read-ui.md)、[07](./07-department-export-api.md)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Spec:** [Spec 017](https://github.com/Eat2024/feastogether_intranet/blob/a827699743ccf306900f33a05064c76f954c13b0/specs/017-department-document-visibility/spec.md)；US4；FR-010/011；SC-003。
 
@@ -25,3 +25,13 @@
 - [ ] T034 [US4] 在 `client/src/features/esign-documents/DocumentRowActions.tsx`、`DocumentDetailView.tsx`、`DocumentSignerTable.tsx`、`ZipExportPanel.tsx` 與 `client/src/features/export-history/ExportHistoryView.tsx` 接同部門匯出／下載能力，不能以 isCreator 作匯出資格；保持非建立人不可修改文件，409／404 走既有錯誤處理，無法取得資格時不 fallback 全公司資料。
 - [ ] T035 [US4] 在 `server/test/security-esign-department.e2e-spec.ts` 擴充所有匯出直接 URL、ID 關係、cookie 無效、缺代碼、調職舊 session、文件軟刪除與欄位洩漏案例；同時跑 `server/test/internal-portal-completion.e2e-spec.ts`、`server/test/internal-email-copy.e2e-spec.ts` 及外部副本原測試，證明本人留存資格未被部門規則封鎖。
 - [ ] T036 [US4] 執行 T027／T028／T035，驗證 worker 固定快照未改且檔案領取重新授權；在 `specs/017-department-document-visibility/validation.md` 記錄每一匯出入口、筆數、拒絕無 DB／queue／bytes side effect 的結果與前端 Excel 內容比對。
+
+## Ticket 08（T033–T036）
+
+- Client部分隨05整合；07完成後重啟真實合成API，Chrome三session重驗26個API請求，實際點擊匯出下載.xlsx並以既有ExcelJS解析：姓名與Email正確、note未洩漏，歷史count=1，跨部門以紀錄ID重下載404。
+- 部門security 10/10（原4案+新增6案）通過：所有匯出URL、跨部門／大小寫異碼、NULL、invalid cookie、調職舊session、軟刪除、document/job/file與history/signer錯置；拒絕後DB／檔案metadata／queue不變且沒有stat／stream／enqueue。
+- 本人副本：internal-portal-completion + internal-email-copy共15 tests通過；原外部與交付安全：security-core-esign-flow + esign-document-delivery-security共16 tests通過。
+- Worker固定快照與領取時重新授權已有07 ZIP回歸證據；檔案lint 0 errors/warnings及diff check通過。
+- 尚未執行UAT回填或部署。
+
+整合commit：`git log --grep="test(spec017): verify export authorization boundaries"`；client實作見e5f1de2。

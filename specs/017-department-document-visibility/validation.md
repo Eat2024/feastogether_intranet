@@ -75,3 +75,11 @@
 - 所有一般匯出、歷史項目／分頁／total／typeTotals先限制文件部門；指定document/job/file及PDF record/signer/document關係均驗證。原建立人調職不能匯出，現有舊網址重新授權。
 - 同部門非建立人成功、跨部門本人副本仍可使用，worker固定快照／Range下載回歸通過。一般下載更名departmentFile/downloadDepartmentCopy；本人與外部入口維持原資格。
 - CompletionAccess單元17 tests、server build、diff check通過；修改檔ESLint 0 errors／17既有warnings。未執行UAT。
+
+## Ticket 08（T033–T036）
+
+- Client部分隨05整合；07完成後重啟真實合成API，Chrome三session重驗26個API請求，實際點擊匯出下載.xlsx並以既有ExcelJS解析：姓名與Email正確、note未洩漏，歷史count=1，跨部門以紀錄ID重下載404。
+- 部門security 10/10（原4案+新增6案）通過：所有匯出URL、跨部門／大小寫異碼、NULL、invalid cookie、調職舊session、軟刪除、document/job/file與history/signer錯置；拒絕後DB／檔案metadata／queue不變且沒有stat／stream／enqueue。
+- 本人副本：internal-portal-completion + internal-email-copy共15 tests通過；原外部與交付安全：security-core-esign-flow + esign-document-delivery-security共16 tests通過。
+- Worker固定快照與領取時重新授權已有07 ZIP回歸證據；檔案lint 0 errors/warnings及diff check通過。
+- 尚未執行UAT回填或部署。

@@ -6,6 +6,12 @@ import { In } from 'typeorm';
 import { User } from '#app/features/users/entities/user.entity';
 import { AuthSession } from '#app/features/auth/entities/auth-session.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
+import { EsignExportJob } from '#app/features/esign/entities/esign-export-job.entity';
+import { EsignFileObject } from '#app/features/esign/entities/esign-file-object.entity';
+import {
+  PRIVATE_FILE_STORAGE,
+  type PrivateFileStorage,
+} from '#app/infrastructure/file-storage/private-file-storage.port';
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
 import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
 import { EsignNotificationBatch } from '#app/features/esign/entities/esign-notification-batch.entity';
@@ -253,5 +259,418 @@ describe('Spec017 部門管理安全邊界', () => {
     expect(
       await Promise.all(queues.map((queue) => queue.getJobCounts())),
     ).toEqual(queueBefore);
+  });
+});
+
+/** 使用真實 guard／repository 與合成資源，驗證授權早於查檔、寫紀錄及排入工作。 */
+describe('Spec017 一般匯出直接網址安全邊界', () => {
+  let ctx: SecurityE2eContext;
+  let fixture: Awaited<ReturnType<typeof createDepartmentFixtures>>;
+  const documents: EsignDocument[] = [];
+  const signers: EsignSigner[] = [];
+  const zipJobs: EsignExportJob[] = [];
+  const zipFiles: EsignFileObject[] = [];
+  let excel: EsignExportJob;
+  let pdf: EsignExportJob;
+
+  interface Route {
+    method: 'get' | 'post';
+    path: string;
+    body?: object;
+    range?: boolean;
+  }
+
+  beforeAll(async () => {
+    ctx = await createSecurityE2eApp();
+    fixture = await createDepartmentFixtures(ctx);
+    const { manager, users } = fixture;
+    for (let index = 0; index < 2; index += 1) {
+      const document = await fixture.createDocument(users.a1, {
+        title: `合成匯出安全文件-${randomUUID()}`,
+        status: 'active',
+        signStartAt: new Date(Date.now() - 60_000),
+        signEndAt: new Date(Date.now() + 86_400_000),
+      });
+      documents.push(document);
+      const signer = await manager.save(
+        EsignSigner,
+        manager.create(EsignSigner, {
+          publicId: randomUUID(),
+          documentId: document.id,
+          signerType: 'email',
+          nameSnapshot: '合成匯出簽署人',
+          email: 'export-private017@example.test',
+          status: 'signed',
+          signedAt: new Date(),
+          completionStatus: 'pending',
+          sortOrder: 0,
+          note: '不得揭露的匯出管理備註',
+        }),
+      );
+      signers.push(signer);
+      const job = await manager.save(
+        EsignExportJob,
+        manager.create(EsignExportJob, {
+          publicId: randomUUID(),
+          documentId: document.id,
+          createdByUserId: users.a1.id,
+          exportType: 'signed_copies_zip',
+          status: 'completed',
+          scopeDescription: '合成 ZIP',
+          snapshotAt: new Date(),
+          snapshotJson: [],
+          recordCount: 1,
+          completedAt: new Date(),
+          expiresAt: new Date(Date.now() + 86_400_000),
+        }),
+      );
+      zipJobs.push(job);
+      zipFiles.push(
+        await manager.save(
+          EsignFileObject,
+          manager.create(EsignFileObject, {
+            exportJobId: job.id,
+            filePurpose: 'signed_copies_zip',
+            objectKey: `spec017-security/${randomUUID()}.zip`,
+            originalFileName: '合成不可讀檔.zip',
+            mimeType: 'application/zip',
+            fileSize: 16,
+            sha256: 'a'.repeat(64),
+          }),
+        ),
+      );
+    }
+    excel = await manager.save(
+      EsignExportJob,
+      manager.create(EsignExportJob, {
+        publicId: randomUUID(),
+        documentId: documents[0].id,
+        createdByUserId: users.a1.id,
+        exportType: 'excel',
+        status: 'completed',
+        scopeDescription: '合成 Excel',
+        recordCount: 1,
+        conditionsJson: { statuses: [], depts: [], fields: ['name'] },
+        completedAt: new Date(),
+      }),
+    );
+    pdf = await manager.save(
+      EsignExportJob,
+      manager.create(EsignExportJob, {
+        publicId: randomUUID(),
+        documentId: documents[0].id,
+        createdByUserId: null,
+        signerId: signers[0].id,
+        exportType: 'pdf',
+        status: 'completed',
+        scopeDescription: '合成外部本人 PDF 紀錄',
+        recordCount: 1,
+        completedAt: new Date(),
+      }),
+    );
+  });
+
+  afterAll(async () => {
+    if (fixture) {
+      const { manager, users } = fixture;
+      const documentIds = documents.map((document) => document.id);
+      const jobs = await manager.find(EsignExportJob, {
+        where: { documentId: In(documentIds) },
+      });
+      if (jobs.length)
+        await manager.delete(EsignFileObject, {
+          exportJobId: In(jobs.map((job) => job.id)),
+        });
+      await manager.delete(EsignExportJob, { documentId: In(documentIds) });
+      await manager.delete(EsignAuditEvent, { documentId: In(documentIds) });
+      await manager.delete(EsignSigner, { documentId: In(documentIds) });
+      await manager.delete(EsignDocument, { id: In(documentIds) });
+      const userIds = Object.values(users).map((user) => user.id);
+      await manager.delete(AuthSession, { userId: In(userIds) });
+      await manager.delete(User, { id: In(userIds) });
+    }
+    if (ctx) await closeSecurityE2eApp(ctx);
+  });
+
+  const documentPath = (index = 0) =>
+    `/api/esign/documents/${documents[index].id}`;
+  const zipPath = (documentIndex = 0, jobIndex = 0) =>
+    `${documentPath(documentIndex)}/exports/${zipJobs[jobIndex].publicId}`;
+  const historyPath = (type: string) =>
+    `/api/esign/history/export?type=${type}&documentId=${documents[0].id}`;
+  const listPath = () =>
+    `/api/esign/exportable-documents?q=${encodeURIComponent(documents[0].title)}`;
+  const excelBody = () => ({
+    type: 'excel',
+    documentId: String(documents[0].id),
+    scope: '全部',
+    count: 1,
+    conditions: { statuses: [], depts: [], fields: ['name'] },
+  });
+  const directRoutes = (): Route[] => [
+    { method: 'get', path: `${documentPath()}?view=export` },
+    {
+      method: 'post',
+      path: `${documentPath()}/exports`,
+      body: { type: 'signed_copies_zip' },
+    },
+    { method: 'get', path: zipPath() },
+    { method: 'post', path: `${zipPath()}/retries` },
+    {
+      method: 'get',
+      path: `${zipPath()}/files/${zipFiles[0].id}`,
+      range: true,
+    },
+    { method: 'post', path: '/api/esign/history/export', body: excelBody() },
+    {
+      method: 'get',
+      path: `/api/esign/history/export/${excel.publicId}/document`,
+    },
+    {
+      method: 'post',
+      path: `/api/esign/history/export/${pdf.publicId}/downloads`,
+    },
+    {
+      method: 'post',
+      path: `${documentPath()}/signers/${signers[0].publicId}/completed-file/downloads`,
+    },
+  ];
+  const listRoutes = (): Route[] => [
+    { method: 'get', path: listPath() },
+    ...['excel', 'pdf', 'zip'].map(
+      (type): Route => ({ method: 'get', path: historyPath(type) }),
+    ),
+  ];
+
+  async function rejectRoutes(routes: Route[], cookie: string, status: number) {
+    for (const route of routes) {
+      const call = request(ctx.server)
+        [route.method](route.path)
+        .set('Cookie', cookie)
+        .set('Origin', origin);
+      if (route.body) call.send(route.body);
+      if (route.range)
+        call.set('Range', 'bytes=0-3').set('If-Range', '"synthetic-etag"');
+      const response = await call;
+      expect({ route: route.path, status: response.status }).toEqual({
+        route: route.path,
+        status,
+      });
+      expect(response.headers['content-type']).toMatch(/application\/json/);
+      expect(response.headers['content-disposition']).toBeUndefined();
+      expect(response.headers['content-range']).toBeUndefined();
+      expect(response.headers.etag).toBeUndefined();
+      for (const secret of [
+        documents[0].title,
+        'export-private017@example.test',
+        '不得揭露的匯出管理備註',
+        zipFiles[0].objectKey,
+      ])
+        expect(response.text).not.toContain(secret);
+      if (status === 409)
+        expect(apiError(response).code).toBe('ESIGN_DEPARTMENT_UNAVAILABLE');
+      if (status === 404)
+        expect(apiError(response).code).toBe('ESIGN_RESOURCE_NOT_FOUND');
+    }
+  }
+
+  async function assertEmptyLists(cookie: string) {
+    const listed = await request(ctx.server)
+      .get(listPath())
+      .set('Cookie', cookie)
+      .expect(200);
+    expect(apiData<{ items: unknown[] }>(listed).items).toEqual([]);
+    for (const type of ['excel', 'pdf', 'zip']) {
+      const response = await request(ctx.server)
+        .get(historyPath(type))
+        .set('Cookie', cookie)
+        .expect(200);
+      expect(apiData(response)).toMatchObject({
+        items: [],
+        total: 0,
+        typeTotals: { excel: 0, pdf: 0, zip: 0 },
+      });
+    }
+  }
+
+  async function withoutSideEffects(run: () => Promise<void>) {
+    const { manager } = fixture;
+    const ids = documents.map((document) => document.id);
+    const snapshot = async () => ({
+      documents: await manager.find(EsignDocument, {
+        where: { id: In(ids) },
+        withDeleted: true,
+        order: { id: 'ASC' },
+      }),
+      signers: await manager.find(EsignSigner, {
+        where: { documentId: In(ids) },
+        order: { id: 'ASC' },
+      }),
+      jobs: await manager.find(EsignExportJob, {
+        where: { documentId: In(ids) },
+        order: { id: 'ASC' },
+      }),
+      files: await manager.find(EsignFileObject, {
+        where: { exportJobId: In(zipJobs.map((job) => job.id)) },
+        order: { id: 'ASC' },
+      }),
+      audits: await manager.count(EsignAuditEvent, {
+        where: { documentId: In(ids) },
+      }),
+    });
+    const before = await snapshot();
+    const queue = ctx.app.get<Queue>(getQueueToken(ESIGN_EXPORT_QUEUE));
+    const queuedBefore = await queue.getJobCounts();
+    const enqueue = jest.spyOn(queue, 'add');
+    const storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
+    const read = jest.spyOn(storage, 'openReadStream');
+    const stat = storage.stat ? jest.spyOn(storage, 'stat') : undefined;
+    try {
+      await run();
+      expect(await snapshot()).toEqual(before);
+      expect(await queue.getJobCounts()).toEqual(queuedBefore);
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
+      if (stat) expect(stat).not.toHaveBeenCalled();
+    } finally {
+      enqueue.mockRestore();
+      read.mockRestore();
+      stat?.mockRestore();
+    }
+  }
+
+  it('合成工作與紀錄可由同部門讀取，外部匯出人依文件部門歸屬', async () => {
+    const cookie = fixture.cookies.a2;
+    const listed = await request(ctx.server)
+      .get(listPath())
+      .set('Cookie', cookie)
+      .expect(200);
+    expect(
+      apiData<{ items: { documentId: string }[] }>(listed).items.map(
+        (item) => item.documentId,
+      ),
+    ).toEqual([String(documents[0].id)]);
+    await request(ctx.server).get(zipPath()).set('Cookie', cookie).expect(200);
+    const preview = await request(ctx.server)
+      .get(`${documentPath()}?view=export`)
+      .set('Cookie', cookie)
+      .expect(200);
+    expect(
+      apiData<{ signers: { email: string }[] }>(preview).signers[0].email,
+    ).toBe('export-private017@example.test');
+    expect(preview.text).not.toContain('不得揭露的匯出管理備註');
+    for (const type of ['excel', 'pdf', 'zip']) {
+      const response = await request(ctx.server)
+        .get(historyPath(type))
+        .set('Cookie', cookie)
+        .expect(200);
+      expect(apiData(response)).toMatchObject({
+        total: 1,
+        typeTotals: { excel: 1, pdf: 1, zip: 1 },
+      });
+    }
+  });
+
+  it('跨部門所有一般匯出直接網址拒絕，列表與筆數不可外洩且無副作用', async () => {
+    await withoutSideEffects(async () => {
+      for (const cookie of [fixture.cookies.b1, fixture.cookies.sameName]) {
+        await rejectRoutes(directRoutes(), cookie, 404);
+        await assertEmptyLists(cookie);
+      }
+    });
+  });
+
+  it('缺部門409、失效cookie401涵蓋列表與所有直接網址，先拒絕再查檔', async () => {
+    await withoutSideEffects(async () => {
+      const routes = [...listRoutes(), ...directRoutes()];
+      await rejectRoutes(routes, fixture.cookies.missing, 409);
+      await rejectRoutes(
+        routes,
+        'FT_ESIGN_SESSION=invalid-synthetic-cookie',
+        401,
+      );
+    });
+  });
+
+  it('原建立人調職後舊session與舊下載網址失效，不能沿用建立人或原匯出人例外', async () => {
+    const { manager, users, cookies } = fixture;
+    await manager.update(User, users.a1.id, { departmentCode: 'B001' });
+    try {
+      await withoutSideEffects(async () => {
+        await rejectRoutes(directRoutes(), cookies.a1, 404);
+        await assertEmptyLists(cookies.a1);
+      });
+    } finally {
+      await manager.update(User, users.a1.id, { departmentCode: 'A001' });
+    }
+  });
+
+  it('軟刪除文件不能沿用歷史／工作／檔案網址，列表與計數同步歸零', async () => {
+    await fixture.manager.softDelete(EsignDocument, documents[0].id);
+    try {
+      await withoutSideEffects(async () => {
+        await rejectRoutes(directRoutes(), fixture.cookies.a2, 404);
+        await assertEmptyLists(fixture.cookies.a2);
+      });
+    } finally {
+      await fixture.manager.restore(EsignDocument, documents[0].id);
+    }
+  });
+
+  it('同部門有效ID錯置仍拒絕document/job/file、紀錄類型及document/signer關係', async () => {
+    await withoutSideEffects(async () => {
+      await rejectRoutes(
+        [
+          { method: 'get', path: zipPath(1, 0) },
+          { method: 'post', path: `${zipPath(1, 0)}/retries` },
+          {
+            method: 'get',
+            path: `${zipPath(1, 0)}/files/${zipFiles[0].id}`,
+            range: true,
+          },
+          {
+            method: 'get',
+            path: `${zipPath()}/files/${zipFiles[1].id}`,
+            range: true,
+          },
+          {
+            method: 'get',
+            path: `/api/esign/history/export/${pdf.publicId}/document`,
+          },
+          {
+            method: 'post',
+            path: `/api/esign/history/export/${excel.publicId}/downloads`,
+          },
+          {
+            method: 'post',
+            path: `${documentPath()}/signers/${signers[1].publicId}/completed-file/downloads`,
+          },
+        ],
+        fixture.cookies.a2,
+        404,
+      );
+    });
+    // DB 外鍵各自有效，但紀錄的 signer 與 document 不一致，仍須在下載前拒絕。
+    await fixture.manager.update(EsignExportJob, pdf.id, {
+      signerId: signers[1].id,
+    });
+    try {
+      await withoutSideEffects(() =>
+        rejectRoutes(
+          [
+            {
+              method: 'post',
+              path: `/api/esign/history/export/${pdf.publicId}/downloads`,
+            },
+          ],
+          fixture.cookies.a2,
+          404,
+        ),
+      );
+    } finally {
+      await fixture.manager.update(EsignExportJob, pdf.id, {
+        signerId: signers[0].id,
+      });
+    }
   });
 });

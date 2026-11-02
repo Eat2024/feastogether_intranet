@@ -7,8 +7,6 @@ import { NotificationRepository } from '#app/features/esign/repositories/notific
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
-import { INVITATION_MAIL_SENDER } from '#app/infrastructure/mail/invitation-mail-sender.port';
-import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
@@ -19,6 +17,7 @@ import { apiData, apiError } from './api-response.helper';
 import {
   closeSecurityE2eApp,
   createSecurityE2eApp,
+  mailFixture,
   type SecurityE2eContext,
 } from './security-e2e.helper';
 function launchJwt(empid: string) {
@@ -63,6 +62,35 @@ describe('內外部催簽 API', () => {
         }),
       }),
     );
+    mailFixture(ctx).allowEmails([
+      'reminder@example.test',
+      'e2e00905@example.test',
+      'batch0@example.test',
+      'batch1@example.test',
+      'batch2@example.test',
+      'batch3@example.test',
+      'batch4@example.test',
+      'batch5@example.test',
+      'batch6@example.test',
+      'batch7@example.test',
+      'batch8@example.test',
+      'batch9@example.test',
+      'batch10@example.test',
+      'batch11@example.test',
+      'batch12@example.test',
+      'batch13@example.test',
+      'batch14@example.test',
+      'batch15@example.test',
+      'batch16@example.test',
+      'batch17@example.test',
+      'batch18@example.test',
+      'batch19@example.test',
+      'batch20@example.test',
+      'batch21@example.test',
+      'batch22@example.test',
+      'mixed0@example.test',
+      'mixed1@example.test',
+    ]);
     db = ctx.app.get(MYSQL_MAIN);
     const launch = await request(ctx.server)
       .post('/api/auth/webview-launches')
@@ -182,16 +210,14 @@ describe('內外部催簽 API', () => {
       'SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.public_id=?',
       [batch.batchId],
     );
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const processor = new ExternalInvitationProcessor(
       ctx.app.get(MysqlService),
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
       ctx.app.get(EsignAuditService),
-      mailer,
+      mailFixture(ctx).guard(mailer),
     );
     const before = mailer.deliveries.length;
     const job = { data: { notificationLogId: ids[0].id } } as Job<{
@@ -240,16 +266,14 @@ describe('內外部催簽 API', () => {
       }>,
     };
   }
-  function worker(
-    mailer = ctx.app.get<FakeInvitationMailSender>(INVITATION_MAIL_SENDER),
-  ) {
+  function worker(mailer = mailFixture(ctx).adapter) {
     return new ExternalInvitationProcessor(
       ctx.app.get(MysqlService),
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
       ctx.app.get(EsignAuditService),
-      mailer,
+      mailFixture(ctx).guard(mailer),
     );
   }
   async function result(doc: Detail, batch: Batch) {
@@ -284,9 +308,7 @@ describe('內外部催簽 API', () => {
       status: 'failed',
       reasonCode: 'INVITATION_SUPERSEDED',
     });
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const sent = mailer.deliveries.length;
     await worker().process(job);
     expect(mailer.deliveries.length).toBe(sent);
@@ -324,9 +346,7 @@ describe('內外部催簽 API', () => {
       })
       .expect(201);
     expect(await result(doc, batch)).toEqual(before);
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const sent = mailer.deliveries.length;
     await worker().process(job);
     expect(mailer.deliveries.length).toBe(sent);
@@ -339,9 +359,7 @@ describe('內外部催簽 API', () => {
       "SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? AND b.kind='invitation'",
       [doc.id],
     );
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     await worker().process({
       data: { notificationLogId: initial[0].id },
     } as Job<{ notificationLogId: number }>);
@@ -379,9 +397,7 @@ describe('內外部催簽 API', () => {
   it('SMTP 未知結果不重寄、當日佔額度，回應不含原始錯誤或憑證', async () => {
     const doc = await create();
     const queued = await queueOne(doc);
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const send = jest
       .spyOn(mailer, 'send')
       .mockRejectedValue(new Error('smtp secret@example.test token=secret'));
@@ -407,9 +423,7 @@ describe('內外部催簽 API', () => {
   it('明確未寄送最多三次，重試同一明細；終態不再投遞', async () => {
     const doc = await create();
     const queued = await queueOne(doc);
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const send = jest
       .spyOn(mailer, 'send')
       .mockRejectedValue({ responseCode: 450 });
@@ -441,9 +455,7 @@ describe('內外部催簽 API', () => {
       .set('Origin', origin)
       .send({ reason: '測試停止' })
       .expect(201);
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const before = mailer.deliveries.length;
     await worker().process(queued.job);
     expect((await result(doc, queued.batch)).items[0]).toMatchObject({
@@ -592,9 +604,7 @@ describe('內外部催簽 API', () => {
       'SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.public_id=?',
       [batch.batchId],
     );
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const before = mailer.deliveries.length;
     const beforeGroups = mailer.internalGroupDeliveries.length;
     for (const row of rows)
@@ -640,9 +650,7 @@ describe('內外部催簽 API', () => {
       );
     const originalSnapshot = await snapshot();
     const hr = jest.spyOn(ctx.app.get(FeastogetherHrService), 'getStaffEmails');
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const sent = {
       external: mailer.deliveries.length,
       internal: mailer.internalGroupDeliveries.length,
@@ -737,9 +745,7 @@ describe('內外部催簽 API', () => {
       'SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? ORDER BY l.id',
       [doc.id],
     );
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const before = mailer.deliveries.length;
     const beforeGroups = mailer.internalGroupDeliveries.length;
     for (const row of rows)
@@ -788,9 +794,7 @@ describe('內外部催簽 API', () => {
   it('明確失敗仍待重試時不能另建批次，原明細成功後只寄出一次', async () => {
     const doc = await create();
     const queued = await queueOne(doc);
-    const mailer = ctx.app.get<FakeInvitationMailSender>(
-      INVITATION_MAIL_SENDER,
-    );
+    const mailer = mailFixture(ctx).adapter;
     const send = jest
       .spyOn(mailer, 'send')
       .mockRejectedValueOnce({ responseCode: 450 });
@@ -839,9 +843,7 @@ describe('內外部催簽 API', () => {
       await runner.connect();
       await runner.startTransaction();
       let pending: Promise<unknown> | undefined;
-      const mailer = ctx.app.get<FakeInvitationMailSender>(
-        INVITATION_MAIL_SENDER,
-      );
+      const mailer = mailFixture(ctx).adapter;
       const before = mailer.deliveries.length;
       try {
         await runner.query(

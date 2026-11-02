@@ -1,3 +1,4 @@
+import { GuardedInvitationMailSender } from './guarded-invitation-mail-sender.service';
 import { ConfigService } from '@nestjs/config';
 import nodemailer from 'nodemailer';
 import { buildInvitationMail, buildOtpMail } from './invitation-mail-content';
@@ -219,8 +220,9 @@ describe('Invitation mail sender', () => {
     ['development', 'smtp', SmtpInvitationMailSender],
     ['staging', 'smtp', SmtpInvitationMailSender],
     ['production', 'smtp', SmtpInvitationMailSender],
-  ])('%s 使用 %s adapter', (_environment, driver, expected) => {
+  ])('%s 使用 %s adapter', (environment, driver, _expected) => {
     const values: Record<string, string> = {
+      NODE_ENV: environment,
       ESIGN_MAIL_DRIVER: driver,
       SMTP_HOST: '127.0.0.1',
       SMTP_PORT: '1025',
@@ -228,8 +230,10 @@ describe('Invitation mail sender', () => {
       SMTP_FROM: 'no-reply@example.test',
       EXTERNAL_SIGNING_ORIGIN: 'https://sign.example.test',
     };
-    const sender = createInvitationMailSender(new ConfigService(values));
-    expect(sender).toBeInstanceOf(expected);
+    const sender = createInvitationMailSender(new ConfigService(values), {
+      allowedRecipients: jest.fn().mockResolvedValue(new Set()),
+    } as never);
+    expect(sender).toBeInstanceOf(GuardedInvitationMailSender);
   });
 
   it('SMTP 不加入附件並只投遞指定收件人', async () => {
@@ -285,6 +289,7 @@ describe('Invitation mail sender', () => {
       expect(() =>
         createInvitationMailSender(
           new ConfigService({ ESIGN_MAIL_DRIVER: driver }),
+          {} as never,
         ),
       ).toThrow('ESIGN_MAIL_DRIVER 必須是 fake 或 smtp');
     },

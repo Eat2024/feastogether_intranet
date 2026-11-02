@@ -261,6 +261,10 @@ export class NotificationRepository {
       .andWhere('(log.error_code IS NULL OR log.error_code <> :superseded)', {
         superseded: 'INVITATION_SUPERSEDED',
       })
+      .andWhere(
+        '(log.error_code IS NULL OR log.error_code <> :policyFailure OR log.attempt_count < 3)',
+        { policyFailure: 'MAIL_WHITELIST_CHECK_FAILED' },
+      )
       .andWhere('log.id > :afterId', { afterId })
       .orderBy('log.id', 'ASC')
       .limit(100)

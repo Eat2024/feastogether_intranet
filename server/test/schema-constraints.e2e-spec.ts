@@ -263,6 +263,8 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_signers_identity',
           'chk_esign_signers_status',
           'chk_esign_signers_terminal_times',
+          'chk_mail_recipient_whitelist_type',
+          'chk_mail_recipient_whitelist_value',
         ]);
       } finally {
         await ds.destroy();

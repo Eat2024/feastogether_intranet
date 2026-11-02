@@ -6,13 +6,11 @@ import type { IncomingMessage } from 'node:http';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
-import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { getQueueToken } from '@nestjs/bullmq';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
-import { WorkerModule } from '#app/worker.module';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import { DocumentExportProcessor } from '#app/worker/esign/document-export.processor';
 import { EsignMaintenanceProcessor } from '#app/worker/esign/esign-maintenance.processor';
@@ -22,6 +20,8 @@ import { apiData } from './api-response.helper';
 import {
   closeSecurityE2eApp,
   createSecurityE2eApp,
+  mailFixture,
+  createSyntheticWorker,
   type SecurityE2eContext,
 } from './security-e2e.helper';
 import {
@@ -108,6 +108,12 @@ describe('Spec009 跨故事與管理安全邊界', () => {
           }),
       }),
     );
+    mailFixture(ctx).allowEmails([
+      'integration-reject@example.test',
+      'integration-pending@example.test',
+      'private-a@example.test',
+      'private-b@example.test',
+    ]);
     db = ctx.app.get(MYSQL_MAIN);
     const launch = await request(ctx.server)
       .post('/api/auth/webview-launches')
@@ -353,9 +359,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       .send(rejectBody)
       .expect(201);
     expect(JSON.stringify(rejectResponse.body)).not.toContain(note);
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       await finishCopy(worker, doc.id, internal.publicId);
       expect((await read(doc.id)).status).toBe('active');
@@ -594,9 +598,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
     for (const secret of [note, b.publicId, 'private-b@example.test'])
       expect(JSON.stringify(rejectedView.body)).not.toContain(secret);
     await signInternal(internal.publicId);
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       await finishCopy(worker, doc.id, internal.publicId);
       const exported = await exportDocument(worker, doc.id, other);
@@ -675,9 +677,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
   it('既有全簽 v2 manifest 與副本經備註、匯出、重送結案後均不變', async () => {
     const doc = await create([{ type: 'user', userId }]);
     const signed = await signInternal(doc.signers[0].publicId);
-    const worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    const worker = await createSyntheticWorker(ctx);
     try {
       await finishCopy(worker, doc.id, doc.signers[0].publicId);
       expect((await read(doc.id)).status).toBe('completed');

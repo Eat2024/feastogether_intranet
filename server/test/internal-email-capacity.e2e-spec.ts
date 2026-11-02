@@ -27,6 +27,7 @@ import {
 import { apiData } from './api-response.helper';
 import {
   createSecurityE2eApp,
+  mailFixture,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -103,6 +104,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
       order: { empid: 'ASC' },
     });
     expect(users).toHaveLength(6000);
+    mailFixture(ctx).allowEmails(users.map((user) => email(user.empid)));
     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -421,7 +423,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
         ctx.app.get(EsignAuditService),
-        mailer,
+        mailFixture(ctx).guard(mailer),
       );
       await worker.process({ data: { notificationBatchId: batchId } } as Job<{
         notificationBatchId: number;

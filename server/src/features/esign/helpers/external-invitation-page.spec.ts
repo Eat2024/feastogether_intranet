@@ -3,6 +3,7 @@ import {
   invitationInvalidPage,
   otpInputPage,
   otpMailFailedPage,
+  otpRecipientBlockedPage,
   otpRejectedPage,
   serviceUnavailablePage,
   signingNotStartedPage,
@@ -229,4 +230,11 @@ describe('外部簽署邀請頁', () => {
       /https?:|<link|<script[^>]*\ssrc=|<img|@import|url\(/i,
     );
   });
+});
+
+it('白名單阻擋頁不顯示寄出成功或輸入新碼表單', () => {
+  const html = otpRecipientBlockedPage();
+  expect(html).toContain('此環境未開放寄送至此收件人，請聯絡系統管理員');
+  expect(html).not.toContain('<form');
+  expect(html).not.toContain('已寄送');
 });

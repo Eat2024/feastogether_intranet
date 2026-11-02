@@ -1,3 +1,4 @@
+import type { SendInternalGroupMailInput } from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { HttpService } from '@nestjs/axios';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { of, from, throwError } from 'rxjs';
@@ -19,6 +20,7 @@ import { esignTestPng } from './esign-test-png';
 import { apiData } from './api-response.helper';
 import {
   createSecurityE2eApp,
+  mailFixture,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -86,6 +88,14 @@ describe('Spec016 內部發起與邀請', () => {
     ctx = await createSecurityE2eApp((builder) =>
       builder.overrideProvider(HttpService).useValue(http),
     );
+    mailFixture(ctx).allowEmails([
+      'external0@example.test',
+      'external1@example.test',
+      'shared@example.test',
+      'external@example.test',
+      'batch@example.test',
+      'fresh@example.test',
+    ]);
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = randomBytes(5).toString('hex');
     users = await manager.save(
@@ -183,17 +193,19 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
       ctx.app.get(EsignAuditService),
-      {
-        send,
-        sendInternalGroup: (input) =>
-          Promise.resolve(
-            input.recipientEmails.map((recipientEmail) => ({
-              recipientEmail,
-              status: 'accepted' as const,
-              retryable: false,
-            })),
-          ),
-      },
+      mailFixture(ctx).guard(
+        Object.assign(new FakeInvitationMailSender(), {
+          send,
+          sendInternalGroup: (input: SendInternalGroupMailInput) =>
+            Promise.resolve(
+              input.recipientEmails.map((recipientEmail) => ({
+                recipientEmail,
+                status: 'accepted' as const,
+                retryable: false,
+              })),
+            ),
+        }),
+      ),
     );
   }
   const deliver = (worker: ExternalInvitationProcessor, id: number) =>
@@ -484,7 +496,9 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
       ctx.app.get(EsignAuditService),
-      mailer,
+      mailFixture(ctx).guard(
+        Object.assign(new FakeInvitationMailSender(), mailer),
+      ),
     );
     const logs = await ctx.app
       .get(MysqlService)
@@ -536,7 +550,9 @@ describe('Spec016 內部發起與邀請', () => {
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
         ctx.app.get(EsignAuditService),
-        mailer,
+        mailFixture(ctx).guard(
+          Object.assign(new FakeInvitationMailSender(), mailer),
+        ),
       );
       await worker.process({ data: { notificationLogId: log.id } } as Job<{
         notificationLogId: number;
@@ -565,7 +581,9 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
       ctx.app.get(EsignAuditService),
-      mailer,
+      mailFixture(ctx).guard(
+        Object.assign(new FakeInvitationMailSender(), mailer),
+      ),
     );
     await worker.process({ data: { notificationLogId: log.id } } as Job<{
       notificationLogId: number;
@@ -603,7 +621,9 @@ describe('Spec016 內部發起與邀請', () => {
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
         ctx.app.get(EsignAuditService),
-        mailer,
+        mailFixture(ctx).guard(
+          Object.assign(new FakeInvitationMailSender(), mailer),
+        ),
       );
       await worker.process({ data: { notificationLogId: log.id } } as Job<{
         notificationLogId: number;
@@ -674,7 +694,9 @@ describe('Spec016 內部發起與邀請', () => {
           ctx.app.get(SignerRepository),
           ctx.app.get(EsignTokenService),
           ctx.app.get(EsignAuditService),
-          mailer,
+          mailFixture(ctx).guard(
+            Object.assign(new FakeInvitationMailSender(), mailer),
+          ),
         );
         await deliver(worker, (await notificationLogs())[0].id);
         expect(
@@ -782,7 +804,9 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
       ctx.app.get(EsignAuditService),
-      mailer,
+      mailFixture(ctx).guard(
+        Object.assign(new FakeInvitationMailSender(), mailer),
+      ),
     );
     await deliver(worker, (await notificationLogs())[0].id);
     expect(
@@ -836,7 +860,9 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
       ctx.app.get(EsignAuditService),
-      mailer,
+      mailFixture(ctx).guard(
+        Object.assign(new FakeInvitationMailSender(), mailer),
+      ),
     );
     for (const log of await notificationLogs()) await deliver(worker, log.id);
     expect(mailer.internalGroupDeliveries).toEqual([]);

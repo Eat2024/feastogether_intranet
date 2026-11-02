@@ -1,8 +1,6 @@
 import { getQueueToken } from '@nestjs/bullmq';
 import type { INestApplicationContext } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import type { Job, Queue } from 'bullmq';
-import { WorkerModule } from '#app/worker.module';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import {
   ESIGN_DOCUMENT_FINALIZATION_QUEUE,
@@ -28,6 +26,7 @@ import { apiData } from './api-response.helper';
 import { esignTestPng } from './esign-test-png';
 import {
   createSecurityE2eApp,
+  createSyntheticWorker,
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
@@ -65,9 +64,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
       await queue.pause();
       queues.push(queue);
     }
-    worker = await NestFactory.createApplicationContext(WorkerModule, {
-      logger: false,
-    });
+    worker = await createSyntheticWorker(ctx);
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = randomBytes(5).toString('hex');
     users = await manager.save(

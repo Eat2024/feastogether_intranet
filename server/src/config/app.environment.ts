@@ -93,8 +93,7 @@ function validateMailAddress(value: string, key: string): void {
  * Driver 只能依 NODE_ENV 選擇，避免 production 因設定錯誤降級到本機檔案或 fake mailer。
  */
 export function validateAppEnvironment(config: Environment): Environment {
-  const environment = (optionalString(config, 'NODE_ENV') ??
-    AppEnvironment.Development) as AppEnvironment;
+  const environment = config.NODE_ENV as AppEnvironment;
 
   if (!Object.values(AppEnvironment).includes(environment)) {
     throw new Error(`不支援的 NODE_ENV：${environment}`);

@@ -1,3 +1,7 @@
+import {
+  MailRecipientBlockedError,
+  MailWhitelistCheckFailedError,
+} from '#app/infrastructure/mail/mail-recipient-policy.errors';
 import { ConfigService } from '@nestjs/config';
 import type { Job } from 'bullmq';
 import nodemailer from 'nodemailer';
@@ -142,6 +146,56 @@ describe('ExternalInvitationProcessor', () => {
     expect(JSON.stringify(audit.append.mock.calls)).not.toMatch(
       /candidate@example|opaque-invitation-token|encrypted-token/,
     );
+  });
+
+  it('白名單阻擋為 skipped，清除暫存憑證而不寫成功，重複工作不補寄', async () => {
+    const { processor, mailer, log, signer, audit } = setup();
+    mailer.send.mockRejectedValue(new MailRecipientBlockedError());
+    await processor.process(job);
+    expect(log).toMatchObject({
+      result: 'skipped',
+      errorCode: 'MAIL_RECIPIENT_NOT_WHITELISTED',
+      nextAttemptAt: null,
+      processingStartedAt: null,
+      completedAt: expect.any(Date),
+    });
+    expect(signer.invitationTokenCiphertext).toBeNull();
+    expect(signer.status).toBe('pending');
+    expect(audit.append).not.toHaveBeenCalled();
+    await processor.process(job);
+    expect(mailer.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('白名單檢查故障最多三次含首次，30/60秒退避且第四次舊工作不再寄送', async () => {
+    jest.useFakeTimers();
+    try {
+      const { processor, mailer, log, signer, audit } = setup();
+      mailer.send.mockRejectedValue(new MailWhitelistCheckFailedError());
+      const now = Date.now();
+      await processor.process(job);
+      expect(log).toMatchObject({
+        result: 'failed',
+        errorCode: 'MAIL_WHITELIST_CHECK_FAILED',
+        attemptCount: 1,
+        nextAttemptAt: new Date(now + 30_000),
+      });
+      jest.setSystemTime(now + 30_000);
+      await processor.process(job);
+      expect(log.nextAttemptAt).toEqual(new Date(now + 90_000));
+      jest.setSystemTime(now + 90_000);
+      await processor.process(job);
+      expect(log).toMatchObject({
+        attemptCount: 3,
+        nextAttemptAt: null,
+        completedAt: expect.any(Date),
+      });
+      await processor.process(job);
+      expect(mailer.send).toHaveBeenCalledTimes(3);
+      expect(signer.invitationTokenCiphertext).toBeNull();
+      expect(audit.append).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('provider 失敗只保存穩定 error code 與 DB retry time，不向 BullMQ 偽裝成功投遞', async () => {

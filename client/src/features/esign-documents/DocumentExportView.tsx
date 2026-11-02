@@ -27,6 +27,7 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useMutation } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -108,6 +109,8 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
   const { showSnackbar } = useSnackbar();
   const [, startTransition] = useTransition();
   const [content, setContent] = useState<ContentType>('list');
+  // TODO: 後端補上自訂檔名的 API 後，串接到 Excel 與 ZIP 的匯出（目前只保留輸入，不影響匯出檔名）
+  const [fileName, setFileName] = useState('');
   const query = useMemo(() => parseExportQuery(params), [params]);
   const deptOptions = useMemo(() => buildDeptOptions(doc.signers), [doc.signers]);
   const rows = useMemo(() => exportRows(doc.signers, query), [doc.signers, query]);
@@ -142,13 +145,18 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
 
   return (
     <>
+      {/* 與文件檢視頁相同：不顯示大標題，文件資訊逐行列出（說明在 Typography 內，每項以區塊 span 分行） */}
       <PageHeader
-        title={`匯出「${doc.title}」`}
         description={[
-          doc.docNumber,
-          `簽署期間 ${periodText(doc)}`,
-          `${DOCUMENT_STATUS_META[doc.status].label}（${signed}/${doc.signers.length} 已簽署）`,
-        ].join('・')}
+          `文件名稱：${doc.title}`,
+          `文件編號：${doc.docNumber}`,
+          `簽署期間：${periodText(doc)}`,
+          `文件狀態：${DOCUMENT_STATUS_META[doc.status].label}（${signed}/${doc.signers.length} 已簽署）`,
+        ].map((line) => (
+          <Box key={line} component="span" sx={{ display: 'block' }}>
+            {line}
+          </Box>
+        ))}
       />
 
       <Alert severity="warning" variant="outlined">
@@ -175,6 +183,16 @@ function ExportPage({ doc }: { doc: EsignDocumentDetail }) {
                 />
               ))}
             </RadioGroup>
+            <TextField
+              label="匯出檔案名稱"
+              size="small"
+              value={fileName}
+              onChange={(e) => setFileName(e.target.value)}
+              placeholder="未填寫時使用系統預設檔名"
+              helperText="尚未完成：待後端支援後，才會套用到匯出的檔案名稱"
+              slotProps={{ htmlInput: { maxLength: 100 } }}
+              sx={{ mt: 2, width: '100%', maxWidth: 480 }}
+            />
           </Section>
 
           {content === 'docs' ? (

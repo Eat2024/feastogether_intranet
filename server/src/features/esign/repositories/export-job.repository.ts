@@ -28,19 +28,30 @@ export class ExportJobRepository {
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
-  reusable(documentId: number, now: Date, manager: EntityManager) {
+  reusable(documentId: number, manager: EntityManager) {
     return manager
       .createQueryBuilder(EsignExportJob, 'job')
+      .select([
+        'job.id',
+        'job.publicId',
+        'job.documentId',
+        'job.status',
+        'job.snapshotAt',
+        'job.recordCount',
+        'job.processedCount',
+        'job.waitingCount',
+        'job.completedAt',
+        'job.failureCode',
+      ])
       .where('job.documentId = :documentId', { documentId })
       .andWhere(
         "job.exportType = 'signed_copies_zip' AND job.snapshotJson IS NOT NULL",
       )
       .andWhere(
-        "((job.status = 'completed' AND job.expiresAt > :now) OR job.status IN ('pending','waiting','processing','failed'))",
-        { now },
+        "(job.completedAt IS NOT NULL OR job.status IN ('completed','expired','pending','waiting','processing','failed'))",
       )
       .orderBy(
-        "CASE WHEN job.status = 'completed' THEN 0 WHEN job.status = 'failed' THEN 2 ELSE 1 END",
+        "CASE WHEN job.completedAt IS NOT NULL OR job.status IN ('completed','expired') THEN 0 WHEN job.status = 'failed' THEN 2 ELSE 1 END",
         'ASC',
       )
       .addOrderBy('job.id', 'DESC')
@@ -99,10 +110,7 @@ export class ExportJobRepository {
       .getMany();
   }
   latest(documentId: number, manager: EntityManager) {
-    return manager.findOne(EsignExportJob, {
-      where: { documentId, exportType: 'signed_copies_zip' },
-      order: { id: 'DESC' },
-    });
+    return this.reusable(documentId, manager);
   }
   /** 依匯出時間、流水號由新到舊列出一頁紀錄，帶出文件、匯出員工與簽署人。 */
   historyPage(
@@ -110,12 +118,18 @@ export class ExportJobRepository {
       exportType: EsignExportType;
       departmentCode: string;
       documentId?: number;
+      q?: string;
       offset: number;
       limit: number;
     },
     manager: EntityManager,
   ) {
-    return this.historyRecordsQuery(q.documentId, q.departmentCode, manager)
+    return this.historyRecordsQuery(
+      q.documentId,
+      q.departmentCode,
+      manager,
+      q.q,
+    )
       .andWhere('job.exportType = :exportType', { exportType: q.exportType })
       .orderBy('job.createdAt', 'DESC')
       .addOrderBy('job.id', 'DESC')
@@ -143,11 +157,13 @@ export class ExportJobRepository {
     documentId: number | undefined,
     departmentCode: string,
     manager: EntityManager,
+    q?: string,
   ) {
     const rows = await this.visibleHistoryQuery(
       documentId,
       departmentCode,
       manager,
+      q,
     )
       .andWhere('job.exportType IN (:...exportTypes)', { exportTypes })
       .select('job.exportType', 'exportType')
@@ -162,9 +178,10 @@ export class ExportJobRepository {
     documentId: number | undefined,
     departmentCode: string,
     manager: EntityManager,
+    q?: string,
   ) {
     return (
-      this.visibleHistoryQuery(documentId, departmentCode, manager)
+      this.visibleHistoryQuery(documentId, departmentCode, manager, q)
         // 不載入 ZIP 快照與已固定副本清單，單筆可達數千項。
         .select([
           'job.id',
@@ -208,6 +225,7 @@ export class ExportJobRepository {
     documentId: number | undefined,
     departmentCode: string,
     manager: EntityManager,
+    q?: string,
   ) {
     const query = manager
       .createQueryBuilder(EsignExportJob, 'job')
@@ -221,6 +239,26 @@ export class ExportJobRepository {
       });
     if (documentId)
       query.andWhere('job.documentId = :documentId', { documentId });
+    if (q) {
+      // withDeleted 保留歷史文件建立人的查詢能力；建立人不是 job 的匯出人。
+      query.leftJoin('document.createdByUser', 'creator');
+      const keyword = `%${q.replace(/[!%_]/g, '!$&')}%`;
+      const columns = [
+        'document.title',
+        'document.docNumber',
+        'creator.name',
+        'creator.empid',
+      ];
+      query.andWhere(
+        `(${columns
+          .map(
+            (column) =>
+              `LOWER(CONVERT(${column} USING utf8mb4)) COLLATE utf8mb4_0900_bin LIKE LOWER(CONVERT(:keyword USING utf8mb4)) COLLATE utf8mb4_0900_bin ESCAPE '!'`,
+          )
+          .join(' OR ')})`,
+        { keyword },
+      );
+    }
     return query;
   }
   signedCount(documentId: number, manager: EntityManager) {
@@ -236,7 +274,7 @@ export class ExportJobRepository {
       .createQueryBuilder(EsignExportJob, 'job')
       .where('job.snapshotJson IS NOT NULL')
       .andWhere(
-        "((job.status IN ('pending','waiting') AND (job.nextAttemptAt IS NULL OR job.nextAttemptAt <= :now)) OR (job.status='processing' AND job.leaseExpiresAt <= :now) OR (job.status='completed' AND job.expiresAt <= :now) OR (job.status='expired' AND EXISTS (SELECT 1 FROM esign_file_objects f WHERE f.export_job_id=job.id AND f.archive_status='active')))",
+        "((job.status IN ('pending','waiting') AND (job.nextAttemptAt IS NULL OR job.nextAttemptAt <= :now)) OR (job.status='processing' AND job.leaseExpiresAt <= :now))",
         { now },
       )
       .orderBy('job.updatedAt', 'ASC')

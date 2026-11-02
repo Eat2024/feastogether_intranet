@@ -1,3 +1,4 @@
+import { ExportJobViewDto } from './export.dto';
 export type EsignDocumentStatus =
   | 'draft'
   | 'active'
@@ -138,6 +139,7 @@ export class EsignReadonlySignerViewDto {
 export class EsignReadonlyDocumentDetailDto extends EsignDocumentSummaryDto {
   isCreator!: false;
   canExport!: boolean;
+  exportSummary!: ExportJobViewDto | null;
   createdBy!: EsignDocumentCreatorDto | null;
   sourceFile?: EsignSourceFileDto;
   signStartAt!: string | null;
@@ -148,6 +150,7 @@ export class EsignReadonlyDocumentDetailDto extends EsignDocumentSummaryDto {
 export class EsignManagedDocumentDetailDto extends EsignDocumentSummaryDto {
   isCreator!: true;
   canExport!: boolean;
+  exportSummary!: ExportJobViewDto | null;
   watermark!: boolean;
   allowReject!: boolean;
   /** 建立人帳號不存在時為 null */
@@ -167,9 +170,16 @@ export class EsignHistoryActorDto {
 
 export class EsignHistoryItemDto {
   type!: string;
+  /** 後端統一提供的繁體中文事件說明。 */
+  label!: string;
   occurredAt!: string;
   actor!: EsignHistoryActorDto;
   reason!: string | null;
+  /** 補簽後期限；僅補簽事件提供。 */
+  signEndAt?: string;
+  /** 僅文件建立人可見的補簽資訊。 */
+  actorUserId?: string;
+  previousSignEndAt?: string;
 }
 
 export type EsignDocumentDetailDto =

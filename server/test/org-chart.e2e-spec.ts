@@ -32,7 +32,8 @@ describe('組織樹 API', () => {
   const hash = createHash('sha256')
     .update(JSON.stringify([process.env.NODE_ENV ?? 'development', source]))
     .digest('hex');
-  const key = `esign:org-chart:v1:${hash}`;
+  const key = `esign:org-chart:v2:${hash}`;
+  const legacyKey = `esign:org-chart:v1:${hash}`;
   beforeAll(async () => {
     assertTestRedisDb();
     for (let i = 0; i < 2; i++) {
@@ -57,14 +58,14 @@ describe('組織樹 API', () => {
     client = ctx.app.get<Redis>(REDIS_MAIN);
   });
   beforeEach(async () => {
-    await client.del(key);
+    await client.del(key, legacyKey);
     upstream.getOrgChart.mockReset().mockImplementation(async () => {
       await pause(100);
       return [];
     });
   });
   afterAll(async () => {
-    if (client?.status === 'ready') await client.del(key);
+    if (client?.status === 'ready') await client.del(key, legacyKey);
     await Promise.all(contexts.map((context) => closeSecurityE2eApp(context)));
   });
 
@@ -123,12 +124,28 @@ describe('組織樹 API', () => {
     }
     expect(upstream.getOrgChart).toHaveBeenCalledTimes(1);
     const before = await client.pttl(key);
-    expect(before).toBeGreaterThan(7_190_000);
-    expect(before).toBeLessThanOrEqual(7_200_000);
+    expect(before).toBeGreaterThan(1_790_000);
+    expect(before).toBeLessThanOrEqual(1_800_000);
     for (let i = 0; i < 1_000; i++)
       await contexts[i % 2].app.get(EsignSignerCandidateService).getOrgChart();
     expect(await client.pttl(key)).toBeLessThan(before);
     expect(upstream.getOrgChart).toHaveBeenCalledTimes(1);
+  });
+
+  it('舊 v1 快取不會延用，新 v2 快取保存半小時且不刪除舊 key', async () => {
+    await client.set(
+      legacyKey,
+      JSON.stringify({ version: 1, data: [] }),
+      'EX',
+      7200,
+    );
+    const response = await ctx.app.inject({ method: 'GET', url: route, headers });
+    expect(response.statusCode).toBe(200);
+    expect(upstream.getOrgChart).toHaveBeenCalledTimes(1);
+    expect(await client.get(key)).toBe(JSON.stringify({ version: 1, data: [] }));
+    expect(await client.ttl(key)).toBeGreaterThan(1790);
+    expect(await client.ttl(key)).toBeLessThanOrEqual(1800);
+    expect(await client.ttl(legacyKey)).toBeGreaterThan(7190);
   });
 
   it('有效／無快取時，無效 session 均不讀組織快取', async () => {
@@ -140,7 +157,7 @@ describe('組織樹 API', () => {
             key,
             JSON.stringify({ version: 1, data: [] }),
             'EX',
-            7200,
+            1800,
           );
         for (const cookie of ['', `${AUTH_COOKIE_NAME}=invalid`]) {
           expect(

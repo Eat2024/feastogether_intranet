@@ -1,7 +1,7 @@
 'use client';
 
 // 歷史匯出文件：GET /api/esign/history/export（Spec 017，同部門文件的匯出紀錄，依匯出時間由新到舊）。
-// 依類型分頁標籤（Excel／PDF／ZIP），頁碼分頁；分頁與頁碼記在網址參數 tab、page。
+// 依類型分頁標籤（Excel／PDF／ZIP），頁碼分頁；類型、頁碼與搜尋記在網址參數 tab、page、q。
 // 簽到表後端尚未完成，分頁先隱藏。
 import { useGetExportHistoryQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
@@ -9,7 +9,6 @@ import {
   documentExportFileUrl,
   getExcelExportDocument,
   redownloadPdfExport,
-  requestDocumentExport,
   retryDocumentExport,
 } from '@/api/requests';
 import type {
@@ -22,13 +21,14 @@ import type {
 } from '@/api/types';
 import LinkPagination from '@/components/LinkPagination';
 import LinkTabs from '@/components/LinkTabs';
+import SearchField from '@/components/SearchField';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
 import TooltipIconButton from '@/components/TooltipIconButton';
 import { formatDateTime } from '@/features/esign-documents/listQuery';
+import { buildDeptOptions, exportRows, selectedDeptNames } from '@/features/esign-documents/exportQuery';
 import { getErrorMessage } from '@/lib/apiError';
 import { PAGE_SIZE, pageHrefs, parsePage } from '@/lib/paginate';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
-import FolderZipRoundedIcon from '@mui/icons-material/FolderZipRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -44,8 +44,8 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, type ReactNode } from 'react';
 
 type HistoryTab = ExportHistoryType | 'sheet';
 
@@ -59,8 +59,9 @@ const TABS: { value: HistoryTab; label: string }[] = [
   ...(SHEET_ENABLED ? [{ value: 'sheet' as const, label: '簽到表 PDF（尚未完成）' }] : []),
 ];
 
-const historyHref = (tab: HistoryTab, page = 1) => {
+const historyHref = (tab: HistoryTab, page = 1, query = '') => {
   const qs = new URLSearchParams();
+  if (query) qs.set('q', query);
   if (tab !== 'excel') qs.set('tab', tab);
   if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
@@ -73,7 +74,7 @@ const ZIP_STATUS_META: Record<EsignExportStatus, { label: string; color: ChipPro
   processing: { label: '打包中', color: 'info' },
   completed: { label: '可下載', color: 'success' },
   failed: { label: '失敗', color: 'error' },
-  expired: { label: '已到期', color: 'default' },
+  expired: { label: '檔案已不可用', color: 'default' },
 };
 
 const ZIP_IN_PROGRESS: EsignExportStatus[] = ['pending', 'waiting', 'processing'];
@@ -87,27 +88,28 @@ function saveBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-/** 重新下載後會新增一筆紀錄，更新列表與筆數 */
+/** ZIP 未完成工作重試後更新工作狀態與列表 */
 function useRefreshHistory() {
   const queryClient = useQueryClient();
   return () => void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_EXPORT_HISTORY] });
 }
 
-/** Excel：依當時的匯出條件、以文件目前的資料重新產生（同樣先記錄一筆匯出） */
+/** Excel：依原條件與文件目前資料重新產生，不新增歷史紀錄 */
 function ExcelRedownload({ record }: { record: ExcelExportHistoryItem }) {
   const { showSnackbar } = useSnackbar();
-  const refresh = useRefreshHistory();
   const download = useMutation({
     mutationFn: async () => {
       // exceljs 較大，點擊時才載入
-      const [doc, { recordAndDownloadExcel }] = await Promise.all([
+      const [doc, { buildExportXlsx }] = await Promise.all([
         getExcelExportDocument(record.id),
         import('@/features/esign-documents/buildExportXlsx'),
       ]);
-      await recordAndDownloadExcel(doc, record.conditions);
+      const rows = exportRows(doc.signers, record.conditions);
+      const deptNames = selectedDeptNames(record.conditions.depts, buildDeptOptions(doc.signers));
+      const { blob, fileName } = await buildExportXlsx(doc, record.conditions, rows, deptNames);
+      saveBlob(blob, fileName);
     },
     meta: { suppressGlobalErrorToast: true },
-    onSuccess: refresh,
     onError: (err) => showSnackbar(getErrorMessage(err, '下載失敗，請稍後再試'), 'error'),
   });
   return (
@@ -121,16 +123,14 @@ function ExcelRedownload({ record }: { record: ExcelExportHistoryItem }) {
   );
 }
 
-/** PDF：下載該簽署人目前的已簽署副本（後端同時新增一筆紀錄） */
+/** PDF：下載該簽署人目前的已簽署副本，不新增歷史紀錄 */
 function PdfRedownload({ record }: { record: PdfExportHistoryItem }) {
   const { showSnackbar } = useSnackbar();
-  const refresh = useRefreshHistory();
   const download = useMutation({
     mutationFn: () => redownloadPdfExport(record.id),
     meta: { suppressGlobalErrorToast: true },
     onSuccess: ({ bytes, fileName }) => {
       saveBlob(bytes, fileName);
-      refresh();
     },
     onError: (err) => showSnackbar(getErrorMessage(err, '下載失敗，請稍後再試'), 'error'),
   });
@@ -145,7 +145,7 @@ function PdfRedownload({ record }: { record: PdfExportHistoryItem }) {
   );
 }
 
-/** ZIP：下載、重試失敗的匯出，或重新產生已到期的 ZIP */
+/** ZIP：下載或重試尚未成功的匯出；舊不可用成果不重新產生。 */
 function ZipAction({ record }: { record: ZipExportHistoryItem }) {
   const { showSnackbar } = useSnackbar();
   const refresh = useRefreshHistory();
@@ -158,22 +158,14 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
     },
     onError: (err) => showSnackbar(getErrorMessage(err, '重試失敗，請稍後再試'), 'error'),
   });
-  const regenerate = useMutation({
-    mutationFn: requestDocumentExport,
-    meta: { suppressGlobalErrorToast: true },
-    onSuccess: () => {
-      refresh();
-      showSnackbar('已受理重新產生 ZIP，完成後即可下載', 'success');
-    },
-    onError: (err) => showSnackbar(getErrorMessage(err, '重新產生失敗，請稍後再試'), 'error'),
-  });
+
 
   const file = record.files[0];
   if (record.status === 'completed' && file) {
     // 檔案可能很大，以瀏覽器直接下載（支援續傳），不先讀進記憶體
     return (
       <TooltipIconButton
-        label={`下載 ZIP（保存至 ${formatDateTime(record.expiresAt) ?? '—'}）`}
+        label="下載 ZIP"
         icon={<FileDownloadRoundedIcon />}
         color="info"
         href={documentExportFileUrl(record.document.id, record.id, file.id)}
@@ -194,15 +186,7 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
     );
   }
   if (record.status === 'expired') {
-    return (
-      <TooltipIconButton
-        label="ZIP 已過保存期限，重新產生（收錄目前所有已簽署副本）"
-        icon={<FolderZipRoundedIcon />}
-        color="info"
-        disabled={regenerate.isPending}
-        onClick={() => regenerate.mutate(record.document.id)}
-      />
-    );
+    return <Typography variant="helper">檔案已不可用</Typography>;
   }
   return (
     <Typography variant="helper" component="span">
@@ -240,11 +224,6 @@ const COLUMN_SETS: { [T in ExportHistoryType]: ColumnSet<T> } = {
           <TableCell>{r.count} 份</TableCell>
           <TableCell sx={{ whiteSpace: 'nowrap' }}>
             <Chip size="small" variant="soft" label={status.label} color={status.color} />
-            {r.status === 'completed' && r.expiresAt && (
-              <Typography variant="helper" component="div">
-                保存至 {formatDateTime(r.expiresAt)}
-              </Typography>
-            )}
             {r.status === 'waiting' && (
               <Typography variant="helper" component="div">
                 尚有 {r.waitingCount} 份副本產製中
@@ -264,18 +243,34 @@ function RecordAction({ record }: { record: ExportHistoryItemByType[ExportHistor
 }
 
 export default function ExportHistoryView() {
+  const router = useRouter();
+  const pathname = usePathname();
   const params = useSearchParams();
   const tabParam = params.get('tab');
   const type: ExportHistoryType = tabParam === 'pdf' || tabParam === 'zip' ? tabParam : 'excel';
-  const page = parsePage(params.get('page') ?? undefined);
+  const requestedPage = parsePage(params.get('page') ?? undefined);
+  const query = (params.get('q') ?? '').trim();
   const { data, isPending, isError, error, refetch, isFetching } = useGetExportHistoryQuery(
-    { type, page, pageSize: PAGE_SIZE },
+    { type, q: query || undefined, page: requestedPage, pageSize: PAGE_SIZE },
     {
       // ZIP 有紀錄還在處理中時定期更新
       refetchInterval: (query) =>
         query.state.data?.items.some((r) => r.type === 'zip' && ZIP_IN_PROGRESS.includes(r.status)) ? 5000 : false,
     },
   );
+
+  const page = data?.page ?? requestedPage;
+  // 等待目前條件的回應，再以後端有效頁碼導正網址；保留關鍵字與其他條件。
+  useEffect(() => {
+    if (!data || isError) return;
+    const canonicalPage = data.page > 1 ? String(data.page) : null;
+    if (params.get('page') === canonicalPage && params.getAll('page').length <= 1) return;
+    const qs = new URLSearchParams(params);
+    qs.delete('page');
+    if (canonicalPage) qs.set('page', canonicalPage);
+    const queryString = qs.toString();
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+  }, [data, isError, params, pathname, router]);
 
   const columns = COLUMN_SETS[type] as ColumnSet<ExportHistoryType>;
   const head = ['匯出時間', '文件名稱', '文件編號', ...columns.head, '匯出人', '重新下載'];
@@ -294,22 +289,23 @@ export default function ExportHistoryView() {
       </Button>
     </Stack>
   ) : data.items.length === 0 ? (
-    <Typography variant="description">目前還沒有匯出紀錄。</Typography>
+    <Typography variant="description">{query ? `找不到符合「${query}」的匯出紀錄。` : '目前還沒有匯出紀錄。'}</Typography>
   ) : null;
 
   return (
     <Stack spacing={2}>
+      <SearchField placeholder="搜尋文件名稱、文件編號或建立人" width={320} />
       <LinkTabs
         value={type}
         tabs={TABS.map((t) => ({
           value: t.value,
           label: t.value !== 'sheet' && data && !isError ? `${t.label}（${data.typeTotals[t.value]}）` : t.label,
-          href: historyHref(t.value),
+          href: historyHref(t.value, 1, query),
         }))}
       />
       {type === 'zip' && (
         <Typography variant="helper" component="div">
-          每份文件的已簽署副本（每人一份 PDF）打包成一個 ZIP；ZIP 自完成起保存 7 天，期限內重複申請會沿用同一份。
+          每份文件的已簽署副本（每人一份 PDF）打包成一個 ZIP；ZIP 產生後持續保留並沿用同一份，不包含後續新增的簽署。
         </Typography>
       )}
       <TableContainer component={Paper} variant="outlined">
@@ -348,7 +344,7 @@ export default function ExportHistoryView() {
           </TableBody>
         </Table>
       </TableContainer>
-      <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => historyHref(type, p))} />
+      <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => historyHref(type, p, query))} />
     </Stack>
   );
 }

@@ -286,12 +286,27 @@ describe('Spec009 S3 匯出 API/worker', () => {
   });
 
   it('bucket 暫停版本控制時 worker 不發布 ZIP，恢復後可重試原快照', async () => {
-    await db
-      .getRepository(EsignExportJob)
-      .update(
-        { documentId: Number(id) },
-        { expiresAt: new Date(Date.now() - 1000) },
-      );
+    // 永久 ZIP 不靠過期重新產生；此故障案例使用另一份合成文件。
+    const oldId = id;
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    id = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .field('title', 'S3 版本控制故障案例')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'draft.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    ).id;
+    await db.manager.update(
+      EsignSigner,
+      { documentId: Number(oldId) },
+      { documentId: Number(id) },
+    );
     await s3.client.send(
       new PutBucketVersioningCommand({
         Bucket: s3.bucket,

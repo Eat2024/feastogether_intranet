@@ -55,38 +55,48 @@ export class EsignExportHistoryService {
     q: ExportHistoryQueryDto,
     userId: number,
   ): Promise<ExportHistoryPageDto> {
-    const manager = this.mysql.getManager();
-    const user = await this.access.requireDepartment(userId, manager);
     const documentId = q.documentId ? Number(q.documentId) : undefined;
-    const [records, counts] = await Promise.all([
-      this.jobs.historyPage(
-        {
-          exportType: EXPORT_TYPE_COLUMN[q.type],
-          departmentCode: user.departmentCode,
+    // 計數與分頁使用同一讀取快照，先導正頁碼才計算 offset，避免巨大請求頁碼溢位。
+    const result = await this.mysql
+      .getManager()
+      .transaction('REPEATABLE READ', async (manager) => {
+        const user = await this.access.requireDepartment(userId, manager);
+        const counts = await this.jobs.historyCounts(
+          Object.values(EXPORT_TYPE_COLUMN),
           documentId,
-          offset: (q.page - 1) * q.pageSize,
-          limit: q.pageSize,
-        },
-        manager,
-      ),
-      this.jobs.historyCounts(
-        Object.values(EXPORT_TYPE_COLUMN),
-        documentId,
-        user.departmentCode,
-        manager,
-      ),
-    ]);
-    const typeTotals = {} as Record<ExportHistoryType, number>;
-    for (const type of EXPORT_HISTORY_TYPES)
-      typeTotals[type] = counts.get(EXPORT_TYPE_COLUMN[type]) ?? 0;
+          user.departmentCode,
+          manager,
+          q.q,
+        );
+        const typeTotals = {} as Record<ExportHistoryType, number>;
+        for (const type of EXPORT_HISTORY_TYPES)
+          typeTotals[type] = counts.get(EXPORT_TYPE_COLUMN[type]) ?? 0;
+        const total = typeTotals[q.type];
+        const page = Math.min(
+          q.page,
+          Math.max(1, Math.ceil(total / q.pageSize)),
+        );
+        const records = await this.jobs.historyPage(
+          {
+            exportType: EXPORT_TYPE_COLUMN[q.type],
+            documentId,
+            departmentCode: user.departmentCode,
+            q: q.q,
+            offset: (page - 1) * q.pageSize,
+            limit: q.pageSize,
+          },
+          manager,
+        );
+        return { records, page, total, typeTotals };
+      });
     return {
       items: await Promise.all(
-        records.map((record) => this.toHistoryItem(record, q.type)),
+        result.records.map((record) => this.toHistoryItem(record, q.type)),
       ),
-      page: q.page,
+      page: result.page,
       pageSize: q.pageSize,
-      total: typeTotals[q.type],
-      typeTotals,
+      total: result.total,
+      typeTotals: result.typeTotals,
     };
   }
 
@@ -180,8 +190,8 @@ export class EsignExportHistoryService {
   }
 
   /**
-   * 從 pdf 紀錄重新下載：同部門員工才能取得該簽署人目前的副本。
-   * 新紀錄的簽署人（含文件）與範圍沿用原紀錄，匯出人為目前使用者。
+   * 從 pdf 紀錄重新下載：同部門員工都能取得該簽署人目前的副本。
+   * 沿用既有紀錄，不新增或改寫匯出歷史。
    */
   async redownloadPdf(
     publicId: string,
@@ -209,7 +219,9 @@ export class EsignExportHistoryService {
     )
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     const file = await this.completions.personalCopy(document, signer);
-    return this.recordPdf({ signer, file }, userId, record.scopeDescription);
+    if (!file)
+      throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
+    return file;
   }
 
   /**

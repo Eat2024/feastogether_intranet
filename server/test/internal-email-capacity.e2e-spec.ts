@@ -1,3 +1,4 @@
+import { EsignEmployeeEmailService } from '#app/features/esign/services/esign-employee-email.service';
 import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
@@ -5,6 +6,7 @@ import { EsignTokenService } from '#app/features/esign/services/esign-token.serv
 import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { HttpService } from '@nestjs/axios';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue, Job } from 'bullmq';
 import { randomBytes } from 'node:crypto';
@@ -282,6 +284,24 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
     await closeSecurityE2eApp(ctx);
   }, 60000);
 
+  it('已移除的信箱預檢回404且不呼叫來源，OpenAPI不再發布此功能', async () => {
+    const previousRequests = http.post.mock.calls.length;
+    await post(`/api/esign/documents/${documentId}/employee-email-checks`, {
+      userIds: [String(users[0].id)],
+    }).expect(404);
+    expect(http.post.mock.calls.length).toBe(previousRequests);
+    const api = SwaggerModule.createDocument(
+      ctx.app,
+      new DocumentBuilder().build(),
+    );
+    expect(
+      api.paths['/api/esign/documents/{documentId}/employee-email-checks'],
+    ).toBeUndefined();
+    expect(
+      api.components?.schemas?.EmployeeEmailCheckResponseDto,
+    ).toBeUndefined();
+  });
+
   it.each([1, 100, 101, 6000])(
     '%i 人已存在帳號解析與信箱核對保序，不誤配且批次有界',
     async (count) => {
@@ -308,20 +328,18 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         ).toEqual(selected.map((u) => [u.empid, String(u.id), 'resolved']));
         expect(http.get).not.toHaveBeenCalled();
       });
-      await measure('email-check', count, async () => {
-        const result = apiData<{
-          items: Array<{ userId: string; status: string; maskedEmail: string }>;
-        }>(
-          await post(
-            `/api/esign/documents/${documentId}/employee-email-checks`,
-            { userIds: selected.map((u) => String(u.id)) },
-          ).expect(200),
+      await measure('initiation-email-resolution', count, async () => {
+        // 發起仍使用同一信箱解析服務；以真實帳號資料確認批次及員工對應。
+        const service = ctx.app.get(EsignEmployeeEmailService);
+        const identities = await service.resolveUsers(
+          selected.map((u) => String(u.id)),
         );
-        expect(result.items).toEqual(
+        const result = await service.lookupEmails(identities);
+        expect(result).toEqual(
           selected.map((u) => ({
-            userId: String(u.id),
-            status: 'ready',
-            maskedEmail: 'c***@capacity.example.test',
+            userId: u.id,
+            empid: u.empid,
+            email: email(u.empid).toLowerCase(),
           })),
         );
         expect(batches).toHaveLength(Math.ceil(count / 100));

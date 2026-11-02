@@ -3741,6 +3741,9 @@ describe('核心電子簽 US1', () => {
       expect(signerHistory.find((e) => e.type === 'document.reopened')).toEqual(
         {
           type: 'document.reopened',
+          label: '建立人設定補簽，重新開放未簽署者簽署',
+          actor: { kind: 'employee', name: '建立人' },
+          reason: null,
           occurredAt: end.toISOString(),
           signEndAt: input.signEndAt,
         },

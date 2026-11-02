@@ -3,7 +3,7 @@ import type { EsignDocumentStatus, EsignSignerStatus } from './esignDocuments';
 
 /**
  * 匯出工作狀態：pending 排隊中；waiting 仍有個人副本產製中，等待完成；processing 打包中；
- * completed 可下載；failed 失敗（可重試）；expired 檔案已過期（需重新產生）
+ * completed 可下載；failed 失敗（可重試）；expired 舊紀錄的檔案已不可用
  */
 export type EsignExportStatus = 'pending' | 'waiting' | 'processing' | 'completed' | 'failed' | 'expired';
 
@@ -20,10 +20,10 @@ export interface EsignExportJob {
   /** 還在產製中的個人副本數 */
   waitingCount: number;
   completedAt: string | null;
-  /** 檔案保存期限；過期後需重新產生 */
+  /** 相容舊合約；永久保留產物回 null */
   expiresAt: string | null;
   failureCode: string | null;
-  /** 完成且未過期時才有 */
+  /** 完成時才有 */
   files: { id: string; fileName: string; size: number; sha256: string; downloadPath: string }[];
 }
 
@@ -93,6 +93,8 @@ export interface ExportHistoryItemByType {
 /** GET esign/history/export 的查詢參數 */
 export interface ExportHistoryParams<T extends ExportHistoryType = ExportHistoryType> {
   type: T;
+  /** 文件名稱、編號或文件建立人姓名／員編；trim 後最多 100 字 */
+  q?: string;
   page?: number;
   /** 1～100，預設 10 */
   pageSize?: number;
@@ -111,7 +113,7 @@ export interface ExportHistoryPage<T extends ExportHistoryType = ExportHistoryTy
   typeTotals: Record<ExportHistoryType, number>;
 }
 
-/** POST esign/history/export：記錄一次 Excel 匯出（首次匯出與重新下載共用）；匯出人取自 session */
+/** POST esign/history/export：記錄一次新 Excel 匯出（歷史重新下載不呼叫此端點）；匯出人取自 session */
 export interface CreateExcelExportRecordBody {
   type: 'excel';
   documentId: string;
@@ -147,5 +149,6 @@ export interface ExcelExportDocument {
 
 /** GET esign/documents/:id?view=export：同部門授權後的完整匯出預覽，不新增歷史紀錄。 */
 export interface EsignExportPreviewDocument extends ExcelExportDocument {
+  exportSummary: EsignExportJob | null;
   status: EsignDocumentStatus;
 }

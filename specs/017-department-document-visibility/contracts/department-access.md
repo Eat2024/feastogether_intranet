@@ -77,3 +77,8 @@
 ## 實作時補全（2026-11-02）
 
 首次匯出尚無歷史紀錄，不能用 history/:id/document 取得預覽，亦不可用一般唯讀詳情取得敏感欄位。因此沿用既有文件路徑新增明確 view=export 查詢與獨立同部門授權；下載時沿既有 POST 紀錄流程。canExport 只供 UI 呈現，不能由 isCreator 推論部門資格。未新增 API 路徑、環境變數或永久檔案 URL。
+
+
+## Spec019 整合補充
+
+文件詳情與 view=export 預覽加入固定ZIP的 exportSummary 公開投影。一般詳情只有 canExport=true 才查詢／回傳工作；跨部門原建立人的管理詳情回null，不新增匯出資訊。預覽維持同部門且非草稿。Spec019取代歷史重下載新增紀錄與ZIP到期政策，所有目前部門及ID關聯檢查保持適用。

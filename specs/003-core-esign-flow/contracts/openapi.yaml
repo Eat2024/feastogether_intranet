@@ -860,10 +860,11 @@ components:
       allOf:
         - $ref: "#/components/schemas/DocumentSummary"
         - type: object
-          required: [isCreator, canExport, createdBy, signStartAt, stopReason, signers, fields, watermark, allowReject]
+          required: [isCreator, canExport, exportSummary, createdBy, signStartAt, stopReason, signers, fields, watermark, allowReject]
           properties:
             isCreator: { type: boolean, const: true }
             canExport: { type: boolean }
+            exportSummary: { $ref: "#/components/schemas/DocumentExportSummary" }
             watermark: { type: boolean }
             allowReject: { type: boolean }
             createdBy:
@@ -896,10 +897,11 @@ components:
       allOf:
         - $ref: "#/components/schemas/DocumentSummary"
         - type: object
-          required: [isCreator, canExport, createdBy, signStartAt, stopReason, signers]
+          required: [isCreator, canExport, exportSummary, createdBy, signStartAt, stopReason, signers]
           properties:
             isCreator: { type: boolean, const: false }
             canExport: { type: boolean }
+            exportSummary: { $ref: "#/components/schemas/DocumentExportSummary" }
             createdBy:
               description: 建立人；帳號不存在時為 null
               type: [object, "null"]
@@ -1153,12 +1155,13 @@ components:
     ExportPreviewDocument:
       type: object
       additionalProperties: false
-      required: [id, title, docNumber, status, signStartAt, signEndAt, originalSignEndAt, isReopened, createdBy, signers]
+      required: [id, title, docNumber, status, exportSummary, signStartAt, signEndAt, originalSignEndAt, isReopened, createdBy, signers]
       properties:
         id: { type: string }
         title: { type: string }
         docNumber: { type: string }
         status: { type: string, enum: [active, expired, finalizing, completed, stopped] }
+        exportSummary: { $ref: "#/components/schemas/DocumentExportSummary" }
         signStartAt: { type: [string, "null"], format: date-time }
         signEndAt: { type: [string, "null"], format: date-time }
         originalSignEndAt: { type: [string, "null"], format: date-time }
@@ -1186,3 +1189,32 @@ components:
               signedAt: { type: [string, "null"], format: date-time }
               rejectedAt: { type: [string, "null"], format: date-time }
               rejectReason: { type: [string, "null"] }
+
+    DocumentExportSummary:
+      description: 同部門可見的固定 ZIP 工作；無工作或無匯出資格時為 null。下載仍重新驗證部門。
+      type: [object, "null"]
+      additionalProperties: false
+      required: [id, documentId, status, snapshotAt, expectedCount, processedCount, waitingCount, completedAt, expiresAt, failureCode, files]
+      properties:
+        id: { type: string }
+        documentId: { type: string }
+        status: { type: string }
+        snapshotAt: { type: [string, "null"], format: date-time }
+        expectedCount: { type: integer }
+        processedCount: { type: integer }
+        waitingCount: { type: integer }
+        completedAt: { type: [string, "null"], format: date-time }
+        expiresAt: { type: "null" }
+        failureCode: { type: [string, "null"] }
+        files:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, fileName, size, sha256, downloadPath]
+            properties:
+              id: { type: string }
+              fileName: { type: string }
+              size: { type: integer }
+              sha256: { type: string }
+              downloadPath: { type: string }

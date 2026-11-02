@@ -61,6 +61,7 @@ function setup(doc = document()) {
       Promise.resolve([]),
     ),
   };
+  const exports = { documentSummary: jest.fn(() => Promise.resolve(null)) };
   const service = new EsignDocumentQueryService(
     { getManager: () => manager } as never,
     documents as never,
@@ -83,9 +84,11 @@ function setup(doc = document()) {
     } as never,
     records as never,
     {} as never,
+    exports as never,
   );
   return {
     service,
+    exports,
     documents,
     signers,
     fields,
@@ -159,9 +162,11 @@ describe('部門文件查詢', () => {
     expect(result).toMatchObject({
       isCreator: true,
       canExport: false,
+      exportSummary: null,
       signers: [{ note: '管理備註', email: 'private@example.test' }],
     });
     expect(result).toHaveProperty('fields');
+    expect(s.exports.documentSummary).not.toHaveBeenCalled();
   });
   it('export 視角先嚴格部門授權，使用完整 Excel DTO 而非管理詳情', async () => {
     const s = setup(document({ status: 'active' }));

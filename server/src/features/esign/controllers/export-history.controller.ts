@@ -48,12 +48,13 @@ export class ExportHistoryController {
       '',
       '**排序與分頁**',
       '- 依匯出時間、紀錄流水號由新到舊',
-      '- 以頁碼分頁；`page` 超過最後一頁時回空的 `items`',
+      '- 以頁碼分頁；`page` 超過最後一頁時導正到最後有效頁，無結果時回第 1 頁',
+      '- `q` 為 trim 後最多 100 字的部分文字，任一文件名稱、文件編號、文件建立人姓名或員編符合即可；不分英文字母大小寫，%／_／! 視為一般文字',
       '',
       '**回應欄位**',
       '- `items`：只含查詢的 `type`',
       '- `total`：該類型的總筆數',
-      '- `typeTotals`：各類型的總筆數；有帶 `documentId` 時同樣只算該文件',
+      '- `typeTotals`：各類型總筆數，與 items 套用相同 q、documentId 及可見範圍，不受目前 type 限制',
       '- `exportedBy`：員工有 `employeeNo`、`email` 為 null；外部簽署人相反',
       '- `conditions`：只在 `excel` 出現',
       '- `signerPublicId`：只在 `pdf` 出現',
@@ -69,7 +70,8 @@ export class ExportHistoryController {
   })
   @ApiResponse({
     status: 400,
-    description: 'INVALID_REQUEST：type、page、pageSize 或 documentId 不合法',
+    description:
+      'INVALID_REQUEST：type、page、pageSize、documentId 或 q 不合法',
   })
   @ApiResponse({ status: 401, description: '需有效員工 session' })
   list(
@@ -79,7 +81,7 @@ export class ExportHistoryController {
     return this.history.list(query, userId);
   }
 
-  // 前端下載 Excel 前回報匯出，由後端寫入紀錄；首次匯出與重新下載共用。
+  // 新匯出 Excel 前回報並寫入紀錄；歷史重新下載不呼叫此端點。
   @Post()
   @UseGuards(OriginGuard)
   @ApiOperation({
@@ -103,7 +105,7 @@ export class ExportHistoryController {
       '- 201：新紀錄，形狀與查詢的 item 相同；`scope` 為儲存後的值',
       '',
       '**前端串接**',
-      '- 首次匯出與重新下載共用',
+      '- 僅用於新匯出；歷史重新下載不再次記錄',
       '- 記錄成功後才產生並下載 Excel',
     ].join('\n'),
   })
@@ -151,8 +153,7 @@ export class ExportHistoryController {
       '',
       '**前端串接**',
       '1. 依原紀錄的 `conditions` 篩選簽署人',
-      '2. 呼叫 `POST /api/esign/history/export` 記錄',
-      '3. 記錄成功後才產生並下載 Excel',
+      '2. 直接產生並下載 Excel，不再呼叫記錄 API',
     ].join('\n'),
   })
   @ApiParam({ name: 'id', description: 'excel 紀錄 UUID' })
@@ -173,7 +174,7 @@ export class ExportHistoryController {
     return this.history.excelDocument(id, userId);
   }
 
-  // 從單人 PDF 紀錄重新下載；送出前新增一筆紀錄。
+  // 從單人 PDF 紀錄重新下載；不新增或改寫匯出歷史。
   @ApiOperation({
     summary: '從 PDF 紀錄重新下載已簽署副本',
     description: [
@@ -185,8 +186,7 @@ export class ExportHistoryController {
       '- 200 `application/pdf` 附件：該簽署人目前的已簽署副本，標頭與其他副本下載相同',
       '',
       '**紀錄**',
-      '- 送出前新增一筆 `pdf` 紀錄：文件、簽署人與範圍沿用原紀錄，匯出人為目前使用者',
-      '- 紀錄寫入失敗回 500，不送出檔案',
+      '- 沿用原紀錄，不新增或改寫匯出歷史；重複請求不產生業務寫入',
       '',
       '**錯誤**',
       '- 只接受 `pdf` 紀錄；`excel`、`zip` 或不存在回 404',
@@ -208,7 +208,6 @@ export class ExportHistoryController {
     description:
       'ESIGN_STATE_CONFLICT／ESIGN_INTEGRITY_FAILED：副本尚未產生或完整性驗證失敗',
   })
-  @ApiResponse({ status: 500, description: '紀錄寫入失敗，不送出檔案' })
   @Post(':id/downloads')
   @CompletedPdfDownload()
   async download(

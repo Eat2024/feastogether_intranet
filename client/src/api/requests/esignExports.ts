@@ -46,7 +46,7 @@ export const retryDocumentExport = async ({ id, exportId }: { id: string; export
 
 /**
  * @name 查詢歷史匯出紀錄
- * @description 依類型（excel／pdf／zip）以頁碼查詢同部門文件的匯出紀錄，依匯出時間由新到舊；可限定文件
+ * @description 依類型（excel／pdf／zip）、關鍵字與頁碼查詢同部門文件的匯出紀錄，依匯出時間由新到舊；可限定文件
  */
 export const getExportHistory = async <T extends ExportHistoryType>(
   params: ExportHistoryParams<T>,

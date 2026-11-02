@@ -46,13 +46,13 @@ export class EsignSignerCandidateService {
     const namespace = createHash('sha256')
       .update(JSON.stringify([process.env.NODE_ENV ?? 'development', source]))
       .digest('hex');
-    const key = `esign:org-chart:v1:${namespace}`;
+    const key = `esign:org-chart:v2:${namespace}`;
     const cached = await this.readOrgChart(key);
     if (cached !== null) return cached;
 
     const data = await this.departments.getOrgChart();
     await this.orgChartCacheOperation(() =>
-      this.redis.set(key, { version: 1, data }, 7_200),
+      this.redis.set(key, { version: 1, data }, 1_800),
     );
     return data;
   }

@@ -341,7 +341,7 @@ describe('Spec009 匯出 API', () => {
         )
         .set('Cookie', other)
         .expect(404);
-      // 在固定快照之後增加簽署：七天內仍不新增工作或混入新副本。
+      // 在固定快照之後增加簽署：往後仍不新增工作或混入新副本。
       const secondSigner = await db.manager.save(
         EsignSigner,
         db.manager.create(EsignSigner, {
@@ -385,43 +385,175 @@ describe('Spec009 匯出 API', () => {
         (await db.manager.findOneByOrFail(EsignExportJob, { publicId: job.id }))
           .updatedAt,
       ).toEqual(before.updatedAt);
-      expect(before.expiresAt!.getTime() - before.completedAt!.getTime()).toBe(
-        168 * 60 * 60_000,
+      expect(before.expiresAt).toBeNull();
+      // 舊期限也不再阻擋成果，maintenance 經過一年仍保留原檔。
+      await db.manager.update(
+        EsignExportJob,
+        { id: before.id },
+        {
+          expiresAt: new Date(Date.now() - 1),
+        },
       );
-      // 七天內成果物遺失回 503，不偷偷建立新工作。
+      for (const days of [8, 365]) {
+        await worker
+          .get(DocumentExportProcessor)
+          .maintain(new Date(Date.now() + days * 24 * 60 * 60_000));
+        expect(apiData(await make(other).expect(200))).toMatchObject({
+          id: job.id,
+          expectedCount: 1,
+          expiresAt: null,
+        });
+        await request(ctx.server)
+          .get(file.downloadPath)
+          .set('Cookie', other)
+          .set('Range', 'bytes=0-3')
+          .expect(206);
+      }
+      const newerFailure = await db.manager.save(
+        EsignExportJob,
+        db.manager.create(EsignExportJob, {
+          publicId: randomUUID(),
+          documentId: Number(id),
+          createdByUserId: Number(ownerId),
+          exportType: 'signed_copies_zip',
+          status: 'failed',
+          scopeDescription: '合成失敗工作',
+          snapshotAt: new Date(),
+          snapshotJson: before.snapshotJson,
+          snapshotSha256: before.snapshotSha256,
+          recordCount: 1,
+          processedCount: 0,
+          waitingCount: 0,
+          attemptCount: 0,
+        }),
+      );
+      const detail = apiData<{ exportSummary: { id: string } }>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}`)
+          .set('Cookie', cookie)
+          .expect(200),
+      );
+      expect(detail.exportSummary.id).toBe(job.id);
+      await db.query(
+        "UPDATE esign_documents SET status='active',sign_start_at=UTC_TIMESTAMP(),sign_end_at=DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY) WHERE id=?",
+        [id],
+      );
+      // Spec017 × Spec019：同部門唯讀與匯出預覽採同一固定工作。
+      for (const suffix of ['', '?view=export']) {
+        const peer = apiData<{ exportSummary: { id: string } }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}${suffix}`)
+            .set('Cookie', other)
+            .expect(200),
+        );
+        expect(peer.exportSummary.id).toBe(job.id);
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}${suffix}`)
+          .set('Cookie', outsider)
+          .expect(404);
+      }
+      await db.manager.update(
+        User,
+        { id: Number(ownerId) },
+        { departmentCode: 'TRANSFERRED' },
+      );
+      try {
+        const moved = apiData<{ canExport: boolean; exportSummary: unknown }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}`)
+            .set('Cookie', cookie)
+            .expect(200),
+        );
+        expect(moved.canExport).toBe(false);
+        expect(moved.exportSummary).toBeNull();
+        await request(ctx.server)
+          .get(`/api/esign/documents/${id}?view=export`)
+          .set('Cookie', cookie)
+          .expect(404);
+      } finally {
+        await db.manager.update(
+          User,
+          { id: Number(ownerId) },
+          { departmentCode: 'D009' },
+        );
+      }
+
+      expect(
+        apiData(
+          await request(ctx.server)
+            .post(
+              `/api/esign/documents/${id}/exports/${newerFailure.publicId}/retries`,
+            )
+            .set('Cookie', other)
+            .set('Origin', origin)
+            .expect(200),
+        ),
+      ).toMatchObject({ id: job.id });
+      // 原成果遺失後，即使有其他工作也不能重建或重新選取。
       const lost = await db.manager.findOneByOrFail(EsignFileObject, {
         exportJobId: before.id,
         filePurpose: 'signed_copies_zip',
       });
       await storage.delete(lost);
-      await make(other).expect(503);
+      await Promise.all([make(other).expect(503), make(cookie).expect(503)]);
       await request(ctx.server)
         .get(file.downloadPath)
         .set('Cookie', other)
         .expect(503);
-      // 到期即阻擋續傳，不依賴 maintenance 是否刪除實體檔。
+      await request(ctx.server)
+        .post(
+          `/api/esign/documents/${id}/exports/${newerFailure.publicId}/retries`,
+        )
+        .set('Cookie', other)
+        .set('Origin', origin)
+        .expect(503);
       await db.manager.update(
         EsignExportJob,
         { id: before.id },
-        { expiresAt: new Date(Date.now() - 1) },
+        { status: 'expired' },
       );
-      await request(ctx.server)
-        .get(file.downloadPath)
-        .set('Cookie', other)
-        .set('Range', 'bytes=0-3')
-        .expect(410);
-      const expired = apiData<{ status: string }>(
-        await request(ctx.server)
-          .get(`/api/esign/documents/${id}/exports/${job.id}`)
-          .set('Cookie', other)
-          .expect(200),
-      );
-      expect(expired.status).toBe('expired');
-      await worker.get(DocumentExportProcessor).maintain();
+      await make(other).expect(503);
+      expect(
+        apiData(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}/exports/${job.id}`)
+            .set('Cookie', other)
+            .expect(200),
+        ),
+      ).toMatchObject({ status: 'expired', files: [] });
+
+      // 後續 worker 復原測試使用另一份合成文件，不再靠到期建立第二個工作。
+      const freshDocument = async () => {
+        const oldId = id;
+        id = apiData<{ id: string }>(
+          await request(ctx.server)
+            .post('/api/esign/documents')
+            .set('Cookie', cookie)
+            .set('Origin', origin)
+            .field('title', '獨立匯出復原案例')
+            .attach(
+              'file',
+              Buffer.from(
+                await (async () => {
+                  const pdf = await PDFDocument.create();
+                  pdf.addPage();
+                  return pdf.save();
+                })(),
+              ),
+              { filename: 'export.pdf', contentType: 'application/pdf' },
+            )
+            .expect(201),
+        ).id;
+        await db.manager.update(
+          EsignSigner,
+          { documentId: Number(oldId) },
+          { documentId: Number(id) },
+        );
+      };
+      await freshDocument();
       const next = apiData<{ id: string; expectedCount: number }>(
         await make(other).expect(202),
       );
-      expect(next.id).not.toBe(job.id);
       expect(next.expectedCount).toBe(2);
       // 等待缺少的既有副本，不能以已有的一份發布不完整成果。
       for (let i = 0; i < 100; i++) {
@@ -518,11 +650,7 @@ describe('Spec009 匯出 API', () => {
       });
       // storage 已落檔後租約被下一 generation 接管：舊 worker 不可發布。
       await queue.pause();
-      await db.manager.update(
-        EsignExportJob,
-        { documentId: Number(id), status: 'completed' },
-        { expiresAt: new Date(0) },
-      );
+      await freshDocument();
       const fenced = apiData<{ id: string }>(await make(other).expect(202));
       const workerStorage =
         worker.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
@@ -572,11 +700,7 @@ describe('Spec009 匯出 API', () => {
 
       // 快照以來源 metadata 的 SHA-256 驗證實體 bytes，不能發布半包或允許盲目重試。
       await queue.pause();
-      await db.manager.update(
-        EsignExportJob,
-        { documentId: Number(id), status: 'completed' },
-        { expiresAt: new Date(0) },
-      );
+      await freshDocument();
       const damaged = apiData<{ id: string }>(await make(other).expect(202));
       await writeFile(
         join(process.env.ESIGN_STORAGE_ROOT!, stored.objectKey),
@@ -596,6 +720,97 @@ describe('Spec009 匯出 API', () => {
       await ctx.app.get<Queue>(getQueueToken(ESIGN_EXPORT_QUEUE)).resume();
       await worker.close();
     }
+  });
+
+  it('多份歷史固定最新曾成功工作，缺檔或缺完成時間時不能退回較舊產物', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const documentId = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .field('title', '固定歷史工作')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'fixed.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    ).id;
+    const storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
+    const seed = async () => {
+      const job = await db.manager.save(
+        EsignExportJob,
+        db.manager.create(EsignExportJob, {
+          publicId: randomUUID(),
+          documentId: Number(documentId),
+          createdByUserId: Number(ownerId),
+          exportType: 'signed_copies_zip',
+          status: 'completed',
+          scopeDescription: '合成固定成果',
+          snapshotAt: new Date(),
+          snapshotJson: [],
+          snapshotSha256: 'a'.repeat(64),
+          completedAt: new Date(),
+          expiresAt: new Date(0),
+          recordCount: 0,
+        }),
+      );
+      const stored = await storage.store({
+        directory: `exports/selection-${job.id}`,
+        extension: 'zip',
+        mimeType: 'application/zip',
+        bytes: Buffer.from('synthetic zip'),
+      });
+      const file = await db.manager.save(
+        EsignFileObject,
+        db.manager.create(EsignFileObject, {
+          ...stored,
+          exportJobId: job.id,
+          filePurpose: 'signed_copies_zip',
+          archiveStatus: 'active',
+        }),
+      );
+      return { job, file };
+    };
+    const older = await seed();
+    const newest = await seed();
+    const make = () =>
+      request(ctx.server)
+        .post(`/api/esign/documents/${documentId}/exports`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .send({ type: 'signed_copies_zip' });
+    expect(apiData(await make().expect(200))).toMatchObject({
+      id: newest.job.publicId,
+    });
+    await storage.delete(newest.file);
+    await make().expect(503);
+    await request(ctx.server)
+      .get(
+        `/api/esign/documents/${documentId}/exports/${older.job.publicId}/files/${older.file.id}`,
+      )
+      .set('Cookie', cookie)
+      .expect(200);
+    await db.manager.update(
+      EsignExportJob,
+      { id: newest.job.id },
+      { completedAt: null },
+    );
+    await make().expect(503);
+    await db.manager.update(
+      EsignExportJob,
+      { id: newest.job.id },
+      { status: 'expired', completedAt: new Date() },
+    );
+    await make().expect(503);
+    const history = apiData<{ total: number }>(
+      await request(ctx.server)
+        .get(`/api/esign/history/export?type=zip&documentId=${documentId}`)
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+    expect(history.total).toBe(2);
   });
 
   it('兩個 worker 仍只有一個匯出，慢目的端不會預先打開全部小副本', async () => {

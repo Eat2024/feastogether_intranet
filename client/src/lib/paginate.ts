@@ -1,10 +1,12 @@
-// 列表分頁（伺服器端切頁）；頁碼記在網址參數 page
+// 列表分頁工具；頁碼記在網址參數 page，可供前端切頁或後端查詢使用。
 
 /** 所有表格統一的每頁筆數 */
 export const PAGE_SIZE = 10;
 
 export function parsePage(param: string | string[] | undefined): number {
-  return Math.max(1, Number.parseInt(typeof param === 'string' ? param : '1', 10) || 1);
+  if (typeof param !== 'string' || !/^[1-9]\d*$/.test(param)) return 1;
+  const page = Number(param);
+  return Number.isSafeInteger(page) ? page : 1;
 }
 
 /** 依頁碼切出該頁資料；頁碼超出範圍時停在最後一頁 */

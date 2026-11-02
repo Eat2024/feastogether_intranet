@@ -114,8 +114,8 @@ describe('Spec015 歷史匯出紀錄 API', () => {
     );
     outsiderCookie = await employeeCookie(outsiders[0]);
     missingCookie = await employeeCookie(outsiders[1]);
-    docA = await createDocument('合成歷史文件 A');
-    docB = await createDocument('合成歷史文件 B');
+    docA = await createDocument(`合成歷史文件 A ${prefix}`);
+    docB = await createDocument(`合成歷史文件 B ${prefix}`);
     internalSigner = await createSigner({
       signerType: 'user',
       userId: internalUser.id,
@@ -262,6 +262,19 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       .get(`${historyPath}/${created.id}/document`)
       .set('Cookie', viewerCookie)
       .expect(200);
+    const searched = apiData<HistoryPage>(
+      await request(ctx.server)
+        .get(historyPath)
+        .query({ type: 'excel', q: docA.title, page: 999 })
+        .set('Cookie', outsiderCookie)
+        .expect(200),
+    );
+    expect(searched).toMatchObject({
+      items: [],
+      total: 0,
+      page: 1,
+      typeTotals: { excel: 0, pdf: 0, zip: 0 },
+    });
     await manager.delete(EsignExportJob, { publicId: created.id });
   });
 
@@ -388,10 +401,40 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       );
     });
 
+    it('搜尋文件名稱後才分頁，且超頁回到最後有效頁', async () => {
+      const q = encodeURIComponent(`  ${docA.title.toLowerCase()}  `);
+      const pages = await Promise.all(
+        [1, 2, 3, 4, Number.MAX_SAFE_INTEGER].map((page) =>
+          history(`type=excel&q=${q}&page=${page}`),
+        ),
+      );
+      expect(pages.map((page) => page.items.length)).toEqual([10, 10, 3, 3, 3]);
+      expect(pages.map((page) => page.page)).toEqual([1, 2, 3, 3, 3]);
+      for (const page of pages) {
+        expect(page.typeTotals).toEqual({ excel: 23, pdf: 3, zip: 1 });
+        expect(page.total).toBe(23);
+        expect(
+          page.items.every((item) => item.document.id === String(docA.id)),
+        ).toBe(true);
+      }
+      expect(
+        new Set(
+          pages
+            .slice(0, 3)
+            .flatMap((page) => page.items.map((item) => item.id)),
+        ).size,
+      ).toBe(23);
+    });
+
     it.each([
       ['缺 type', ''],
       ['未知 type', 'type=sheet'],
       ['page=0', 'type=excel&page=0'],
+      ['page 非整數', 'type=excel&page=1.5'],
+      ['page 尾隨文字', 'type=excel&page=2abc'],
+      ['page 超過安全整數', 'type=excel&page=9007199254740992'],
+      ['q 過長', `type=excel&q=${'a'.repeat(101)}`],
+      ['q 非單一字串', 'type=excel&q=a&q=b'],
       ['pageSize=101', 'type=excel&pageSize=101'],
       ['pageSize=0', 'type=excel&pageSize=0'],
       ['documentId 非數字', 'type=excel&documentId=abc'],
@@ -422,8 +465,8 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         await history(`${query}&page=3`),
         await history(`${query}&page=4`),
       ];
-      expect(pages.map((page) => page.items.length)).toEqual([10, 10, 3, 0]);
-      expect(pages.map((page) => page.page)).toEqual([1, 2, 3, 4]);
+      expect(pages.map((page) => page.items.length)).toEqual([10, 10, 3, 3]);
+      expect(pages.map((page) => page.page)).toEqual([1, 2, 3, 3]);
       for (const page of pages) {
         expect(page.total).toBe(23);
         expect(page.pageSize).toBe(10);
@@ -433,7 +476,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         19, 22, 21,
       ];
       expect(
-        pages.flatMap((page) => page.items.map((item) => item.id)),
+        pages.slice(0, 3).flatMap((page) => page.items.map((item) => item.id)),
       ).toEqual(expectedOrder.map((index) => excelA[index].publicId));
     });
 
@@ -464,6 +507,109 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       });
       expect(all.total).toBe(all.typeTotals.zip);
       expect(all).toMatchObject({ page: 1, pageSize: 10 });
+    });
+
+    it('依文件 UUID 或文件建立人姓名／員編搜尋，不把匯出人當建立人', async () => {
+      for (const keyword of [
+        docA.docNumber.toUpperCase(),
+        creator.name,
+        creator.empid.toLowerCase(),
+      ]) {
+        const result = await history(
+          `type=excel&documentId=${docA.id}&q=${encodeURIComponent(keyword)}`,
+        );
+        expect(result.total).toBe(23);
+        expect(result.typeTotals).toEqual({ excel: 23, pdf: 3, zip: 1 });
+      }
+      const byExporter = await history(
+        `type=excel&documentId=${docA.id}&q=${encodeURIComponent(exporter.name)}`,
+      );
+      expect(byExporter).toMatchObject({
+        page: 1,
+        total: 0,
+        items: [],
+        typeTotals: { excel: 0, pdf: 0, zip: 0 },
+      });
+      const otherDocument = await history(
+        `type=excel&documentId=${docB.id}&q=${encodeURIComponent(docA.title)}`,
+      );
+      expect(otherDocument.total).toBe(0);
+    });
+
+    it('空白搜尋不限制關鍵字，無結果時頁碼為一', async () => {
+      const all = await history(`type=excel&documentId=${docA.id}&q=%20%20`);
+      expect(all.total).toBe(23);
+      const none = await history(`type=excel&q=${randomUUID()}&page=999`);
+      expect(none).toMatchObject({
+        items: [],
+        page: 1,
+        total: 0,
+        typeTotals: { excel: 0, pdf: 0, zip: 0 },
+      });
+    });
+
+    it.each(['%', '_', '!'])(
+      '搜尋中的 %s 視為一般文字，不是萬用字元',
+      async (symbol) => {
+        const token = randomBytes(8).toString('hex');
+        const special = await createDocument(`${token}${symbol}Alpha中文`);
+        const decoy = await createDocument(`${token}XAlpha中文`);
+        for (const document of [special, decoy]) {
+          await insertRecord(
+            {
+              exportType: 'excel',
+              documentId: document.id,
+              createdByUserId: exporter.id,
+              scopeDescription: '特殊字元測試',
+              recordCount: 0,
+              conditionsJson: conditions,
+            },
+            new Date(),
+          );
+        }
+        const result = await history(
+          `type=excel&q=${encodeURIComponent(`${token}${symbol}`)}`,
+        );
+        expect(result.total).toBe(1);
+        expect(result.items.map((item) => item.document.id)).toEqual([
+          String(special.id),
+        ]);
+      },
+    );
+
+    it('文件建立人已軟刪除時，仍可由保留的姓名及員編找到紀錄', async () => {
+      const token = randomBytes(8).toString('hex');
+      const leaver = await manager.save(
+        User,
+        manager.create(User, {
+          empid: `S${token}`,
+          name: `離職建立人${token}`,
+          isActive: false,
+          deletedAt: new Date(),
+        }),
+      );
+      const document = await createDocument(`保留建立人測試${token}`);
+      document.createdByUserId = leaver.id;
+      await manager.save(document);
+      await insertRecord(
+        {
+          exportType: 'excel',
+          documentId: document.id,
+          createdByUserId: exporter.id,
+          scopeDescription: '建立人測試',
+          recordCount: 0,
+          conditionsJson: conditions,
+        },
+        new Date(),
+      );
+      for (const keyword of [leaver.name, leaver.empid.toLowerCase()]) {
+        const result = await history(
+          `type=excel&q=${encodeURIComponent(keyword)}`,
+        );
+        expect(result.total).toBe(1);
+        expect(result.items[0].document.id).toBe(String(document.id));
+        expect(result.items[0].exportedBy.name).toBe(exporter.name);
+      }
     });
 
     it('非建立人、非匯出人也看得到 excel 紀錄與匯出條件', async () => {
@@ -648,7 +794,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           processedCount: 6,
           waitingCount: 0,
           completedAt: zipA.completedAt!.toISOString(),
-          expiresAt: zipA.expiresAt!.toISOString(),
+          expiresAt: null,
           failureCode: null,
           files: [
             {
@@ -957,7 +1103,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       expect(scope).toBe(`${name}（${email}`.slice(0, 255));
     });
 
-    it('同部門員工能從 pdf 紀錄重新下載：回目前的副本，新紀錄沿用文件、簽署人與範圍，匯出人為目前使用者', async () => {
+    it('同部門員工從 pdf 紀錄重新下載：重複與並發取得原副本，不新增或改寫歷史', async () => {
       const original = await insertRecord(
         {
           exportType: 'pdf',
@@ -969,24 +1115,15 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         },
         new Date(Date.now() - 60_000),
       );
-      const before = (await pdfHistory()).total;
-      // 非建立人、也不是原匯出人。
-      const response = await download(
-        redownloadPath(original.publicId!),
-        await employeeCookie(exporter),
-      ).expect(200);
-      expectCompletedPdf(response, externalCopy);
-      const page = await pdfHistory();
-      expect(page.total).toBe(before + 1);
-      expect(page.items[0]).toEqual({
-        ...pdfItem(externalCopy, {
-          name: exporter.name,
-          employeeNo: exporter.empid,
-          email: null,
-        }),
-        scope: '原紀錄的範圍說明',
-      });
-      expect(page.items[0].id).not.toBe(original.publicId);
+      const before = await pdfHistory();
+      const cookie = await employeeCookie(exporter);
+      const redownload = () =>
+        download(redownloadPath(original.publicId!), cookie).expect(200);
+      expectCompletedPdf(await redownload(), externalCopy);
+      const repeated = await Promise.all([redownload(), redownload()]);
+      for (const response of repeated)
+        expectCompletedPdf(response, externalCopy);
+      expect(await pdfHistory()).toEqual(before);
     });
 
     it('同部門非建立人可下載；跨部門、錯置紀錄及調職舊網址拒絕且不寫紀錄', async () => {
@@ -1250,11 +1387,6 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       {
         name: '外部簽署人本人下載',
         send: async () => download(externalPath, await externalCopyCookie()),
-      },
-      {
-        name: '從紀錄重新下載',
-        send: () =>
-          download(redownloadPath(records.pdf.publicId!), viewerCookie),
       },
     ])('$name：紀錄寫入失敗回 500，不送出 PDF', async ({ send }) => {
       const before = (await pdfHistory()).total;

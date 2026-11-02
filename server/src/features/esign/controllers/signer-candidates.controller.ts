@@ -26,7 +26,7 @@ import {
 export class SignerCandidatesController {
   constructor(private readonly candidates: EsignSignerCandidateService) {}
 
-  // 取得正式員工組織樹，沿用兩小時共用快取。
+  // 取得正式員工組織樹，沿用三十分鐘共用快取。
   @Get('org-chart')
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({

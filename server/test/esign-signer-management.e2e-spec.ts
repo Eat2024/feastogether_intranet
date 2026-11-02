@@ -4,6 +4,7 @@ import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { apiData } from './api-response.helper';
 import { openInternalEmployeeSession } from './external-session.helper';
 import {
@@ -35,6 +36,7 @@ describe('Spec009 管理備註與歷程 API', () => {
   let other: string;
   let id: string;
   let ownerId: string;
+  let historyDocumentId: string;
   const origin = 'http://localhost:3000';
   const patch = (body: object, auth = cookie) =>
     request(ctx.server)
@@ -60,7 +62,7 @@ describe('Spec009 管理備註與歷程 API', () => {
             person_name: '草稿測試員工',
             person_status: 1,
             person_status_name: '正式',
-            department_id: 'D009',
+            department_id: empid === 'NOTE00903' ? 'OTHER009' : 'D009',
             department_name: '測試部',
             title: '測試員工',
           }),
@@ -210,6 +212,7 @@ describe('Spec009 管理備註與歷程 API', () => {
         })
         .expect(201),
     ).id;
+    historyDocumentId = newId;
     const users = await db.query<Array<{ id: number }>>(
       "SELECT id FROM users WHERE empid='NOTE00902'",
     );
@@ -316,6 +319,98 @@ describe('Spec009 管理備註與歷程 API', () => {
     expect(history.find((e) => e.type === 'signer.assigned')).toMatchObject({
       actor: { kind: 'employee', name: '草稿測試員工' },
     });
+  });
+
+  it('歷程提供中文標籤，補簽操作者一致且不擴大本人資訊，讀取不改稽核證據', async () => {
+    // 建立舊版補簽及未知事件的合成歷程，驗證唯讀 API 的顯示投影。
+    const audit = ctx.app.get(EsignAuditService);
+    await db.transaction(async (manager) => {
+      await audit.append(
+        {
+          documentId: Number(historyDocumentId),
+          actorUserId: Number(ownerId),
+          eventType: 'document.reopened',
+          occurredAt: new Date(),
+          metadata: {
+            previousSignEndAt: '2098-01-01T00:00:00.000Z',
+            signEndAt: '2099-01-01T00:00:00.000Z',
+            reason: '建立人專用補簽原因',
+          },
+        },
+        manager,
+      );
+      await audit.append(
+        {
+          documentId: Number(historyDocumentId),
+          eventType: 'legacy.unknown',
+          occurredAt: new Date(),
+        },
+        manager,
+      );
+    });
+    const before = await db.query<Record<string, unknown>[]>(
+      'SELECT * FROM esign_audit_events WHERE document_id=? ORDER BY id',
+      [historyDocumentId],
+    );
+    const getHistory = async (auth: string) =>
+      apiData<Array<Record<string, unknown>>>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${historyDocumentId}/history`)
+          .set('Cookie', auth)
+          .expect(200),
+      );
+    const ownerHistory = await getHistory(cookie);
+    expect(ownerHistory.every((event) => typeof event.label === 'string')).toBe(
+      true,
+    );
+    expect(
+      ownerHistory.find((event) => event.type === 'signer.rejected'),
+    ).toMatchObject({
+      label: '簽署人拒絕簽署',
+    });
+    expect(
+      ownerHistory.find((event) => event.type === 'document.reopened'),
+    ).toMatchObject({
+      label: '建立人設定補簽，重新開放未簽署者簽署',
+      actor: { kind: 'employee', name: '草稿測試員工' },
+      reason: '建立人專用補簽原因',
+      previousSignEndAt: '2098-01-01T00:00:00.000Z',
+    });
+    expect(
+      ownerHistory.find((event) => event.type === 'legacy.unknown'),
+    ).toMatchObject({
+      label: '其他簽署歷程事件',
+      actor: { kind: 'system', name: '系統' },
+    });
+    const signerHistory = await getHistory(other);
+    const reopened = signerHistory.find(
+      (event) => event.type === 'document.reopened',
+    );
+    expect(reopened).toEqual({
+      type: 'document.reopened',
+      label: '建立人設定補簽，重新開放未簽署者簽署',
+      occurredAt: expect.any(String),
+      actor: { kind: 'employee', name: '建立人' },
+      reason: null,
+      signEndAt: '2099-01-01T00:00:00.000Z',
+    });
+    expect(signerHistory.some((event) => event.type === 'legacy.unknown')).toBe(
+      false,
+    );
+    const strangerCookie = await login('NOTE00903');
+    await request(ctx.server)
+      .get(`/api/esign/documents/${historyDocumentId}/history`)
+      .set('Cookie', strangerCookie)
+      .expect(404);
+    await request(ctx.server)
+      .get(`/api/esign/documents/${historyDocumentId}/history`)
+      .expect(401);
+    expect(
+      await db.query(
+        'SELECT * FROM esign_audit_events WHERE document_id=? ORDER BY id',
+        [historyDocumentId],
+      ),
+    ).toEqual(before);
   });
 
   async function login(empid: string): Promise<string> {

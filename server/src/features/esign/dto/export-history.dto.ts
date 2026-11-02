@@ -14,6 +14,7 @@ import {
   Length,
   Matches,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -50,6 +51,15 @@ export class ExportHistoryQueryDto {
   @Min(1)
   @Max(100)
   pageSize = 10;
+  /** 文件名稱、編號或文件建立人姓名／員編的部分文字 */
+  @ApiPropertyOptional({ type: String, maxLength: 100 })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(100)
+  q?: string;
   /** 限定單一文件，同時套用到 typeTotals */
   @IsOptional() @Matches(NUMERIC_ID_PATTERN) documentId?: string;
 }

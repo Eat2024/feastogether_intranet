@@ -25,6 +25,10 @@ export function filterTasks(tasks: EsignSigningTask[], query: string): EsignSign
   );
 }
 
+/** 主要排序值相同時，以公開識別固定順序，避免重新取得資料後跨頁漂移。 */
+const compareTaskId = (a: EsignSigningTask, b: EsignSigningTask) =>
+  a.signerPublicId.localeCompare(b.signerPublicId);
+
 /**
  * 依分頁整理任務並排出預設順序：
  * 待簽署為本人未簽、文件簽署中或已到期（已到期仍列出，顯示已逾期、等待補簽），依結束時間由近到遠；
@@ -34,13 +38,13 @@ export function splitTasks(tasks: EsignSigningTask[]): Record<SigningTab, EsignS
   return {
     pending: tasks
       .filter((t) => t.signer.status === 'pending' && (t.document.status === 'active' || t.document.status === 'expired'))
-      .sort((a, b) => (a.document.signEndAt ?? '￿').localeCompare(b.document.signEndAt ?? '￿')),
+      .sort((a, b) => (a.document.signEndAt ?? '￿').localeCompare(b.document.signEndAt ?? '￿') || compareTaskId(a, b)),
     signed: tasks
       .filter((t) => t.signer.status === 'signed')
-      .sort((a, b) => (b.signer.signedAt ?? '').localeCompare(a.signer.signedAt ?? '')),
+      .sort((a, b) => (b.signer.signedAt ?? '').localeCompare(a.signer.signedAt ?? '') || compareTaskId(a, b)),
     rejected: tasks
       .filter((t) => t.signer.status === 'rejected')
-      .sort((a, b) => (b.signer.rejectedAt ?? '').localeCompare(a.signer.rejectedAt ?? '')),
+      .sort((a, b) => (b.signer.rejectedAt ?? '').localeCompare(a.signer.rejectedAt ?? '') || compareTaskId(a, b)),
   };
 }
 
@@ -112,7 +116,7 @@ export function parseSigningSort(params: URLSearchParams, tab: SigningTab): Sign
 
 /** 未指定排序時維持各分頁的預設順序（見 splitTasks） */
 export function sortTasks(tasks: EsignSigningTask[], sort: SigningSort): EsignSigningTask[] {
-  return sort ? sortByValue(tasks, SORT_VALUE[sort.key], sort.order) : tasks;
+  return sort ? sortByValue([...tasks].sort(compareTaskId), SORT_VALUE[sort.key], sort.order) : tasks;
 }
 
 /** 未指定頁碼時回到第 1 頁；query 為搜尋關鍵字，切換分頁、排序與換頁時保留 */

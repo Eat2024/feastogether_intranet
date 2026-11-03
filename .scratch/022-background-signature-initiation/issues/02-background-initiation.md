@@ -7,7 +7,7 @@
 
 **Blocked by:** [01 保留行為的正式發起核心重構](01-transaction-core.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — US1；FR-001–008、015；SC-001、003–005、007。
 
@@ -17,22 +17,22 @@
 
 ## 驗收條件
 
-- [ ] 建立計畫中的唯一工作表，完整落實資料模型的欄位、唯一索引、FK、JSON 最小讀取；migration 非空 down 拒絕，無第二張表／新 env／排程。
-- [ ] 受理先持久保存完整確認輸入與版本再回 202＋Location；相同 key 同內容重播 200 原摘要，異內容或另一進行中請求 409。已過截止仍可授權後重播舊 key。
-- [ ] 建立人與現行資格在受理及正式交易均驗證；0 人／非法輸入拒絕，其他使用者不能看工作。
+- [x] 建立計畫中的唯一工作表，完整落實資料模型的欄位、唯一索引、FK、JSON 最小讀取；migration 非空 down 拒絕，無第二張表／新 env／排程。
+- [x] 受理先持久保存完整確認輸入與版本再回 202＋Location；相同 key 同內容重播 200 原摘要，異內容或另一進行中請求 409。已過截止仍可授權後重播舊 key。
+- [x] 建立人與現行資格在受理及正式交易均驗證；0 人／非法輸入拒絕，其他使用者不能看工作。
 - **原 UI 驗收暫緩／後端部分仍適用：** 前端不先解析整份名單，固定 key 提交、顯示排隊並以摘要追蹤；只有 succeeded 顯示已發起，不以 HTTP 202 判成功。
-- [ ] queue 僅 job ID、全域並行 1、claim 不跨正式交易持 job 鎖；正式文件與 succeeded 同次 commit，成功重送不再生成指派或通知。
-- [ ] 全部草稿寫入入口在同一文件鎖下拒絕 busy；新 PDF 被拒後清理新檔，不能只禁用按鈕。
+- [x] queue 僅 job ID、全域並行 1、claim 不跨正式交易持 job 鎖；正式文件與 succeeded 同次 commit，成功重送不再生成指派或通知。
+- [x] 全部草稿寫入入口在同一文件鎖下拒絕 busy；新 PDF 被拒後清理新檔，不能只禁用按鈕。
 - **原 UI 驗收暫緩／後端部分仍適用：** 通過單人端到端、schema、越權、同／不同 key 競態、全部寫入保護與前端操作驗收。恢復／保留等尚未完成的能力明列，不部署此中間版本。
 
 ## 實作與驗證紀錄
 
-尚未開始。
+已完成實作與整合，詳細證據見下方紀錄。
 
 ## 本輪後端補充驗收
 
-- [ ] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
-- [ ] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+- [x] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
+- [x] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
 
 ## Ticket 02 實作紀錄（2026-11-03）
 
@@ -55,3 +55,9 @@
 ### 後續票界線
 
 03 補完整容量與分批進度；04 補 latest／查詢驗收；05 補獨立 heartbeat、有限重試與 maintenance 補列，現階段僅持久保存失敗派送；06／07 補重試、input/issues 與保留清理。舊 HTTP 201 e2e 於 08 遷移，本票不宣稱全套 e2e 已綠燈。前端既有 resolutions 與 published 提示限制依最新範圍保留。未部署、未寄真信、未建 PR。
+
+## 整合驗收紀錄
+
+- 實作 commit `af8b6210c6a5bc129860d29517752c374d852b70` 已由 `impl/022-02` 無衝突合併至 `impl/022-integration`，merge commit `17afd13e9b13cd78a091ad81d4b482c95f84fc76`。
+- 合併 hook：server/client lint 通過（0 errors、272 既有 warnings），單元 113 suites／1,175 tests 通過。實作證據為 HTTP／真 queue acceptance 10／10、schema／migration 15／15、build 通過。
+- T004–T011 驗收及整合完成，狀態改 resolved；client 無修改。03–08 後續界線仍保留，不宣稱整份規格或舊 201 e2e 已完成。

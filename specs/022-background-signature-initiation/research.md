@@ -91,3 +91,7 @@
 - **決定**：worker全部users及accept/retry建立人皆改S current read，保留users→document→job鎖序與短交易資格原子性。不使用無鎖普通read，不改其他原需X鎖的流程。
 - **驗證**：同正式5秒持鎖情境受理降至約12ms；用獨立DB連線發出停用／Email／同步UPDATE，performance_schema證實X請求等待worker S鎖。反向順序先停用則worker S等待後拒絕，沒有部分指派；retry與同key回放可併行，同文件queued仍409且越權404。
 - **另行缺口**：同文件修改在committing持document鎖時，原實作等待約5秒後回STATE_CONFLICT而非當下worker執行中。此項已記錄，另以最小快速授權busy讀取補修，仍保留鎖內guard。
+
+## R14：正式交易中的忙碌訊息
+
+真實 worker 在持 users/document/job 鎖後讀 PDF 的邊界延遲 5 秒。原欄位更新等待約 5 秒後回 ESIGN_STATE_CONFLICT；只修共用草稿 guard 時 draft-settings 仍先等待 users X，1500ms HTTP timeout 紅燈。補授權後非鎖輕量預檢，並將名單/PDF 預檢放在鎖及昂貴準備之前，所有文件異動入口均約 1–3ms 回固定 worker 409，非建立人 404。最終安全判斷仍在文件鎖內，因此非鎖查詢不作寫入授權依據。

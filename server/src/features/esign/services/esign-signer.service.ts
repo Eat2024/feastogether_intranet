@@ -52,6 +52,7 @@ export class EsignSignerService {
     }
     const note = input.trim();
     return this.mysql.transaction(async (manager) => {
+      await this.access.assertCreatorNotInitiating(documentId, userId, manager);
       // 與簽署、停止及名單變更使用相同鎖順序；草稿註記也使舊發起輸入失效。
       const document = await this.documents.findByIdForUpdate(
         documentId,
@@ -105,6 +106,11 @@ export class EsignSignerService {
       ]),
     ].sort((left, right) => left - right);
     return this.mysql.transaction(async (manager) => {
+      await this.access.assertCreatorNotInitiating(
+        documentId,
+        creatorUserId,
+        manager,
+      );
       // signer 寫入會檢查 users 外鍵；與發起流程一致先鎖 users，避免文件鎖倒置。
       const users = await this.users.findByIdsWithEmail(userIds, manager, true);
       const lockedUsers = new Map(users.map((user) => [user.id, user]));

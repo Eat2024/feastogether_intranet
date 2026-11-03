@@ -52,6 +52,7 @@ describe('EsignDraftService', () => {
       requireDepartment: jest.fn(() => Promise.resolve(user)),
       checkEsignCreator: jest.fn(),
       checkEsignDraftCreator: jest.fn(),
+      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
       checkAndLockDraftDoc: jest.fn(async () => document),
     };
     const fields = {

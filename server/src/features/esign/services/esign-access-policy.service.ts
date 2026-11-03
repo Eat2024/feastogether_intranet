@@ -120,6 +120,8 @@ export class EsignAccessPolicyService {
     manager: EntityManager,
     lease?: InitiationLease,
   ): Promise<EsignDocument> {
+    if (!lease)
+      await this.assertCreatorNotInitiating(documentId, userId, manager);
     const document = await this.documentRepository.findByIdForUpdate(
       documentId,
       manager,
@@ -127,6 +129,21 @@ export class EsignAccessPolicyService {
     this.checkEsignDraftCreator(document, userId);
     await this.assertNotInitiating(documentId, manager, lease);
     return document;
+  }
+
+  /** 先授權再讀忙碌狀態，避免等待 worker 文件鎖後才回錯誤狀態。 */
+  async assertCreatorNotInitiating(
+    documentId: number,
+    userId: number,
+    manager: EntityManager,
+  ): Promise<void> {
+    const document = await this.documentRepository.findInitiationAccess(
+      documentId,
+      manager,
+    );
+    this.checkEsignCreator(document, userId);
+    if (await this.initiationJobs.hasActive(documentId, manager))
+      throw new AppException(...AppErrors.ESIGN_INITIATION_IN_PROGRESS);
   }
 
   /** 必須由已授權且持有文件鎖的呼叫端使用，確保競態 current read。 */

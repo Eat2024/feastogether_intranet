@@ -42,6 +42,7 @@ describe('EsignStoppageService', () => {
     };
     const access = {
       checkEsignCreator: jest.fn(),
+      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
       assertNotInitiating: jest.fn().mockResolvedValue(undefined),
     };
     const validation = {

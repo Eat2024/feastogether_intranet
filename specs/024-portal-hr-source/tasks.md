@@ -199,7 +199,7 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
   - 刪除 `server/test/portal-user-recovery.e2e-spec.ts`。
   - 在 `server/test/jest-e2e.json` 移除 `portal-user-recovery`，加入 `portal-user-sync`。
   - 依賴 T022。
-- [ ] T024 [P] [US3] 新增 worker 排程，照 `server/src/worker/esign/esign-maintenance.scheduler.ts` 的 `upsertJobScheduler` 寫法：
+- [x] T024 [P] [US3] 新增 worker 排程，照 `server/src/worker/esign/esign-maintenance.scheduler.ts` 的 `upsertJobScheduler` 寫法：
   - 新增 `server/src/worker/users/` 下的四個檔案：
     - `portal-user-sync.constants.ts`
     - `portal-user-sync.scheduler.ts`（含 `.spec.ts`）：scheduler id 為 `portal-user-sync:daily`，排程為 `{ pattern: '0 4 * * *', tz: TAIPEI_TIME_ZONE_ID }`。
@@ -207,7 +207,7 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
     - `portal-user-sync-worker.module.ts`
   - 在 `server/src/worker.module.ts` import 這個 module。queue 只在 worker 註冊，HTTP app 不註冊。
   - 依賴 T022。
-- [ ] T025 [US3] 在 `server/test/portal-user-sync.e2e-spec.ts` 加入排程驗證（SC-006）：
+- [x] T025 [US3] 新增 `server/test/portal-user-sync-worker.e2e-spec.ts`，加入排程驗證（SC-006），並把 `portal-user-sync-worker` 加入 `server/test/jest-e2e.json` 的 testRegex（與 T027 修改的 `portal-user-sync.e2e-spec.ts` 分開，避免衝突）：
   - 兩個 worker application context 連同一個測試 Redis，各自啟動後，Redis 中只有一個 `portal-user-sync:daily` scheduler，pattern 與 tz 正確。
   - 同一個 job 只被處理一次。
   - 用 BullMQ 的下次執行時間計算，驗證連續 7 天每天恰好在台北時間 04:00 觸發一次。
@@ -286,7 +286,7 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 ### 不可同時執行
 
-- `server/test/jest-e2e.json` 會被 T006、T023 修改，需要依序整合。
+- `server/test/jest-e2e.json` 會被 T006、T023、T025 修改，需要依序整合。
 - 會重設同一個測試資料庫的 e2e 不要同時跑。
 
 ### Parallel Opportunities

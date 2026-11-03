@@ -272,9 +272,21 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       'SELECT id FROM esign_signers WHERE public_id=?',
       [publicId],
     );
-    await worker.get(DocumentFinalizationProcessor).process({
+    const finalization = worker.get(DocumentFinalizationProcessor);
+    await finalization.process({
       data: { documentId: Number(documentId), signerId: rows[0].id },
     } as Job<{ documentId: number; signerId: number }>);
+    // 同一個 worker context 的 BullMQ worker 可能先消費簽署時入列的 job、取得 lease，上面的呼叫就直接返回。
+    // 等它寫完個人副本後再收斂一次結案，結果才不受兩者先後影響。
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const [signer] = await db.query<Array<{ status: string }>>(
+        'SELECT completion_status status FROM esign_signers WHERE id=?',
+        [rows[0].id],
+      );
+      if (signer.status !== 'processing') break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    await finalization.finalizeDocument(Number(documentId));
   }
   async function exportDocument(
     worker: INestApplicationContext,

@@ -192,3 +192,10 @@ Reconnect 合併 06／07 後，build 與完整 7 suites／61 tests 複驗通過�
 回退順序演練：`esign-initiation-schema`的非空表案例呼叫`undoLastMigration`遭拒且原列保留；僅清除測試自身合成列後，空表down/up重建成功。實際回退先停止新受理、結清全部queued/processing，保留工作表及終態摘要，勿直接回舊同步server或刪正式資料。此為本機DDL與API演練，不宣稱已測UAT發布／停機流程。
 
 既有client smoke採API契約與靜態呼叫核對：呼叫端await發起後不讀返回detail，無key請求仍202受理；published導頁文案及前置員編解析暫不改。未跑瀏覽器互動，不宣稱已有worker進度／錯誤還原UI。
+
+
+## 草稿版本與保留清理補修驗證（2026-11-03）
+
+`impl/022-integrity` 在專用 `feastogether_intranet_test022_integrity`／Redis DB11，HTTP重現fields／純名單／note／同秒dirty save版本未變，修後12項完整性驗收通過。所有成功草稿修改（同值儲存亦含）於文件鎖內單調推進DB微秒版本；save前raw版本可抵抗ORM整秒回退，save後回傳entity時間重讀DB。忙碌及無效修改不提交版本，worker不在buildFields中途touch，正式成功與非草稿note維持舊規則。
+
+保留清理另以performance_schema捕獲批次IN UPDATE等待不在清單內的已鎖parent；改每批100列交易內逐唯一PK更新後，同DB原timeout案例轉綠。完整7套背景發起回歸72／72、unit113 suites／1,175、build通過，lint0errors／272既有warnings。舊draft-settings內201→202驗收遷移由票08處理；沒有改前端、schema或新增env。

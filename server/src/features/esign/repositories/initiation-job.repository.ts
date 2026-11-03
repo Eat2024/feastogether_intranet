@@ -232,18 +232,22 @@ export class InitiationJobRepository {
     if (!ids.length) return [];
     // 此為明細保留清理，非業務狀態轉移；窄 UPDATE 避免 save 自動改寫摘要 updated_at。
     // 同一交易已取得 current-read job 鎖，僅清三個 JSON 並另記清理時間，保留原微秒時間。
-    await manager
-      .createQueryBuilder()
-      .update(EsignInitiationJob)
-      .set({
-        inputJson: null,
-        documentVersionJson: null,
-        issuesJson: null,
-        inputPurgedAt: now,
-        updatedAt: () => 'updated_at',
-      })
-      .whereInIds(ids)
-      .execute();
+    // IN 批次 UPDATE 可能選全表掃描，重新等待被 SKIP LOCKED 排除的 parent。
+    // 每次以已鎖定的唯一主鍵定位，確保更新階段也不碰未選取的工作。
+    for (const id of ids) {
+      await manager
+        .createQueryBuilder()
+        .update(EsignInitiationJob)
+        .set({
+          inputJson: null,
+          documentVersionJson: null,
+          issuesJson: null,
+          inputPurgedAt: now,
+          updatedAt: () => 'updated_at',
+        })
+        .where('id = :id', { id })
+        .execute();
+    }
     return ids;
   }
 

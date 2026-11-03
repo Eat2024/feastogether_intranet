@@ -44,3 +44,14 @@
 - 實作 commit `eb4c8358dfb4c152d59ae800101c4aaba0708728` 已由 `impl/022-06` 無衝突合併至 `impl/022-integration`，merge commit `a1a20fd2af3e0f518e78310cb68430255edaed66`。
 - 合併 hook：lint 0 errors／272 既有 warnings、單元 113 suites／1,175 tests 通過；實作五套 e2e 53／53（retry 8／8，含跨批 issues）、server build 通過。
 - T025–T028 完成並整合，狀態改 resolved，07 可開始；無 client／schema 變更。
+
+
+### 草稿版本完整性後續補修（2026-11-03，待整合）
+
+- 真 HTTP 重現 failed 後只改 fields、signers、note 或同秒 title／period，舊 retry 仍被 202 受理；原因為子資料未觸及文件 dirty 欄位，及 ORM updatedAt 自動更新僅整秒。
+- DocumentRepository.save 對既有 draft 先鎖讀原 raw 微秒值，save 後以窄 SQL 推進至 max(UTC now6, save前值+1µs, save後值+1µs)，再重讀回傳 entity 的 updatedAt。成功同值儲存也推進版本；此 SQL 是避免ORM／JS精度損失的必要例外，業務欄位仍save。
+- 公開 fields.replace、draft signer note 在同一文件鎖／交易末touch；updateDraft與softDeleteDraft的窄UPDATE自身單調遞增。新建無舊版；正式core activate已active，不會在驗job後的buildFields中途touch而自我衝突。非草稿note不改正式文件版本。
+- integrity新增12項API/DB驗收全過：PUT/PATCH fields、PDF、title、draftSave／draft-settings純名單、期間、選項、note、同秒dirty/no-dirty、busy／無效異動不提交、worker正式成功與軟刪。隔離MySQL session SET timestamp控制同秒，最後重設，不調全域時鐘。
+- 專用 `feastogether_intranet_test022_integrity`、Redis DB11，無前端、schema或env新增；整體回歸結果於補修commit交付。
+
+- 補修驗證：integrity／retention／retry／query／acceptance／capacity／recovery 共7 suites／72 tests通過；unit113 suites／1,175 tests、server build通過；lint0errors／272既有warnings。額外草稿設定舊suite有1個201→202期望待08遷移（其餘15項通過），本補修未改該檔。

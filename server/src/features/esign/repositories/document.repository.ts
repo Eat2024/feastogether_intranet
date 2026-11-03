@@ -10,6 +10,32 @@ import { EsignDocument } from '../entities/esign-document.entity';
 
 @Injectable()
 export class DocumentRepository {
+  private readonly nextDraftVersion =
+    'GREATEST(UTC_TIMESTAMP(6), DATE_ADD(updated_at, INTERVAL 1 MICROSECOND))';
+
+  /** 公開草稿異動在文件鎖內推進版本；不可放入 worker 共用的 buildFields。 */
+  async touchDraftVersion(
+    id: number,
+    manager: EntityManager,
+    previousVersion?: string,
+  ): Promise<void> {
+    // 單調微秒需由 DB 計算；save 的 CURRENT_TIMESTAMP 與 JS Date 都會損失精度。
+    const version = previousVersion
+      ? `GREATEST(${this.nextDraftVersion}, DATE_ADD(CAST(:previousVersion AS DATETIME(6)), INTERVAL 1 MICROSECOND))`
+      : this.nextDraftVersion;
+    const result = await manager
+      .createQueryBuilder()
+      .update(EsignDocument)
+      .set({ updatedAt: () => version })
+      .where('id = :id AND status = :status AND deleted_at IS NULL', {
+        id,
+        status: 'draft',
+      })
+      .setParameters({ previousVersion })
+      .execute();
+    if (result.affected !== 1) throw new Error('草稿版本更新失敗');
+  }
+
   findById(id: number, manager: EntityManager) {
     return manager.findOne(EsignDocument, {
       where: { id, deletedAt: IsNull() },
@@ -117,8 +143,33 @@ export class DocumentRepository {
     return manager.create(EsignDocument, fields);
   }
 
-  save(document: EsignDocument, manager: EntityManager) {
-    return manager.save(document);
+  async save(document: EsignDocument, manager: EntityManager) {
+    // 新建沒有舊版本；正式 activate 先將 status 設為 active，不進入草稿編輯分支。
+    if (!document.id || document.status !== 'draft')
+      return manager.save(document);
+    // 呼叫端已授權並持有文件鎖。以 DB 原始微秒作下限，不使用 entity 的毫秒 Date。
+    const previous = await manager
+      .createQueryBuilder(EsignDocument, 'document')
+      .select(
+        "DATE_FORMAT(document.updated_at, '%Y-%m-%d %H:%i:%s.%f')",
+        'version',
+      )
+      .where(
+        'document.id = :id AND document.status = :status AND document.deleted_at IS NULL',
+        { id: document.id, status: 'draft' },
+      )
+      .setLock('pessimistic_write')
+      .getRawOne<{ version: string }>();
+    if (!previous) throw new Error('草稿版本不存在');
+    const saved = await manager.save(document);
+    // save 可能無 dirty 欄位，或將 updated_at 回退為整秒；兩種情況都明確遞增。
+    await this.touchDraftVersion(document.id, manager, previous.version);
+    const current = await manager.findOneOrFail(EsignDocument, {
+      where: { id: document.id },
+      select: { id: true, updatedAt: true },
+    });
+    saved.updatedAt = current.updatedAt;
+    return saved;
   }
 
   updateDraft(
@@ -126,19 +177,27 @@ export class DocumentRepository {
     fields: Partial<Pick<EsignDocument, 'title'>>,
     manager: EntityManager,
   ) {
-    return manager.update(
-      EsignDocument,
-      { id, status: 'draft', deletedAt: IsNull() },
-      fields,
-    );
+    return manager
+      .createQueryBuilder()
+      .update(EsignDocument)
+      .set({ ...fields, updatedAt: () => this.nextDraftVersion })
+      .where('id = :id AND status = :status AND deleted_at IS NULL', {
+        id,
+        status: 'draft',
+      })
+      .execute();
   }
 
   softDeleteDraft(id: number, deletedAt: Date, manager: EntityManager) {
-    return manager.update(
-      EsignDocument,
-      { id, status: 'draft', deletedAt: IsNull() },
-      { deletedAt },
-    );
+    return manager
+      .createQueryBuilder()
+      .update(EsignDocument)
+      .set({ deletedAt, updatedAt: () => this.nextDraftVersion })
+      .where('id = :id AND status = :status AND deleted_at IS NULL', {
+        id,
+        status: 'draft',
+      })
+      .execute();
   }
 
   findFinalizationCandidates(afterId: number, manager: EntityManager) {

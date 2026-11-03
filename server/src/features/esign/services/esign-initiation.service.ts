@@ -71,14 +71,14 @@ export class EsignInitiationService {
         input.creatorUserId,
         manager,
       );
-      const signers = await this.signerService.updateSigners(
+      const preparedSigners = await this.signerService.prepareSigners(
         document,
         input.creatorUserId,
         input.signers,
         manager,
         lockedUsers,
       );
-      for (const signer of signers) {
+      for (const signer of preparedSigners) {
         if (signer.signerType !== 'user') continue;
         const fixed = signer.userId
           ? lockedUsers.get(Number(signer.userId))
@@ -95,10 +95,13 @@ export class EsignInitiationService {
       );
       this.validateSigningAssignments(
         document,
-        signers,
+        preparedSigners,
         fields,
         sourceMetadata.pageCount,
       );
+      this.prepareInvitationTokens(input, preparedSigners);
+      await this.signers.deleteDraftSigners(document.id, manager);
+      const signers = await this.signers.insertMany(preparedSigners, manager);
       const snapshot = this.buildSigningSnapshot(
         input,
         document,
@@ -107,11 +110,6 @@ export class EsignInitiationService {
         sourceMetadata,
       );
       const initiatedAt = new Date();
-      const invitationSigners = await this.createInvitationTokens(
-        input,
-        signers,
-        manager,
-      );
       await this.activateDocument(
         input,
         document,
@@ -122,7 +120,7 @@ export class EsignInitiationService {
       const notificationJobs = await this.createInvitationNotifications(
         input,
         document.id,
-        invitationSigners,
+        signers,
         initiatedAt,
         manager,
       );
@@ -249,13 +247,11 @@ export class EsignInitiationService {
     return { payload, payloadSha256, consentVersion: activeConsent.version };
   }
 
-  private async createInvitationTokens(
+  private prepareInvitationTokens(
     input: InitiateDocumentInput,
     signers: EsignSigner[],
-    manager: EntityManager,
-  ): Promise<EsignSigner[]> {
-    const invitationSigners = signers;
-    for (const signer of invitationSigners) {
+  ): void {
+    for (const signer of signers) {
       if (signer.signerType === 'user') {
         signer.invitationTokenSha256 = null;
         signer.invitationTokenCiphertext = null;
@@ -269,10 +265,6 @@ export class EsignInitiationService {
       signer.invitationExpiresAt = input.signEndAt;
       signer.updatedByUserId = input.creatorUserId;
     }
-    if (invitationSigners.length > 0) {
-      await this.signers.saveMany(invitationSigners, manager);
-    }
-    return invitationSigners;
   }
 
   private async activateDocument(
@@ -315,7 +307,7 @@ export class EsignInitiationService {
         ),
         manager,
       );
-      const logs = await this.notifications.saveLogs(
+      const logs = await this.notifications.insertLogs(
         invitationSigners.map((signer) => {
           const unavailable = signer.signerType === 'user' && !signer.email;
           return this.notifications.createLog(
@@ -370,27 +362,24 @@ export class EsignInitiationService {
     initiatedAt: Date,
     manager: EntityManager,
   ): Promise<void> {
-    for (const signer of signers) {
-      await this.audit.append(
-        {
+    await this.audit.appendMany(
+      [
+        ...signers.map((signer) => ({
           documentId: document.id,
           signerId: signer.id,
           actorUserId: input.creatorUserId,
           eventType: 'signer.assigned',
           occurredAt: initiatedAt,
           metadata: { status: 'pending' },
+        })),
+        {
+          documentId: document.id,
+          actorUserId: input.creatorUserId,
+          eventType: 'document.initiated',
+          occurredAt: initiatedAt,
+          metadata: { status: 'active', consentVersion },
         },
-        manager,
-      );
-    }
-    await this.audit.append(
-      {
-        documentId: document.id,
-        actorUserId: input.creatorUserId,
-        eventType: 'document.initiated',
-        occurredAt: initiatedAt,
-        metadata: { status: 'active', consentVersion: consentVersion },
-      },
+      ],
       manager,
     );
   }

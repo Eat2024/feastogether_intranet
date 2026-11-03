@@ -321,13 +321,13 @@ describe('核心電子簽 US1', () => {
       await initiate(invalid).expect(400);
       expect(await detail()).toEqual(before);
     }
-    const saveLogs = jest
-      .spyOn(ctx.app.get(NotificationRepository), 'saveLogs')
+    const insertLogs = jest
+      .spyOn(ctx.app.get(NotificationRepository), 'insertLogs')
       .mockRejectedValueOnce(new Error('測試通知寫入失敗'));
     try {
       await initiate(input).expect(500);
     } finally {
-      saveLogs.mockRestore();
+      insertLogs.mockRestore();
     }
     expect(await detail()).toEqual(before);
     const batches = await db.query<Array<{ count: number }>>(

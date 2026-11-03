@@ -1,3 +1,5 @@
+import { AuditEventRepository } from '#app/features/esign/repositories/audit-event.repository';
+import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import type { SendInternalGroupMailInput } from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { HttpService } from '@nestjs/axios';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -416,6 +418,97 @@ describe('Spec016 內部發起與邀請', () => {
       Array(3).fill({ email: 'shared@example.test', delivery: 'pending' }),
     );
   });
+  it('批次稽核部分寫入後失敗，完整回滾既有草稿名單欄位與通知且不入列', async () => {
+    await request(ctx.server)
+      .patch(`/api/esign/documents/${documentId}/draft-settings`)
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .send({ signers: [{ type: 'user', userId: String(users[1].id) }] })
+      .expect(200);
+    await request(ctx.server)
+      .put(`/api/esign/documents/${documentId}/fields`)
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .send({
+        fields: [
+          {
+            type: 'signature',
+            page: 1,
+            xPercent: 30,
+            yPercent: 30,
+            widthPercent: 15,
+            heightPercent: 15,
+            sortOrder: 0,
+          },
+        ],
+      })
+      .expect(200);
+    const manager = ctx.app.get(MysqlService).getManager();
+    const snapshot = async () => ({
+      document: await manager.query<unknown[]>(
+        'SELECT * FROM esign_documents WHERE id=?',
+        [documentId],
+      ),
+      signers: await manager.query<unknown[]>(
+        'SELECT * FROM esign_signers WHERE document_id=? ORDER BY id',
+        [documentId],
+      ),
+      fields: await manager.query<unknown[]>(
+        'SELECT * FROM esign_document_fields WHERE document_id=? ORDER BY id',
+        [documentId],
+      ),
+      batches: await manager.query<unknown[]>(
+        'SELECT * FROM esign_notification_batches WHERE document_id=? ORDER BY id',
+        [documentId],
+      ),
+      logs: await manager.query<unknown[]>(
+        'SELECT l.* FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? ORDER BY l.id',
+        [documentId],
+      ),
+      audits: await manager.query<unknown[]>(
+        'SELECT * FROM esign_audit_events WHERE document_id=? ORDER BY id',
+        [documentId],
+      ),
+    });
+    const before = await snapshot();
+    expect(before.signers).toHaveLength(1);
+    expect(before.fields).toHaveLength(1);
+    expect(before.batches).toEqual([]);
+    expect(before.logs).toEqual([]);
+    let insertedInsideTransaction = false;
+    const fault = jest
+      .spyOn(ctx.app.get(AuditEventRepository), 'insertMany')
+      .mockImplementationOnce(async (events, transaction) => {
+        expect(events.length).toBeGreaterThan(1);
+        await new AuditEventRepository().insertMany(
+          events.slice(0, 1),
+          transaction,
+        );
+        const rows = await transaction.query<Array<{ count: number }>>(
+          'SELECT COUNT(*) count FROM esign_audit_events WHERE document_id=? AND event_type=?',
+          [documentId, 'signer.assigned'],
+        );
+        insertedInsideTransaction = Number(rows[0].count) === 1;
+        throw new Error('合成批次稽核後段寫入失敗');
+      });
+    const enqueue = jest.spyOn(
+      ctx.app.get(EsignJobProducerService),
+      'enqueueInvitations',
+    );
+    try {
+      await initiate().expect(500);
+      expect(insertedInsideTransaction).toBe(true);
+      expect(fault).toHaveBeenCalledTimes(1);
+      expect(enqueue).not.toHaveBeenCalled();
+      expect((await detail()).status).toBe('draft');
+      // 完整快照包含原始 id/public_id、欄位與 updated_at，不能只比筆數。
+      expect(await snapshot()).toEqual(before);
+    } finally {
+      fault.mockRestore();
+      enqueue.mockRestore();
+    }
+  });
+
   it('草稿允許缺地址，但內部手填地址必須拒絕', async () => {
     const path = `/api/esign/documents/${documentId}/draft-settings`;
     await request(ctx.server)

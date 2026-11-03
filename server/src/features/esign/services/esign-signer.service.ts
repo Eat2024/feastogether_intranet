@@ -217,19 +217,36 @@ export class EsignSignerService {
     manager: EntityManager,
     lockedUsers?: ReadonlyMap<number, User>,
   ) {
+    const newSigners = await this.prepareSigners(
+      document,
+      creatorUserId,
+      inputs,
+      manager,
+      lockedUsers,
+    );
+    return this.saveDraftSigners(document.id, newSigners, manager);
+  }
+
+  /** 驗證並建立尚未寫入的簽署人；發起先補齊固定信箱與邀請資料再一次寫入。 */
+  async prepareSigners(
+    document: EsignDocument,
+    creatorUserId: number,
+    inputs: SignerInputDto[],
+    manager: EntityManager,
+    lockedUsers?: ReadonlyMap<number, User>,
+  ): Promise<EsignSigner[]> {
     const validatedSignerInputs = this.validateAndNormalizeSignerInputs(inputs);
     const signerInputsWithUsers = await this.attachValidatedUsers(
       validatedSignerInputs,
       manager,
       lockedUsers,
     );
-    const newSigners = this.createSigners(
+    return this.createSigners(
       document.id,
       creatorUserId,
       signerInputsWithUsers,
       manager,
     );
-    return this.saveDraftSigners(document.id, newSigners, manager);
   }
 
   /** 驗證名單數量、格式與重複資料，並正規化姓名及 Email。 */

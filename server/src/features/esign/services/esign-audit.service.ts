@@ -126,6 +126,50 @@ export class EsignAuditService {
     return eventHash;
   }
 
+  /** 同文件事件在同一交易鎖內依序串接；不改變既有單筆 append 呼叫。 */
+  async appendMany(
+    inputs: readonly AppendEsignAuditEvent[],
+    manager: EntityManager,
+  ): Promise<string[]> {
+    if (!inputs.length) return [];
+    const documentId = inputs[0].documentId;
+    if (inputs.some((input) => input.documentId !== documentId))
+      throw new Error('批次稽核必須屬於同一文件');
+    if (!manager.queryRunner?.isTransactionActive)
+      throw new Error('批次稽核必須沿用進行中的交易');
+    const document = await this.repository.lockDocument(documentId, manager);
+    if (!document)
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    const previous = await this.repository.findLatestDocumentEvent(
+      documentId,
+      manager,
+      true,
+    );
+    let previousEventHash = previous?.eventHash;
+    const rows = inputs.map((input) => {
+      const metadata = this.sanitizeMetadata(input.metadata);
+      const eventHash = auditEventHash(previousEventHash, {
+        ...input,
+        metadata,
+      });
+      const row = {
+        documentId,
+        signerId: input.signerId,
+        actorUserId: input.actorUserId,
+        eventType: input.eventType,
+        occurredAt: input.occurredAt,
+        previousEventHash,
+        eventHash,
+        requestId: input.requestId,
+        metadataJson: metadata,
+      };
+      previousEventHash = eventHash;
+      return row;
+    });
+    await this.repository.insertMany(rows, manager);
+    return rows.map((row) => row.eventHash);
+  }
+
   private sanitizeMetadata(
     metadata: EsignAuditMetadata | undefined,
   ): Record<string, string | number> | undefined {

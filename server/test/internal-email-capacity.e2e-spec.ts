@@ -447,10 +447,10 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
           ),
         );
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      const signerSaveOriginal = SignerRepository.prototype.saveMany;
+      const signerSaveOriginal = SignerRepository.prototype.insertMany;
       let signerSaveCalls = 0;
       const signerSaveSpy = jest
-        .spyOn(ctx.app.get(SignerRepository), 'saveMany')
+        .spyOn(ctx.app.get(SignerRepository), 'insertMany')
         .mockImplementation((...args) =>
           track(
             `signer-save-${++signerSaveCalls}`,
@@ -463,9 +463,9 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
         );
       const notificationSaveOriginal =
         // eslint-disable-next-line @typescript-eslint/unbound-method
-        NotificationRepository.prototype.saveLogs;
+        NotificationRepository.prototype.insertLogs;
       const notificationSaveSpy = jest
-        .spyOn(ctx.app.get(NotificationRepository), 'saveLogs')
+        .spyOn(ctx.app.get(NotificationRepository), 'insertLogs')
         .mockImplementation((...args) =>
           track(
             'notification-save',
@@ -477,9 +477,9 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
           ),
         );
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      const auditAppendOriginal = EsignAuditService.prototype.append;
+      const auditAppendOriginal = EsignAuditService.prototype.appendMany;
       const auditAppendSpy = jest
-        .spyOn(ctx.app.get(EsignAuditService), 'append')
+        .spyOn(ctx.app.get(EsignAuditService), 'appendMany')
         .mockImplementation((...args) =>
           track(
             'audit-append',
@@ -519,6 +519,9 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
       })();
       const initiationElapsedMs = performance.now() - initiationStarted;
       const initiationQueries = measuredQueryCount() - initiationQueryStart;
+      // 防止逐人 SQL 悄悄回歸；5,001 人的初建應隨批數而非人數增加。
+      expect(initiationQueries).toBeLessThan(500);
+      expect(signerSaveCalls).toBe(1);
       const measuredPhases = [...phases].map(([operation, phase]) => ({
         operation,
         ...phase,

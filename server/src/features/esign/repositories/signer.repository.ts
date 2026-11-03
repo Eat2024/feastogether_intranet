@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { type DeepPartial, type EntityManager, IsNull } from 'typeorm';
+import { type DeepPartial, type EntityManager, In, IsNull } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { EsignSigner } from '../entities/esign-signer.entity';
 
 @Injectable()
@@ -117,6 +118,36 @@ export class SignerRepository {
 
   saveMany(signers: EsignSigner[], manager: EntityManager) {
     return manager.save(signers, { chunk: 250 });
+  }
+
+  /** 僅新增；呼叫端交易統一保證多批失敗時全部回滾。 */
+  async insertMany(
+    signers: EsignSigner[],
+    manager: EntityManager,
+  ): Promise<EsignSigner[]> {
+    const result: EsignSigner[] = [];
+    for (let offset = 0; offset < signers.length; offset += 250) {
+      const batch = signers.slice(offset, offset + 250);
+      // 保留 entity instance 讓 AuditSubscriber 寫入 actor；關閉逐列生成欄位 reload。
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into(EsignSigner)
+        // TypeORM 的遞迴 partial 型別無法處理 document JSON；實際僅寫入 signer 欄位。
+        .values(batch as QueryDeepPartialEntity<EsignSigner>[])
+        .updateEntity(false)
+        .execute();
+      const rows = await manager.find(EsignSigner, {
+        where: { publicId: In(batch.map((signer) => signer.publicId)) },
+      });
+      const byPublicId = new Map(rows.map((row) => [row.publicId, row]));
+      for (const signer of batch) {
+        const row = byPublicId.get(signer.publicId);
+        if (!row) throw new Error('批次新增簽署人後無法確認完整資料');
+        result.push(row);
+      }
+    }
+    return result;
   }
 
   deleteDraftSigners(documentId: number, manager: EntityManager) {

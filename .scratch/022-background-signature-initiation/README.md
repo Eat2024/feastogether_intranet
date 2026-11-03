@@ -24,3 +24,7 @@
 03 完成後，04 查詢與 05 恢復可平行，因後端限定範圍下查詢不再是恢復的前置；06 必須等 04 與 05 均 resolved。使用獨立 worktree 及 Redis DB4／DB5，整合共用 service 變更時處理衝突並重驗。其餘票依真實前置執行，票內平行機會見 tasks。中間契約切換的既有測試落差須記錄，08 前不宣稱全套通過或可部署。
 
 本機票單不等於遠端發布；本次未建立 GitHub Issues、PR 或部署。
+
+## 最新基準與預審修正
+
+最新 dev baseline 固定為 `ef0fdca6da66afe8495b589390ddaf647c9dcdbf`。兩軸預審發現的 busy existingJobId 與初始化重複已修正並整合；這不等於正式 review 完成。08 仍 claimed，Portal fixture 遷移、新 base 完整回歸與真實長測仍待完成。

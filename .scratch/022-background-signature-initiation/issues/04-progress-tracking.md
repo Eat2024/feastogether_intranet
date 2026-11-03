@@ -87,3 +87,10 @@
 - 非 worker 的預檢／鎖內查詢僅投影公開識別碼，鎖內仍 current read；worker lease 維持完整版本核驗。HTTP 測試先以缺 details 紅燈、再以競態 fallback 的 JSON 讀取紅燈，修正後皆通過。
 - initial/retry 新工作初始化在同 service 的 `newJobState` 收斂 publicId、狀態、計數與期限；授權／輸入來源／parent／hash 邏輯各自保留，以既有公開 API 回歸驗證，未新增鏡像單測或通用框架。
 - 獨立預審補修基準驗證：8 suites / 83 e2e、115 suites / 1180 unit、build 通過，lint 0 errors／272 既有 warnings；待另行整合最新 dev/024 後重驗，不將本紀錄視為最終驗收。
+
+## 兩軸預審修正整合紀錄
+
+- 指定 reviewfix commit `614ceea55be65d9bb69f8f668d0fafe4b90f1165`（已納入最新 dev／整合基準）無衝突合併至 `impl/022-integration`，merge commit `ae05160adf314c1f6c97d10e816e80853d0ffbc6`。
+- busy 409 現在於授權後以小投影回傳 details.existingJobId，保留鎖內競態檢查；initial／retry 的共通工作初始化收斂到狹窄共用函式，沒有新增通用抽象或讀取大型 JSON。
+- 新 base：locks 11／11、server build、lint 0 errors／275 warnings、119 suites／1,213 unit 通過；舊 base 的 83 e2e 證據不冒稱新 base 全回歸。整合 hook 再驗相同 lint/unit 通過。
+- 票 04 保持 resolved；08 仍 claimed，Portal fixture 遷移、完整回歸、真實長測及正式 review 待完成。client 無修改。

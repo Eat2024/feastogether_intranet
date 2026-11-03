@@ -31,7 +31,7 @@ export class EsignFieldService {
     private readonly documents: DocumentRepository,
   ) {}
 
-  replace(
+  async replace(
     documentId: number,
     creatorUserId: number,
     inputs: FieldPlacementDto[],
@@ -39,6 +39,11 @@ export class EsignFieldService {
     if (inputs.length > 200) {
       throw new AppException(...AppErrors.ESIGN_FIELD_LIMIT_EXCEEDED);
     }
+    await this.access.assertCreatorNotInitiating(
+      documentId,
+      creatorUserId,
+      this.mysql.getManager(),
+    );
     return this.mysql.transaction(async (manager) => {
       const document = await this.access.checkAndLockDraftDoc(
         documentId,

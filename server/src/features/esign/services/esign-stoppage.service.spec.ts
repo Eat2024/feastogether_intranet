@@ -28,6 +28,7 @@ describe('EsignStoppageService', () => {
       },
     ];
     const mysql = {
+      getManager: () => manager,
       transaction: jest.fn((run: (value: never) => Promise<unknown>) =>
         run(manager),
       ),

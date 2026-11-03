@@ -105,7 +105,7 @@ describe('內外部催簽 API', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
-    await seedSyntheticStaffEmails(ctx.app, ['E2E00905']);
+    await Promise.all(['E2E00905'].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
@@ -896,4 +896,4 @@ describe('內外部催簽 API', () => {
     );
   });
 });
-import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';
+

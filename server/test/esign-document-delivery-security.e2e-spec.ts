@@ -128,7 +128,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
-    await seedSyntheticStaffEmails(ctx.app, ['E2E00910']);
+    await Promise.all(['E2E00910'].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     const rows = await db.query<Array<{ id: string }>>(
       "SELECT id FROM users WHERE empid = 'E2E00910'",
     );
@@ -715,4 +715,4 @@ describe('Spec009 跨故事與管理安全邊界', () => {
     }
   });
 });
-import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';
+

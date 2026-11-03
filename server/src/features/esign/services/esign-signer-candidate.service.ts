@@ -3,10 +3,7 @@ import { AppErrors } from '#app/common/errors/app-errors';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import { FeastogetherConfig } from '#app/infrastructure/http-client/feastogether/feastogether.config';
 import { FeastogetherDepartmentService } from '#app/infrastructure/http-client/feastogether/services/feastogether-department.service';
-import {
-  OrgDepartmentDto,
-  parseOrgChart,
-} from '#app/infrastructure/http-client/feastogether/types/org-chart.dto';
+import { OrgDepartmentDto, parseOrgChart } from '../dto/org-chart.dto';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import type { User } from '#app/features/users/entities/user.entity';

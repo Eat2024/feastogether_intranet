@@ -41,13 +41,9 @@ e2e 要覆蓋下列情境：
 
 ## UAT 人工驗證（部署後）
 
-1. 確認容器可以連到 Portal：
-
-   ```bash
-   docker compose -f docker-compose.uat.yml run --rm worker node dist/maintenance/portal-users.js sync --dry-run
-   ```
+1. 確認容器可以連到 Portal：依 runbook [手動執行](../../server/docs/portal-user-import.md#手動執行) 跑一次 `sync --dry-run`。
 
    檢查摘要中的在職人數是否接近 5,166、略過的人數與原因，以及要停用的人數。
-2. 停用人數超過 500 時，先確認名單合理，再帶 `--allow-deactivations <N>` 執行一次。
+2. 停用人數超過 500 時，先確認停用人數合理，再帶 `--allow-deactivations <N>` 執行一次。
 3. 隔天早上確認 worker log 有 `portal_users.sync_completed`，而且 `outcome` 為 `applied`。
 4. 開啟選人部門樹，用 OAuth 與帳密各登入一次。確認 server log 沒有 `hr/org_chart`、`hr/staff_lookup`、`hr/staff_emails` 的請求紀錄。

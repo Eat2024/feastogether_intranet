@@ -212,17 +212,17 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
   - 同一個 job 只被處理一次。
   - 用 BullMQ 的下次執行時間計算，驗證連續 7 天每天恰好在台北時間 04:00 觸發一次。
   - 依賴 T023、T024。
-- [ ] T026 [US3] 改寫手動 CLI `server/src/maintenance/portal-users.ts` 與 `server/src/maintenance/portal-users.spec.ts`：
+- [x] T026 [US3] 改寫手動 CLI `server/src/maintenance/portal-users.ts` 與 `server/src/maintenance/portal-users.spec.ts`：
   - 用 `NestFactory.createApplicationContext` 載入 `InfrastructureModule` 與 `PortalUserSyncModule`，不含 scheduler。
   - 只支援兩種指令：`sync --dry-run`、`sync [--allow-deactivations <N>]`。dry-run 在 stdout 輸出摘要、被略過的員編與原因，以及要停用的人數。
   - 結束碼照 contracts；不接受 `--input`、`--output`、`--exclude-file`、`--acquired-at` 與 rollback 指令。
   - 刪除 `server/src/maintenance/portal-users-source.ts`、`portal-users-import.ts`、`portal-users-store.ts`、`portal-users-recovery.ts`。
   - 依賴 T022。
-- [ ] T027 [US3] 在 `server/test/portal-user-sync.e2e-spec.ts` 加入 CLI 驗證（spec US3 情境 10）：
+- [x] T027 [US3] 在 `server/test/portal-user-sync.e2e-spec.ts` 加入 CLI 驗證（spec US3 情境 10）：
   - dry-run 不寫入，stdout 列出被略過的員編，log 中不出現它們。
   - 超過門檻時：不帶參數，或 N 與停用人數不符，都以非零狀態結束且不寫入；N 相符時套用。
   - 依賴 T026。
-- [ ] T028 [US3] 改寫 `server/docs/portal-user-import.md`：
+- [x] T028 [US3] 改寫 `server/docs/portal-user-import.md`：
   - 移除 HEX 匯出 SQL、搬檔、`--input`、預覽檔與原值檔、rollback，以及「不連線 Portal」「部門樹與登入仍用原來源」等描述。
   - 加入每日 04:00 自動匯入、查看 `portal_users.sync_*` log 的方式、`sync --dry-run` 與 `--allow-deactivations` 的步驟、第一次上線時超過門檻的處理，以及 Portal 故障時的處理。
   - 不寫真實員編、主機或帳密。

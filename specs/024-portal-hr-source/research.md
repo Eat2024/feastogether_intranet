@@ -134,7 +134,7 @@
 - 停用：本機 `is_active = true`、未刪除，且 Portal 有這個員編、但沒有任何 0／1 資料列的人，設為 `is_active = false`。Portal 查不到的人不動。匯入永遠不會把 false 改回 true。
 - 停用門檻：常數，每次 500 人。
   - 超過時，每日匯入整批不寫入並記錄 log。
-  - CLI 要帶 `--allow-deactivations <N>`，而且 N 必須等於本次算出的停用人數才會套用，避免預覽之後 Portal 又變動。
+  - 超過時，CLI 要帶 `--allow-deactivations <N>`，而且 N 必須等於本次算出的停用人數才會套用，避免預覽之後 Portal 又變動。沒有超過門檻時不需要這個參數。
 - **Rationale**：
   - 在同一個交易內鎖定再寫入，登入的寫入會等待，不需要再比對原值，也就不需要任何檔案。
   - 500 約為歷史單日離職高峰 174 的三倍，大約是在職人數的 10%，足以擋下 Portal 資料出錯造成的大量停用，也容許 worker 停機幾天後累積的正常離職。
@@ -170,12 +170,7 @@
     - `sync --dry-run`：不寫入；在 stdout 輸出摘要 JSON、被略過的員編與原因，以及要停用的人數。
     - `sync [--allow-deactivations <N>]`：正式執行。
   - 不讀檔也不寫檔。
-  - UAT 的執行方式：
-
-    ```bash
-    docker compose -f docker-compose.uat.yml run --rm worker node dist/maintenance/portal-users.js sync --dry-run
-    ```
-
+  - UAT 的執行方式：先載入 `releases/current.env`，再以 `docker compose --env-file /dev/null -f docker-compose.uat.yml run --rm worker` 執行，完整步驟見 runbook [手動執行](../../server/docs/portal-user-import.md#手動執行)。
     這會沿用 `x-backend` 的 env_file 與 `intranet-uat_default` 網路，這個網路已實測可以連到 Portal。
 - **Rationale**：
   - 與每日匯入共用同一個服務，規則一定相同。

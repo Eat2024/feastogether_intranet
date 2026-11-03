@@ -128,13 +128,128 @@ describe('022 員工共享鎖與跨文件受理', () => {
     });
     return { promise, resolve };
   }
+  it.each(['initial', 'retry'] as const)(
+    '同建立人兩份文件同時%s不因缺列gap死鎖回503',
+    async (operation) => {
+      const first = await newDoc();
+      const second = await newDoc();
+      const parents: EsignInitiationJob[] = [];
+      if (operation === 'retry') {
+        for (const doc of [first, second]) {
+          const parent = await submit(doc);
+          await mysql.getManager().update(EsignInitiationJob, parent.id, {
+            status: 'failed',
+            stage: 'failed',
+            completedAt: new Date(),
+            errorCode: 'ESIGN_INITIATION_TRANSIENT_FAILURE',
+            retryable: true,
+          });
+          parents.push(parent);
+        }
+      }
+      const db = mysql.getDataSource();
+      type Isolation = { sessionIsolation: string; globalIsolation: string };
+      const isolationSql =
+        'SELECT @@SESSION.transaction_isolation AS sessionIsolation, @@GLOBAL.transaction_isolation AS globalIsolation';
+      const before = await mysql.query<Isolation[]>(isolationSql);
+      const afterCommits: Isolation[][] = [];
+      const isolationStatements: string[] = [];
+      const createRunner = db.createQueryRunner.bind(
+        db,
+      ) as typeof db.createQueryRunner;
+      const ready = deferred();
+      let inserts = 0;
+      const databaseErrors: string[] = [];
+      const runners: Array<ReturnType<typeof createRunner>> = [];
+      const barrier = jest
+        .spyOn(db, 'createQueryRunner')
+        .mockImplementation((...args) => {
+          const runner = createRunner(...args);
+          runners.push(runner);
+          const query = runner.query.bind(runner) as typeof runner.query;
+          jest
+            .spyOn(runner, 'query')
+            .mockImplementation(async (...queryArgs) => {
+              if (queryArgs[0].startsWith('SET TRANSACTION ISOLATION LEVEL'))
+                isolationStatements.push(queryArgs[0]);
+              if (
+                queryArgs[0].startsWith('INSERT INTO `esign_initiation_jobs`')
+              ) {
+                inserts++;
+                if (inserts === 2) ready.resolve();
+                await ready.promise;
+              }
+              try {
+                const result: unknown = await query(...queryArgs);
+                if (queryArgs[0] === 'COMMIT')
+                  afterCommits.push(await query<Isolation[]>(isolationSql));
+                return result;
+              } catch (error: unknown) {
+                if (error && typeof error === 'object' && 'code' in error)
+                  databaseErrors.push(String(error.code));
+                throw error;
+              }
+            });
+          return runner;
+        });
+      try {
+        const responses = await Promise.all(
+          [first, second].map((doc, index) =>
+            request(ctx.server)
+              .post(
+                operation === 'initial'
+                  ? `/api/esign/documents/${doc}/initiations`
+                  : `/api/esign/documents/${doc}/initiation-jobs/${parents[index].publicId}/retries`,
+              )
+              .set('Cookie', cookie)
+              .set('Origin', origin)
+              .set('Idempotency-Key', randomUUID())
+              .send(operation === 'initial' ? body() : {}),
+          ),
+        );
+        // 即使紅燈也記錄成功建立的工作，供本測試清理 queue。
+        for (const doc of [first, second]) {
+          const rows = await mysql
+            .getManager()
+            .findBy(EsignInitiationJob, { documentId: Number(doc) });
+          rows.forEach((row) => ownedJobs.add(row.id));
+        }
+        await writeFile(
+          '/tmp/022-accept-gap-evidence.json',
+          JSON.stringify({
+            statuses: responses.map((r) => r.status),
+            databaseErrors,
+          }),
+        );
+        expect(responses.map((r) => r.status)).toEqual([202, 202]);
+        expect(isolationStatements).toEqual(
+          Array(2).fill('SET TRANSACTION ISOLATION LEVEL READ COMMITTED'),
+        );
+        expect(afterCommits).toHaveLength(2);
+        afterCommits.forEach((settings) => expect(settings).toEqual(before));
+        await mysql.transaction(async (manager) => {
+          expect(await manager.query<Isolation[]>(isolationSql)).toEqual(
+            before,
+          );
+        });
+        expect(isolationStatements).toHaveLength(2);
+      } finally {
+        ready.resolve();
+        barrier.mockRestore();
+        runners.forEach((runner) => jest.spyOn(runner, 'query').mockRestore());
+      }
+    },
+  );
+
   it('正式worker持users/document/job鎖5秒時，同建立人另一份文件仍在3秒內受理', async () => {
     const doc = await newDoc();
     const second = await newDoc();
-    const job = await submit(doc, {
+    const initialKey = randomUUID();
+    const initialInput = {
       ...body(),
-      signers: [{ type: 'user', userId: String(users[1].id) }],
-    });
+      signers: [{ type: 'user' as const, userId: String(users[1].id) }],
+    };
+    const job = await submit(doc, initialInput, initialKey);
     const storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
     const original: PrivateFileStorage['openReadStream'] =
       storage.openReadStream.bind(
@@ -168,7 +283,112 @@ describe('022 員工共享鎖與跨文件受理', () => {
       const start = performance.now();
       const accepted = await submit(second);
       acceptedMs = performance.now() - start;
+      for (const key of [undefined, randomUUID()]) {
+        const attempt = request(ctx.server)
+          .post(`/api/esign/documents/${doc}/initiations`)
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .send(body());
+        if (key) attempt.set('Idempotency-Key', key);
+        const response = await attempt.timeout({
+          response: 1500,
+          deadline: 2000,
+        });
+        expect(response.status).toBe(409);
+        expect(apiError(response).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
+      }
+      const retry = await request(ctx.server)
+        .post(
+          `/api/esign/documents/${doc}/initiation-jobs/${job.publicId}/retries`,
+        )
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .set('Idempotency-Key', randomUUID())
+        .send({})
+        .timeout({ response: 1500, deadline: 2000 });
+      expect(retry.status).toBe(409);
+      expect(apiError(retry).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
+      const edits = [
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}/draft-settings`)
+            .send({ watermark: false }),
+        () =>
+          request(ctx.server)
+            .put(`/api/esign/documents/${doc}/draftSave`)
+            .send({ signers: [{ type: 'user', userId: String(users[1].id) }] }),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}`)
+            .field('title', '修改標題'),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}`)
+            .attach('file', pdf, {
+              filename: 'new.pdf',
+              contentType: 'application/pdf',
+            }),
+        () => request(ctx.server).delete(`/api/esign/documents/${doc}`),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}/signers/${randomUUID()}/note`)
+            .send({ note: '註記' }),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/stoppages`)
+            .send({ reason: '停止' }),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/reopenings`)
+            .send({
+              reason: '補簽',
+              expectedSignEndAt: body().signEndAt,
+              signEndAt: body().signEndAt,
+            }),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/notification-batches`)
+            .send({ requestId: randomUUID(), selection: 'all_pending' }),
+      ];
+      for (const edit of edits) {
+        const response = await edit()
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .timeout({ response: 1500, deadline: 2000 });
+        expect(response.status).toBe(409);
+        expect(apiError(response).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
+        expect(apiError(response).message).toBe(
+          '文件正在背景發起中（worker 執行中），暫時無法修改文件或簽署人，請稍後再試。',
+        );
+        const forbidden = await edit()
+          .set('Cookie', otherCookie)
+          .set('Origin', origin)
+          .timeout({ response: 1500, deadline: 2000 });
+        expect(forbidden.status).toBe(404);
+        expect(apiError(forbidden).code).toBe('ESIGN_RESOURCE_NOT_FOUND');
+      }
+      const denied = await request(ctx.server)
+        .put(`/api/esign/documents/${doc}/fields`)
+        .set('Cookie', otherCookie)
+        .set('Origin', origin)
+        .send({ fields: body().fields })
+        .timeout({ response: 1500, deadline: 2000 });
+      expect(denied.status).toBe(404);
+      expect(apiError(denied).code).toBe('ESIGN_RESOURCE_NOT_FOUND');
+      const replayPromise = request(ctx.server)
+        .post(`/api/esign/documents/${doc}/initiations`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .set('Idempotency-Key', initialKey)
+        .send(initialInput)
+        .expect(200)
+        .then((response) => apiData<InitiationJobDto>(response));
       await processing;
+      expect(await replayPromise).toMatchObject({
+        jobId: job.publicId,
+        status: 'succeeded',
+        reused: true,
+      });
       const same = await mutation;
       await writeFile(
         '/tmp/022-worker-shared-lock-benchmark.json',
@@ -193,6 +413,8 @@ describe('022 員工共享鎖與跨文件受理', () => {
       ).toBe('succeeded');
       expect(heldMs).toBeGreaterThanOrEqual(4900);
       expect(acceptedMs).toBeLessThan(3000);
+      expect(same.elapsedMs).toBeLessThan(3000);
+      expect(apiError(same.response).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
     } finally {
       gate.mockRestore();
       await processing;
@@ -221,6 +443,70 @@ describe('022 員工共享鎖與跨文件受理', () => {
     }
     throw new Error('沒有觀察到預期的員工列鎖等待');
   }
+  it('已有新active工作時，歷史initial與retry key仍重播原摘要且驗證hash/parent', async () => {
+    const doc = await newDoc();
+    const initialKey = randomUUID();
+    const input = {
+      ...body(),
+      signers: [{ type: 'employee' as const, employeeNo: 'MISSINGLOCK22' }],
+    };
+    const parent = await submit(doc, input, initialKey);
+    await ctx.app.get(EsignInitiationJobService).process(parent.id);
+    // 模擬可人工重試的暫時失敗，聚焦歷史 key 的重播順序。
+    await mysql.getManager().update(EsignInitiationJob, parent.id, {
+      retryable: true,
+      errorCode: 'ESIGN_INITIATION_TRANSIENT_FAILURE',
+    });
+    const retryKey = randomUUID();
+    const retryRequest = (parentId = parent.publicId) =>
+      request(ctx.server)
+        .post(`/api/esign/documents/${doc}/initiation-jobs/${parentId}/retries`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .set('Idempotency-Key', retryKey)
+        .send({});
+    const child = apiData<InitiationJobDto>(await retryRequest().expect(202));
+    const childEntity = await mysql
+      .getManager()
+      .findOneByOrFail(EsignInitiationJob, { publicId: child.jobId });
+    ownedJobs.add(childEntity.id);
+    await ctx.app.get(EsignInitiationJobService).process(childEntity.id);
+    await submit(doc);
+    const original = apiData<InitiationJobDto>(
+      await request(ctx.server)
+        .post(`/api/esign/documents/${doc}/initiations`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .set('Idempotency-Key', initialKey)
+        .send(input)
+        .expect(200),
+    );
+    expect(original).toMatchObject({
+      jobId: parent.publicId,
+      status: 'failed',
+      reused: true,
+    });
+    const replay = apiData<InitiationJobDto>(await retryRequest().expect(200));
+    expect(replay).toMatchObject({
+      jobId: child.jobId,
+      status: 'failed',
+      reused: true,
+    });
+    const conflict = await request(ctx.server)
+      .post(`/api/esign/documents/${doc}/initiations`)
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .set('Idempotency-Key', initialKey)
+      .send(body())
+      .expect(409);
+    expect(apiError(conflict).code).toBe('ESIGN_INITIATION_REQUEST_CONFLICT');
+    const wrongParent = await retryRequest(child.jobId).expect(409);
+    expect(apiError(wrongParent).code).toBe(
+      'ESIGN_INITIATION_REQUEST_CONFLICT',
+    );
+    await retryRequest(randomUUID()).expect(404);
+  });
+
   it.each([
     ['停用', 'UPDATE users SET is_active=0 WHERE id=?'],
     ['信箱', "UPDATE users SET email='after@example.test' WHERE id=?"],

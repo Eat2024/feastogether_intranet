@@ -91,3 +91,15 @@
 - **決定**：worker全部users及accept/retry建立人皆改S current read，保留users→document→job鎖序與短交易資格原子性。不使用無鎖普通read，不改其他原需X鎖的流程。
 - **驗證**：同正式5秒持鎖情境受理降至約12ms；用獨立DB連線發出停用／Email／同步UPDATE，performance_schema證實X請求等待worker S鎖。反向順序先停用則worker S等待後拒絕，沒有部分指派；retry與同key回放可併行，同文件queued仍409且越權404。
 - **另行缺口**：同文件修改在committing持document鎖時，原實作等待約5秒後回STATE_CONFLICT而非當下worker執行中。此項已記錄，另以最小快速授權busy讀取補修，仍保留鎖內guard。
+
+## R14：正式交易中的忙碌訊息
+
+真實 worker 在持 users/document/job 鎖後讀 PDF 的邊界延遲 5 秒。原欄位更新等待約 5 秒後回 ESIGN_STATE_CONFLICT；只修共用草稿 guard 時 draft-settings 仍先等待 users X，1500ms HTTP timeout 紅燈。補授權後非鎖輕量預檢，並將名單/PDF 預檢放在鎖及昂貴準備之前，所有文件異動入口均約 1–3ms 回固定 worker 409，非建立人 404。最終安全判斷仍在文件鎖內，因此非鎖查詢不作寫入授權依據。
+
+## R15：並行受理的缺列 gap deadlock
+
+- 證據：同建立人兩份文件同時受理，兩個短交易皆在 `uq_esign_initiation_jobs_request` 持缺列 gap X 並等待 insert intention；HTTP 回 `[202,503]`，DB 邊界捕捉 `ER_LOCK_DEADLOCK`。重現只記狀態與代碼，不保存名單／SQL payload。
+- 原因：共享 users 鎖允許不同文件並行，但預設 REPEATABLE READ 下 `byKey`／`active` 的缺列鎖定讀保留 gap，插入互等。移除 key 鎖可能讀到 RR 舊快照；恢復 users X 則重新引入跨文件長等待。
+- 修正：僅 accept/retry 短交易指定 READ COMMITTED，保留 users S → document X → job X current read、document+key unique 與 active unique。相同文件由 document X 串行；不同文件不需鎖住對方的缺列 gap。正式 worker 與其他交易預設不變，不新增 deadlock 重試。
+- MySQL 8.4 官方說明：RC 的鎖定讀只鎖索引記錄，不鎖搜尋間隙；FK／unique 檢核仍保留鎖。[Transaction Isolation Levels](https://docs.oracle.com/cd/E17952_01/mysql-8.4-en/innodb-transaction-isolation-levels.html)。TypeORM 本機 MySQL QueryRunner 的 `startTransaction` 發 `SET TRANSACTION ISOLATION LEVEL`，不是 SESSION/GLOBAL。
+- 真 HTTP/DB INSERT barrier 驗證 initial、retry 各兩文件同時受理皆 `[202,202]`；兩條實際連線 commit 後 SESSION/GLOBAL 隔離值與之前相同，後續預設 transaction 不發指定隔離 SQL。既有同文件同 key／不同 key 的重播與 busy 回歸保留。

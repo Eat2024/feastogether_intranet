@@ -55,3 +55,28 @@
 - 實作 commit `0fdf05089e9c716aa6ff7bf6dedef51fdbc5c51b` 已由 `impl/022-04` 無衝突合併至 `impl/022-integration`，merge commit `5560f028c1ac4c74350e8a7b321883c7ffb15df8`。
 - 合併 hook：lint 0 errors／272 既有 warnings，單元 113 suites／1,175 tests 通過。實作驗證 query 8＋acceptance 11＋capacity 13，共 32／32；server build 通過。
 - T016–T020 後端範圍驗收完成並整合，狀態改 resolved；無 client 變更。05 仍在實作，06 必須等待 05 resolved。
+
+### 2026-11-04 committing 忙碌訊息補修
+
+- 文件／欄位／簽署名單／PDF／刪除／註記／停止／補簽／催簽，先小欄位建立人授權及 active EXISTS，再取得寫入鎖；正式 lease 保留原鎖內檢查。名單 users X、PDF prepare 前亦先拒絕。
+- 真 worker 交易持鎖 5 秒，修改原本等約 5 秒才回 STATE_CONFLICT，修正後 1–3ms 固定 worker 409；各入口越權 404，無 job 資訊。新增受理／重試的 key 重播優先與快速拒絕另以後續小 commit 處理。
+- 8 suites / 79 e2e、115 suites / 1180 unit、build 通過；既有 unit fixture 配合新增預檢更新，無前端／schema／env 變更。
+
+### 2026-11-04 重複發起／重試預檢補齊
+
+- 新 key／無 key 的重複發起，以及新 key retry，committing 時立即固定 worker 409。先驗有效建立人／文件，retry 再驗 parent 存在及關聯，避免 busy 洩漏或蓋過 404。
+- document+key EXISTS 命中時保留原鎖內重播：測試 active 同 key 等 commit 回原 succeeded；歷史 initial/retry key 即使已有新 active 工作仍回原 failed 摘要；錯 hash/parent 仍 REQUEST_CONFLICT，錯 parent 404。
+- 最終專用鎖測試增為 8 項；不增加 JSON 讀取、表、環境變數或前端修改。
+
+## 正式交易期間快速 busy 補修整合紀錄
+
+- 僅指定 commit `3f3f7f913c71a35358a3c256d89fed6558034141` 無衝突合併至 `impl/022-integration`，merge commit `34d3077974efd51e0791707c5652f16a57318033`；未取用 locks worktree 後續未提交變更，票 04 保持 resolved。
+- 有權人的 fields／draftSave／settings／title／PDF／delete／note／stop／reopen／reminder 在正式 committing 文件鎖期間先取得固定 409 worker 執行中訊息，越權仍 404；原鎖內 busy guard 保留作競態防線。
+- 實作 79 e2e、build/lint 通過；整合 hook lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過。
+- 無 client 修改；accept／retry 重複發起 fast busy 與歷史 key 重播優先仍待下一補修，08 整體驗收未完成。
+
+## 受理／retry 快速 busy 補修整合紀錄
+
+- 僅指定 commit `b95c1cd392d508a8282cd693dd39994c7e5354a8` 無衝突合併至 `impl/022-integration`，merge commit `2a6421e23b1034fd681a848d406fdda51e391f9f`。新 key 重複發起／retry 快速拒絕與歷史 key 重播優先已整合。
+- 實作 80 e2e、build/lint 通過；整合 hook lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過，client 無修改。
+- 08 擴大回歸另發現共享資格鎖下，跨文件並行 accept 的不存在 key／active gap lock 與 INSERT request 唯一索引發生 deadlock；修正仍在下一補修進行中，本次不宣稱並行受理全部問題已解。08 維持 claimed。

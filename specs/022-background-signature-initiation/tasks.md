@@ -66,7 +66,7 @@
 所有故事完成後才能協調發布；本階段不默認授權 UAT 部署、寄真信或建立 PR。
 
 - [ ] T031 新增測試專用 `server/test/helpers/await-initiation.ts`，遷移 `server/test/core-esign-flow.e2e-spec.ts`、`server/test/core-esign-flow-queue.e2e-spec.ts`、`server/test/core-esign-flow-scale.e2e-spec.ts` 與其他引用 POST initiations 的 e2e／benchmark：先 202、驅動 worker／等終態後簽署；於 `server/test/api-coverage.e2e-spec.ts` 驗證新端點，禁止 production 同步 fallback。
-- [ ] T032 [P] 新增 `server/test/performance/esign-initiation-benchmark.ts`，執行 1／100／101／5,001 各 20 次 P95≤3秒、5,001→5 混合排隊與大型終態後 60 秒取得權限，以及 SC-006 每人首次延遲 1 秒／120 分鐘驗收；隔離合成資料，結果寫 `specs/022-background-signature-initiation/validation.md`，未執行不能標通過。
+- [ ] T032 [P] 新增 `server/test/performance/esign-initiation-benchmark.e2e-spec.ts`，執行 1／100／101／5,001 各 20 次 P95≤3秒、5,001→5 混合排隊與大型終態後 60 秒取得權限，以及 SC-006 每人首次延遲 1 秒／120 分鐘驗收；隔離合成資料，結果寫 `specs/022-background-signature-initiation/validation.md`，未執行不能標通過。
 - [ ] T033 於 `specs/022-background-signature-initiation/validation.md` 記錄 server lint:check／test／test:schema／test:e2e 與 root build／lint 結果、Swagger 與 contract 對照、三故事 API 驗收與未修改 client 相容性 smoke test及未驗證限制；相依服務不足時保留阻礙，不勾選未通過項。
 - [ ] T034 更新 `specs/022-background-signature-initiation/quickstart.md` 發布／回退演練紀錄：先 migration、協調 worker/server，client 不部署，回退前停新受理並結清非終態，保留工作表且非空 down 拒絕；不新增 env／排程，不在本票自行部署或寄真信。
 

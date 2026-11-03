@@ -269,7 +269,7 @@ describe('022 發起實時間效能驗收', () => {
     const selectedIds = new Set(selected.map((u) => String(u.id)));
     const delayed = new Set<string>();
     const repo = ctx.app.get(UserRepository);
-    const original = repo.findByIds.bind(repo);
+    const original = new UserRepository();
     const injected = jest
       .spyOn(repo, 'findByIds')
       .mockImplementation(async (...args) => {
@@ -278,7 +278,7 @@ describe('022 發起實時間效能驗收', () => {
           .filter((id) => selectedIds.has(id) && !delayed.has(id));
         first.forEach((id) => delayed.add(id));
         if (first.length) await wait(first.length * 1000);
-        return original(...args);
+        return original.findByIds(...args);
       });
     const started = performance.now();
     const startedAt = new Date().toISOString();
@@ -315,9 +315,19 @@ describe('022 發起實時間效能驗收', () => {
     const timer = setInterval(() => {
       if (updating) return;
       updating = true;
-      void update().finally(() => {
-        updating = false;
-      });
+      void update()
+        .catch(() => {
+          writeFileSync(
+            '/tmp/022-long-benchmark-progress-error.json',
+            JSON.stringify({
+              updatedAt: new Date().toISOString(),
+              error: 'PROGRESS_READ_FAILED',
+            }),
+          );
+        })
+        .finally(() => {
+          updating = false;
+        });
     }, 30000);
     const consumer = await worker();
     try {

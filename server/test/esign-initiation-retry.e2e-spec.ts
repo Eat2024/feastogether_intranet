@@ -1,3 +1,4 @@
+import { DataSource } from 'typeorm';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -441,7 +442,11 @@ describe('022 失敗恢復與人工重試', () => {
       ...body(),
       signers: [{ type: 'user', userId: String(users[1].id) }],
     });
-    const runner = mysql.getDataSource().createQueryRunner();
+    // 外部異動者獨立連線，保留 app pool2 給 worker 與 HTTP 觀察。
+    const blocker = await new DataSource(
+      mysql.getDataSource().options,
+    ).initialize();
+    const runner = blocker.createQueryRunner();
     await runner.connect();
     await runner.startTransaction();
     let processing: Promise<void> | undefined;
@@ -486,6 +491,7 @@ describe('022 失敗恢復與人工重試', () => {
     } finally {
       if (runner.isTransactionActive) await runner.rollbackTransaction();
       await runner.release();
+      await blocker.destroy();
       await processing;
       await mysql.getManager().update(User, users[1].id, { isActive: true });
     }
@@ -494,7 +500,11 @@ describe('022 失敗恢復與人工重試', () => {
   it('重試等待文件鎖後以最新版本拒絕，不沿用受理時舊快照', async () => {
     const doc = await newDoc();
     const parent = await retryable(doc);
-    const runner = mysql.getDataSource().createQueryRunner();
+    // 外部異動者獨立連線，保留 app pool2 給 worker 與 HTTP 觀察。
+    const blocker = await new DataSource(
+      mysql.getDataSource().options,
+    ).initialize();
+    const runner = blocker.createQueryRunner();
     await runner.connect();
     await runner.startTransaction();
     let pending: Promise<request.Response> | undefined;
@@ -515,6 +525,7 @@ describe('022 失敗恢復與人工重試', () => {
     } finally {
       if (runner.isTransactionActive) await runner.rollbackTransaction();
       await runner.release();
+      await blocker.destroy();
       await pending;
     }
   });

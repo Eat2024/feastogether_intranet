@@ -1,3 +1,7 @@
+import { getQueueToken } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+import { ESIGN_DOCUMENT_INITIATION_QUEUE } from '#app/features/esign/esign-queue.constants';
+import { performance } from 'node:perf_hooks';
 import request, { type Response } from 'supertest';
 import { EsignInitiationJob } from '#app/features/esign/entities/esign-initiation-job.entity';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
@@ -19,14 +23,36 @@ export async function driveInitiation(
     .getManager()
     .findOneByOrFail(EsignInitiationJob, { publicId: summary.jobId });
   await ctx.app.get(EsignInitiationJobService).process(job.id);
-  return apiData<InitiationJobDto>(
-    await request(ctx.server)
-      .get(
-        `/api/esign/documents/${summary.documentId}/initiation-jobs/${summary.jobId}`,
-      )
-      .set('Cookie', cookie)
-      .expect(200),
-  );
+  const started = performance.now();
+  while (true) {
+    const state = apiData<InitiationJobDto>(
+      await request(ctx.server)
+        .get(
+          `/api/esign/documents/${summary.documentId}/initiation-jobs/${summary.jobId}`,
+        )
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+    if (state.status !== 'processing') {
+      if (state.status === 'succeeded' || state.status === 'failed') {
+        const queue = ctx.app.get<Queue>(
+          getQueueToken(ESIGN_DOCUMENT_INITIATION_QUEUE),
+        );
+        const dispatchId = await queue.getDeduplicationJobId(
+          `initiation-${job.id}`,
+        );
+        const dispatch = dispatchId
+          ? await queue.getJob(dispatchId)
+          : undefined;
+        if (dispatch && (await dispatch.getState()) !== 'active')
+          await dispatch.remove();
+      }
+      return state;
+    }
+    if (performance.now() - started > 30000)
+      throw new Error('等待背景工作終態逾時');
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  }
 }
 
 /** 成功 fixture 的詳細資料來自獨立 GET，沒有偽造同步發起回應。 */

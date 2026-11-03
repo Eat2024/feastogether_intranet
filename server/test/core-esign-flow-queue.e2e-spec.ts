@@ -422,7 +422,7 @@ describe('核心電子簽真實 queue e2e', () => {
       .type('form')
       .send({ code })
       .expect(303);
-    await seedSyntheticStaffEmails(ctx.app, [empid]);
+    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     return cookieNamed(activated.headers['set-cookie'], 'FT_ESIGN_SESSION');
   }
 
@@ -534,4 +534,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';
+

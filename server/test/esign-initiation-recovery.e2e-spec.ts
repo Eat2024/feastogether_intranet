@@ -1,3 +1,4 @@
+import { createSyntheticPortal, type SyntheticPortal } from './synthetic-portal.helper';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Queue, Worker } from 'bullmq';
 import { ESIGN_DOCUMENT_INITIATION_QUEUE } from '#app/features/esign/esign-queue.constants';
@@ -12,7 +13,7 @@ import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+
 import { apiData } from './api-response.helper';
 import {
   createSecurityE2eApp,
@@ -29,6 +30,7 @@ interface JobView {
 describe('022 背景發起有限恢復', () => {
   jest.setTimeout(30000);
   let ctx: SecurityE2eContext;
+  let portal: SyntheticPortal;
   let db: DataSource;
   let cookie: string;
   let ownerId: string;
@@ -40,21 +42,8 @@ describe('022 背景發起有限恢復', () => {
       process.env.REDIS_DB === '0'
     )
       throw new Error('恢復測試只允許隔離 test Redis DB');
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
-        lookupEligibleStaff: (empid: string) =>
-          Promise.resolve({
-            person_empid: empid,
-            person_name: '草稿測試員工',
-            person_status: 1,
-            person_status_name: '正式',
-            department_id: 'D022',
-            department_name: '測試部',
-            title: '測試員工',
-          }),
-      }),
-    );
+    portal = await createSyntheticPortal();
+    ctx = await createSecurityE2eApp();
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
     cookie = await login('RC02201');
     const users = await db.query<Array<{ id: number }>>(
@@ -64,6 +53,7 @@ describe('022 背景發起有限恢復', () => {
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
+    if (portal) await portal.drop();
   });
 
   const input = () => ({
@@ -649,6 +639,7 @@ describe('022 背景發起有限恢復', () => {
   }
 
   async function login(empid: string): Promise<string> {
+    await portal.insertPeople([{ person_empid: empid, person_name: '背景合成員工', person_status: 1, department_id: 'D022', department_name: '測試部', title: '測試員工', email: `${empid.toLowerCase()}@example.test` }]);
     const launched = await request(ctx.server)
       .post('/api/auth/webview-launches')
       .set('Authorization', `Bearer ${createLaunchJwt(empid)}`)
@@ -664,7 +655,7 @@ describe('022 背景發起有限恢復', () => {
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');
-    await seedSyntheticStaffEmails(ctx.app, [empid]);
+    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     return value;
   }
 });
@@ -695,7 +686,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import {
-  syntheticStaffEmails,
-  seedSyntheticStaffEmails,
-} from './synthetic-staff-emails.helper';
+

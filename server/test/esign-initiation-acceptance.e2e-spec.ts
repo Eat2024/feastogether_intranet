@@ -1,3 +1,4 @@
+import { createSyntheticPortal, type SyntheticPortal } from './synthetic-portal.helper';
 import { InitiationJobRepository } from '#app/features/esign/repositories/initiation-job.repository';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
 import { EsignAccessPolicyService } from '#app/features/esign/services/esign-access-policy.service';
@@ -10,7 +11,7 @@ import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+
 import { apiData, apiError } from './api-response.helper';
 import {
   createSecurityE2eApp,
@@ -27,6 +28,7 @@ interface JobView {
 describe('022 背景發起受理', () => {
   jest.setTimeout(30000);
   let ctx: SecurityE2eContext;
+  let portal: SyntheticPortal;
   let db: DataSource;
   let cookie: string;
   let other: string;
@@ -34,21 +36,8 @@ describe('022 背景發起受理', () => {
   let ownerId: string;
   const origin = 'http://localhost:3000';
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
-        lookupEligibleStaff: (empid: string) =>
-          Promise.resolve({
-            person_empid: empid,
-            person_name: '草稿測試員工',
-            person_status: 1,
-            person_status_name: '正式',
-            department_id: 'D022',
-            department_name: '測試部',
-            title: '測試員工',
-          }),
-      }),
-    );
+    portal = await createSyntheticPortal();
+    ctx = await createSecurityE2eApp();
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
     cookie = await login('BG02201');
     other = await login('BG02202');
@@ -73,6 +62,7 @@ describe('022 背景發起受理', () => {
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
+    if (portal) await portal.drop();
   });
 
   const input = () => ({
@@ -470,6 +460,7 @@ describe('022 背景發起受理', () => {
   });
 
   async function login(empid: string): Promise<string> {
+    await portal.insertPeople([{ person_empid: empid, person_name: '背景合成員工', person_status: 1, department_id: 'D022', department_name: '測試部', title: '測試員工', email: `${empid.toLowerCase()}@example.test` }]);
     const launched = await request(ctx.server)
       .post('/api/auth/webview-launches')
       .set('Authorization', `Bearer ${createLaunchJwt(empid)}`)
@@ -485,7 +476,7 @@ describe('022 背景發起受理', () => {
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');
-    await seedSyntheticStaffEmails(ctx.app, [empid]);
+    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     return value;
   }
 });
@@ -516,7 +507,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import {
-  syntheticStaffEmails,
-  seedSyntheticStaffEmails,
-} from './synthetic-staff-emails.helper';
+

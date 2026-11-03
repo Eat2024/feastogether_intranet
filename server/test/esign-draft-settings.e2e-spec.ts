@@ -318,7 +318,7 @@ describe('Spec009 草稿完整設定 API', () => {
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');
-    await seedSyntheticStaffEmails(ctx.app, [empid]);
+    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     return value;
   }
 });
@@ -349,4 +349,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';
+

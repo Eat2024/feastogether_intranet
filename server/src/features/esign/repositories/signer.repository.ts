@@ -86,6 +86,34 @@ export class SignerRepository {
     });
   }
 
+  async countsByDocumentIds(documentIds: number[], manager: EntityManager) {
+    const counts = new Map<
+      number,
+      { pendingCount: number; signedCount: number }
+    >();
+    if (documentIds.length === 0) return counts;
+    const rows = await manager
+      .createQueryBuilder(EsignSigner, 'signer')
+      .select('signer.documentId', 'documentId')
+      .addSelect("SUM(signer.status = 'pending')", 'pendingCount')
+      .addSelect("SUM(signer.status = 'signed')", 'signedCount')
+      .where('signer.documentId IN (:...documentIds)', { documentIds })
+      .andWhere('signer.deletedAt IS NULL')
+      .groupBy('signer.documentId')
+      .getRawMany<{
+        documentId: string | number;
+        pendingCount: string | number;
+        signedCount: string | number;
+      }>();
+    for (const row of rows) {
+      counts.set(Number(row.documentId), {
+        pendingCount: Number(row.pendingCount),
+        signedCount: Number(row.signedCount),
+      });
+    }
+    return counts;
+  }
+
   findByDocument(documentId: number, manager: EntityManager) {
     return manager.find(EsignSigner, {
       where: { documentId, deletedAt: IsNull() },

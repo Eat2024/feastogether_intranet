@@ -37,12 +37,20 @@ function setup(doc = document()) {
   const manager = {} as never;
   const documents = {
     findById: jest.fn(() => Promise.resolve(doc)),
-    findCreatedByUser: jest.fn(() => Promise.resolve([doc])),
+    findListCreatedByUser: jest.fn(() => Promise.resolve([doc])),
+    findListByIds: jest.fn<Promise<EsignDocument[]>, [number[], unknown]>(() =>
+      Promise.resolve([]),
+    ),
     findByDepartment: jest.fn(() => Promise.resolve([doc])),
   };
   const signers = {
     findByDocument: jest.fn(() => Promise.resolve([signer()])),
-    findAssignedToUser: jest.fn(() => Promise.resolve([])),
+    countsByDocumentIds: jest.fn(() =>
+      Promise.resolve(new Map([[doc.id, { pendingCount: 1, signedCount: 0 }]])),
+    ),
+    findAssignedToUser: jest.fn<Promise<EsignSigner[]>, [number, unknown]>(() =>
+      Promise.resolve([]),
+    ),
   };
   const fields = { findByDocument: jest.fn(() => Promise.resolve([])) };
   const notifications = { findBySignerIds: jest.fn(() => Promise.resolve([])) };
@@ -62,6 +70,18 @@ function setup(doc = document()) {
     ),
   };
   const exports = { documentSummary: jest.fn(() => Promise.resolve(null)) };
+  const users = {
+    findById: jest.fn(() =>
+      Promise.resolve(
+        Object.assign(new User(), { id: 1, name: '建立人', empid: '001' }),
+      ),
+    ),
+    findByIds: jest.fn(() =>
+      Promise.resolve([
+        Object.assign(new User(), { id: 1, name: '建立人', empid: '001' }),
+      ]),
+    ),
+  };
   const service = new EsignDocumentQueryService(
     { getManager: () => manager } as never,
     documents as never,
@@ -75,19 +95,14 @@ function setup(doc = document()) {
     new EsignViewMapper({ verificationUrl: () => null } as never),
     {} as never,
     {} as never,
-    {
-      findById: jest.fn(() =>
-        Promise.resolve(
-          Object.assign(new User(), { id: 1, name: '建立人', empid: '001' }),
-        ),
-      ),
-    } as never,
+    users as never,
     records as never,
     {} as never,
     exports as never,
   );
   return {
     service,
+    users,
     exports,
     documents,
     signers,
@@ -108,7 +123,7 @@ describe('部門文件查詢', () => {
       'A001',
       s.manager,
     );
-    expect(s.documents.findCreatedByUser).not.toHaveBeenCalled();
+    expect(s.documents.findListCreatedByUser).not.toHaveBeenCalled();
     expect(s.signers.findAssignedToUser).not.toHaveBeenCalled();
     expect(result).toEqual([
       expect.objectContaining({
@@ -127,6 +142,49 @@ describe('部門文件查詢', () => {
       expect(s.documents.findByDepartment).not.toHaveBeenCalled();
     },
   );
+  it('列表批次取得建立人與統計，無簽署人回傳零且不讀完整簽署人', async () => {
+    const s = setup();
+    s.documents.findByDepartment.mockResolvedValue([
+      document(),
+      document({ id: 11 }),
+    ]);
+    const result = await s.service.list(2, 'dep');
+    expect(s.users.findByIds).toHaveBeenCalledWith([1], s.manager);
+    expect(s.signers.countsByDocumentIds).toHaveBeenCalledWith(
+      [11, 10],
+      s.manager,
+    );
+    expect(s.signers.findByDocument).not.toHaveBeenCalled();
+    expect(s.users.findById).not.toHaveBeenCalled();
+    expect(
+      result.map((row) => [row.id, row.pendingCount, row.signedCount]),
+    ).toEqual([
+      ['11', 0, 0],
+      ['10', 1, 0],
+    ]);
+  });
+
+  it('本人合併列表批次查指派文件，排除草稿、去重並維持排序', async () => {
+    const s = setup(document({ status: 'active' }));
+    s.signers.findAssignedToUser.mockResolvedValue([
+      signer(),
+      Object.assign(signer(), { documentId: 11 }),
+      Object.assign(signer(), { documentId: 12 }),
+    ]);
+    s.documents.findListByIds.mockResolvedValue([
+      document({ status: 'active' }),
+      document({ id: 11 }),
+      document({ id: 12, status: 'completed' }),
+    ]);
+    const result = await s.service.list(1);
+    expect(s.documents.findListByIds).toHaveBeenCalledWith(
+      [10, 11, 12],
+      s.manager,
+    );
+    expect(s.documents.findById).not.toHaveBeenCalled();
+    expect(result.map((row) => row.id)).toEqual(['12', '10']);
+  });
+
   it('同部門詳情只回進度白名單，且不讀管理資料', async () => {
     const s = setup();
     const result = await s.service.detail(10, 2);

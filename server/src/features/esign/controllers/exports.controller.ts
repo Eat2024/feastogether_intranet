@@ -66,7 +66,7 @@ export class ExportsController {
   })
   @ApiResponse({
     status: 409,
-    description: 'ZIP 尚未就緒、成果不可用或員工部門尚未設定',
+    description: 'ZIP 尚未就緒或員工部門尚未設定',
   })
   @ApiResponse({
     status: 503,

@@ -101,7 +101,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
   const { showSnackbar } = useSnackbar();
   const [, startTransition] = useTransition();
   const [content, setContent] = useState<ContentType>('list');
-  // Excel 已串接當次名稱；ZIP 串接由下一張 ticket 完成。
+  // Excel 與 ZIP 共用當次下載名稱，不保存為文件設定。
   const [fileName, setFileName] = useState('');
   const query = useMemo(() => parseExportQuery(params), [params]);
   const deptOptions = useMemo(() => buildDeptOptions(doc.signers), [doc.signers]);

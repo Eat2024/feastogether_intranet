@@ -11,7 +11,7 @@ describe('EsignAccessPolicyService', () => {
     {} as never,
     {
       active: jest.fn().mockResolvedValue(null),
-      hasActive: jest.fn().mockResolvedValue(false),
+      activeIdentity: jest.fn().mockResolvedValue(null),
     } as never,
   );
   const now = new Date('2026-10-13T12:00:00.000Z');
@@ -64,7 +64,7 @@ describe('EsignAccessPolicyService', () => {
         {} as never,
         {
           active: jest.fn().mockResolvedValue(null),
-          hasActive: jest.fn().mockResolvedValue(false),
+          activeIdentity: jest.fn().mockResolvedValue(null),
         } as never,
       );
       return { locking, documents };
@@ -390,7 +390,7 @@ describe('部門文件授權', () => {
         users as never,
         {
           active: jest.fn().mockResolvedValue(null),
-          hasActive: jest.fn().mockResolvedValue(false),
+          activeIdentity: jest.fn().mockResolvedValue(null),
         } as never,
       ),
     };

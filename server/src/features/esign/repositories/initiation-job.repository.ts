@@ -91,12 +91,14 @@ export class InitiationJobRepository {
       .getExists();
   }
 
-  /** 僅作有權修改者的快速拒絕；真正寫入仍須鎖內 current read。 */
-  hasActive(documentId: number, manager: EntityManager) {
-    return manager
+  /** 有權人忙碌提示只讀公開識別碼；鎖內呼叫指定 current read。 */
+  activeIdentity(documentId: number, manager: EntityManager, lock = false) {
+    const query = manager
       .createQueryBuilder(EsignInitiationJob, 'job')
-      .where('job.activeDocumentId = :documentId', { documentId })
-      .getExists();
+      .select(['job.publicId'])
+      .where('job.activeDocumentId = :documentId', { documentId });
+    if (lock) query.setLock('pessimistic_write');
+    return query.getOne();
   }
 
   active(documentId: number, manager: EntityManager) {

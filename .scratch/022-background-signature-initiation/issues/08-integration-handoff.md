@@ -7,7 +7,7 @@
 
 **Blocked by:** [07 工作明細到期清理與可追溯摘要](07-retention.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — 全部 US；SC-001–009。
 
@@ -22,7 +22,7 @@
 - [x] 隔離空佇列先 5,001 再 5 人：大型終態後小工作 60 秒內取得執行權；另跑每人首次延遲 1 秒的 SC-006，signEndAt 超過受理後 120 分鐘，有限界線內完成。
 - **原 UI 驗收暫緩／後端部分仍適用：** 只用合成資料、fake mail 及隔離 MySQL／Redis；完整跑 server lint、unit、schema、e2e 與 root build／lint，以及三故事前端驗收。未執行情境列限制，不能填通過。
 - **原 UI 驗收暫緩／後端部分仍適用：** 記錄 migration 先行、worker/server/client 協調發布、舊頁刷新與回退演練；未結清非終態不得直接換回舊 server，非空表 down 拒絕。
-- [ ] 本票完成需驗收且整合至功能分支；不自行操作 UAT、寄真信、建立遠端 PR 或執行部署。
+- [x] 本票完成需驗收且整合至功能分支；不自行操作 UAT、寄真信、建立遠端 PR 或執行部署。
 
 ## 實作與驗證紀錄
 
@@ -61,3 +61,11 @@
 T031–T034已完成。程式基準`2f0657d`（最新dev／024fixture／reviewfix／snapshot補修）完整e2e50 suites／531 tests通過、專用reconnect另1／1通過，unit119／1213、schema5／30、security14／84、root build/lint通過。新版80次矩陣與6001完整性已驗；SC006舊基準真實5123.645秒成功、attempt1／5001指派，睡眠造成Bull失鎖後重新領取終態no-op並completed，完整異常與限制皆保留於validation。正常fullsuite另遇主機睡眠超時，以僅綁子程序的caffeinate重跑全綠，未放寬斷言。
 
 未改client、未跑瀏覽器或UAT發布／寄真信。狀態保持claimed，最後一項「驗收且整合」由merger合併後勾選及resolve；正式code review由父代理收尾。
+
+## 最終整合與結案紀錄（2026-11-04）
+
+- 最終交付 `1aa29d6bdc9305d571acbca655bfa755a2882c6c` 無衝突合併至 `impl/022-integration`，merge commit `a61079164934b5f525b1bea52eb1eecf25f98f47`。T001–T034 均已完成驗收與整合，票 08 依 tracker 改 resolved。
+- 最新 dev baseline `ef0fdca6da66afe8495b589390ddaf647c9dcdbf` 上的完整 e2e：50 suites／531 passed，reconnect 在一般套件 skip 1，專用 DB9 另 1／1 通過；schema 5 suites／30、最終 source security 14 suites／84（含最後授權移動版）、unit 119 suites／1,213、build/lint 通過。合併 hook 再驗 lint 0 errors／272 warnings、unit 119／1,213 通過。
+- SC-006 實時 5,123.645 秒完成，5,001 指派、attempt=1；主機 sleep／Bull 失鎖及其後終態 no-op reclaim 已記錄。長測為舊基準，不能冒稱最新 base 再跑同長度；完整限制見 validation。
+- 正式兩軸 code review 尚未執行完成，由父代理後續進行；resolved 表示本票實作驗收及整合完成，不代表正式 review 已通過。
+- client 差異為空，未碰原 checkout、未部署或寄真信。

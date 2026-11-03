@@ -2,7 +2,7 @@
 
 **最新範圍**：只實作後端 worker，排隊／執行中禁止修改文件及簽署人，前端相關驗收暫緩。詳見 [範圍決策](../../specs/022-background-signature-initiation/backend-only-scope.md)。
 
-已依 tasks 拆成 8 張本機票單。01–07 已驗收並整合，狀態 `resolved`；Redis reconnect、草稿版本、保留清理完整性及共享資格鎖補修亦已整合。同文件異動快速 busy 補修已整合；accept／retry 的 fast busy 與歷史 key 重播優先補修亦已整合。跨文件並行受理 gap lock deadlock 補修已整合，08 預審交付已整合：T031／T034 完成，T032／T033 的真實長測與正式 code review 尚未完成，票仍 claimed；目前 frontier 為 08，整份規格尚未結案。07 retention 的 timeout 已另取得可重現的 bulk UPDATE 跨鎖列證據並修正，歷史與紅綠驗證保留於票單。整合分支為 `impl/022-integration`。
+8 張 tickets 已驗收並整合至 `impl/022-integration`，01–08 全為 `resolved`，T001–T034 全部完成。正式兩軸 code review 尚未完成，不能將此狀態描述為正式審查通過。各項補修與歷史失敗、重驗證據保留於個別票單及 validation。
 
 [規格](../../specs/022-background-signature-initiation/spec.md) · [計畫](../../specs/022-background-signature-initiation/plan.md) · [Tasks](../../specs/022-background-signature-initiation/tasks.md)
 
@@ -27,8 +27,12 @@
 
 ## 最新基準與預審修正
 
-最新 dev baseline 固定為 `ef0fdca6da66afe8495b589390ddaf647c9dcdbf`。兩軸預審發現的 busy existingJobId 與初始化重複已修正並整合；這不等於正式 review 完成。08 仍 claimed，Portal fixture 遷移、新 base 完整回歸與真實長測仍待完成。
+最新 dev baseline 固定為 `ef0fdca6da66afe8495b589390ddaf647c9dcdbf`。兩軸預審發現的 busy existingJobId 與初始化重複已修正並整合；正式 review 仍待父代理執行。Portal fixture 遷移與新 base 完整回歸已完成；真實長測已通過但屬舊基準，限制見下方。
 
 ## Portal fixture 與快照修正整合
 
-Portal fixture 遷移及公開 mutation 交易外 busy 預檢已整合，消除預檢先建立 RR 舊快照的重複催簽原因。08 仍 claimed，需重驗新 base 完整回歸；午夜 fixture、平行 direct worker 問題與真實長測／正式 review 尚未完成。
+Portal fixture 遷移及公開 mutation 交易外 busy 預檢已整合，消除預檢先建立 RR 舊快照的重複催簽原因。午夜 fixture 與測試平行 direct worker 的診斷／調整已完成，新 base 完整回歸已通過；正式 review 仍待完成。
+
+## 最終驗收摘要
+
+新 dev 基準完整 e2e 50 suites／531 passed＋一般套件 reconnect skip 1；專用 DB9 reconnect 另 1／1 通過。unit 119／1,213、schema 5／30、security 最終 source 14／84、build／lint 通過。SC-006 實時 5,123.645 秒成功、5,001 指派、attempt=1；睡眠導致 Bull 失鎖後重領終態 no-op 與舊長測基準限制完整保留於 [validation](../../specs/022-background-signature-initiation/validation.md)。未執行 UAT 部署或修改前端。

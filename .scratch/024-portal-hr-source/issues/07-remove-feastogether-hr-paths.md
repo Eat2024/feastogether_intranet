@@ -2,7 +2,7 @@
 
 **What to build:** intranet 不再保留任何呼叫饗賓人 `hr/org_chart`、`hr/staff_lookup`、`hr/staff_emails` 的程式，也不留 fallback 或開關。`staff/login` 與 WebView token 驗證照舊。
 
-**Status:** claimed
+**Status:** resolved
 
 **Blocked by:** [02-org-chart-from-portal](02-org-chart-from-portal.md)、[03-login-staff-from-portal](03-login-staff-from-portal.md)
 
@@ -18,7 +18,7 @@
 - [x] 饗賓人 client 中這三條路徑的特例（omitBody、envelope 檢查、`staff_lookup` 特例、「人事來源回應格式錯誤」log）都已移除；`staff/login` 的測試仍通過。
 - [x] `server/src` 搜尋不到這三條路徑；測試中只剩「呼叫數為 0」的斷言；饗賓人模組只被 auth 使用。
 - [x] client 可見的錯誤碼與訊息不變。
-- [ ] 相關的 lint、單元測試、build 與 e2e 通過，並附上實際結果與未驗證的限制；整合到 `feat/024-portal-hr-source` 並追加 commit 紀錄後，才可以改成 resolved。
+- [x] 相關的 lint、單元測試、build 與 e2e 通過，並附上實際結果與未驗證的限制；整合到 `feat/024-portal-hr-source` 並追加 commit 紀錄後，才可以改成 resolved。
 
 ## Comments & Implementation Results
 
@@ -53,3 +53,5 @@
   - 沒有連真實饗賓人或 Portal。
   - WebView token 驗證不經過饗賓人 client，這次沒有改到；只靠 `webview-session` 與 `security-webview-session` e2e 確認行為。
 - 範圍外發現（未修改，請 orchestrator 決定）：根目錄 `README.md:65` 仍寫帳密登入「沿用 `/api/v1/hr/staff_lookup` 的資格檢查」，與現況不符（ticket 03 起已改查 Portal）。沒有任何 ticket 涵蓋 README；T032 的 `rg` 只查 `server/src`。
+
+整合 commit：`6ff5d86`（feat/024-portal-hr-source）。

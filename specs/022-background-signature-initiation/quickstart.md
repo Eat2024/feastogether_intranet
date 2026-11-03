@@ -155,3 +155,12 @@ worker 以每批 500 人預查及 CAS 更新本 attempt 進度，鎖內再次驗
 錯誤分流：非failed issues→409 ESIGN_INITIATION_ISSUES_NOT_READY；已清理明細→410 ESIGN_INITIATION_INPUT_EXPIRED；過期或內容變更→409 對應 DEADLINE_PASSED／DOCUMENT_CHANGED；非最新／不可重試→409 ESIGN_INITIATION_RETRY_NOT_ALLOWED；新工作進行中異動→固定409 worker執行中訊息。無session401、非建立人404。前端未改，以上為API能力與驗收，不宣稱已有還原或分頁畫面。
 
 `impl/022-06` 使用專用DB `feastogether_intranet_test022_t06`／Redis DB6。retry8項及02–05回歸共53／53通過；含實際員工查核問題、外部索引、鎖內停用競態、版本鎖、回應遺失與清理後重播。unit113 suites／1,175 tests，build通過，lint0errors／272既有warnings。自動30天清理由票07實作。
+
+
+## 07 終態明細保留驗證（2026-11-03）
+
+沿既有 maintenance 每次恢復後，每批 100 筆清理 completedAt 滿 30 天（含邊界）的 succeeded／failed input、version、issues。被 retry 持有的工作列以 skip_locked 留待下輪。只另記 inputPurgedAt，保留原摘要 updatedAt（含微秒）與其他時間、key/hash、parent、計數、錯誤及正式簽署證據；非終態永不依此保留期清除。
+
+明細過期後 GET input／issues 回 410 ESIGN_INITIATION_INPUT_EXPIRED，摘要 detailsExpired=true。若要調整人員與期間，重新設定後送新的 initiation；本輪沒有新增前端過期畫面。原 initiation key 仍可重播摘要，已受理 retry 的同 key 在 parent 清理後仍可回原 child。清理與重試並行只會得到完整新 child 或 410，不會產生空名單工作。
+
+`impl/022-07` 專用 DB `feastogether_intranet_test022_t07`／Redis DB7；retention7項、與02–06回歸共6 suites／60 tests通過；unit113 suites／1,175 tests，build通過，lint0errors／272既有warnings。包含30天±1ms、非終態、正式證據保留、並行retry、206列跨批及鎖定parent下一輪補清。無client、schema、環境變數或排程新增。

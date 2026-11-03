@@ -460,7 +460,7 @@ describe('核心電子簽 US1', () => {
     await remove(activeId).expect(409);
   });
 
-  it('簽署人候選：GET 唯讀，選取後以 POST 解析完整員編建立帳號', async () => {
+  it('簽署人候選：GET 與 POST 僅解析既有本機帳號', async () => {
     await db.query('DELETE FROM users WHERE empid = ?', [importedEmpid]);
     const hr = ctx.app.get<{ lookupEligibleStaff: jest.Mock }>(
       FeastogetherHrService,
@@ -483,6 +483,18 @@ describe('核心電子簽 US1', () => {
       .set('Origin', 'http://localhost:3000')
       .send({ employeeNos: [importedEmpid] })
       .expect(200);
+    expect(await search(importedEmpid)).toEqual([]);
+    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    await db.query(
+      'INSERT INTO users (empid, name, is_active) VALUES (?, ?, 1)',
+      [importedEmpid, '未參與員工'],
+    );
+    await request(ctx.server)
+      .post('/api/esign/signer-candidates/resolutions')
+      .set('Cookie', creatorCookie)
+      .set('Origin', 'http://localhost:3000')
+      .send({ employeeNos: [importedEmpid] })
+      .expect(200);
     const first = await search(importedEmpid);
     expect(first).toEqual([
       expect.objectContaining({
@@ -490,7 +502,7 @@ describe('核心電子簽 US1', () => {
         name: '未參與員工',
       }),
     ]);
-    expect(hr.lookupEligibleStaff).toHaveBeenCalledWith(importedEmpid);
+    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
     const rows = await db.query<Array<{ is_active: number }>>(
       'SELECT is_active FROM users WHERE empid = ?',
       [importedEmpid],
@@ -502,7 +514,7 @@ describe('核心電子簽 US1', () => {
       first[0].id,
     ]);
     await search(importedEmpid.slice(0, 5));
-    expect(hr.lookupEligibleStaff).toHaveBeenCalledTimes(1);
+    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
   });
 
   it('共用簽名與日期欄位可先存，更換名單及發起後均不複製', async () => {
@@ -3839,6 +3851,7 @@ describe('核心電子簽 US1', () => {
     const raw: unknown = activated.headers['set-cookie'];
     const cookie = Array.isArray(raw) ? raw[0] : raw;
     if (typeof cookie !== 'string') throw new Error('缺少 session cookie');
+    await seedSyntheticStaffEmails(ctx.app, [empid]);
     return cookie;
   }
 });
@@ -3894,4 +3907,7 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import { syntheticStaffEmails } from './synthetic-staff-emails.helper';
+import {
+  syntheticStaffEmails,
+  seedSyntheticStaffEmails,
+} from './synthetic-staff-emails.helper';

@@ -340,7 +340,7 @@ export interface EsignSignerResolution {
   name: string | null;
   department: string | null;
   title: string | null;
-  /** unavailable：查無此人，或不是試用／正式員工 */
+  /** unavailable：本機尚未同步此員工，或帳號已停用／刪除 */
   status: 'resolved' | 'unavailable';
 }
 

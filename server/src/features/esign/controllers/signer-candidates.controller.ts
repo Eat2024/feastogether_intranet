@@ -55,7 +55,7 @@ export class SignerCandidatesController {
     return this.candidates.getOrgChart();
   }
 
-  // 將所選員編解析為本機簽署人，必要時建立員工帳號。
+  // 將所選員編解析為已同步的本機簽署人，不即時補查或建帳。
   @Post('resolutions')
   @HttpCode(200)
   @UseGuards(OriginGuard)
@@ -63,7 +63,7 @@ export class SignerCandidatesController {
   @ApiOperation({
     summary: '解析已選員工為本機簽署人',
     description:
-      '需有效員工 session 與 Origin 檢查；僅解析明確選取的完整員編，不回傳信箱。',
+      '需有效員工 session 與 Origin 檢查；僅解析已同步至本機的完整員編，不回傳信箱；查無或停用為 unavailable，需同步或確認帳號狀態。',
   })
   @ApiOkResponse({ type: SignerCandidateResolutionsResponseDto })
   @ApiResponse({
@@ -85,7 +85,7 @@ export class SignerCandidatesController {
     type: EmployeeDirectoryErrorResponseDto,
     status: 502,
     description:
-      'ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE：員工資格來源暫時無法使用',
+      'ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE：本機員工資料暫時無法使用',
   })
   resolve(
     @Body() input: ResolveSignerCandidatesDto,
@@ -97,7 +97,7 @@ export class SignerCandidatesController {
   @ApiOperation({
     summary: '查詢可指定的內部簽署人',
     description:
-      '依 q 查詢本機有效員工，不呼叫上游或建立帳號；未建帳的已選員工請使用 POST resolutions。',
+      '依 q 查詢本機有效員工，不呼叫上游或建立帳號；未建帳員工須先完成資料同步；已選員編可使用 POST resolutions 解析。',
   })
   @Get()
   async list(@Query('q') query?: string) {

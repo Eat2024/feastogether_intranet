@@ -1,11 +1,38 @@
-# 規劃文件驗證（2026-11-03）
+# Spec 023 實作驗證紀錄
 
-- 本輪為 spec → plan → tasks → 本機 tickets，未實作程式、部署、寄信或操作遠端資料庫。
-- 已讀取 root／client／server AGENTS、constitution、issue tracker、triage、domain 規範。無 GLOSSARY.md、docs/adr/ 或 .specify/extensions.yml，因此無相關領域文件或 extension hooks 可執行。
-- 執行 setup-plan.sh --json 與 setup-tasks.sh --json，使用既有 feature.json 指向023；實際 git branch 為 dev，腳本所回傳023名稱是feature解析值，不代表已切git branch。
-- 檢查26個task ID連續且唯一，六張ticket都為ready-for-agent並列出依賴；只01無阻擋。相對Markdown連結有效，無實際待填模板／需求澄清標記。
-- FR-001–015有tasks對應；US1=4、US2=7、US3=4、US4=4，其餘Setup/Foundation/Polish=7，共26項。
-- 原始碼唯讀研究與文件覆核完成；修正repeatable-read同manager不保證同版本的說明、commit後artifact失敗不能宣稱回滾、016實際路徑及候選controller Swagger更新任務。
-- git diff --check 通過；未追蹤文件另以腳本檢查尾端空白、任務編號與相對連結。
-- 僅文件變更，未執行產品lint／test／build；quickstart所列指令是實作階段待執行項目，不是本輪驗證結果。
-- 未建立遠端PR或GitHub Issues；尚未commit。原本未追蹤的Spec022未修改。
+## 範圍與環境
+
+- 整合分支：`feat/023-portal-user-email`；基準：`5c79e52`（PR #45 已包含 nullable、select:false 的 users.email）。
+- 本機 MySQL 8.4／Redis 使用隔離測試資料庫，名稱一律以 `feastogether_intranet_test` 開頭；來源、員工與收件人均為合成資料。
+- 本輪沒有連線 UAT／Portal、匯入真實名冊、寄出真實信件、部署或發布遠端 PR。
+- 不新增 table、migration、環境變數或排程。Spec 022 的背景發起不在此次交付範圍。
+
+## 已完成的針對性驗證
+
+- Repository：一般查詢不選 email、顯式批次讀取、完整員編精確比對、部門大小寫差異、升冪鎖定。
+- 名單解析：18 項 e2e 通過；無本機帳號不建帳，停用或刪除不可用，DB 故障明確失敗，HR 零呼叫。
+- 發起／草稿：41 項 e2e 通過；並行主檔修改、同員工多文件、草稿與發起競爭、缺 email 仍指派、拒絕 client 偽造 email、資料庫失敗無部分通知。
+- 寄信政策：32 項相關 e2e 通過；本機員工／直接部門／完整 Email 聯集、production bypass、初邀／催簽／補簽／OTP、失敗不放行。
+- 核心流程：25 項 e2e 通過；候選解析的舊「自動建立帳號」測試已改為要求先有本機主檔。
+- Client lint／build 通過；錯誤提示改為確認帳號狀態或聯絡維運同步；維持每批最多 100 人，任何不可用者阻止整份送出。此項以既有流程碼及 server HTTP 契約核對，未宣稱完成瀏覽器人工操作。
+
+## 整合過程修正
+
+1. 完整 e2e 抓到草稿鎖文件後等待 users 外鍵、發起鎖 users 後等待文件的 deadlock。InnoDB 確認後統一先排序鎖 users、再鎖文件；保留原「發起必須成功」測試期待。
+2. Review 發現來源取得時間不能等同預覽執行時間；工具改為要求顯式提供來源取得時間，保存在預覽與完整性摘要。
+3. 舊測試由 HR stub 提供員工信箱，現改為事前建立本機合成 email，避免把不再使用的 API mock 當成本機資料已存在。
+
+## Review
+
+- 核心流程：檢查解析精確匹配、交易快照、隱私、白名單及匯入原值防護；來源時間問題已列入修正。
+- 維護入口：TS 與 compiled CLI 的無效命令實測均非零退出，未啟動 HTTP／worker；檢查私人 artifact、目標 DB 綁定、來源 hash、保護帳號及 no-op。
+- 最終回復工具與整合檢查結果在完成後補入本紀錄。
+
+## 維運交接
+
+- 執行者：具既有 Portal 唯讀與目標 DB 維護權限的維運人員。正式個人責任人及保存期限由團隊於部署前指定；本輪未替團隊指派人員。
+- 更新時機：首次切換前，以及新增員工、部門／職稱／信箱異動後，人工執行 preview → 審核分類 → apply；沒有自動同步。
+- 來源只含 0／1 不表示可自動停用缺席帳號；離職與停用依既有管理流程處理。
+- server／worker 必須同版本部署；同步上版 client 的不可用提示。
+- 應用回滾先回復 server／worker 與 client 版本，保留 users.email、帳號及歷史資料。資料回復是另一個受控動作，依維護 runbook 執行，不能用刪帳號取代應用回滾。
+- 私人原值檔包含員工資料，只保存在 repository 外的 0700 目錄／0600 檔案；保存期限到期且確認不再需要回復後，依組織規定清理。

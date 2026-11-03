@@ -76,7 +76,7 @@ describe('EsignSignerService', () => {
     const service = new EsignSignerService(
       mysql as never,
       {} as never,
-      {} as never,
+      { findByIdsWithEmail: jest.fn().mockResolvedValue([]) } as never,
       new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         documents as never,
@@ -93,7 +93,7 @@ describe('EsignSignerService', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('獨立更新入口先鎖定並驗證，再以同一交易更新', async () => {
+  it('草稿先排序鎖建立人與內部員工，再鎖文件並沿用相同快照', async () => {
     const manager = {};
     const document = Object.assign(new EsignDocument(), {
       id: 3,
@@ -101,6 +101,12 @@ describe('EsignSignerService', () => {
       createdByUserId: 7,
     });
     const events: string[] = [];
+    const users = {
+      findByIdsWithEmail: jest.fn(() => {
+        events.push('users');
+        return Promise.resolve([]);
+      }),
+    };
     const access = {
       checkAndLockDraftDoc: jest.fn(() => {
         events.push('lock');
@@ -113,7 +119,7 @@ describe('EsignSignerService', () => {
           run(manager),
       } as never,
       {} as never,
-      {} as never,
+      users as never,
       access as never,
       { save: (value: EsignDocument) => Promise.resolve(value) } as never,
     );
@@ -124,12 +130,25 @@ describe('EsignSignerService', () => {
         return Promise.resolve([]);
       });
     const inputs = [
-      { type: 'email' as const, name: '測試', email: 'test@example.test' },
+      { type: 'user' as const, userId: '9' },
+      { type: 'user' as const, userId: '2' },
+      { type: 'user' as const, userId: '7' },
     ];
     await service.draftSave(3, 7, { signers: inputs });
     expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(3, 7, manager);
-    expect(events).toEqual(['lock', 'update']);
-    expect(update).toHaveBeenCalledWith(document, 7, inputs, manager);
+    expect(users.findByIdsWithEmail).toHaveBeenCalledWith(
+      [2, 7, 9],
+      manager,
+      true,
+    );
+    expect(events).toEqual(['users', 'lock', 'update']);
+    expect(update).toHaveBeenCalledWith(
+      document,
+      7,
+      inputs,
+      manager,
+      new Map(),
+    );
   });
 });
 
@@ -284,7 +303,7 @@ describe('草稿完整設定', () => {
           run(manager),
       } as never,
       {} as never,
-      {} as never,
+      { findByIdsWithEmail: jest.fn().mockResolvedValue([]) } as never,
       new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         new DocumentRepository(),

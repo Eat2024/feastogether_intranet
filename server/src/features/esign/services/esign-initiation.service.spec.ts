@@ -1,3 +1,4 @@
+import { User } from '#app/features/users/entities/user.entity';
 import { EsignInitiationService } from './esign-initiation.service';
 
 describe('EsignInitiationService', () => {
@@ -110,6 +111,24 @@ describe('EsignInitiationService', () => {
         sourceMetadata: await pdf.validatePersistedPdf(),
       })),
     };
+    const employeeEmails = {
+      resolveForInitiation: jest.fn(() =>
+        Promise.resolve(
+          new Map([
+            [
+              8,
+              Object.assign(new User(), {
+                id: 8,
+                empid: 'E008',
+                email: 'employee@example.test',
+                name: '員工',
+                isActive: true,
+              }),
+            ],
+          ]),
+        ),
+      ),
+    };
     const service = new EsignInitiationService(
       mysql as never,
       documents as never,
@@ -122,15 +141,11 @@ describe('EsignInitiationService', () => {
       jobs as never,
       signerService as never,
       fieldService as never,
-      {
-        resolveUsers: jest.fn(async () => [{ userId: 8, empid: 'E008' }]),
-        lookupEmails: jest.fn(async () => [
-          { userId: 8, empid: 'E008', email: 'employee@example.test' },
-        ]),
-      } as never,
+      employeeEmails as never,
     );
     return {
       service,
+      employeeEmails,
       signerService,
       fieldService,
       document,
@@ -152,6 +167,7 @@ describe('EsignInitiationService', () => {
       audit,
       signerService,
       fieldService,
+      employeeEmails,
     } = setup();
     await service.initiate({
       documentId: 3,
@@ -176,11 +192,20 @@ describe('EsignInitiationService', () => {
       allowReject: true,
     });
 
+    expect(employeeEmails.resolveForInitiation).toHaveBeenCalledWith(
+      [],
+      7,
+      manager,
+    );
+    expect(
+      employeeEmails.resolveForInitiation.mock.invocationCallOrder[0],
+    ).toBeLessThan(access.checkAndLockDraftDoc.mock.invocationCallOrder[0]);
     expect(signerService.updateSigners).toHaveBeenCalledWith(
       document,
       7,
       expect.any(Array),
       manager,
+      expect.any(Map),
     );
     expect(fieldService.buildFields).toHaveBeenCalledWith(
       document,

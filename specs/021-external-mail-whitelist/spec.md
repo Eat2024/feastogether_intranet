@@ -1,5 +1,7 @@
 # Feature Specification: 非 production 白名單開放指定收件信箱
 
+> 2026-11-03：員工名單解析、發起信箱與員編／直接部門白名單的即時人資來源，由 [Spec 023](../023-portal-user-email/spec.md) 改為 Portal 匯入的本機 users。部門樹及登入來源不變；缺信箱可簽署、文件固定收件信箱、完整 Email 規則與正式環境 bypass 語意不變。以下歷史設計及驗證紀錄保留，來源切換的驗收以 023 為準。
+
 **Feature Branch**: `docs/spec-021-external-mail-whitelist`
 
 **Created**: 2026-11-03

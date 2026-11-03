@@ -1,3 +1,15 @@
+import { mkdtemp, writeFile, rm, stat, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  previewPortalUsers as previewWithAcquiredAt,
+  applyPortalUsers,
+  readSnapshots,
+} from '#app/maintenance/portal-users-import';
+
+const previewPortalUsers = (ds: DataSource, input: string, output: string) =>
+  previewWithAcquiredAt(ds, input, output, '2026-01-01T00:00:00.000Z');
+import { PORTAL_HEADER } from '#app/maintenance/portal-users-source';
 import { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.options';
@@ -169,6 +181,217 @@ describe('Portal 主檔專用查詢', () => {
         await owner.release();
         await other.release();
       }
+    });
+  });
+});
+
+const importHex = (value: string | null) =>
+  value === null ? 'NULL' : Buffer.from(value).toString('hex');
+function importRow(
+  empid: string,
+  email: string | null = 'shared@example.invalid',
+  status = '1',
+) {
+  return [
+    importHex(empid),
+    importHex('合成匯入姓名'),
+    importHex('D001'),
+    importHex('合成匯入部門'),
+    importHex(email),
+    status,
+    importHex('合成職稱'),
+  ].join('\t');
+}
+async function withImportFiles(
+  rows: string[],
+  run: (files: {
+    input: string;
+    preview: string;
+    result: string;
+    directory: string;
+  }) => Promise<void>,
+) {
+  const directory = await mkdtemp(join(tmpdir(), 'portal-import-'));
+  const input = join(directory, 'source.tsv');
+  await writeFile(input, [PORTAL_HEADER, ...rows, ''].join('\n'), {
+    mode: 0o600,
+  });
+  try {
+    await run({
+      input,
+      preview: join(directory, 'preview.json'),
+      result: join(directory, 'result.json'),
+      directory,
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+describe('Portal 主檔受控預覽與 apply', () => {
+  jest.setTimeout(180_000);
+  it('5001 人預覽與寫入一致，保護停用帳號、保留ID、空email清除、原值完整保存', async () => {
+    await withUsers(async (ds) => {
+      const updated = await ds.manager.save(User, {
+        empid: 'I0000000',
+        name: '合成舊姓名',
+        email: 'old@example.invalid',
+        isActive: true,
+      });
+      const protectedUser = await ds.manager.save(User, {
+        empid: 'I0000001',
+        name: '合成保護姓名',
+        email: 'protected@example.invalid',
+        isActive: false,
+      });
+      const rows = Array.from({ length: 5001 }, (_, i) =>
+        importRow(
+          `I${String(i).padStart(7, '0')}`,
+          i === 0 ? null : 'shared@example.invalid',
+        ),
+      );
+      await withImportFiles(rows, async (files) => {
+        const preview = await previewPortalUsers(
+          ds,
+          files.input,
+          files.preview,
+        );
+        expect(preview.summary).toMatchObject({
+          sourceRows: 5001,
+          uniqueEmployees: 5001,
+          create: 4999,
+          update: 1,
+          protected: 1,
+          missingEmail: 1,
+          clearedEmail: 1,
+        });
+        expect(await ds.manager.count(User)).toBe(2);
+        expect((await stat(files.preview)).mode & 0o777).toBe(0o600);
+        const result = await applyPortalUsers(ds, files.preview, files.result);
+        expect(result.status).toBe('applied');
+        expect(result.changes).toHaveLength(5000);
+        expect(await ds.manager.count(User)).toBe(5001);
+        const after = await readSnapshots(
+          ds.manager,
+          [updated.id, protectedUser.id],
+          'id',
+        );
+        expect(after[0]).toMatchObject({
+          id: updated.id,
+          email: null,
+          name: '合成匯入姓名',
+        });
+        expect(after[1]).toMatchObject({
+          id: protectedUser.id,
+          isActive: false,
+          name: '合成保護姓名',
+        });
+        expect(
+          result.changes.find((c) => c.after.id === updated.id)?.before?.email,
+        ).toBe('old@example.invalid');
+        await expect(
+          applyPortalUsers(
+            ds,
+            files.preview,
+            join(files.directory, 'again.json'),
+          ),
+        ).rejects.toThrow();
+        const next = await previewPortalUsers(
+          ds,
+          files.input,
+          join(files.directory, 'next.json'),
+        );
+        expect(next.summary).toMatchObject({
+          create: 0,
+          update: 0,
+          noop: 5000,
+          protected: 1,
+        });
+        expect(
+          JSON.parse(await readFile(files.result, 'utf8')) as unknown,
+        ).toMatchObject({ status: 'applied' });
+      });
+    });
+  });
+  it('預覽後來源、目標微秒時間或員編大小寫衝突會拒絕，不覆寫登入資料', async () => {
+    await withUsers(async (ds) => {
+      const user = await ds.manager.save(User, {
+        empid: 'Case0001',
+        name: '原值',
+        isActive: true,
+      });
+      await withImportFiles([importRow('case0001')], async (files) => {
+        await expect(
+          previewPortalUsers(ds, files.input, files.preview),
+        ).rejects.toThrow('collation');
+      });
+      await withImportFiles([importRow('Case0001')], async (files) => {
+        await previewPortalUsers(ds, files.input, files.preview);
+        await ds.manager.query(
+          'UPDATE users SET updated_at = DATE_ADD(updated_at, INTERVAL 1 MICROSECOND) WHERE id=?',
+          [user.id],
+        );
+        await expect(
+          applyPortalUsers(ds, files.preview, files.result),
+        ).rejects.toThrow('目標資料已變更');
+        expect(
+          (await ds.manager.findOneByOrFail(User, { id: user.id })).name,
+        ).toBe('原值');
+      });
+      await withImportFiles([importRow('Case0001')], async (files) => {
+        await previewPortalUsers(ds, files.input, files.preview);
+        await writeFile(
+          files.input,
+          PORTAL_HEADER + '\n' + importRow('Case0002') + '\n',
+        );
+        await expect(
+          applyPortalUsers(ds, files.preview, files.result),
+        ).rejects.toThrow('來源已變更');
+      });
+    });
+  });
+  it('中途寫入失敗整批回滾，備份先存在', async () => {
+    await withUsers(async (ds) => {
+      await withImportFiles(
+        [importRow('F0000001'), importRow('F0000002')],
+        async (files) => {
+          await previewPortalUsers(ds, files.input, files.preview);
+          let calls = 0;
+          const spy = jest
+            .spyOn(UserRepository.prototype, 'save')
+            .mockImplementation(async function (user, manager) {
+              calls++;
+              if (calls === 2) throw new Error('合成寫入失敗');
+              expect((await stat(files.result + '.intent')).mode & 0o777).toBe(
+                0o600,
+              );
+              return manager.save(user);
+            });
+          try {
+            await expect(
+              applyPortalUsers(ds, files.preview, files.result),
+            ).rejects.toThrow('合成寫入失敗');
+          } finally {
+            spy.mockRestore();
+          }
+          expect(await ds.manager.count(User)).toBe(0);
+        },
+      );
+    });
+  });
+});
+
+it('Portal 匯入拒絕跨資料庫套用同一預覽', async () => {
+  await withUsers(async (first) => {
+    await withUsers(async (other) => {
+      await withImportFiles([importRow('X0000001')], async (files) => {
+        await previewPortalUsers(first, files.input, files.preview);
+        await expect(
+          applyPortalUsers(other, files.preview, files.result),
+        ).rejects.toThrow('目標資料庫不一致');
+        expect(await first.manager.count(User)).toBe(0);
+        expect(await other.manager.count(User)).toBe(0);
+      });
     });
   });
 });

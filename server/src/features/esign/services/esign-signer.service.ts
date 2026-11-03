@@ -89,7 +89,22 @@ export class EsignSignerService {
     creatorUserId: number,
     input: DraftSettingsDto,
   ) {
+    const signerInputs =
+      input.signers === undefined
+        ? []
+        : this.validateAndNormalizeSignerInputs(input.signers);
+    const userIds = [
+      ...new Set([
+        creatorUserId,
+        ...signerInputs.flatMap((signer) =>
+          signer.type === 'user' ? [signer.userId] : [],
+        ),
+      ]),
+    ].sort((left, right) => left - right);
     return this.mysql.transaction(async (manager) => {
+      // signer 寫入會檢查 users 外鍵；與發起流程一致先鎖 users，避免文件鎖倒置。
+      const users = await this.users.findByIdsWithEmail(userIds, manager, true);
+      const lockedUsers = new Map(users.map((user) => [user.id, user]));
       const document = await this.access.checkAndLockDraftDoc(
         documentId,
         creatorUserId,
@@ -102,6 +117,7 @@ export class EsignSignerService {
         creatorUserId,
         input,
         manager,
+        lockedUsers,
       );
       this.applyDraftSettings(document, input, period);
       return this.documents.save(document, manager);
@@ -148,8 +164,7 @@ export class EsignSignerService {
   /** 驗證可選的草稿布林設定，避免非 HTTP 呼叫端繞過 DTO 驗證。 */
   private validateDraftOptions(input: DraftSettingsDto): void {
     if (
-      (input.watermark !== undefined &&
-        typeof input.watermark !== 'boolean') ||
+      (input.watermark !== undefined && typeof input.watermark !== 'boolean') ||
       (input.allowReject !== undefined &&
         typeof input.allowReject !== 'boolean')
     ) {
@@ -163,6 +178,7 @@ export class EsignSignerService {
     creatorUserId: number,
     input: DraftSettingsDto,
     manager: EntityManager,
+    lockedUsers: ReadonlyMap<number, User>,
   ): Promise<void> {
     if (input.signers === undefined) return;
     await this.updateSigners(
@@ -170,6 +186,7 @@ export class EsignSignerService {
       creatorUserId,
       input.signers,
       manager,
+      lockedUsers,
     );
   }
 
@@ -198,11 +215,13 @@ export class EsignSignerService {
     creatorUserId: number,
     inputs: SignerInputDto[],
     manager: EntityManager,
+    lockedUsers?: ReadonlyMap<number, User>,
   ) {
     const validatedSignerInputs = this.validateAndNormalizeSignerInputs(inputs);
     const signerInputsWithUsers = await this.attachValidatedUsers(
       validatedSignerInputs,
       manager,
+      lockedUsers,
     );
     const newSigners = this.createSigners(
       document.id,
@@ -269,12 +288,17 @@ export class EsignSignerService {
   private async attachValidatedUsers(
     validatedSignerInputs: ValidatedSignerInput[],
     manager: EntityManager,
+    lockedUsers?: ReadonlyMap<number, User>,
   ): Promise<SignerInputWithUser[]> {
     const userIds = validatedSignerInputs.flatMap((input) =>
       input.type === 'user' ? [input.userId] : [],
     );
     const users: User[] = [];
-    for (let offset = 0; offset < userIds.length; offset += 500) {
+    for (
+      let offset = 0;
+      !lockedUsers && offset < userIds.length;
+      offset += 500
+    ) {
       users.push(
         ...(await this.users.findByIds(
           userIds.slice(offset, offset + 500),
@@ -282,7 +306,9 @@ export class EsignSignerService {
         )),
       );
     }
-    const userById = new Map(users.map((user) => [Number(user.id), user]));
+    // 正式發起必須直接使用 current read 的鎖定資料，不能以 RR 一般 SELECT 重讀。
+    const userById =
+      lockedUsers ?? new Map(users.map((user) => [Number(user.id), user]));
     // 先確認整份名單的帳號仍有效，後續只負責建立簽署人資料。
     return validatedSignerInputs.map((input) => {
       if (input.type === 'email') return input;

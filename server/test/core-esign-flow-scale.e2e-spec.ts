@@ -77,6 +77,8 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
             { length: Math.min(500, SAVED_COUNT - offset) },
             (_, i) => ({
               empid: prefix + String(offset + i).padStart(5, '0'),
+              email:
+                `${prefix}${String(offset + i).padStart(5, '0')}@example.test`.toLowerCase(),
               name: '合成員工' + (offset + i),
               isActive: true,
               departmentName: '合成測試部',

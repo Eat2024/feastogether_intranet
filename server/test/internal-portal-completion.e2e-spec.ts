@@ -72,6 +72,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
       [0, 1, 2].map((index) =>
         manager.create(User, {
           empid: `S${prefix}${index}`,
+          email: 'shared@example.test',
           name: `合成人員${index}`,
           isActive: true,
           departmentCode: `TEST017-${index}`,

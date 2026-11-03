@@ -30,7 +30,7 @@ allowedRecipients(recipients: readonly string[]): Promise<Set<string>> 簽名不
 
 入口：server/src/maintenance/portal-users.ts，使用現有 TypeScript 執行工具與 DB 設定，不新增環境變數。
 
-- preview --input <private.hex.tsv> --output <private-preview.json> [--exclude-file <private-exclusions.json>]
+- preview --input <private.hex.tsv> --acquired-at <ISO-8601-with-timezone> --output <private-preview.json> [--exclude-file <private-exclusions.json>]
 - apply --preview <private-preview.json> --output <private-result.json>
 - rollback-preview --result <private-result.json> --output <private-rollback.json>
 - rollback --preview <private-rollback.json>
@@ -38,3 +38,14 @@ allowedRecipients(recipients: readonly string[]): Promise<Set<string>> 簽名不
 輸入七欄 header：empid_hex、name_hex、department_code_hex、department_name_hex、email_hex、person_status、title_name_hex。HEX 必須合法且可完整還原 UTF-8；字面 NULL 為來源 SQL NULL；只有 optional 空值可轉 null。拒絕欄位缺漏、畸形列、空檔、未知映射與衝突員編；合法但不合格狀態列統計略過。
 
 preview 不寫 DB；apply 不另連 Portal，必須使用預覽綁定快照與原值。DB commit 前任何檢查／寫入失敗 exit 非零且整批回滾；DB commit 後結果檔寫入失敗則 exit 非零並要求人工對帳，不宣稱資料已回滾；不輸出原始名冊或憑證。已成功 apply 的同一預覽不重複套用，須重新 preview 才可再次確認 no-op。完整重跑同來源的新預覽不得改 updated_at。
+
+
+### 已實作的批次操作界線
+
+- `--acquired-at` 必填，由維運提供真正擷取 Portal 的時間（含時區、不可在未來）；工具不使用檔案 mtime 或預覽時間替代。
+- apply 的 `.apply-lock` 在任何寫入嘗試前建立，同一預覽不能重試。失敗後應先對帳，再用新檔名重新 preview；不得刪 lock 後盲目重跑。
+- apply 產生 `<result>.intent`（來源預覽與原值）、`<result>.prepared`（交易內實際 before/after）、正式 `<result>`。只有正式結果 status=applied 且三者一致才允許 rollback-preview。
+- 回復會再次鎖定人員、精確比較微秒原值與所有欄位，檢查 users 的所有 FK 及明確 `*_user_id`／`userId` 欄位。metadata／相依讀取權限不足、未知引用鍵、新帳號有 session／audit／其他引用均拒絕。更新既有帳號只還原本批管理欄位及原 updated_at。
+- rollback 寫出 `<preview>.rollback-lock`、`.rollback-prepared` 與 `.rollback-result`；DB 已回復但結果檔寫入失敗則回報需人工對帳。prepared 不能視為成功或重播授權。
+
+回復若偵測到非 FK 的使用者引用欄位，即使空表，也拒絕含新帳號的整批自動回復；純既有帳號更新可還原。非 FK writer 在刪除提交後仍可能新增孤兒引用，因此不以 gap lock 作為刪除安全依據。

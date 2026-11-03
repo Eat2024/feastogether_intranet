@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
-import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { FakeInvitationMailSender } from './fake-invitation-mail-sender.service';
 import { INVITATION_MAIL_SENDER } from './invitation-mail-sender.port';
 import { SmtpInvitationMailSender } from './smtp-invitation-mail-sender.service';
@@ -23,7 +22,7 @@ export function createInvitationMailSender(
 }
 
 @Module({
-  imports: [MysqlModule, FeastogetherModule],
+  imports: [MysqlModule],
   providers: [
     MailRecipientPolicyService,
     {

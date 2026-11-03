@@ -1,6 +1,6 @@
 # 驗證與上版交接
 
-本文件是待實作功能的驗收指引，以下沒有宣稱已執行。使用合成資料，測試 DB 名稱必須以 feastogether_intranet_test 開頭，禁止套用 UAT 憑證執行測試。
+本文件列出驗收方式；實際執行結果見 [validation.md](validation.md)，容量比較見 [performance.md](performance.md)。使用合成資料，測試 DB 名稱必須以 feastogether_intranet_test 開頭，禁止套用 UAT 憑證執行測試。
 
 ## 前置
 
@@ -23,7 +23,7 @@
 - 員編／直接部門／完整 Email 白名單、相似部門／子部門拒絕、規則及 users DB 故障、production bypass、初邀／催簽／補簽／OTP 全部測試。
 - 主檔更新後重送舊通知仍使用固定信箱；登入同步不清空 users.email，登入／候選 payload 不增加 email。
 
-## 驗證指令（實作完成後）
+## 驗證指令
 
 ```bash
 pnpm -C server test --runInBand

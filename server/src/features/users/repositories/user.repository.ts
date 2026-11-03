@@ -71,6 +71,40 @@ export class UserRepository {
     return [...found.values()].sort((a, b) => Number(a.id) - Number(b.id));
   }
 
+  /** 白名單只取有效員工的信箱；SQL 篩選後仍精確核對完整代碼。 */
+  async findMailWhitelistEmails(
+    empids: readonly string[],
+    departmentCodes: readonly string[],
+    manager: EntityManager,
+  ): Promise<string[]> {
+    const emails = new Set<string>();
+    for (const [field, values] of [
+      ['empid', empids],
+      ['departmentCode', departmentCodes],
+    ] as const) {
+      const selected = [...new Set(values)];
+      const exact = new Set(selected);
+      for (let offset = 0; offset < selected.length; offset += 500) {
+        const rows = await manager
+          .createQueryBuilder(User, 'user')
+          .select(['user.id', 'user.empid', 'user.departmentCode'])
+          .addSelect('user.email')
+          .where(`user.${field} IN (:...values)`, {
+            values: selected.slice(offset, offset + 500),
+          })
+          .andWhere('user.is_active = :active', { active: true })
+          .andWhere('user.deleted_at IS NULL')
+          .getMany();
+        for (const user of rows) {
+          const value = user[field];
+          const email = user.email?.trim().toLowerCase();
+          if (value && exact.has(value) && email) emails.add(email);
+        }
+      }
+    }
+    return [...emails];
+  }
+
   findByEmpid(empid: string, manager: EntityManager): Promise<User | null> {
     return manager.findOne(User, { where: { empid }, withDeleted: true });
   }

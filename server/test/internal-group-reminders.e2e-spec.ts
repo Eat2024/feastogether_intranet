@@ -52,6 +52,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
       Array.from({ length: 3 }, (_, index) =>
         manager.create(User, {
           empid: `G${prefix}${index}`,
+          email: `g${prefix}${index}@example.test`,
           name: `合成員工${index}`,
           isActive: true,
           departmentCode: `TEST017-${index}`,

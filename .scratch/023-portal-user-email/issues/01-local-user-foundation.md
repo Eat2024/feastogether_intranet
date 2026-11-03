@@ -2,7 +2,7 @@
 
 **What to build:** 本機員工查詢基礎，依下列驗收及 Spec 023 完成。
 
-**Status:** claimed
+**Status:** resolved
 
 **Blocked by:** 無
 
@@ -12,9 +12,9 @@
 
 ## Acceptance Criteria
 
-- [ ] 核對既有email migration，不新增schema；新增專用批次選取email／鎖定方法，不改一般User查詢的select:false。
-- [ ] 驗證精確員編、部門collation與固定鎖順序；只用合成資料與隔離測試DB。
-- [ ] 相關驗證通過，附實際結果及未驗證限制；整合至單一功能分支後追加commit紀錄，才可改為resolved。
+- [x] 核對既有email migration，不新增schema；新增專用批次選取email／鎖定方法，不改一般User查詢的select:false。
+- [x] 驗證精確員編、部門collation與固定鎖順序；只用合成資料與隔離測試DB。
+- [x] 相關驗證通過，附實際結果及未驗證限制；整合至單一功能分支後追加commit紀錄，才可改為resolved。
 
 ## Comments & Implementation Results
 
@@ -25,3 +25,5 @@
 - T001–T003完成：兩個顯式email批次讀取介面，鎖定ID升序、每批最多500，一般查詢仍select:false。
 - 真實MySQL隔離schema測試4項通過（先紅後綠）；501人兩次查詢、精確員編／部門、一般save保留email、交易鎖競態均驗證。
 - 變更檔案ESLint零錯誤／警告，server build通過；未操作UAT。
+
+整合commit：`e14b26a`（feat/023-portal-user-email）。commit hook root lint與server單元測試通過。

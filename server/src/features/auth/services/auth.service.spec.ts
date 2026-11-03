@@ -161,6 +161,17 @@ describe('AuthService WebView SSO', () => {
     },
   );
 
+  it('登入同步不寫入未選取的 email，登入回應也不揭露信箱', async () => {
+    const { service, users, user } = setup();
+    users.findByEmpidForUpdate.mockResolvedValue({ ...user });
+    users.save.mockResolvedValue({ ...user, email: 'private@example.test' });
+    const result = await service.login('00123', 'synthetic-password');
+    const saved: unknown = users.save.mock.calls[0][0];
+    expect(saved).not.toHaveProperty('email');
+    expect(result.session.user).not.toHaveProperty('email');
+    expect(JSON.stringify(result)).not.toContain('private@example.test');
+  });
+
   it('HR 同步失敗不寫入帳號或建立 session', async () => {
     const { service, hr, users, sessions } = setup();
     const failure = new Error('合成上游失敗');

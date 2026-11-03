@@ -362,3 +362,12 @@ esign_signers.user_id = currentUserId
 - `esign_verification_records.status = valid` 時，`manifest_sha256`、manifest 內各個人檔摘要與 `audit_root_hash` 必須可重新驗證；manifest v2 的 `final_pdf_sha256` 為 NULL。
 - `esign_export_jobs.status = completed` 時，必須存在對應 `file_purpose = export` 的 `esign_file_objects`。
 - `users.is_active = 0` 時，不得建立新 session 或完成新簽署，但既有簽署與稽核資料必須保留。
+
+
+## Spec 023 員工資料來源界線
+
+`users.email` 由 Portal 受控人工匯入，nullable、非唯一且一般 entity 查詢不選取。員編解析只查本機，不即時建帳；發起交易內鎖定員工、讀取身分及信箱並固定至指派快照。無信箱員工仍可簽署，通知標記缺收件人。
+
+非正式環境白名單的 employee／department 規則讀本機有效員工，department 使用精確直接所屬 `department_code`，不使用本機外鍵 `department_id` 或部門名稱，也不包含子部門。完整 Email 規則及 production bypass 維持原語意。
+
+部門樹及登入／SSO 仍沿用原人資來源；登入同步不覆寫未選取的 email。Portal 只匯入狀態0／1，不以來源缺席推斷離職；人工停用與軟刪除不自動恢復。主檔異動不回寫歷史文件、通知固定信箱或簽署證據。

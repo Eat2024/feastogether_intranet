@@ -1,3 +1,6 @@
+import { EsignFieldService } from '#app/features/esign/services/esign-field.service';
+import { MailRecipientPolicyService } from '#app/infrastructure/mail/mail-recipient-policy.service';
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { EsignEmployeeEmailService } from '#app/features/esign/services/esign-employee-email.service';
 import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
@@ -11,7 +14,6 @@ import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue, Job } from 'bullmq';
 import { randomBytes } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { Observable } from 'rxjs';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { In } from 'typeorm';
@@ -34,15 +36,14 @@ import {
   type SecurityE2eContext,
 } from './security-e2e.helper';
 
-describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來源）', () => {
+describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合成來源）', () => {
   let ctx: SecurityE2eContext;
   let cookie: string;
   let users: User[];
   let documentId: string;
-  let active = 0;
-  let peak = 0;
+  const active = 0;
+  const peak = 0;
   let batches: number[] = [];
-  let failure: 'none' | 'missing' | 'source' = 'none';
   const origin = 'http://localhost:3000';
   const http = { get: jest.fn(), post: jest.fn() };
   let accessLog: jest.SpyInstance;
@@ -56,10 +57,9 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
       .set('Origin', origin)
       .send(body);
   const resetSource = () => {
-    active = 0;
-    peak = 0;
     batches = [];
   };
+  let measuredQueryCount = () => 0;
   const measure = async (
     operation: string,
     count: number,
@@ -68,17 +68,55 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
     resetSource();
     const started = performance.now();
     const memory = process.memoryUsage();
-    await run();
+    const queries = jest.spyOn(
+      ctx.app.get(MysqlService).getDataSource().logger,
+      'logQuery',
+    );
+    measuredQueryCount = () => queries.mock.calls.length;
+    // 保留 prototype 方法供 mock 以 originalPolicy.call(this, ...) 明確綁定原實例。
+    const originalPolicy =
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      MailRecipientPolicyService.prototype.allowedRecipients;
+    let policyMs = 0;
+    let policyQueries = 0;
+    let policyCalls = 0;
+    const policySpy = jest
+      .spyOn(MailRecipientPolicyService.prototype, 'allowedRecipients')
+      .mockImplementation(async function (
+        this: MailRecipientPolicyService,
+        recipients,
+      ) {
+        const policyStarted = performance.now();
+        const beforeQueries = queries.mock.calls.length;
+        try {
+          return await originalPolicy.call(this, recipients);
+        } finally {
+          policyMs += performance.now() - policyStarted;
+          policyQueries += queries.mock.calls.length - beforeQueries;
+          policyCalls++;
+        }
+      });
+    try {
+      await run();
+    } finally {
+      policySpy.mockRestore();
+    }
+    const queryCount = queries.mock.calls.length;
+    queries.mockRestore();
     const after = process.memoryUsage();
     // 僅彙總數據，不輸出員編、信箱、cookie 或邀請秘密；記憶體差含 GC，並非峰值。
     console.info(
-      'SPEC016_CAPACITY',
+      'SPEC023_CAPACITY',
       JSON.stringify({
         operation,
         count,
         elapsedMs: Math.round(performance.now() - started),
         rssDeltaMiB: Math.round((after.rss - memory.rss) / 1048576),
         heapDeltaMiB: Math.round((after.heapUsed - memory.heapUsed) / 1048576),
+        dbQueries: queryCount,
+        policyMs: Math.round(policyMs),
+        policyQueries,
+        policyCalls,
         batches: batches.length,
         peak,
       }),
@@ -91,27 +129,26 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = `C${randomBytes(4).toString('hex')}`;
     const employeeNos = Array.from(
-      { length: 6000 },
+      { length: 5001 },
       (_, i) => `${prefix}${String(i).padStart(4, '0')}`,
     );
-    for (let offset = 0; offset < 6000; offset += 500)
+    for (let offset = 0; offset < 5001; offset += 500)
       await manager.insert(
         User,
-        employeeNos
-          .slice(offset, offset + 500)
-          .map((empid) => ({
-            empid,
-            name: '合成容量員工',
-            isActive: true,
-            departmentCode: 'CAPACITY-SYNTHETIC',
-            departmentName: '合成容量部門',
-          })),
+        employeeNos.slice(offset, offset + 500).map((empid) => ({
+          empid,
+          email: email(empid).toLowerCase(),
+          name: '合成容量員工',
+          isActive: true,
+          departmentCode: 'CAPACITY-SYNTHETIC',
+          departmentName: '合成容量部門',
+        })),
       );
     users = await manager.find(User, {
       where: { empid: In(employeeNos) },
       order: { empid: 'ASC' },
     });
-    expect(users).toHaveLength(6000);
+    expect(users).toHaveLength(5001);
     mailFixture(ctx).allowEmails(users.map((user) => email(user.empid)));
     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     const pdf = await PDFDocument.create();
@@ -131,51 +168,9 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
     accessLog = jest.spyOn(ctx.app.get(HttpAccessLoggerService), 'write');
     warn = jest.spyOn(ctx.app.get(AppLoggerService), 'warn');
     error = jest.spyOn(ctx.app.get(AppLoggerService), 'error');
-    http.post.mockImplementation(
-      (
-        _url: string,
-        body: { person_empids: string[] },
-        config: { timeout: number },
-      ) => {
-        expect(config.timeout).toBe(10000);
-        batches.push(body.person_empids.length);
-        return new Observable((subscriber) => {
-          active += 1;
-          peak = Math.max(peak, active);
-          setImmediate(() => {
-            active -= 1;
-            const last = body.person_empids.includes(users[5999].empid);
-            if (last && failure === 'source') {
-              subscriber.error({
-                isAxiosError: true,
-                name: 'AxiosError',
-                response: {
-                  status: 503,
-                  data: { email: email(users[5999].empid) },
-                },
-              });
-              return;
-            }
-            subscriber.next({
-              data: {
-                success: true,
-                data: [...body.person_empids]
-                  .reverse()
-                  .filter(
-                    (id) =>
-                      !(failure === 'missing' && id === users[5999].empid),
-                  )
-                  .map((person_empid) => ({
-                    person_empid,
-                    email: email(person_empid),
-                  })),
-              },
-            });
-            subscriber.complete();
-          });
-        });
-      },
-    );
+    http.post.mockImplementation(() => {
+      throw new Error('不應呼叫人資信箱');
+    });
   }, 60000);
   afterAll(async () => {
     if (!ctx) return;
@@ -225,7 +220,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         )
           await job.remove();
       }
-      // 必須同時移除本次持久通知，否則後續 worker 的 maintenance 會重新補入 6000 筆。
+      // 必須同時移除本次持久通知，否則後續 worker 的 maintenance 會重新補入 5001 筆。
       const files = await manager.query<
         Array<{ object_key: string; object_version: string | null }>
       >(
@@ -302,7 +297,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
     ).toBeUndefined();
   });
 
-  it.each([1, 100, 101, 6000])(
+  it.each([1, 100, 101, 5001])(
     '%i 人已存在帳號解析與信箱核對保序，不誤配且批次有界',
     async (count) => {
       const selected = users.slice(0, count);
@@ -331,20 +326,18 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
       await measure('initiation-email-resolution', count, async () => {
         // 發起仍使用同一信箱解析服務；以真實帳號資料確認批次及員工對應。
         const service = ctx.app.get(EsignEmployeeEmailService);
-        const identities = await service.resolveUsers(
-          selected.map((u) => String(u.id)),
+        const map = await ctx.app.get(MysqlService).transaction((manager) =>
+          service.resolveForInitiation(
+            selected.map((u) => String(u.id)),
+            users[0].id,
+            manager,
+          ),
         );
-        const result = await service.lookupEmails(identities);
-        expect(result).toEqual(
-          selected.map((u) => ({
-            userId: u.id,
-            empid: u.empid,
-            email: email(u.empid).toLowerCase(),
-          })),
+        expect(selected.map((u) => map.get(u.id)?.email)).toEqual(
+          selected.map((u) => email(u.empid).toLowerCase()),
         );
-        expect(batches).toHaveLength(Math.ceil(count / 100));
-        expect(Math.max(...batches)).toBeLessThanOrEqual(100);
-        expect(peak).toBe(Math.min(4, Math.ceil(count / 100)));
+        expect(http.post).not.toHaveBeenCalled();
+        expect(batches).toEqual([]);
         expect(active).toBe(0);
       });
     },
@@ -371,10 +364,17 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
       allowReject: true,
     });
   it.each(['source'] as const)(
-    '6000 人末批%s失敗整份仍為草稿，無指派／通知／發起稽核',
+    '5001 人末批%s失敗整份仍為草稿，無指派／通知／發起稽核',
     async (mode) => {
-      failure = mode;
-      await measure(`initiation-${mode}`, 6000, async () => {
+      const usersRepo = ctx.app.get(UserRepository);
+      const find = usersRepo.findByIdsWithEmail.bind(usersRepo);
+      const fault = jest
+        .spyOn(usersRepo, 'findByIdsWithEmail')
+        .mockImplementationOnce(async (...args) => {
+          await find(...args);
+          throw new Error('合成資料庫來源故障');
+        });
+      await measure(`initiation-${mode}`, 5001, async () => {
         await initiate().expect(502);
         const detail = apiData<{ status: string; signers: unknown[] }>(
           await request(ctx.server)
@@ -392,27 +392,183 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
           >("SELECT (SELECT COUNT(*) FROM esign_notification_batches WHERE document_id=?) batches,(SELECT COUNT(*) FROM esign_audit_events WHERE document_id=? AND event_type='document.initiated') initiated", [documentId, documentId]);
         expect(Number(counts.batches)).toBe(0);
         expect(Number(counts.initiated)).toBe(0);
-        expect(batches).toHaveLength(60);
-        expect(peak).toBeLessThanOrEqual(4);
+        expect(http.post).not.toHaveBeenCalled();
       });
-      failure = 'none';
+      fault.mockRestore();
     },
     60000,
   );
 
-  it('6000 人完整發起固定信箱、快照與逐人通知，真正入列且日誌不含個資', async () => {
-    await measure('initiation-success', 6000, async () => {
+  it('5001 人完整發起固定信箱、快照與逐人通知，真正入列且日誌不含個資', async () => {
+    await measure('initiation-success', 5001, async () => {
+      // 僅量測 HTTP 發起；以下方法在現行流程依序執行，區間互不重疊。
+      // 共用外層 query counter，不建立或還原另一個 logQuery spy。
+      const phases = new Map<
+        string,
+        { calls: number; elapsedMs: number; dbQueries: number }
+      >();
+      let measuringPhase = false;
+      const track = async <T>(
+        operation: string,
+        run: () => Promise<T>,
+      ): Promise<T> => {
+        if (measuringPhase) throw new Error('容量細分方法出現重疊，不能加總');
+        measuringPhase = true;
+        const started = performance.now();
+        const beforeQueries = measuredQueryCount();
+        try {
+          return await run();
+        } finally {
+          const phase = phases.get(operation) ?? {
+            calls: 0,
+            elapsedMs: 0,
+            dbQueries: 0,
+          };
+          phase.calls++;
+          phase.elapsedMs += performance.now() - started;
+          phase.dbQueries += measuredQueryCount() - beforeQueries;
+          phases.set(operation, phase);
+          measuringPhase = false;
+        }
+      };
+      const emailResolutionOriginal =
+        // eslint-disable-next-line @typescript-eslint/unbound-method
+        EsignEmployeeEmailService.prototype.resolveForInitiation;
+      const emailResolutionSpy = jest
+        .spyOn(ctx.app.get(EsignEmployeeEmailService), 'resolveForInitiation')
+        .mockImplementation((...args) =>
+          track(
+            'employee-resolution',
+            () =>
+              emailResolutionOriginal.call(
+                ctx.app.get(EsignEmployeeEmailService),
+                ...args,
+              ) as ReturnType<typeof emailResolutionOriginal>,
+          ),
+        );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const signerSaveOriginal = SignerRepository.prototype.saveMany;
+      let signerSaveCalls = 0;
+      const signerSaveSpy = jest
+        .spyOn(ctx.app.get(SignerRepository), 'saveMany')
+        .mockImplementation((...args) =>
+          track(
+            `signer-save-${++signerSaveCalls}`,
+            () =>
+              signerSaveOriginal.call(
+                ctx.app.get(SignerRepository),
+                ...args,
+              ) as ReturnType<typeof signerSaveOriginal>,
+          ),
+        );
+      const notificationSaveOriginal =
+        // eslint-disable-next-line @typescript-eslint/unbound-method
+        NotificationRepository.prototype.saveLogs;
+      const notificationSaveSpy = jest
+        .spyOn(ctx.app.get(NotificationRepository), 'saveLogs')
+        .mockImplementation((...args) =>
+          track(
+            'notification-save',
+            () =>
+              notificationSaveOriginal.call(
+                ctx.app.get(NotificationRepository),
+                ...args,
+              ) as ReturnType<typeof notificationSaveOriginal>,
+          ),
+        );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const auditAppendOriginal = EsignAuditService.prototype.append;
+      const auditAppendSpy = jest
+        .spyOn(ctx.app.get(EsignAuditService), 'append')
+        .mockImplementation((...args) =>
+          track(
+            'audit-append',
+            () =>
+              auditAppendOriginal.call(
+                ctx.app.get(EsignAuditService),
+                ...args,
+              ) as ReturnType<typeof auditAppendOriginal>,
+          ),
+        );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const fieldsBuildOriginal = EsignFieldService.prototype.buildFields;
+      const fieldsBuildSpy = jest
+        .spyOn(ctx.app.get(EsignFieldService), 'buildFields')
+        .mockImplementation((...args) =>
+          track(
+            'fields-build',
+            () =>
+              fieldsBuildOriginal.call(
+                ctx.app.get(EsignFieldService),
+                ...args,
+              ) as ReturnType<typeof fieldsBuildOriginal>,
+          ),
+        );
+      const initiationStarted = performance.now();
+      const initiationQueryStart = measuredQueryCount();
+      const response = await (async () => {
+        try {
+          return await initiate().expect(201);
+        } finally {
+          emailResolutionSpy.mockRestore();
+          signerSaveSpy.mockRestore();
+          notificationSaveSpy.mockRestore();
+          auditAppendSpy.mockRestore();
+          fieldsBuildSpy.mockRestore();
+        }
+      })();
+      const initiationElapsedMs = performance.now() - initiationStarted;
+      const initiationQueries = measuredQueryCount() - initiationQueryStart;
+      const measuredPhases = [...phases].map(([operation, phase]) => ({
+        operation,
+        ...phase,
+      }));
+      const coveredMs = measuredPhases.reduce(
+        (sum, phase) => sum + phase.elapsedMs,
+        0,
+      );
+      const coveredQueries = measuredPhases.reduce(
+        (sum, phase) => sum + phase.dbQueries,
+        0,
+      );
+      console.info(
+        'SPEC023_INITIATION_BREAKDOWN',
+        JSON.stringify({
+          count: 5001,
+          nonOverlapping: true,
+          phases: measuredPhases.map((phase) => ({
+            ...phase,
+            elapsedMs: Math.round(phase.elapsedMs),
+          })),
+          remaining: {
+            elapsedMs: Math.round(initiationElapsedMs - coveredMs),
+            dbQueries: initiationQueries - coveredQueries,
+          },
+          total: {
+            elapsedMs: Math.round(initiationElapsedMs),
+            dbQueries: initiationQueries,
+          },
+        }),
+      );
       const result = apiData<{
         status: string;
         signers: Array<{ type: string; email: string }>;
-      }>(await initiate().expect(201));
+      }>(response);
+      console.info(
+        'SPEC023_PHASE',
+        JSON.stringify({
+          operation: 'initiation-http',
+          elapsedMs: Math.round(initiationElapsedMs),
+          dbQueries: initiationQueries,
+        }),
+      );
       expect(result.status).toBe('active');
-      expect(result.signers).toHaveLength(6000);
+      expect(result.signers).toHaveLength(5001);
       expect(result.signers.map((s) => [s.type, s.email])).toEqual(
         users.map((u) => ['user', email(u.empid).toLowerCase()]),
       );
-      expect(batches).toEqual(Array(60).fill(100));
-      expect(peak).toBe(4);
+      expect(http.post).not.toHaveBeenCalled();
+      expect(batches).toEqual([]);
       const manager = ctx.app.get(MysqlService).getManager();
       const logs = await manager.query<
         Array<{
@@ -425,7 +581,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         'SELECT l.id,l.batch_id batchId,l.invitation_generation_sha256 generation,s.invitation_token_sha256 digest FROM esign_notification_logs l JOIN esign_signers s ON s.id=l.signer_id WHERE s.document_id=?',
         [documentId],
       );
-      expect(logs).toHaveLength(6000);
+      expect(logs).toHaveLength(5001);
       expect(
         logs.every((l) => l.generation === null && l.digest === null),
       ).toBe(true);
@@ -449,13 +605,23 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
         ctx.app.get(EsignAuditService),
         mailFixture(ctx).guard(mailer),
       );
+      const workerStarted = performance.now();
+      const workerQueryStart = measuredQueryCount();
       await worker.process({ data: { notificationBatchId: batchId } } as Job<{
         notificationBatchId: number;
       }>);
-      expect(mailer.internalGroupDeliveries).toHaveLength(120);
+      console.info(
+        'SPEC023_PHASE',
+        JSON.stringify({
+          operation: 'notification-worker',
+          elapsedMs: Math.round(performance.now() - workerStarted),
+          dbQueries: measuredQueryCount() - workerQueryStart,
+        }),
+      );
+      expect(mailer.internalGroupDeliveries).toHaveLength(101);
       expect(
         mailer.internalGroupDeliveries.every(
-          (group) => group.recipientEmails.length === 50,
+          (group) => group.recipientEmails.length <= 50,
         ),
       ).toBe(true);
       expect(
@@ -464,13 +630,13 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
             (group) => group.recipientEmails,
           ),
         ).size,
-      ).toBe(6000);
+      ).toBe(5001);
       expect(mailer.deliveries).toEqual([]);
       const [delivered] = await manager.query<Array<{ total: string }>>(
         "SELECT COUNT(*) total FROM esign_notification_logs WHERE batch_id=? AND result='delivered'",
         [batchId],
       );
-      expect(Number(delivered.total)).toBe(6000);
+      expect(Number(delivered.total)).toBe(5001);
       const [document] = await manager.query<
         Array<{ signing_payload_json: string | { signers: unknown[] } }>
       >('SELECT signing_payload_json FROM esign_documents WHERE id=?', [
@@ -482,7 +648,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來�
               signers: unknown[];
             })
           : document.signing_payload_json;
-      expect(payload.signers).toHaveLength(6000);
+      expect(payload.signers).toHaveLength(5001);
       const audit = await manager.query<unknown[]>(
         'SELECT metadata_json FROM esign_audit_events WHERE document_id=?',
         [documentId],

@@ -7,7 +7,7 @@
 
 **Blocked by:** [01 保留行為的正式發起核心重構](01-transaction-core.md)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — US1；FR-001–008、015；SC-001、003–005、007。
 
@@ -33,3 +33,25 @@
 
 - [ ] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
 - [ ] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+
+## Ticket 02 實作紀錄（2026-11-03）
+
+狀態保持 claimed，等待整合分支 merge 後結案。T004–T011 已完成，client 無修改。
+
+- 新增單一工作表、完整約束／索引、JSON 最小讀取、非空 down 拒絕；schema metadata 與 migration drift 為空。
+- 舊 userId/email 無 key 請求可受理；選填 UUID key 支援同 hash 重播，即使截止已過也先查回原工作。HTTP 202 只代表受理，無同步 fallback。
+- worker 使用獨立 module 與全域並行 1；正式資料與 job succeeded 同交易。公開 `EsignInitiationJobService.process(jobId)` 是實際 queue 的同一入口，供後續測試遷移使用。
+- 文件鎖後的 active job 查詢使用 current locking read；queued／processing 保護草稿更新、刪除、完整設定、fields、簽署人名單與 note。worker 僅具體 job＋lease 可通行，會再驗原檔與微秒版本。
+- claim 寫入後明確重讀 select:false 的輸入；實際測試發現 TypeORM save 回傳 entity 不保留該欄位，不能依賴 save 回傳值當執行輸入。
+
+### 驗證
+
+- TDD：首個 HTTP 受理測試原先因 201 而非 202 失敗；實作後通過。新 schema 起始 3 項因表不存在失敗，完成後通過。
+- 新 HTTP／真 queue e2e 10／10：受理、重播、授權、所有異動入口、RR 舊快照、並行去重、processing 保護、截止後重播、employeeNo、正式核心後拋錯回滾與真 worker。
+- 新 schema 4 項＋既有 migration 11 項，共 15／15，包含 drift 空陣列與非空 down 拒絕；mysql.options 單元 7／7。
+- 全部單元 113 suites／1,175 tests；server build 通過；lint 0 errors／272 既有 warnings，新檔無新增 warning。
+- 專用 MySQL 13322、Redis 16322，資料庫 feastogether_intranet_test022_t02，schema 隨機資料庫由既有守門管理；只用合成資料與 fake mail。
+
+### 後續票界線
+
+03 補完整容量與分批進度；04 補 latest／查詢驗收；05 補獨立 heartbeat、有限重試與 maintenance 補列，現階段僅持久保存失敗派送；06／07 補重試、input/issues 與保留清理。舊 HTTP 201 e2e 於 08 遷移，本票不宣稱全套 e2e 已綠燈。前端既有 resolutions 與 published 提示限制依最新範圍保留。未部署、未寄真信、未建 PR。

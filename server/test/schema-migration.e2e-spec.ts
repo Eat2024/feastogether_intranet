@@ -19,6 +19,7 @@ const BUSINESS_TABLES = [
   'esign_notification_batches',
   'esign_notification_logs',
   'esign_export_jobs',
+  'esign_initiation_jobs',
 ].sort();
 
 const optionsFor = (database: string) =>
@@ -57,6 +58,7 @@ describe('e-sign schema migrations', () => {
           .where('user.id = :id', { id: 1 })
           .getOneOrFail();
         expect(withEmail.email).toBe('synthetic@example.invalid');
+        await revertAfter(ds, 'UserNotificationEmail1793750400000');
         await ds.undoLastMigration();
         expect(await hasColumn(ds, database, 'users', 'email')).toBe(false);
         expect(await ds.query('SELECT * FROM users WHERE id=1')).toEqual(
@@ -427,7 +429,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(63);
+        expect(first.timeColumns).toHaveLength(74);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(
@@ -450,7 +452,7 @@ describe('e-sign schema migrations', () => {
 
         await dataSource.undoLastMigration();
         expect(await listBusinessTables(dataSource, database)).toEqual(
-          BUSINESS_TABLES,
+          BUSINESS_TABLES.filter((table) => table !== 'esign_initiation_jobs'),
         );
         expect(
           await hasColumn(
@@ -506,7 +508,11 @@ async function schemaSnapshot(dataSource: DataSource, database: string) {
   const missingTimeIndexes: string[] = [];
   for (const column of timeColumns) {
     if (
-      ['auth_sessions', 'mail_recipient_whitelist'].includes(column.TABLE_NAME)
+      [
+        'auth_sessions',
+        'mail_recipient_whitelist',
+        'esign_initiation_jobs',
+      ].includes(column.TABLE_NAME)
     )
       continue;
     const expectedName = `idx_${column.TABLE_NAME}_${column.COLUMN_NAME}`;

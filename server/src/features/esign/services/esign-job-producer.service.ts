@@ -3,6 +3,8 @@ import { Injectable } from '@nestjs/common';
 import type { Queue } from 'bullmq';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import {
+  ESIGN_DOCUMENT_INITIATION_JOB,
+  ESIGN_DOCUMENT_INITIATION_QUEUE,
   ESIGN_DOCUMENT_FINALIZATION_JOB,
   ESIGN_DOCUMENT_FINALIZATION_QUEUE,
   ESIGN_EXTERNAL_INVITATION_JOB,
@@ -17,7 +19,30 @@ export class EsignJobProducerService {
     @InjectQueue(ESIGN_DOCUMENT_FINALIZATION_QUEUE)
     private readonly finalizationQueue: Queue,
     private readonly logger: AppLoggerService,
+    @InjectQueue(ESIGN_DOCUMENT_INITIATION_QUEUE)
+    private readonly initiationQueue: Queue,
   ) {}
+
+  async enqueueInitiation(jobId: number): Promise<void> {
+    try {
+      await this.initiationQueue.add(
+        ESIGN_DOCUMENT_INITIATION_JOB,
+        { jobId },
+        {
+          attempts: 1,
+          removeOnComplete: true,
+          removeOnFail: true,
+          deduplication: { id: `initiation-${jobId}` },
+        },
+      );
+    } catch {
+      this.logger.warn({
+        event: 'esign.initiation_enqueue_failed',
+        context: EsignJobProducerService.name,
+      });
+      // 已受理的 MySQL 工作保留，由 maintenance 補列。
+    }
+  }
 
   async enqueueInvitations(
     notificationLogIds: number[],

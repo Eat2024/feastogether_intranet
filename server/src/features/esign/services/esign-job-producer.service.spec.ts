@@ -8,6 +8,7 @@ describe('EsignJobProducerService', () => {
       {} as never,
       { add } as never,
       { warn } as never,
+      {} as never,
     );
     await expect(service.enqueueFinalization(10, 20)).resolves.toBeUndefined();
     expect(add).toHaveBeenCalledTimes(1);
@@ -28,6 +29,7 @@ describe('EsignJobProducerService', () => {
       { addBulk } as never,
       {} as never,
       { warn: jest.fn() } as never,
+      {} as never,
     );
     await service.enqueueInvitations(
       Array.from({ length: 205 }, (_, i) => i + 1),
@@ -52,6 +54,7 @@ describe('EsignJobProducerService', () => {
       { addBulk } as never,
       {} as never,
       { warn } as never,
+      {} as never,
     );
     await expect(
       service.enqueueInvitations(Array.from({ length: 205 }, (_, i) => i + 1)),
@@ -66,6 +69,7 @@ describe('EsignJobProducerService', () => {
       {} as never,
       { add } as never,
       { warn: jest.fn() } as never,
+      {} as never,
     );
     await service.enqueueFinalization(10, 20);
     expect(add).toHaveBeenCalledWith(

@@ -16,6 +16,7 @@ import {
   Delete,
   Get,
   Header,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -53,7 +54,8 @@ import {
 import { EsignDocumentQueryService } from '../services/esign-document-query.service';
 import { EsignDraftService } from '../services/esign-draft.service';
 import { EsignFieldService } from '../services/esign-field.service';
-import { EsignInitiationService } from '../services/esign-initiation.service';
+import { EsignInitiationJobService } from '../services/esign-initiation-job.service';
+import { InitiationJobDto } from '../dto/initiation-job.dto';
 import { EsignSignerService } from '../services/esign-signer.service';
 import { EsignStoppageService } from '../services/esign-stoppage.service';
 import { EsignExportHistoryService } from '../services/esign-export-history.service';
@@ -68,7 +70,7 @@ export class DocumentsController {
     private readonly drafts: EsignDraftService,
     private readonly signerService: EsignSignerService,
     private readonly fieldService: EsignFieldService,
-    private readonly initiations: EsignInitiationService,
+    private readonly initiations: EsignInitiationJobService,
     private readonly queries: EsignDocumentQueryService,
     private readonly stoppages: EsignStoppageService,
     private readonly config: ConfigService,
@@ -219,43 +221,57 @@ export class DocumentsController {
     return detail.fields;
   }
 
-  // 發起簽署
+  // 可靠受理，正式發起只由 worker 執行。
   @UseGuards(OriginGuard)
   @ApiOperation({
-    summary: '發起文件簽署',
+    summary: '受理背景文件發起',
     description:
-      '在交易外批次核對員工信箱；同一交易再次驗證帳號並固定地址、儲存名單、欄位與期間。內部以共用入口群寄，無有效信箱保留指派並記錄略過通知；外部逐人建立邀請。來源失敗 502、員工身分異動 409，整份保持草稿。',
+      '持久保存確認輸入後回 202；所有人數皆交給 worker。Idempotency-Key 選填，有值必須 UUID，相同內容重播回 200 原工作。排隊或執行中禁止修改文件及簽署人。',
   })
   @ApiResponse({
-    status: 422,
-    description: '所選員工身分無效或無法解析',
+    status: 202,
+    type: InitiationJobDto,
+    description: '已受理，不代表正式發起完成',
   })
   @ApiResponse({
-    status: 502,
-    description: 'ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE',
+    status: 200,
+    type: InitiationJobDto,
+    description: '合法重播原工作',
+  })
+  @ApiResponse({
+    status: 400,
+    description: '輸入或 Idempotency-Key 格式不合法',
   })
   @ApiResponse({
     status: 409,
-    description: '非草稿或 ESIGN_EMPLOYEE_IDENTITY_CHANGED',
+    description: '工作進行中、相同 key 不同內容、非草稿或截止已過',
+  })
+  @ApiResponse({
+    status: 503,
+    description: '無法確認可靠保存；可用原 key 查回／重送',
   })
   @Post(':documentId/initiations')
   async initiate(
     @Param('documentId') id: string,
     @Body() body: InitiateDocumentDto,
     @CurrentUserId() userId: number,
-  ) {
-    const documentId = this.id(id);
-    await this.initiations.initiate({
-      documentId,
-      creatorUserId: userId,
-      signers: body.signers,
-      fields: body.fields,
-      signStartAt: new Date(body.signStartAt),
-      signEndAt: new Date(body.signEndAt),
-      watermark: body.watermark,
-      allowReject: body.allowReject,
-    });
-    return this.queries.detail(documentId, userId);
+    @Headers('idempotency-key') key: string | undefined,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<InitiationJobDto> {
+    const result = await this.initiations.accept(
+      this.id(id),
+      userId,
+      body,
+      key,
+    );
+    reply
+      .code(result.reused ? 200 : 202)
+      .header(
+        'Location',
+        `/api/esign/documents/${id}/initiation-jobs/${result.jobId}`,
+      )
+      .header('Cache-Control', 'private, no-store');
+    return result;
   }
 
   // 由建立人重新開放到期文件補簽，並寄出待簽者的新邀請。

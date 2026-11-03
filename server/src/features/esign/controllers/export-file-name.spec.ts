@@ -1,3 +1,4 @@
+import { InitiationJobRepository } from '../repositories/initiation-job.repository';
 import { Readable } from 'node:stream';
 import fastifyCookie from '@fastify/cookie';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -53,6 +54,10 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     const module = await Test.createTestingModule({
       controllers: [ExportsController],
       providers: [
+        {
+          provide: InitiationJobRepository,
+          useValue: { active: jest.fn().mockResolvedValue(null) },
+        },
         EsignExportService,
         EsignAccessPolicyService,
         EsignDocumentValidationService,

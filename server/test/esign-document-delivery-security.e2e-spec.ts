@@ -10,7 +10,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { getQueueToken } from '@nestjs/bullmq';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import { DocumentExportProcessor } from '#app/worker/esign/document-export.processor';
 import { EsignMaintenanceProcessor } from '#app/worker/esign/esign-maintenance.processor';
@@ -94,8 +94,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
+      builder.overrideProvider(EligibleStaffService).useValue({
         lookupEligibleStaff: (empid: string) =>
           Promise.resolve({
             person_empid: empid,
@@ -703,7 +702,4 @@ describe('Spec009 跨故事與管理安全邊界', () => {
     }
   });
 });
-import {
-  syntheticStaffEmails,
-  seedSyntheticStaffEmails,
-} from './synthetic-staff-emails.helper';
+import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';

@@ -13,7 +13,7 @@ import {
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { EsignSigningService } from '#app/features/esign/services/esign-signing.service';
 import { EsignConsentService } from '#app/features/esign/services/esign-consent.service';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
@@ -49,8 +49,7 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
+      builder.overrideProvider(EligibleStaffService).useValue({
         lookupEligibleStaff: jest.fn(async (empid: string) => ({
           person_empid: empid,
           person_name: '規模測試員工',
@@ -415,4 +414,3 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import { syntheticStaffEmails } from './synthetic-staff-emails.helper';

@@ -61,3 +61,12 @@ pnpm build
 ### Ticket 01 整合驗收
 
 2026-11-03，commit `b0ea2a0` 已整合；root `pnpm build` 通過。Chrome 156 的實際前端以合成攔截 API 驗證 Excel 自訂／預設／副檔名切換／錯誤不新增紀錄／修正重試，並讀取真實下載 XLSX 的儲存格，全部通過。此為前端驗收，後端授權證據為獨立真 HTTP/service/policy 測試，不混稱完整 DB 端到端驗收。
+
+### Ticket 02 實作分支驗證（2026-11-03，尚待整合與瀏覽器驗收）
+
+- ZIP POST 案例先確認 400 失敗；新增處理後 200。下載模式案例先確認仍含原 filename 而失敗，再實作固定旗標至通過。
+- helper／真 HTTP-controller-service-policy 共 69 tests 通過；server build、root lint、client `next typegen` + `tsc --noEmit` 通過。
+- `test:e2e --testPathPatterns=esign-export`：2 suites／96 tests 通過，包含新 ZIP 準備與既有歷史匯出驗證；確認兩位同部門員工同時準備不同名稱，job/file metadata、queue 與歷史無新增或改寫，跨部門與錯誤成果關聯拒絕。
+- `.env.test` 原本的本機 MySQL 認證失敗；確認本機 root 空密碼可唯讀連線後，僅以程序環境 `DB_MYSQL_PASS=''` 執行上述測試，維持既有測試 DB 前綴保護，沒有修改 `.env` 或組態。
+- 檢查 access log 既有電子簽 body 排除仍有效；新 GET 只有固定旗標、不含名稱，API 回應不含 storage key。成果不可用的既有狀態為 503，契約與 Swagger 已更正描述，未變更既有錯誤行為。
+- 此 worktree 的 client build 仍由整合目錄驗證；T012／T014／T017／T018 未勾選。Safari/Edge 與實際入口網驗收不可用既有單元或 HTTP 結果代替。

@@ -5,7 +5,7 @@
 // 進入頁面時使用文件詳情的 exportSummary，與後端固定沿用的工作一致。
 import { useGetDocumentExportQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
-import { documentExportFileUrl, requestDocumentExport, retryDocumentExport } from '@/api/requests';
+import { prepareExportDownload, preparedExportFileUrl, requestDocumentExport, retryDocumentExport } from '@/api/requests';
 import type { EsignExportJob } from '@/api/types';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
 import { getErrorMessage } from '@/lib/apiError';
@@ -31,7 +31,7 @@ function formatSize(bytes: number) {
 
 const IN_PROGRESS: EsignExportJob['status'][] = ['pending', 'waiting', 'processing'];
 
-export default function ZipExportPanel({ documentId, signedCount, exportSummary }: { documentId: string; signedCount: number; exportSummary: EsignExportJob | null }) {
+export default function ZipExportPanel({ documentId, signedCount, exportSummary, fileName = '' }: { fileName?: string; documentId: string; signedCount: number; exportSummary: EsignExportJob | null }) {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
   // 詳情已選定固定工作；首次申請後改用回傳的工作。
@@ -60,8 +60,23 @@ export default function ZipExportPanel({ documentId, signedCount, exportSummary 
     onError: (err) => showSnackbar(getErrorMessage(err, '重試失敗，請稍後再試'), 'error'),
   });
 
+  const download = useMutation({
+    mutationFn: async (input: { exportId: string; fileId: string; fileName: string }) => {
+      const prepared = await prepareExportDownload(documentId, { type: 'zip', ...input });
+      if (prepared.type !== 'zip') throw new Error('下載回應格式不正確');
+      const link = document.createElement('a');
+      link.href = preparedExportFileUrl(prepared.downloadPath);
+      link.download = prepared.fileName;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.click();
+    },
+    meta: { suppressGlobalErrorToast: true },
+    onError: (err) => showSnackbar(getErrorMessage(err, '準備下載失敗，請稍後再試'), 'error'),
+  });
+
   const data = job.data ?? exportSummary;
-  const busy = request.isPending || retry.isPending;
+  const busy = request.isPending || retry.isPending || download.isPending;
   const generateButton = (label: string) => (
     <Button
       size="large"
@@ -134,8 +149,9 @@ export default function ZipExportPanel({ documentId, signedCount, exportSummary 
                 size="large"
                 variant="contained"
                 startIcon={<FileDownloadRoundedIcon />}
-                href={documentExportFileUrl(documentId, data.id, f.id)}
-                download
+                loading={download.isPending}
+                disabled={busy}
+                onClick={() => download.mutate({ exportId: data.id, fileId: f.id, fileName })}
               >
                 下載 ZIP
               </Button>

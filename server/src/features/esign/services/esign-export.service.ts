@@ -61,9 +61,28 @@ export class EsignExportService {
     );
     if (document.status === 'draft')
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    const fileName = exportFileName(body.fileName, body.type);
+    if (body.type === 'excel') {
+      if (body.exportId !== undefined || body.fileId !== undefined)
+        throw new AppException(
+          ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
+        );
+      return { type: 'excel', fileName };
+    }
+    if (!body.exportId || !body.fileId)
+      throw new AppException(
+        ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
+      );
+    const file = await this.download(
+      documentId,
+      body.exportId,
+      Number(body.fileId),
+      userId,
+    );
     return {
-      type: body.type,
-      fileName: exportFileName(body.fileName, body.type),
+      type: 'zip',
+      fileName: fileName ?? file.originalFileName ?? 'signed-copies.zip',
+      downloadPath: `/api/esign/documents/${documentId}/exports/${body.exportId}/files/${file.id}${fileName === null ? '' : '?downloadName=client'}`,
     };
   }
 

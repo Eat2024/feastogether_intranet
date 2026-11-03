@@ -20,6 +20,16 @@ export const AppErrors = {
     '匯出檔名須為最多 100 字、含副檔名最多 255 bytes，且不可包含路徑、控制字元或系統保留名稱',
     HttpStatus.BAD_REQUEST,
   ],
+  ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID: [
+    AppErrorCode.INVALID_REQUEST,
+    'ZIP 必須提供有效的匯出工作與檔案識別值；Excel 不接受這些欄位',
+    HttpStatus.BAD_REQUEST,
+  ],
+  ESIGN_EXPORT_DOWNLOAD_NAME_MODE_INVALID: [
+    AppErrorCode.INVALID_REQUEST,
+    '下載命名模式不合法',
+    HttpStatus.BAD_REQUEST,
+  ],
   ESIGN_EXPORT_DOWNLOAD_TYPE_INVALID: [
     AppErrorCode.INVALID_REQUEST,
     '請選擇支援的匯出類型',

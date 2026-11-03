@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import {
   PrepareExportDownloadDto,
+  ExportDownloadQueryDto,
   PreparedExportDownloadDto,
 } from '../dto/export.dto';
 import type { FastifyReply } from 'fastify';
@@ -49,7 +50,7 @@ export class ExportsController {
   @ApiOperation({
     summary: '準備當次匯出下載',
     description:
-      '需有效員工 session、同源 Origin，以及同部門已發起且未刪除的文件。驗證名稱並補上 Excel 副檔名；空白回 null 以沿用原預設。此操作不保存設定、不產檔、不新增歷史紀錄。',
+      '需有效員工 session、同源 Origin，以及同部門已發起且未刪除的文件。驗證名稱並補上 Excel／ZIP 副檔名；Excel 空白回 null，ZIP 空白沿用成果名稱與原下載路徑。ZIP 需提供 exportId、fileId，確認成果可用後回傳同源下載資訊。此操作不保存設定、不產檔、不新增歷史紀錄。',
   })
   @ApiOkResponse({ type: PreparedExportDownloadDto })
   @ApiResponse({
@@ -62,6 +63,14 @@ export class ExportsController {
   @ApiResponse({
     status: 404,
     description: 'ESIGN_RESOURCE_NOT_FOUND：文件不存在、草稿、已刪除或非同部門',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'ZIP 尚未就緒、成果不可用或員工部門尚未設定',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'ESIGN_EXPORT_UNAVAILABLE：原 ZIP 成果不可用',
   })
   prepareDownload(
     @Param('documentId') id: string,
@@ -123,6 +132,7 @@ export class ExportsController {
     @Param('exportId') exportId: string,
     @CurrentUserId() userId: number,
     @Param('fileId') fileId: string,
+    @Query() query: ExportDownloadQueryDto,
     @Headers('range') range: string | undefined,
     @Headers('if-range') ifRange: string | undefined,
     @Res() reply: FastifyReply,
@@ -143,7 +153,9 @@ export class ExportsController {
       .header('ETag', etag)
       .header(
         'Content-Disposition',
-        `attachment; filename*=UTF-8''${encodeURIComponent(file.originalFileName ?? 'signed-copies.zip')}`,
+        query.downloadName === 'client'
+          ? 'attachment'
+          : `attachment; filename*=UTF-8''${encodeURIComponent(file.originalFileName ?? 'signed-copies.zip')}`,
       );
     const selected =
       !ifRange || ifRange === etag ? parseRange(range, size) : undefined;

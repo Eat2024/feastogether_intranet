@@ -4,7 +4,7 @@
 
 **Blocked by:** [01：Excel 匯出套用當次自訂檔名](01-excel-export-filename.md) — 沿用其共用準備下載 API、名稱規則、前端請求邊界與已確認的最小瀏覽器行為。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 
 **Source:** [Spec 020](../../../specs/020-custom-export-filename/spec.md)、[Plan](../../../specs/020-custom-export-filename/plan.md)、[Tasks](../../../specs/020-custom-export-filename/tasks.md)。
@@ -30,3 +30,7 @@
 尚未實作。後續結果追加於此，保留上述驗收條件。
 
 使用者已於本次指示批准拆分並要求 implement-spec 與 code review。
+
+### 實作分支進度（2026-11-03）
+
+ZIP 準備、同源原生下載、固定旗標、欄位驗證與提示已完成；69 helper/HTTP tests 與 96 真DB匯出/歷史 e2e tests 通過，server build、root lint、client typegen/tsc 通過。等候整合目錄 build、真瀏覽器與 review，狀態維持 claimed，不提前宣稱所有驗收完成。

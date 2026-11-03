@@ -105,3 +105,11 @@ export const prepareExportDownload = async (id: string, body: PrepareExportDownl
   });
   return res.data;
 };
+
+/** 只接受準備下載 API 的同源 ZIP 路徑；檔名永遠不放在 URL。 */
+export const preparedExportFileUrl = (path: string): string => {
+  if (!/^\/api\/esign\/documents\/[1-9]\d*\/exports\/[0-9a-f-]{36}\/files\/[1-9]\d*(?:\?downloadName=client)?$/i.test(path)) {
+    throw new Error('下載路徑格式不正確');
+  }
+  return new URL(path, window.location.origin).href;
+};

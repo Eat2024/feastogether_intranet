@@ -181,14 +181,14 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
               value={fileName}
               onChange={(e) => setFileName(e.target.value)}
               placeholder="未填寫時使用系統預設檔名"
-              helperText={content === 'list' ? '僅套用本次 Excel 下載，自動處理副檔名；留白使用預設檔名' : 'ZIP 自訂檔名尚未完成，下載仍使用系統預設名稱'}
+              helperText="僅套用本次下載，自動處理副檔名；留白使用預設檔名"
               sx={{ mt: 2, width: '100%', maxWidth: 480 }}
             />
           </Section>
 
           {content === 'docs' ? (
             <Section step={2} title="產生與下載">
-              <ZipExportPanel documentId={doc.id} signedCount={signed} exportSummary={doc.exportSummary} />
+              <ZipExportPanel fileName={fileName} documentId={doc.id} signedCount={signed} exportSummary={doc.exportSummary} />
             </Section>
           ) : (
             <>

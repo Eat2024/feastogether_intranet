@@ -19,8 +19,8 @@
 **Purpose**: 共用命名與 API 邊界；不建立資料模型、migration 或新的 infrastructure。
 
 - [x] T002 在 `server/src/features/esign/helpers/export-file-name.spec.ts` 先建立名稱規則案例，再實作 `server/src/features/esign/helpers/export-file-name.ts` 與 `server/src/common/errors/app-errors.ts` 的中文 INVALID_REQUEST 定義：遵循「可省略的字串；null／非字串拒絕。trim 後輸入最多 100 Unicode code points；未指定或空白表示原預設。」及「最終含副檔名最多 255 UTF-8 bytes。」；trim 前拒絕控制／禁止字元，結尾 `.xlsx`／`.zip` 不分大小寫移除一次後補所選格式，拒絕空主檔名、起訖句點與 spec 保留名稱，覆蓋臨界值與不同副檔名切換，不回顯原名稱。
-- [ ] T003 在 `server/src/features/esign/dto/export.dto.ts` 定義準備下載 request/response 與 GET query DTO：`type` 為「`excel` 或 `zip`。」；`documentId` 為「路徑中的既有文件 ID，後端驗證未刪除、非草稿與同部門權限。」；`exportId` 為「僅 ZIP 必填，既有匯出工作公開 UUID。」；`fileId` 為「僅 ZIP 必填，既有檔案 ID；必須屬於該文件的該工作。」；Excel 禁止這兩欄、未知欄位與不合法 ID 拒絕。名稱規則沿用 T002，不先 trim 掉控制字元；回應依 type 區分 Excel 的 nullable fileName 與 ZIP 的 fileName/downloadPath；GET 僅接受省略或單一 `downloadName=client`。
-- [ ] T004 [P] 在 `client/src/api/endpoints.ts`、`client/src/api/types/esignExports.ts`、`client/src/api/requests/esignExports.ts` 登記 `POST /api/esign/documents/:documentId/export-downloads` 與 discriminated union 型別／純請求函式；確認 `client/src/api/types/index.ts`、`client/src/api/requests/index.ts` 可匯出。依契約解析現有 envelope，不新增 query hook、快取、token 或傳送身分／任意 URL。
+- [x] T003 在 `server/src/features/esign/dto/export.dto.ts` 定義準備下載 request/response 與 GET query DTO：`type` 為「`excel` 或 `zip`。」；`documentId` 為「路徑中的既有文件 ID，後端驗證未刪除、非草稿與同部門權限。」；`exportId` 為「僅 ZIP 必填，既有匯出工作公開 UUID。」；`fileId` 為「僅 ZIP 必填，既有檔案 ID；必須屬於該文件的該工作。」；Excel 禁止這兩欄、未知欄位與不合法 ID 拒絕。名稱規則沿用 T002，不先 trim 掉控制字元；回應依 type 區分 Excel 的 nullable fileName 與 ZIP 的 fileName/downloadPath；GET 僅接受省略或單一 `downloadName=client`。
+- [x] T004 [P] 在 `client/src/api/endpoints.ts`、`client/src/api/types/esignExports.ts`、`client/src/api/requests/esignExports.ts` 登記 `POST /api/esign/documents/:documentId/export-downloads` 與 discriminated union 型別／純請求函式；確認 `client/src/api/types/index.ts`、`client/src/api/requests/index.ts` 可匯出。依契約解析現有 envelope，不新增 query hook、快取、token 或傳送身分／任意 URL。
 
 **Checkpoint**: T002–T004 完成才進入使用者故事；T004 可與 T002–T003 並行，前後端只以契約對齊。
 
@@ -42,10 +42,10 @@
 
 **Independent Test**: 兩名同部門員工以不同名稱下載同一 ZIP，各自名稱正確，工作 ID、內容 hash、metadata、歷史筆數不變；未填名稱維持原標頭。
 
-- [ ] T008 [US2] 擴充 `server/src/features/esign/controllers/export-file-name.spec.ts` 及 `server/src/features/esign/services/esign-export-file-name.spec.ts`：先寫 ZIP 準備、export/file 必填與歸屬錯誤、未就緒／不可用、預設與自訂下載路徑、兩種 GET 標頭、200／206／416／If-Range、非法或重複 downloadName、準備後 session 失效仍拒絕 GET 的案例；驗證無 metadata／歷史／queue 寫入。
-- [ ] T009 [US2] 在 `server/src/features/esign/services/esign-export.service.ts` 加入 ZIP 準備分支，重用 `download` 的授權、成果歸屬與可用性檢查；回傳 `{ type: 'zip', fileName, downloadPath }`，自訂名稱只附固定 `downloadName=client`，空白使用原成果名稱與原路徑。僅由服務組合 `/api/...` 相對路徑，不重打包或持久保存；同步 `server/src/features/esign/controllers/exports.controller.ts` 的 ZIP OpenAPI 說明。
-- [ ] T010 [US2] 在 `server/src/features/esign/controllers/exports.controller.ts` 讓既有 GET 使用 T003 query DTO；client 模式僅送 `Content-Disposition: attachment`，完全移除該回應的 filename／filename*，省略旗標則維持原標頭。保留既有授權、Range／If-Range、Content-Type、ETag、private/no-store 與 nosniff，通過 T008。
-- [ ] T011 [US2] 在 `client/src/features/esign-documents/ZipExportPanel.tsx` 接收並擷取點擊當下的名稱，以 T004 先準備再交付原生同源下載，`a.download` 採回傳名稱；必要的路徑檢查放 `client/src/api/requests/esignExports.ts`，禁止任意 origin。於 `client/src/features/esign-documents/DocumentExportView.tsx` 傳入現有輸入值；獨立 target／noopener 保留原頁，不使用 Blob、不把名稱寫入 URL、不將啟動下載顯示為完成。
+- [x] T008 [US2] 擴充 `server/src/features/esign/controllers/export-file-name.spec.ts` 及 `server/src/features/esign/services/esign-export-file-name.spec.ts`：先寫 ZIP 準備、export/file 必填與歸屬錯誤、未就緒／不可用、預設與自訂下載路徑、兩種 GET 標頭、200／206／416／If-Range、非法或重複 downloadName、準備後 session 失效仍拒絕 GET 的案例；驗證無 metadata／歷史／queue 寫入。
+- [x] T009 [US2] 在 `server/src/features/esign/services/esign-export.service.ts` 加入 ZIP 準備分支，重用 `download` 的授權、成果歸屬與可用性檢查；回傳 `{ type: 'zip', fileName, downloadPath }`，自訂名稱只附固定 `downloadName=client`，空白使用原成果名稱與原路徑。僅由服務組合 `/api/...` 相對路徑，不重打包或持久保存；同步 `server/src/features/esign/controllers/exports.controller.ts` 的 ZIP OpenAPI 說明。
+- [x] T010 [US2] 在 `server/src/features/esign/controllers/exports.controller.ts` 讓既有 GET 使用 T003 query DTO；client 模式僅送 `Content-Disposition: attachment`，完全移除該回應的 filename／filename*，省略旗標則維持原標頭。保留既有授權、Range／If-Range、Content-Type、ETag、private/no-store 與 nosniff，通過 T008。
+- [x] T011 [US2] 在 `client/src/features/esign-documents/ZipExportPanel.tsx` 接收並擷取點擊當下的名稱，以 T004 先準備再交付原生同源下載，`a.download` 採回傳名稱；必要的路徑檢查放 `client/src/api/requests/esignExports.ts`，禁止任意 origin。於 `client/src/features/esign-documents/DocumentExportView.tsx` 傳入現有輸入值；獨立 target／noopener 保留原頁，不使用 Blob、不把名稱寫入 URL、不將啟動下載顯示為完成。
 - [ ] T012 [US2] 按 `specs/020-custom-export-filename/quickstart.md` 在真瀏覽器驗收首次／沿用 ZIP、空白／中文名稱、修改輸入時機、兩位員工並行、下載中斷與續傳、大檔記憶體，以及 Chrome／Edge 實際入口網 iframe、Safari／Firefox 同源頁；將環境與結果記入同文件。若目標環境不支援或無法取得，明列未驗證，不得勾選此任務或宣稱 ZIP 完成。
 
 **Checkpoint**: 實際瀏覽器採用檔名是交付門檻，不能只靠 HTTP 測試通過；不因失敗擴大架構。
@@ -56,15 +56,15 @@
 
 **Independent Test**: 輸入非法路徑看到中文提示，保留條件並修正成合法名稱後成功下載；切換 Excel／ZIP 不重複追加副檔名。
 
-- [ ] T013 [US3] 在 `client/src/features/esign-documents/DocumentExportView.tsx` 與 `client/src/features/esign-documents/ZipExportPanel.tsx` 移除未完成 TODO／提示，改為當次下載、留白預設與副檔名說明；沿用既有錯誤處理／session 過期 UI，準備中顯示 busy 並防重複提交。確認輸入限制不以 UTF-16 maxlength 取代後端 Unicode 規則，不清除失敗輸入、不永久保存名稱、不宣稱原生下載成功。
+- [x] T013 [US3] 在 `client/src/features/esign-documents/DocumentExportView.tsx` 與 `client/src/features/esign-documents/ZipExportPanel.tsx` 移除未完成 TODO／提示，改為當次下載、留白預設與副檔名說明；沿用既有錯誤處理／session 過期 UI，準備中顯示 busy 並防重複提交。確認輸入限制不以 UTF-16 maxlength 取代後端 Unicode 規則，不清除失敗輸入、不永久保存名稱、不宣稱原生下載成功。
 - [ ] T014 [US3] 依 `specs/020-custom-export-filename/quickstart.md` 驗收非法名稱→修正重試、`.xlsx`→ZIP／`.zip`→Excel、準備失敗、連續點擊、下載前後改值及重新整理清空；將結果記入同文件，確認無默默退回預設、篩選遺失或額外歷史紀錄。
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
 **Purpose**: 只執行與本功能相關的整合驗證及文件同步，不增加功能或重構。
 
-- [ ] T015 擴充並執行 `server/test/esign-export.e2e-spec.ts` 的真 DB 驗證：兩位同部門員工可準備同一成果、跨部門與 export/file 不匹配拒絕、重複準備／GET 不改 job/file metadata 或歷史筆數；搭配既有 `server/test/esign-export-history.e2e-spec.ts` 確認歷史重下載行為不變。僅使用 `feastogether_intranet_test` 前綴資料庫，未具備環境時記錄未完成。
-- [ ] T016 [P] 檢查 `server/src/framework/interceptors/http-access-log.interceptor.ts` 的既有電子簽日誌排除及 `server/src/features/esign/controllers/exports.controller.ts`／`client/src/api/requests/esignExports.ts` 的資料邊界，確認請求與錯誤 log 不含檔名、URL 僅含固定旗標、回應不含 entity／object key／其他個資；把檢查結果記入 `specs/020-custom-export-filename/quickstart.md`，只有發現缺口才作必要修正。
+- [x] T015 擴充並執行 `server/test/esign-export.e2e-spec.ts` 的真 DB 驗證：兩位同部門員工可準備同一成果、跨部門與 export/file 不匹配拒絕、重複準備／GET 不改 job/file metadata 或歷史筆數；搭配既有 `server/test/esign-export-history.e2e-spec.ts` 確認歷史重下載行為不變。僅使用 `feastogether_intranet_test` 前綴資料庫，未具備環境時記錄未完成。
+- [x] T016 [P] 檢查 `server/src/framework/interceptors/http-access-log.interceptor.ts` 的既有電子簽日誌排除及 `server/src/features/esign/controllers/exports.controller.ts`／`client/src/api/requests/esignExports.ts` 的資料邊界，確認請求與錯誤 log 不含檔名、URL 僅含固定旗標、回應不含 entity／object key／其他個資；把檢查結果記入 `specs/020-custom-export-filename/quickstart.md`，只有發現缺口才作必要修正。
 - [ ] T017 執行 `specs/020-custom-export-filename/quickstart.md` 的 server helper／HTTP／e2e、package lint/build 與 root lint/build，記錄實際指令、結果與限制；server 使用 lint:check，不新增 client 測試框架，不以舊草稿測試結果替代本次驗證。
 - [ ] T018 逐項核對 `specs/020-custom-export-filename/spec.md` 的 FR／SC 與驗收紀錄，必要時同步 `specs/020-custom-export-filename/contracts/export-downloads-http-api.md`、`specs/020-custom-export-filename/quickstart.md` 及本檔勾選狀態；只有實際完成的任務才勾選。交付分述前端、後端、無 migration/config 變更及尚未驗證項目，不執行部署或發布。
 

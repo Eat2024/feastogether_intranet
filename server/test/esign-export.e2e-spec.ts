@@ -1,3 +1,4 @@
+import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { User } from '#app/features/users/entities/user.entity';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -262,6 +263,92 @@ describe('Spec009 匯出 API', () => {
       }
       expect(result?.status).toBe('completed');
       const file = result!.files[0];
+      // Spec020：只改當次建議名稱，兩員工共用成果與歷史維持不變。
+      const originalDocument = await db.manager.findOneByOrFail(EsignDocument, {
+        id: Number(id),
+      });
+      await db.query(
+        'UPDATE esign_documents SET status = ?, sign_start_at = ?, sign_end_at = ? WHERE id = ?',
+        [
+          'active',
+          new Date(Date.now() - 86_400_000),
+          new Date(Date.now() + 86_400_000),
+          id,
+        ],
+      );
+      try {
+        const beforeJobs = await db.manager.find(EsignExportJob, {
+          where: { documentId: Number(id) },
+        });
+        const beforeFiles = await db.manager.find(EsignFileObject, {
+          where: { exportJobId: beforeJobs[0].id },
+        });
+        const beforeQueues = await producerQueue.getJobCounts();
+        const fileId = file.downloadPath.split('/').at(-1)!;
+        const prepare = (auth: string, fileName: string, override = {}) =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${id}/export-downloads`)
+            .set('Cookie', auth)
+            .set('Origin', origin)
+            .send({
+              type: 'zip',
+              exportId: job.id,
+              fileId,
+              fileName,
+              ...override,
+            });
+        const [first, second] = await Promise.all([
+          prepare(cookie, '合成甲.xlsx').expect(200),
+          prepare(other, '合成乙.zip').expect(200),
+        ]);
+        const a = apiData<{ fileName: string; downloadPath: string }>(first);
+        const b = apiData<{ fileName: string; downloadPath: string }>(second);
+        expect(a.fileName).toBe('合成甲.zip');
+        expect(b.fileName).toBe('合成乙.zip');
+        expect(a.downloadPath).toBe(`${file.downloadPath}?downloadName=client`);
+        expect(b.downloadPath).toBe(a.downloadPath);
+        expect(a.downloadPath).not.toContain('合成');
+        const named = await request(ctx.server)
+          .get(a.downloadPath)
+          .set('Cookie', other)
+          .set('Range', 'bytes=0-3')
+          .expect(206);
+        expect(named.headers['content-disposition']).toBe('attachment');
+        expect(named.headers.etag).toBe(`"${file.sha256}"`);
+        const defaultName = apiData<{ downloadPath: string }>(
+          await prepare(cookie, ' ').expect(200),
+        );
+        expect(defaultName.downloadPath).toBe(file.downloadPath);
+        await prepare(outsider, '禁止').expect(404);
+        await prepare(other, '禁止', { fileId: '999999999999999' }).expect(404);
+        await prepare(other, '禁止', { exportId: randomUUID() }).expect(404);
+        await prepare(other, '../禁止').expect(400);
+        await request(ctx.server)
+          .get(a.downloadPath)
+          .set('Cookie', outsider)
+          .expect(404);
+        expect(
+          await db.manager.find(EsignExportJob, {
+            where: { documentId: Number(id) },
+          }),
+        ).toEqual(beforeJobs);
+        expect(
+          await db.manager.find(EsignFileObject, {
+            where: { exportJobId: beforeJobs[0].id },
+          }),
+        ).toEqual(beforeFiles);
+        expect(await producerQueue.getJobCounts()).toEqual(beforeQueues);
+      } finally {
+        await db.query(
+          'UPDATE esign_documents SET status = ?, sign_start_at = ?, sign_end_at = ? WHERE id = ?',
+          [
+            originalDocument.status,
+            originalDocument.signStartAt ?? null,
+            originalDocument.signEndAt ?? null,
+            id,
+          ],
+        );
+      }
       const beforeDenied = await db.manager.count(EsignExportJob);
       const queueBeforeDenied = await producerQueue.getJobCounts();
       await request(ctx.server)

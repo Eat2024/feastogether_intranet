@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import fastifyCookie from '@fastify/cookie';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ValidationPipe } from '@nestjs/common';
@@ -37,6 +38,17 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     origin: 'http://localhost:3000',
   };
   const url = '/api/esign/documents/9/export-downloads';
+  const exportId = '00000000-0000-4000-8000-000000000020';
+  const downloadPath = `/api/esign/documents/9/exports/${exportId}/files/1`;
+  let jobStatus = 'completed';
+  const file = {
+    id: 1,
+    originalFileName: 'original.zip',
+    fileSize: 4,
+    sha256: 'abc',
+    archiveStatus: 'active',
+  };
+
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [ExportsController],
@@ -58,9 +70,37 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
               }),
           },
         },
-        { provide: ExportJobRepository, useValue: {} },
+        {
+          provide: ExportJobRepository,
+          useValue: {
+            find: (id: string, docId: number) =>
+              id === exportId && docId === 9
+                ? {
+                    id: 1,
+                    status: jobStatus,
+                    completedAt: jobStatus === 'completed' ? new Date() : null,
+                    snapshotJson: [],
+                  }
+                : null,
+            files: () => [file],
+          },
+        },
         { provide: FileObjectRepository, useValue: {} },
-        { provide: PRIVATE_FILE_STORAGE, useValue: {} },
+        {
+          provide: PRIVATE_FILE_STORAGE,
+          useValue: {
+            stat: () => ({ fileSize: 4 }),
+            openReadStream: (
+              _file: unknown,
+              range?: { start: number; end: number },
+            ) =>
+              Readable.from(
+                range
+                  ? Buffer.from('test').subarray(range.start, range.end + 1)
+                  : Buffer.from('test'),
+              ),
+          },
+        },
         { provide: getQueueToken(ESIGN_EXPORT_QUEUE), useValue: {} },
         {
           provide: ConfigService,
@@ -94,6 +134,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     await app.getHttpAdapter().getInstance().ready();
   });
   beforeEach(() => {
+    jobStatus = 'completed';
     verifySessionToken.mockResolvedValue({ userId: 7 });
     document = Object.assign(new EsignDocument(), {
       id: 9,
@@ -211,4 +252,151 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
       ).toBe(404);
     },
   );
+  it('ZIP 準備只回當次檔名與不含名稱的下載路徑', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: {
+        type: 'zip',
+        fileName: '年度副本.xlsx',
+        exportId,
+        fileId: '1',
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<unknown>()).toMatchObject({
+      success: true,
+      data: {
+        type: 'zip',
+        fileName: '年度副本.zip',
+        downloadPath: `${downloadPath}?downloadName=client`,
+      },
+    });
+  });
+
+  it('ZIP client 命名保留 Range 串流，但不設定伺服器檔名', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `${downloadPath}?downloadName=client`,
+      headers: { ...headers, range: 'bytes=1-2' },
+    });
+    expect(response.statusCode).toBe(206);
+    expect(response.headers['content-disposition']).toBe('attachment');
+    expect(response.headers['content-range']).toBe('bytes 1-2/4');
+    expect(response.headers.etag).toBe('"abc"');
+    expect(response.body).toBe('es');
+  });
+
+  it.each([
+    { type: 'zip' },
+    { type: 'zip', exportId },
+    { type: 'zip', exportId: null, fileId: '1' },
+    { type: 'zip', exportId: [exportId], fileId: '1' },
+    { type: 'zip', exportId, fileId: null },
+    { type: 'zip', exportId, fileId: ['1'] },
+    { type: 'zip', exportId, fileId: 1 },
+    { type: 'zip', exportId, fileId: '9007199254740992' },
+    { type: 'excel', exportId },
+    { type: 'excel', exportId: null },
+    { type: 'excel', fileId: null },
+  ])('拒絕不符類型的 ZIP 識別欄位：%p', async (payload) => {
+    expect(
+      (await app.inject({ method: 'POST', url, headers, payload })).statusCode,
+    ).toBe(400);
+  });
+  it('空白 ZIP 名稱沿用成果，錯誤歸屬與未就緒成果拒絕', async () => {
+    const payload = { type: 'zip', exportId, fileId: '1', fileName: '  ' };
+    const response = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<unknown>()).toMatchObject({
+      data: { type: 'zip', fileName: 'original.zip', downloadPath },
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          headers,
+          payload: { ...payload, fileId: '2' },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          headers,
+          payload: {
+            ...payload,
+            exportId: '00000000-0000-4000-8000-000000000021',
+          },
+        })
+      ).statusCode,
+    ).toBe(404);
+    jobStatus = 'pending';
+    expect(
+      (await app.inject({ method: 'POST', url, headers, payload })).statusCode,
+    ).toBe(409);
+  });
+  it.each([
+    'downloadName=server',
+    'downloadName=client&downloadName=client',
+    'fileName=private-name',
+  ])('拒絕非法下載參數：%s', async (query) => {
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: `${downloadPath}?${query}`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(400);
+  });
+  it('原 GET 命名、If-Range 與 416 行為保持，準備後 session 失效仍拒絕下載', async () => {
+    const original = await app.inject({
+      method: 'GET',
+      url: downloadPath,
+      headers,
+    });
+    expect(original.statusCode).toBe(200);
+    expect(original.headers['content-disposition']).toContain('original.zip');
+    const mismatched = await app.inject({
+      method: 'GET',
+      url: `${downloadPath}?downloadName=client`,
+      headers: { ...headers, range: 'bytes=0-1', 'if-range': '"other"' },
+    });
+    expect(mismatched.statusCode).toBe(200);
+    expect(mismatched.body).toBe('test');
+    const invalidRange = await app.inject({
+      method: 'GET',
+      url: `${downloadPath}?downloadName=client`,
+      headers: { ...headers, range: 'bytes=4-' },
+    });
+    expect(invalidRange.statusCode).toBe(416);
+    expect(invalidRange.headers['content-range']).toBe('bytes */4');
+    await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { type: 'zip', exportId, fileId: '1' },
+    });
+    verifySessionToken.mockResolvedValue(null);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: `${downloadPath}?downloadName=client`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(401);
+  });
 });

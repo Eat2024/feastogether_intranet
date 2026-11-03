@@ -53,7 +53,8 @@ ZIP body：
 | 401 | 員工 session 缺失或失效，沿用現有登入過期處理。 |
 | 403 | CSRF_ORIGIN_REJECTED：Origin 不允許。 |
 | 404 | ESIGN_RESOURCE_NOT_FOUND：文件不在可見範圍、草稿、已刪除，或 export/file 不屬於指定資源。 |
-| 409 | ZIP 未就緒／不可用，沿用既有 download service 的錯誤定義。 |
+| 409 | ZIP 未就緒或員工部門尚未設定，沿用既有錯誤定義。 |
+| 503 | ESIGN_EXPORT_UNAVAILABLE：原 ZIP 成果不可用，沿用既有 download service 的錯誤定義。 |
 
 JSON 回應不快取，檔名不寫入 application/access log。
 

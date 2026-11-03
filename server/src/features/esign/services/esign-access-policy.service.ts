@@ -142,8 +142,15 @@ export class EsignAccessPolicyService {
       manager,
     );
     this.checkEsignCreator(document, userId);
-    if (await this.initiationJobs.hasActive(documentId, manager))
-      throw new AppException(...AppErrors.ESIGN_INITIATION_IN_PROGRESS);
+    const active = await this.initiationJobs.activeIdentity(
+      documentId,
+      manager,
+    );
+    if (active)
+      throw new AppException(
+        ...AppErrors.ESIGN_INITIATION_IN_PROGRESS,
+        active ? { existingJobId: active.publicId } : undefined,
+      );
   }
 
   /** 必須由已授權且持有文件鎖的呼叫端使用，確保競態 current read。 */
@@ -152,18 +159,31 @@ export class EsignAccessPolicyService {
     manager: EntityManager,
     lease?: InitiationLease,
   ): Promise<void> {
+    if (!lease) {
+      const active = await this.initiationJobs.activeIdentity(
+        documentId,
+        manager,
+        true,
+      );
+      if (active)
+        throw new AppException(...AppErrors.ESIGN_INITIATION_IN_PROGRESS, {
+          existingJobId: active.publicId,
+        });
+      return;
+    }
     const active = await this.initiationJobs.active(documentId, manager);
-    if (!active && !lease) return;
     if (
       !active ||
-      !lease ||
       active.id !== lease.jobId ||
       active.status !== 'processing' ||
       active.leaseToken !== lease.leaseToken ||
       !active.leaseExpiresAt ||
       active.leaseExpiresAt <= new Date()
     ) {
-      throw new AppException(...AppErrors.ESIGN_INITIATION_IN_PROGRESS);
+      throw new AppException(
+        ...AppErrors.ESIGN_INITIATION_IN_PROGRESS,
+        active ? { existingJobId: active.publicId } : undefined,
+      );
     }
     if (active.deadlineAt <= new Date())
       throw new AppException(...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT);

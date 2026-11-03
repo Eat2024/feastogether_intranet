@@ -82,25 +82,13 @@ export class EsignInitiationJobService {
           throw new AppException(...AppErrors.ESIGN_DRAFT_PDF_MISSING);
         const job = await this.jobs.create(
           {
-            publicId: randomUUID(),
             documentId,
             createdByUserId: userId,
             requestKey: key,
             requestHash: hash,
             inputJson: input,
             documentVersionJson: version,
-            status: 'queued',
-            stage: 'queued',
-            totalCount: input.signers.length,
-            processedCount: 0,
-            attemptCount: 0,
-            issueCount: 0,
-            retryable: false,
-            acceptedAt: now,
-            deadlineAt: new Date(
-              Math.min(now.getTime() + 7200000, end.getTime()),
-            ),
-            lastProgressAt: now,
+            ...this.newJobState(input.signers.length, now, end),
           },
           manager,
         );
@@ -115,6 +103,23 @@ export class EsignInitiationJobService {
       await this.producer.enqueueInitiation(accepted.job.id);
     }
     return { ...this.summary(accepted.job), reused: accepted.reused };
+  }
+
+  /** initial/retry 共用新工作的狀態、計數與期限，不承擔授權或輸入來源判定。 */
+  private newJobState(totalCount: number, now: Date, end: Date) {
+    return {
+      publicId: randomUUID(),
+      status: 'queued' as const,
+      stage: 'queued' as const,
+      totalCount,
+      processedCount: 0,
+      attemptCount: 0,
+      issueCount: 0,
+      retryable: false,
+      acceptedAt: now,
+      deadlineAt: new Date(Math.min(now.getTime() + 7200000, end.getTime())),
+      lastProgressAt: now,
+    };
   }
 
   /** 人工重試的 key 屬於 parent + 原 hash；重播不依賴仍保留敏感明細。 */
@@ -210,7 +215,6 @@ export class EsignInitiationJobService {
           throw new AppException(...AppErrors.ESIGN_INITIATION_DEADLINE_PASSED);
         const job = await this.jobs.create(
           {
-            publicId: randomUUID(),
             documentId,
             createdByUserId: userId,
             requestKey,
@@ -218,18 +222,7 @@ export class EsignInitiationJobService {
             parentJobId: parent.id,
             inputJson: detail.inputJson,
             documentVersionJson: detail.documentVersionJson,
-            status: 'queued',
-            stage: 'queued',
-            totalCount: detail.inputJson.signers.length,
-            processedCount: 0,
-            attemptCount: 0,
-            issueCount: 0,
-            retryable: false,
-            acceptedAt: now,
-            deadlineAt: new Date(
-              Math.min(now.getTime() + 7200000, end.getTime()),
-            ),
-            lastProgressAt: now,
+            ...this.newJobState(detail.inputJson.signers.length, now, end),
           },
           manager,
         );
@@ -342,8 +335,12 @@ export class EsignInitiationJobService {
         (await this.jobs.hasKey(documentId, requestKey, manager))
       )
         return;
-      if (await this.jobs.hasActive(documentId, manager))
-        throw new AppException(...AppErrors.ESIGN_INITIATION_IN_PROGRESS);
+      const active = await this.jobs.activeIdentity(documentId, manager);
+      if (active)
+        throw new AppException(
+          ...AppErrors.ESIGN_INITIATION_IN_PROGRESS,
+          active ? { existingJobId: active.publicId } : undefined,
+        );
     } catch (error: unknown) {
       if (error instanceof AppException) throw error;
       throw new AppException(...AppErrors.ESIGN_INITIATION_TRANSIENT_FAILURE);

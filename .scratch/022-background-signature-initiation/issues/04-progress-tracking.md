@@ -80,3 +80,10 @@
 - 僅指定 commit `b95c1cd392d508a8282cd693dd39994c7e5354a8` 無衝突合併至 `impl/022-integration`，merge commit `2a6421e23b1034fd681a848d406fdda51e391f9f`。新 key 重複發起／retry 快速拒絕與歷史 key 重播優先已整合。
 - 實作 80 e2e、build/lint 通過；整合 hook lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過，client 無修改。
 - 08 擴大回歸另發現共享資格鎖下，跨文件並行 accept 的不存在 key／active gap lock 與 INSERT request 唯一索引發生 deadlock；修正仍在下一補修進行中，本次不宣稱並行受理全部問題已解。08 維持 claimed。
+
+### 2026-11-04 預審 P3 契約補修
+
+- 有權建立人的忙碌 409 補 `details.existingJobId`，使用 active 工作 publicId；固定 code/message 不變。預檢與文件鎖內競態拒絕一致，越權 404 不含 details。
+- 非 worker 的預檢／鎖內查詢僅投影公開識別碼，鎖內仍 current read；worker lease 維持完整版本核驗。HTTP 測試先以缺 details 紅燈、再以競態 fallback 的 JSON 讀取紅燈，修正後皆通過。
+- initial/retry 新工作初始化在同 service 的 `newJobState` 收斂 publicId、狀態、計數與期限；授權／輸入來源／parent／hash 邏輯各自保留，以既有公開 API 回歸驗證，未新增鏡像單測或通用框架。
+- 獨立預審補修基準驗證：8 suites / 83 e2e、115 suites / 1180 unit、build 通過，lint 0 errors／272 既有 warnings；待另行整合最新 dev/024 後重驗，不將本紀錄視為最終驗收。

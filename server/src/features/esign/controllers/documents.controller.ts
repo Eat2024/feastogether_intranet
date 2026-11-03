@@ -1,3 +1,4 @@
+import { InitiationJobResponseDto } from '../dto/initiation-response.dto';
 import { EsignHistoryItemDto } from '../dto/esign-common.dto';
 import { SignerNoteDto } from '../dto/signer-note.dto';
 import { DraftSaveDto, DraftSettingsDto } from '../dto/draft-settings.dto';
@@ -230,12 +231,12 @@ export class DocumentsController {
   })
   @ApiResponse({
     status: 202,
-    type: InitiationJobDto,
+    type: InitiationJobResponseDto,
     description: '已受理，不代表正式發起完成',
   })
   @ApiResponse({
     status: 200,
-    type: InitiationJobDto,
+    type: InitiationJobResponseDto,
     description: '合法重播原工作',
   })
   @ApiResponse({

@@ -33,6 +33,12 @@ DB_MYSQL_DB=feastogether_intranet_test022_long REDIS_DB=10 ESIGN_STORAGE_ROOT=/t
 
 SC-008 真 Bull Worker、queue global concurrency=1：先提交5001人，再提交5人；大型POST95.30ms、小型POST11.47ms。大型成功後13ms小型取得執行權，兩份皆 succeeded，符合60秒門檻。原始結果存本機 `/tmp/022-acceptance-benchmark.json`、`/tmp/022-mixed-benchmark.json`。
 
+## Review 發現：同建立人跨文件受理仍可能等鎖
+
+獨立DataSource先持有建立人users列5,000ms，模擬另一份文件worker正式交易；第二份草稿已先上傳，才開始計POST受理。實測5,030.89ms後回202，釋放後正常完成。正式pool維持2、鎖順序未改。重現為benchmark的`review 同建立人`案例，結果 `/tmp/022-creator-lock-benchmark.json`。
+
+這證實accept仍會等同建立人users行鎖；上述80次無競爭P95通過不代表此情境滿足3秒。5001秒預查本身不持此鎖，但最後正式交易及其他相同員工寫入仍可能延長另一份文件受理。本項交正式review評估，沒有自行放寬授權查核或改鎖順序。
+
 ## SC-006 實時間長測（進行中，尚未標通過）
 
 UTC 2026-11-03T15:14:35.183Z 開始；期限120分鐘，簽署截止設為24小時後。測試在每批首次 `UserRepository.findByIds` 查核注入 `batch人數 × 1000ms` 真實 timer，每位選中者只加一次，正式鎖內信箱重核不再加第二輪延遲。真Bull Worker進入正式service，heartbeat獨立續租；沒有使用 fake clock。
@@ -47,7 +53,13 @@ UTC 2026-11-03T15:14:35.183Z 開始；期限120分鐘，簽署截止設為24小�
 - PDF worker fixture同時pause新initiation queue，避免另一app instances搶工作而繞過既有spies。
 - retry資格競態原52秒失敗：外部鎖持有者佔app pool2之一，worker交易佔另一條，HTTP輪詢等不到連線。改測試外部持鎖者使用獨立DataSource，正式pool維持2，原鎖內資格與HTTP取樣斷言保留，8/8於1.7秒通過。未改正式pool規格。
 - schema約束清單增加8個新工作表CHECK；仍比對完整精確清單。
-- 完整server/schema/security/root最終結果待補，不以局部通過取代。
+- `pnpm -C server test --runInBand`：整合Redis重連補修後115 suites／1180 tests通過（commit hook實跑）。
+- `pnpm -C server lint:check`：0 errors／272既有warnings；root `pnpm lint`與`pnpm build`通過。最終完整性補修整合後將再驗必要範圍。
+- `test:schema`：5 suites／30 tests通過，包含新工作表約束、非空down拒絕／空表down-up及drift。
+- `test:e2e:security`：14 suites／84 tests通過。
+- 完整e2e第二輪：45 suites通過／1失敗／1跳過，470 tests通過／1失敗／1跳過；唯一失敗為上述外部鎖fixture，修正後該suite8/8通過。最終完整suite待最新整合後補跑，不把這輪記為全綠。
+- Redis重新連線suite只在專用DB9執行，一般DB8按既有保護跳過；本票沒有重新操作DB9。
+- benchmark/helper與既有export benchmark以TypeScript semantic program檢查通過；Spec009整套大型ZIP容量腳本未重跑，本輪只遷移其HTTP發起fixture。
 
 ## 未改 client 的相容性與限制
 

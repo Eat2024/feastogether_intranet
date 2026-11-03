@@ -13,7 +13,7 @@
 
 **Tasks:** [T031–T034](../../../specs/022-background-signature-initiation/tasks.md)。精確實作位置與約束見 tasks／plan，不複製整份規格。
 
-**執行約定:** 前置票皆 resolved 才可開始；開始改 claimed。使用 `feat/022-background-signature-initiation` 作整合分支，驗收通過且整合後才改 resolved，追加驗證與 commit 紀錄並保留原驗收條件。測試只用隔離合成資料，不部署、不建立遠端 issues／PR。
+**執行約定:** 前置票皆 resolved 才可開始；開始改 claimed。使用 `impl/022-integration` 作整合分支，驗收通過且整合後才改 resolved，追加驗證與 commit 紀錄並保留原驗收條件。測試只用隔離合成資料，不部署、不建立遠端 issues／PR。
 
 ## 驗收條件
 
@@ -26,7 +26,7 @@
 
 ## 實作與驗證紀錄
 
-尚未開始。
+`impl/022-08` 已完成測試遷移與本機80次效能矩陣，完整回歸及真實5001秒長測進行中。實際證據與限制見 [validation.md](../../../specs/022-background-signature-initiation/validation.md)。維持 claimed，待長測／整合review全部完成才由整合者結案。
 
 ## 本輪後端補充驗收
 

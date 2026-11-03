@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Worker, type Queue } from 'bullmq';
-import { In } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { AuthService } from '#app/features/auth/services/auth.service';
@@ -69,7 +69,10 @@ describe('022 發起實時間效能驗收', () => {
     source.addPage();
     pdf = Buffer.from(await source.save());
   });
-  async function submit(signers: InitiateDocumentDto['signers']) {
+  async function submit(
+    signers: InitiateDocumentDto['signers'],
+    beforeAccept?: () => Promise<void>,
+  ) {
     const documentId = apiData<{ id: string }>(
       await request(ctx.server)
         .post('/api/esign/documents')
@@ -98,6 +101,7 @@ describe('022 發起實時間效能驗收', () => {
       watermark: true,
       allowReject: false,
     };
+    await beforeAccept?.();
     const acceptanceStart = performance.now();
     const accepted = apiData<InitiationJobDto>(
       await request(ctx.server)
@@ -259,6 +263,58 @@ describe('022 發起實時間效能驗收', () => {
       await consumer.close();
     }
   });
+  it('review 同建立人另一份文件受理等待users列鎖', async () => {
+    const blocker = await new DataSource(
+      mysql.getDataSource().options,
+    ).initialize();
+    const runner = blocker.createQueryRunner();
+    await runner.connect();
+    await runner.startTransaction();
+    let unlock: Promise<void> | undefined;
+    let releasedAt: string | undefined;
+    try {
+      const result = await submit(
+        [{ type: 'user', userId: String(users[0].id) }],
+        async () => {
+          await runner.query('SELECT id FROM users WHERE id=? FOR UPDATE', [
+            users[0].id,
+          ]);
+          unlock = wait(5000).then(async () => {
+            await runner.commitTransaction();
+            releasedAt = new Date().toISOString();
+          });
+        },
+      );
+      await unlock;
+      expect(result.acceptedMs).toBeGreaterThanOrEqual(4500);
+      await ctx.app.get(EsignInitiationJobService).process(result.job.id);
+      expect(
+        (await summary(result.documentId, result.job.publicId)).status,
+      ).toBe('succeeded');
+      writeFileSync(
+        '/tmp/022-creator-lock-benchmark.json',
+        JSON.stringify(
+          {
+            heldMilliseconds: 5000,
+            acceptedMs: result.acceptedMs,
+            releasedAt,
+            httpStatus: 202,
+            status: 'succeeded',
+            scope:
+              '獨立連線持有同建立人users列，模擬另一份文件正式交易；未改正式pool或鎖順序',
+          },
+          null,
+          2,
+        ),
+      );
+    } finally {
+      await unlock;
+      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      await runner.release();
+      await blocker.destroy();
+    }
+  });
+
   it('SC-006 真實5001秒逐人首次查核延遲', async () => {
     if (
       process.env.DB_MYSQL_DB !== 'feastogether_intranet_test022_long' ||

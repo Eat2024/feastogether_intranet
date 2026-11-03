@@ -52,16 +52,44 @@ describe('runtime API coverage', () => {
     const base = '/api/esign/documents/{documentId}';
     expect(
       api.paths[`${base}/initiations`].post?.responses['202'],
+    ).toMatchObject({
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/InitiationJobResponseDto' },
+        },
+      },
+    });
+    expect(api.components?.schemas?.InitiationJobResponseDto).toMatchObject({
+      required: ['success', 'timestamp', 'data'],
+      properties: {
+        success: { enum: [true] },
+        timestamp: { format: 'date-time' },
+        data: { $ref: '#/components/schemas/InitiationJobDto' },
+      },
+    });
+    expect(
+      api.components?.schemas?.LatestInitiationJobResponseDto,
+    ).toMatchObject({
+      properties: { data: { nullable: true } },
+    });
+    expect(
+      api.paths[`${base}/initiations`].post?.responses['202'],
     ).toBeDefined();
-    for (const suffix of [
-      'latest',
-      '{jobId}',
-      '{jobId}/issues',
-      '{jobId}/input',
+    for (const [suffix, schema] of [
+      ['latest', 'LatestInitiationJobResponseDto'],
+      ['{jobId}', 'InitiationJobResponseDto'],
+      ['{jobId}/issues', 'InitiationIssuesResponseDto'],
+      ['{jobId}/input', 'InitiationInputResponseDto'],
     ])
       expect(
         api.paths[`${base}/initiation-jobs/${suffix}`].get?.responses['200'],
-      ).toBeDefined();
+      ).toMatchObject({
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${schema}` },
+          },
+        },
+      });
     expect(
       api.paths[`${base}/initiation-jobs/{jobId}/retries`].post?.responses[
         '202'

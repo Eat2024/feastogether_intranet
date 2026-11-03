@@ -2,7 +2,7 @@
 
 **Input**：[spec.md](spec.md)、[plan.md](plan.md)、[research.md](research.md)、[data-model.md](data-model.md)、[API 契約](contracts/background-initiation.md)、[驗收指南](quickstart.md)。
 
-**狀態**：待實作；所有核取方塊均未完成。使用整合分支 `feat/022-background-signature-initiation`。測試來自 spec 的驗收需求及憲章的交易／身分／migration 驗證要求。新增檔案為預定位置，其他既有檔案先讀相鄰實作。
+**狀態**：T001–T030 已完成後端整合；T031–T034 在 `impl/022-08` 驗收中。使用整合分支 `impl/022-integration`。測試來自 spec 的驗收需求及憲章的交易／身分／migration 驗證要求。新增檔案為預定位置，其他既有檔案先讀相鄰實作。
 
 **執行約定**：先寫相應風險測試確認能捕捉缺陷，再完成實作並驗證；同 ticket 內測試與實作形成一個可審查增量。新表只限計畫的一張，維持全部人數 worker、無同步產品分支。`[P]` 只表示前置完成後可與同階段不同檔案工作並行，不授權啟動代理。
 

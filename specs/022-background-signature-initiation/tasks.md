@@ -58,8 +58,8 @@
 - [x] T026 [US3] 於 `server/src/features/esign/services/esign-initiation-job.service.ts` 及 `server/src/features/esign/controllers/initiation-jobs.controller.ts` 實作 retries：新 key／新 job／parent hash，先查重播再驗最新 failed、retryable、input 保留、版本、授權與期限；同 key 回原 child，改內容走新 initiation，不允許覆寫 retry body。
 - [x] T027 [US3] 在 `server/test/esign-initiation-retry.e2e-spec.ts` 驗證原確認名單及問題 API、重試後 busy 保護重新生效、異動 API 沿用既有錯誤 envelope；不修改 client 或新增失敗修正畫面。
 - [x] T028 [US3] 新增 `server/test/esign-initiation-retry.e2e-spec.ts` 並登記 `server/test/jest-e2e.json`；驗證 retry 回應遺失、child succeeded／parent 不再 latest 後重播、越權、版本變更、期限、輸入修正與 issues 分頁；於 `specs/022-background-signature-initiation/quickstart.md` 記錄失敗重整還原及 UI 錯誤分流。
-- [ ] T029 [US3] 在 `server/src/worker/esign/esign-maintenance.processor.ts` 與 `server/src/features/esign/repositories/initiation-job.repository.ts` 實作終態滿 30 天分批清空 input/version/issues，保留摘要、key/hash、計數與稽核；非終態永不清除，清理與已受理 retry 交易串行化，摘要 detailsExpired 與 410 一致。
-- [ ] T030 [US3] 新增 `server/test/esign-initiation-retention.e2e-spec.ts` 並登記 `server/test/jest-e2e.json`；驗證保留期邊界、清理/retry 競態、原 initiation 與 retry key 在 parent 明細清理後仍回原摘要，無憑空空名單、無刪正式證據；於 `specs/022-background-signature-initiation/quickstart.md` 記錄過期重新設定的畫面驗收。
+- [x] T029 [US3] 在 `server/src/worker/esign/esign-maintenance.processor.ts` 與 `server/src/features/esign/repositories/initiation-job.repository.ts` 實作終態滿 30 天分批清空 input/version/issues，保留摘要、key/hash、計數與稽核；非終態永不清除，清理與已受理 retry 交易串行化，摘要 detailsExpired 與 410 一致。
+- [x] T030 [US3] 新增 `server/test/esign-initiation-retention.e2e-spec.ts` 並登記 `server/test/jest-e2e.json`；驗證保留期邊界、清理/retry 競態、原 initiation 與 retry key 在 parent 明細清理後仍回原摘要，無憑空空名單、無刪正式證據；於 `specs/022-background-signature-initiation/quickstart.md` 記錄過期重新設定的畫面驗收。
 
 ## Phase 6：整合驗證與交付
 

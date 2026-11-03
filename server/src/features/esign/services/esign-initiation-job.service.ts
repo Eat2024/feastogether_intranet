@@ -532,7 +532,7 @@ export class EsignInitiationJobService {
       const rows = await this.mysql.transaction((manager) =>
         this.jobs.recover(now, afterId, manager),
       );
-      if (!rows.length) return;
+      if (!rows.length) break;
       for (const row of rows) {
         if (
           row.status === 'queued' &&
@@ -542,6 +542,15 @@ export class EsignInitiationJobService {
         else this.logJob(row, 'esign.initiation_reconciled');
       }
       afterId = rows[rows.length - 1].id;
+    }
+    // 沿既有 maintenance 喚醒分批清理；不以一般保留期限清除非終態工作。
+    afterId = 0;
+    while (true) {
+      const ids = await this.mysql.transaction((manager) =>
+        this.jobs.purgeInputs(now, afterId, manager),
+      );
+      if (!ids.length) return;
+      afterId = ids[ids.length - 1];
     }
   }
 

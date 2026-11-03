@@ -2,7 +2,7 @@
 
 **What to build:** 所有 tickets 整合後，完整跑過 server 與 root 的驗證，在 quickstart 記錄實際結果與未驗證的限制，並確認 Spec 006／023 的取代註記仍正確，讓這個分支可以進 PR review。
 
-**Status:** claimed
+**Status:** resolved
 
 **Blocked by:** [01](01-portal-connection.md)、[02](02-org-chart-from-portal.md)、[03](03-login-staff-from-portal.md)、[04](04-portal-user-sync-core.md)、[05](05-daily-schedule.md)、[06](06-manual-cli-runbook.md)、[07](07-remove-feastogether-hr-paths.md)
 
@@ -53,3 +53,5 @@
   - 7 天排程是用 BullMQ 的下次執行時間推算，沒有實際跑 7 天。
   - 沒有執行 `test:schema`（024 沒有 migration 或 entity 變更）、`s3-export` e2e（需要 `moto_server`）與 performance benchmark。
 - 範圍外發現（未修改）：Spec 023 的 Status 行仍寫「來源切換及可重跑維護工具待實作」，這是 023 自己的狀態，與 024 無關。
+
+整合 commit：`e04bce3`（feat/024-portal-hr-source）。

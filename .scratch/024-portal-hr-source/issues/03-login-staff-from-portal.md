@@ -2,7 +2,7 @@
 
 **What to build:** 同仁用帳密、饗賓人 App WebView 或 OAuth 登入時，員工資料改為即時查 Portal，並照現行規則更新本機員工資料。帳密仍先由饗賓人 `staff/login` 驗證；資格規則、錯誤碼與訊息都不變；新進同仁當天就能登入。
 
-**Status:** claimed
+**Status:** resolved
 
 **Blocked by:** [01-portal-connection](01-portal-connection.md)
 
@@ -19,7 +19,7 @@
 - [x] 帳密登入時，密碼通過但 Portal 顯示已非在職，拒絕登入；密碼錯誤與帳號停用的錯誤對應不變。
 - [x] 三個入口寫入本機的欄位與現行相同（OAuth 不寫人員狀態與職稱），也不寫本機部門外鍵。
 - [x] 三個入口的 e2e 改用合成 Portal，呼叫饗賓人 `hr/staff_lookup` 的次數為 0；其他 esign e2e 改用新的登入替身，且不再替身 `getStaffEmails`。
-- [ ] 相關的 lint、單元測試、build 與 e2e 通過，並附上實際結果與未驗證的限制；整合到 `feat/024-portal-hr-source` 並追加 commit 紀錄後，才可以改成 resolved。
+- [x] 相關的 lint、單元測試、build 與 e2e 通過，並附上實際結果與未驗證的限制；整合到 `feat/024-portal-hr-source` 並追加 commit 紀錄後，才可以改成 resolved。
 
 ## Comments & Implementation Results
 
@@ -74,3 +74,5 @@
   - Portal 不回應的 15 秒情境只在帳密登入 e2e 驗證。WebView 與 OAuth 共用同一個 `EligibleStaffService`，只用立即失敗（`RENAME TABLE`）驗證錯誤對應。
   - 合成 Portal 的欄位長度比 DTO 上限短（姓名 50、部門代碼 11、部門名稱 40、職稱 20），「長度超過限制」只有單元測試覆蓋。
   - 沒有連真實 Portal。
+
+整合 commit：`ba0de0f`（feat/024-portal-hr-source）。

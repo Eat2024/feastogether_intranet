@@ -97,6 +97,7 @@
   - 查詢：`PortalDirectoryService.findEmployeesByEmpid(empId)`，條件是 `WHERE person_empid = ?`，有索引。
   - 精確比對：Portal 的 collation 不分大小寫，也忽略尾端空白，所以查回來後再用 `===` 比對員編。
   - 篩選：狀態必須是 0／1，而且剛好一筆。
+  - 正規化：Portal 的 `person_name`、`department_id`、`department_name`、`title` 是 `NOT NULL DEFAULT ''`，驗證前先 trim，空字串轉為 null（與 fgapi `SyncUsersFromPortal` 相同）；員編不 trim，尾端空白不算相符。查詢已改為精確相等（`WHERE person_empid = ?`），只驗證選中的那一筆；舊的 LIKE 查詢只要任一筆不合法就整批拒絕。
   - 驗證：轉成既有的 `StaffLookupDto`（搬到 `features/auth/dto/`），沿用既有的 class-validator 規則；`person_status_name` 由狀態推得，0 為「試用」、1 為「正式」。
   - 錯誤：Portal 失敗回傳 `STAFF_LOOKUP_FAILED`，資料不合格回傳 `AUTH_EXCHANGE_FAILED`，都與現行相同。
 - `auth.service.ts`（帳密登入、WebView）與 `oauth-identity.service.ts` 只需要換注入的服務，寫入本機的邏輯不變。

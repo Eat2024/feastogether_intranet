@@ -62,3 +62,10 @@
 - 實作回歸 7 suites／72 e2e、server build 與 lint 通過；整合 hook 再驗 lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過。
 - 草稿單調微秒版本與 purge 逐唯一 PK 更新均已整合；原 timeout 歷史紀錄保留，新增資料庫鎖等待證據已定位本次重現為 bulk UPDATE 掃到 SKIP LOCKED 略過列，並有同條件紅綠驗證。
 - 沒有 client 或 schema 變更；08 完整驗收仍未結案。
+
+### 2026-11-03 共享資格鎖補修
+
+- 受理/retry 建立人改 S current read；正式交易 users 全部改 S，保留 users → document → job 鎖序及其他員工寫入路徑 X。避免同建立人另一份文件受理與 FK S 被正式 worker X 阻擋。
+- 真 HTTP 紅燈：正式交易持鎖 5 秒，另一文件受理 5027ms；綠燈約 8–12ms。停用、Email、同步員編的 X 寫入都確實等 S 釋放；先停用再正式查核不會成功。retry/key 重播/越權一併驗證。
+- 驗證：8 suites / 79 e2e、115 suites / 1180 unit、build 通過。新增專用測試 lint 無警告。
+- 同文件修改在 committing 仍等待文件鎖後回狀態錯誤，後續獨立 commit 補有權人的快速 busy 預檢，鎖內檢查保留。

@@ -53,7 +53,7 @@ export class EsignInitiationJobService {
     const key = requestKey ?? randomUUID();
     const accepted = await this.mysql
       .transaction(async (manager) => {
-        const creator = await this.users.findByIdForUpdate(userId, manager);
+        const creator = await this.users.findByIdForShare(userId, manager);
         if (!creator || !creator.isActive || creator.deletedAt)
           throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
         const document = await this.documents.findInitiationAccess(
@@ -136,7 +136,7 @@ export class EsignInitiationJobService {
       throw new AppException(...AppErrors.ESIGN_INITIATION_INVALID_REQUEST);
     const accepted = await this.mysql
       .transaction(async (manager) => {
-        const creator = await this.users.findByIdForUpdate(userId, manager);
+        const creator = await this.users.findByIdForShare(userId, manager);
         if (!creator || !creator.isActive || creator.deletedAt)
           throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
         const document = await this.documents.findInitiationAccess(

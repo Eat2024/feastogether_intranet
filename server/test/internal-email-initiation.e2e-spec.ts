@@ -1,3 +1,8 @@
+import {
+  completeInitiation,
+  driveInitiation,
+  exhaustInitiationRetries,
+} from './helpers/await-initiation';
 import { AuditEventRepository } from '#app/features/esign/repositories/audit-event.repository';
 import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import type { SendInternalGroupMailInput } from '#app/infrastructure/mail/invitation-mail-sender.port';
@@ -221,13 +226,17 @@ describe('Spec016 內部發起與邀請', () => {
     '補簽混合共用信箱逐人寄送，新世代狀態與清單一致（到期落盤=%s）',
     async (persistExpired) => {
       const initiated = apiData<{ signEndAt: string }>(
-        await initiate(
-          [
-            ...users.map((u) => ({ type: 'user', userId: String(u.id) })),
-            { type: 'email', name: '合成外部', email: 'shared@example.test' },
-          ],
-          60000,
-        ).expect(201),
+        await completeInitiation(
+          ctx,
+          initiate(
+            [
+              ...users.map((u) => ({ type: 'user', userId: String(u.id) })),
+              { type: 'email', name: '合成外部', email: 'shared@example.test' },
+            ],
+            60000,
+          ).expect(202),
+          cookie,
+        ),
       );
       const oldLogs = await notificationLogs();
       const end = new Date(initiated.signEndAt);
@@ -266,7 +275,11 @@ describe('Spec016 內部發起與邀請', () => {
     '真正補簽交易隔離在途舊邀請結果（SMTP失敗=%s）',
     async (failure) => {
       const initiated = apiData<{ signEndAt: string }>(
-        await initiate(externalSigners(), 60000).expect(201),
+        await completeInitiation(
+          ctx,
+          initiate(externalSigners(), 60000).expect(202),
+          cookie,
+        ),
       );
       const [oldLog] = await notificationLogs();
       let rotated: Awaited<ReturnType<typeof invitations>> = [];
@@ -297,7 +310,11 @@ describe('Spec016 內部發起與邀請', () => {
     '任一待簽者缺少%s，補簽409且不留下部分變更',
     async (column) => {
       const initiated = apiData<{ signEndAt: string }>(
-        await initiate(externalSigners(), 60000).expect(201),
+        await completeInitiation(
+          ctx,
+          initiate(externalSigners(), 60000).expect(202),
+          cookie,
+        ),
       );
       await ctx.app
         .get(MysqlService)
@@ -322,7 +339,11 @@ describe('Spec016 內部發起與邀請', () => {
   );
   it('補簽SMTP失敗保留active與可重試通知；缺密文正常省略，損壞密文503', async () => {
     const initiated = apiData<{ signEndAt: string }>(
-      await initiate(externalSigners(), 60000).expect(201),
+      await completeInitiation(
+        ctx,
+        initiate(externalSigners(), 60000).expect(202),
+        cookie,
+      ),
     );
     atDeadline(new Date(initiated.signEndAt));
     await reopen(new Date(initiated.signEndAt)).expect(201);
@@ -361,7 +382,11 @@ describe('Spec016 內部發起與邀請', () => {
     '補簽作廢在途催簽，舊結果與重複工作不改寫通知（SMTP失敗=%s）',
     async (failure) => {
       const initiated = apiData<{ signStartAt: string; signEndAt: string }>(
-        await initiate(externalSigners(), 60000).expect(201),
+        await completeInitiation(
+          ctx,
+          initiate(externalSigners(), 60000).expect(202),
+          cookie,
+        ),
       );
       atDeadline(new Date(Date.parse(initiated.signStartAt) + 1));
       const batch = apiData<{ batchId: string }>(
@@ -402,10 +427,14 @@ describe('Spec016 內部發起與邀請', () => {
     },
   );
   it('未來開始也逐人建立邀請，共用地址及內外部相同地址不合併', async () => {
-    await initiate([
-      ...users.map((u) => ({ type: 'user', userId: String(u.id) })),
-      { type: 'email', name: '合成外部', email: 'shared@example.test' },
-    ]).expect(201);
+    await completeInitiation(
+      ctx,
+      initiate([
+        ...users.map((u) => ({ type: 'user', userId: String(u.id) })),
+        { type: 'email', name: '合成外部', email: 'shared@example.test' },
+      ]).expect(202),
+      cookie,
+    );
     const result = await detail();
     expect(result.status).toBe('active');
     expect(result.signers).toHaveLength(3);
@@ -496,7 +525,12 @@ describe('Spec016 內部發起與邀請', () => {
       'enqueueInvitations',
     );
     try {
-      await initiate().expect(500);
+      expect(
+        await driveInitiation(ctx, await initiate().expect(202), cookie),
+      ).toMatchObject({
+        status: 'failed',
+        errorCode: 'ESIGN_INITIATION_INTERNAL_ERROR',
+      });
       expect(insertedInsideTransaction).toBe(true);
       expect(fault).toHaveBeenCalledTimes(1);
       expect(enqueue).not.toHaveBeenCalled();
@@ -541,7 +575,7 @@ describe('Spec016 內部發起與邀請', () => {
     ]).expect(400);
     expect(await detail()).toEqual(before);
   });
-  it('交易鎖定前帳號已停用回 422 且整份草稿不變', async () => {
+  it('交易鎖定前帳號已停用工作失敗 且整份草稿不變', async () => {
     const before = await detail();
     const repository = ctx.app.get(UserRepository);
     const original = new UserRepository();
@@ -555,9 +589,14 @@ describe('Spec016 內部發起與邀請', () => {
         return original.findByIdsWithEmail(ids, manager, lock);
       });
     try {
-      const failed = await initiate().expect(422);
-      expect(failed.body).toMatchObject({
-        error: { code: 'ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE' },
+      const failed = await driveInitiation(
+        ctx,
+        await initiate().expect(202),
+        cookie,
+      );
+      expect(failed).toMatchObject({
+        status: 'failed',
+        errorCode: 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE',
       });
       expect(await detail()).toEqual(before);
       expect(http.post).not.toHaveBeenCalled();
@@ -570,10 +609,14 @@ describe('Spec016 內部發起與邀請', () => {
     }
   });
   it('worker 內部共用信箱群寄一次、外部獨立邀請並公開 delivered 狀態', async () => {
-    await initiate([
-      ...users.map((u) => ({ type: 'user', userId: String(u.id) })),
-      { type: 'email', name: '外部回歸', email: 'shared@example.test' },
-    ]).expect(201);
+    await completeInitiation(
+      ctx,
+      initiate([
+        ...users.map((u) => ({ type: 'user', userId: String(u.id) })),
+        { type: 'email', name: '外部回歸', email: 'shared@example.test' },
+      ]).expect(202),
+      cookie,
+    );
     const mailer = {
       send: jest.fn((_input: { invitationToken: string }) => Promise.resolve()),
       sendInternalGroup: jest.fn((input: { recipientEmails: string[] }) =>
@@ -626,7 +669,11 @@ describe('Spec016 內部發起與邀請', () => {
   it.each([null, 'stale-generation'])(
     '未 claim 的缺漏／舊世代 log 不寄信（%s）',
     async (generation) => {
-      await initiate(externalSigners()).expect(201);
+      await completeInitiation(
+        ctx,
+        initiate(externalSigners()).expect(202),
+        cookie,
+      );
       const mysql = ctx.app.get(MysqlService);
       const [log] = await mysql
         .getManager()
@@ -659,7 +706,11 @@ describe('Spec016 內部發起與邀請', () => {
     },
   );
   it('SMTP 失敗保持 active、留下可重試寄送狀態且不洩漏錯誤內容', async () => {
-    await initiate(externalSigners()).expect(201);
+    await completeInitiation(
+      ctx,
+      initiate(externalSigners()).expect(202),
+      cookie,
+    );
     const mysql = ctx.app.get(MysqlService);
     const [log] = await mysql
       .getManager()
@@ -692,7 +743,11 @@ describe('Spec016 內部發起與邀請', () => {
   it.each([false, true])(
     '在途舊世代寄送結果不得清除或覆寫新邀請（失敗=%s）',
     async (fail) => {
-      await initiate(externalSigners()).expect(201);
+      await completeInitiation(
+        ctx,
+        initiate(externalSigners()).expect(202),
+        cookie,
+      );
       const mysql = ctx.app.get(MysqlService);
       const [log] = await mysql
         .getManager()
@@ -758,7 +813,7 @@ describe('Spec016 內部發起與邀請', () => {
       }));
       const before = await detail();
       if (mode === 'missing') {
-        await initiate(input).expect(201);
+        await completeInitiation(ctx, initiate(input).expect(202), cookie);
         expect((await detail()).signers[100]).toMatchObject({
           email: null,
           invitationDelivery: 'skipped',
@@ -790,9 +845,15 @@ describe('Spec016 內部發起與邀請', () => {
       expect(await detail()).toEqual(before);
       const read = jest
         .spyOn(ctx.app.get(UserRepository), 'findByIdsWithEmail')
-        .mockRejectedValueOnce(new Error('合成DB故障'));
+        .mockRejectedValue(new Error('合成DB故障'));
       try {
-        await initiate(input).expect(502);
+        expect(
+          await exhaustInitiationRetries(
+            ctx,
+            await initiate(input).expect(202),
+            cookie,
+          ),
+        ).toMatchObject({ status: 'failed' });
       } finally {
         read.mockRestore();
       }
@@ -835,7 +896,7 @@ describe('Spec016 內部發起與邀請', () => {
         return rows;
       });
     try {
-      await initiate().expect(201);
+      await completeInitiation(ctx, initiate().expect(202), cookie);
       expect(http.post).not.toHaveBeenCalled();
     } finally {
       read.mockRestore();
@@ -925,7 +986,14 @@ describe('Spec016 內部發起與邀請', () => {
       [...users].reverse().map((u) => ({ type: 'user', userId: String(u.id) })),
     );
     try {
-      await Promise.all([first.expect(201), second.expect(201)]);
+      const accepted = await Promise.all([
+        first.expect(202),
+        second.expect(202),
+      ]);
+      const jobs = await Promise.all(
+        accepted.map((res) => driveInitiation(ctx, res, cookie)),
+      );
+      expect(jobs.map((job) => job.status)).toEqual(['succeeded', 'succeeded']);
       const rows = await ctx.app
         .get(MysqlService)
         .getManager()
@@ -953,13 +1021,17 @@ describe('Spec016 內部發起與邀請', () => {
       cookie = saved;
     }
     expect(http.post).not.toHaveBeenCalled();
-    await initiate([
-      { type: 'email', name: '合成外部', email: 'external@example.test' },
-    ]).expect(201);
+    await completeInitiation(
+      ctx,
+      initiate([
+        { type: 'email', name: '合成外部', email: 'external@example.test' },
+      ]).expect(202),
+      cookie,
+    );
     expect(http.post).not.toHaveBeenCalled();
   });
   it('內部SMTP結果不明公開unknown，不誤顯示為pending', async () => {
-    await initiate().expect(201);
+    await completeInitiation(ctx, initiate().expect(202), cookie);
     const mailer = new FakeInvitationMailSender();
     jest.spyOn(mailer, 'sendInternalGroup').mockResolvedValue([
       {
@@ -989,7 +1061,11 @@ describe('Spec016 內部發起與邀請', () => {
       .getManager()
       .update(User, { id: In(users.map((u) => u.id)) }, { email: null });
     const initiated = apiData<{ signStartAt: string; signEndAt: string }>(
-      await initiate(undefined, 60000).expect(201),
+      await completeInitiation(
+        ctx,
+        initiate(undefined, 60000).expect(202),
+        cookie,
+      ),
     );
     const result = await detail();
     expect(result.status).toBe('active');

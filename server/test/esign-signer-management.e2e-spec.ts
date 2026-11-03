@@ -1,3 +1,4 @@
+import { completeInitiation } from './helpers/await-initiation';
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
@@ -217,7 +218,7 @@ describe('Spec009 管理備註與歷程 API', () => {
       "SELECT id FROM users WHERE empid='NOTE00902'",
     );
     const detail = apiData<DraftView>(
-      await request(ctx.server)
+      await completeInitiation(ctx, request(ctx.server)
         .post(`/api/esign/documents/${newId}/initiations`)
         .set('Cookie', cookie)
         .set('Origin', origin)
@@ -242,7 +243,7 @@ describe('Spec009 管理備註與歷程 API', () => {
           watermark: false,
           allowReject: true,
         })
-        .expect(201),
+        .expect(202), cookie),
     );
     const signer = detail.signers[0];
     await request(ctx.server)

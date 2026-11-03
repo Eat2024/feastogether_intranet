@@ -524,7 +524,7 @@ async function run() {
     });
     const upload = (await uploaded.json()) as { data: { id: string } };
     if (!uploaded.ok) throw new Error(`upload ${uploaded.status}`);
-    const active = await http<{ signers: Array<{ publicId: string }> }>(
+    const accepted = await http<{ jobId: string; status: string }>(
       `/api/esign/documents/${upload.data.id}/initiations`,
       owner.cookie,
       {
@@ -547,6 +547,31 @@ async function run() {
         watermark: false,
         allowReject: false,
       },
+      owner.ip,
+    );
+    if (accepted.status !== 202) throw new Error('發起必須回202');
+    const initiationStarted = performance.now();
+    let jobStatus = accepted.data.status;
+    while (jobStatus !== 'succeeded') {
+      if (
+        jobStatus === 'failed' ||
+        performance.now() - initiationStarted > 120000
+      )
+        throw new Error(`背景發起未成功：${jobStatus}`);
+      await sleep(100);
+      jobStatus = (
+        await http<{ status: string }>(
+          `/api/esign/documents/${upload.data.id}/initiation-jobs/${accepted.data.jobId}`,
+          owner.cookie,
+          undefined,
+          owner.ip,
+        )
+      ).data.status;
+    }
+    const active = await http<{ signers: Array<{ publicId: string }> }>(
+      `/api/esign/documents/${upload.data.id}`,
+      owner.cookie,
+      undefined,
       owner.ip,
     );
     const tasks: SignTask[] = [];

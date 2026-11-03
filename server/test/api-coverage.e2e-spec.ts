@@ -1,3 +1,4 @@
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import request from 'supertest';
@@ -17,6 +18,56 @@ describe('runtime API coverage', () => {
   });
 
   afterAll(async () => closeSecurityE2eApp(ctx));
+
+  it.each([
+    ['get', '/api/esign/documents/1/initiation-jobs/latest'],
+    [
+      'get',
+      '/api/esign/documents/1/initiation-jobs/550e8400-e29b-41d4-a716-446655440000',
+    ],
+    [
+      'get',
+      '/api/esign/documents/1/initiation-jobs/550e8400-e29b-41d4-a716-446655440000/issues',
+    ],
+    [
+      'get',
+      '/api/esign/documents/1/initiation-jobs/550e8400-e29b-41d4-a716-446655440000/input',
+    ],
+    [
+      'post',
+      '/api/esign/documents/1/initiation-jobs/550e8400-e29b-41d4-a716-446655440000/retries',
+    ],
+  ] as const)('022 %s %s 受員工session保護', async (method, path) => {
+    await request(ctx.server)
+      [method](path)
+      .set('Origin', 'http://localhost:3000')
+      .expect(401);
+  });
+
+  it('022 Swagger 公開202受理與工作查詢路由', () => {
+    const api = SwaggerModule.createDocument(
+      ctx.app,
+      new DocumentBuilder().build(),
+    );
+    const base = '/api/esign/documents/{documentId}';
+    expect(
+      api.paths[`${base}/initiations`].post?.responses['202'],
+    ).toBeDefined();
+    for (const suffix of [
+      'latest',
+      '{jobId}',
+      '{jobId}/issues',
+      '{jobId}/input',
+    ])
+      expect(
+        api.paths[`${base}/initiation-jobs/${suffix}`].get?.responses['200'],
+      ).toBeDefined();
+    expect(
+      api.paths[`${base}/initiation-jobs/{jobId}/retries`].post?.responses[
+        '202'
+      ],
+    ).toBeDefined();
+  });
 
   it('health 是明確 Public 例外且不需要 RBAC seed', async () => {
     await request(ctx.server).get('/api/health').expect(200);

@@ -1,3 +1,4 @@
+import { completeInitiation, deleteInitiationJobs } from './helpers/await-initiation';
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import { PDFDocument } from 'pdf-lib';
@@ -164,7 +165,7 @@ describe('核心電子簽真實 queue e2e', () => {
         ],
       })
       .expect(200);
-    await request(ctx.server)
+    await completeInitiation(ctx, request(ctx.server)
       .post(`/api/esign/documents/${documentId}/initiations`)
       .set('Cookie', creatorCookie)
       .set('Origin', 'http://localhost:3000')
@@ -190,7 +191,7 @@ describe('核心電子簽真實 queue e2e', () => {
         watermark: false,
         allowReject: false,
       })
-      .expect(201);
+      .expect(202), creatorCookie);
 
     const invitationRows = await db.query<
       Array<{
@@ -466,6 +467,7 @@ describe('核心電子簽真實 queue e2e', () => {
       id,
     ]);
     await db.query('DELETE FROM esign_signers WHERE document_id = ?', [id]);
+    await deleteInitiationJobs(db, id);
     await db.query('DELETE FROM esign_documents WHERE id = ?', [id]);
     await Promise.all(
       files.map((file) =>

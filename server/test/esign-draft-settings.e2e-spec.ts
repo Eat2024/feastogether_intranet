@@ -1,3 +1,4 @@
+import { driveInitiation } from './helpers/await-initiation';
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
@@ -272,7 +273,8 @@ describe('Spec009 草稿完整設定 API', () => {
         }),
     ]);
     expect([200, 409]).toContain(saved.status);
-    expect(initiated.status).toBe(201);
+    expect(initiated.status).toBe(202);
+    expect((await driveInitiation(ctx, initiated, cookie)).status).toBe('succeeded');
     const detail = apiData<DraftView>(
       await request(ctx.server)
         .get(`/api/esign/documents/${raceId}`)

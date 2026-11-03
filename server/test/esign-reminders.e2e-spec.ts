@@ -1,3 +1,4 @@
+import { completeInitiation } from './helpers/await-initiation';
 import { ExternalReminders1792454402000 } from '#app/infrastructure/database/migrations/1792454402000-ExternalReminders';
 import { openExternalSession, requestOtp } from './external-session.helper';
 import type { Job } from 'bullmq';
@@ -130,7 +131,7 @@ describe('內外部催簽 API', () => {
         .expect(201),
     );
     return apiData<Detail>(
-      await request(ctx.server)
+      await completeInitiation(ctx, request(ctx.server)
         .post(`/api/esign/documents/${created.id}/initiations`)
         .set('Cookie', cookie)
         .set('Origin', origin)
@@ -152,7 +153,7 @@ describe('內外部催簽 API', () => {
           watermark: false,
           allowReject: true,
         })
-        .expect(201),
+        .expect(202), cookie),
     );
   }
   const post = (id: string, body: object) =>

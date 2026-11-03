@@ -1,3 +1,4 @@
+import { completeInitiation } from './helpers/await-initiation';
 import { HttpService } from '@nestjs/axios';
 import { getQueueToken } from '@nestjs/bullmq';
 import { type INestApplicationContext } from '@nestjs/common';
@@ -19,6 +20,7 @@ import { INTERNAL_PORTAL_LOGIN_URL } from '#app/features/esign/esign.constants';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
 import {
+  ESIGN_DOCUMENT_INITIATION_QUEUE,
   ESIGN_DOCUMENT_FINALIZATION_QUEUE,
   ESIGN_EXTERNAL_INVITATION_QUEUE,
   ESIGN_MAINTENANCE_QUEUE,
@@ -81,7 +83,8 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     ]);
     // 真實 worker 由測試逐次驅動，避免背景 consumer 搶先產製或清除邀請密文。
     for (const name of [
-      ESIGN_DOCUMENT_FINALIZATION_QUEUE,
+      ESIGN_DOCUMENT_INITIATION_QUEUE,
+  ESIGN_DOCUMENT_FINALIZATION_QUEUE,
       ESIGN_EXTERNAL_INVITATION_QUEUE,
       ESIGN_MAINTENANCE_QUEUE,
     ]) {
@@ -130,7 +133,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       id: string;
       signers: Array<{ publicId: string }>;
     }>(
-      await request(ctx.server)
+      await completeInitiation(ctx, request(ctx.server)
         .post(`/api/esign/documents/${created.id}/initiations`)
         .set('Cookie', creatorCookie)
         .set('Origin', origin)
@@ -156,7 +159,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
           watermark: true,
           allowReject: true,
         })
-        .expect(201),
+        .expect(202), creatorCookie),
     );
     const signers = await Promise.all(
       document.signers.map(async ({ publicId }) => {

@@ -7,7 +7,7 @@
 
 **Blocked by:** [07 工作明細到期清理與可追溯摘要](07-retention.md)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — 全部 US；SC-001–009。
 

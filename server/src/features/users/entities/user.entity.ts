@@ -39,6 +39,15 @@ export class User extends AuditableEntity {
   name!: string;
 
   @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    select: false,
+    comment: 'Portal 匯入的員工通知信箱',
+  })
+  email?: string | null;
+
+  @Column({
     name: 'person_status',
     type: 'varchar',
     length: 50,

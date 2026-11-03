@@ -22,7 +22,6 @@ import { FeastogetherHrService } from './services/feastogether-hr.service';
     FeastogetherAuthService,
   ],
   exports: [
-    FeastogetherConfig,
     FeastogetherBrandService,
     FeastogetherDepartmentService,
     FeastogetherHrService,

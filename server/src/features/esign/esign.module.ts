@@ -14,7 +14,7 @@ import { FileStorageModule } from '#app/infrastructure/file-storage/file-storage
 import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
 import { LoggingModule } from '#app/infrastructure/logging/logging.module';
 import { MailModule } from '#app/infrastructure/mail/mail.module';
-import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
+import { PortalModule } from '#app/infrastructure/portal/portal.module';
 import { EsignAccessPolicyService } from './services/esign-access-policy.service';
 import { EsignAuditService } from './services/esign-audit.service';
 import { EsignConsentService } from './services/esign-consent.service';
@@ -87,7 +87,7 @@ const esignServices = [
     FileStorageModule,
     LoggingModule,
     MailModule,
-    FeastogetherModule,
+    PortalModule,
     EsignQueueModule.register('producer'),
   ],
   providers: esignServices,

@@ -71,6 +71,7 @@ describe('EsignSignerService', () => {
       status,
     });
     const mysql = {
+      getManager: () => manager,
       transaction: (run: (manager: object) => Promise<unknown>) => run(manager),
     };
     const documents = {
@@ -124,6 +125,7 @@ describe('EsignSignerService', () => {
     };
     const service = new EsignSignerService(
       {
+        getManager: () => manager,
         transaction: (run: (manager: object) => Promise<unknown>) =>
           run(manager),
       } as never,
@@ -339,6 +341,7 @@ describe('草稿完整設定', () => {
     };
     const service = new EsignSignerService(
       {
+        getManager: () => manager,
         transaction: (run: (manager: object) => Promise<unknown>) =>
           run(manager),
       } as never,

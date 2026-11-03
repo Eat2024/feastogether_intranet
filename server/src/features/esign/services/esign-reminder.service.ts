@@ -45,8 +45,12 @@ export class EsignReminderService {
     const hash = createHash('sha256')
       .update(JSON.stringify({ selection: input.selection, ids }))
       .digest('hex');
+    await this.access.assertCreatorNotInitiating(
+      documentId,
+      userId,
+      this.mysql.getManager(),
+    );
     const result = await this.mysql.transaction(async (manager) => {
-      await this.access.assertCreatorNotInitiating(documentId, userId, manager);
       const document = await this.documents.findByIdForUpdate(
         documentId,
         manager,

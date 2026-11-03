@@ -103,3 +103,10 @@
 - 修正：僅 accept/retry 短交易指定 READ COMMITTED，保留 users S → document X → job X current read、document+key unique 與 active unique。相同文件由 document X 串行；不同文件不需鎖住對方的缺列 gap。正式 worker 與其他交易預設不變，不新增 deadlock 重試。
 - MySQL 8.4 官方說明：RC 的鎖定讀只鎖索引記錄，不鎖搜尋間隙；FK／unique 檢核仍保留鎖。[Transaction Isolation Levels](https://docs.oracle.com/cd/E17952_01/mysql-8.4-en/innodb-transaction-isolation-levels.html)。TypeORM 本機 MySQL QueryRunner 的 `startTransaction` 發 `SET TRANSACTION ISOLATION LEVEL`，不是 SESSION/GLOBAL。
 - 真 HTTP/DB INSERT barrier 驗證 initial、retry 各兩文件同時受理皆 `[202,202]`；兩條實際連線 commit 後 SESSION/GLOBAL 隔離值與之前相同，後續預設 transaction 不發指定隔離 SQL。既有同文件同 key／不同 key 的重播與 busy 回歸保留。
+
+## R16：busy 預檢不可提前建立異動交易的 RR 快照
+
+- 真回歸：email/user 催簽並發本應 `[202,409]`，卻均 `[202,202]`。原 busy 普通讀放在交易內、取得 document X 前，會提前建立 REPEATABLE READ 快照；等鎖後 history 普通讀仍看不到前一筆已提交的催簽。
+- 修正：所有公開文件／名單異動的 busy 輕量預檢移至開交易前，使用既有非交易 manager；`checkAndLockDraftDoc` 只做文件鎖、授權／狀態、active current read。沒有在交易內另借連線，也不調整正式 worker／全域隔離或將各歷史查詢逐一加鎖掩蓋問題。
+- 盤點：fields.replace、draft.update/delete、saveNote、saveDraftSettings（包含 draftSave）、stop、reopen、reminder。PDF 準備與 users X 之前仍先快拒；初始受理／retry 的預檢本來已在交易外，保持不變。
+- 驗證：原 email/user 並發催簽紅→綠；fields 與 initiation 在預檢通過後交錯建立 active job，鎖內仍回 409 與公開 existingJobId。所有忙碌／越權端點回歸保留。

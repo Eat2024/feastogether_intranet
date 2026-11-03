@@ -241,73 +241,82 @@ describe('022 員工共享鎖與跨文件受理', () => {
     },
   );
 
-  it('受理預檢後才出現active工作，鎖內409仍回public existingJobId', async () => {
-    const doc = await newDoc();
-    const db = mysql.getDataSource();
-    const createRunner = db.createQueryRunner.bind(
-      db,
-    ) as typeof db.createQueryRunner;
-    const entered = deferred();
-    const release = deferred();
-    let held = false;
-    const jobReads: string[] = [];
-    const querySpies: jest.SpyInstance[] = [];
-    const barrier = jest
-      .spyOn(db, 'createQueryRunner')
-      .mockImplementation((...args) => {
-        const runner = createRunner(...args);
-        const query = runner.query.bind(runner) as typeof runner.query;
-        querySpies.push(
-          jest
-            .spyOn(runner, 'query')
-            .mockImplementation(async (...queryArgs) => {
-              if (
-                queryArgs[0].startsWith('SELECT') &&
-                queryArgs[0].includes('FROM `esign_initiation_jobs`')
-              )
-                jobReads.push(queryArgs[0]);
-              if (
-                !held &&
-                queryArgs[0].includes('FROM `esign_documents`') &&
-                queryArgs[0].endsWith('FOR UPDATE')
-              ) {
-                held = true;
-                entered.resolve();
-                await release.promise;
-              }
-              return query(...queryArgs) as Promise<unknown>;
-            }),
+  it.each(['initiation', 'fields'] as const)(
+    '%s預檢後才出現active工作，鎖內409仍回public existingJobId',
+    async (operation) => {
+      const doc = await newDoc();
+      const db = mysql.getDataSource();
+      const createRunner = db.createQueryRunner.bind(
+        db,
+      ) as typeof db.createQueryRunner;
+      const entered = deferred();
+      const release = deferred();
+      let held = false;
+      const jobReads: string[] = [];
+      const querySpies: jest.SpyInstance[] = [];
+      const barrier = jest
+        .spyOn(db, 'createQueryRunner')
+        .mockImplementation((...args) => {
+          const runner = createRunner(...args);
+          const query = runner.query.bind(runner) as typeof runner.query;
+          querySpies.push(
+            jest
+              .spyOn(runner, 'query')
+              .mockImplementation(async (...queryArgs) => {
+                if (
+                  queryArgs[0].startsWith('SELECT') &&
+                  queryArgs[0].includes('FROM `esign_initiation_jobs`')
+                )
+                  jobReads.push(queryArgs[0]);
+                if (
+                  !held &&
+                  queryArgs[0].includes('FROM `esign_documents`') &&
+                  queryArgs[0].endsWith('FOR UPDATE')
+                ) {
+                  held = true;
+                  entered.resolve();
+                  await release.promise;
+                }
+                return query(...queryArgs) as Promise<unknown>;
+              }),
+          );
+          return runner;
+        });
+      const attempt = (
+        operation === 'initiation'
+          ? request(ctx.server)
+              .post(`/api/esign/documents/${doc}/initiations`)
+              .set('Idempotency-Key', randomUUID())
+              .send(body())
+          : request(ctx.server)
+              .put(`/api/esign/documents/${doc}/fields`)
+              .send({ fields: body().fields })
+      )
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .then((response) => response);
+      try {
+        await entered.promise;
+        const accepted = await submit(doc);
+        release.resolve();
+        const response = await attempt;
+        expect(response.status).toBe(409);
+        expect(apiError(response).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
+        expect(apiError(response).details).toEqual({
+          existingJobId: accepted.publicId,
+        });
+        expect(jobReads.length).toBeGreaterThan(0);
+        expect(jobReads.join('\n')).not.toMatch(
+          /input_json|document_version_json|issues_json/,
         );
-        return runner;
-      });
-    const attempt = request(ctx.server)
-      .post(`/api/esign/documents/${doc}/initiations`)
-      .set('Cookie', cookie)
-      .set('Origin', origin)
-      .set('Idempotency-Key', randomUUID())
-      .send(body())
-      .then((response) => response);
-    try {
-      await entered.promise;
-      const accepted = await submit(doc);
-      release.resolve();
-      const response = await attempt;
-      expect(response.status).toBe(409);
-      expect(apiError(response).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
-      expect(apiError(response).details).toEqual({
-        existingJobId: accepted.publicId,
-      });
-      expect(jobReads.length).toBeGreaterThan(0);
-      expect(jobReads.join('\n')).not.toMatch(
-        /input_json|document_version_json|issues_json/,
-      );
-    } finally {
-      release.resolve();
-      await attempt;
-      querySpies.forEach((spy) => spy.mockRestore());
-      barrier.mockRestore();
-    }
-  });
+      } finally {
+        release.resolve();
+        await attempt;
+        querySpies.forEach((spy) => spy.mockRestore());
+        barrier.mockRestore();
+      }
+    },
+  );
 
   it('正式worker持users/document/job鎖5秒時，同建立人另一份文件仍在3秒內受理', async () => {
     const doc = await newDoc();

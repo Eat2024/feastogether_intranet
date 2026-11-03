@@ -22,8 +22,8 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 **Purpose**：環境變數範例與合成 Portal 測試資料庫，所有 story 都會用到。
 
-- [ ] T001 [P] 在 `server/.env.example` 新增 `PORTAL_MYSQL_HOST`、`PORTAL_MYSQL_PORT`（預設 3306）、`PORTAL_MYSQL_USER`、`PORTAL_MYSQL_PASS`、`PORTAL_MYSQL_DB`，值留空或用佔位文字。在註解中寫明只需要 `sys_person` 與 `chi_department` 的 SELECT 權限，不寫任何實際主機、帳號或密碼。
-- [ ] T002 新增 `server/test/synthetic-portal.helper.ts`，內容如下：
+- [x] T001 [P] 在 `server/.env.example` 新增 `PORTAL_MYSQL_HOST`、`PORTAL_MYSQL_PORT`（預設 3306）、`PORTAL_MYSQL_USER`、`PORTAL_MYSQL_PASS`、`PORTAL_MYSQL_DB`，值留空或用佔位文字。在註解中寫明只需要 `sys_person` 與 `chi_department` 的 SELECT 權限，不寫任何實際主機、帳號或密碼。
+- [x] T002 新增 `server/test/synthetic-portal.helper.ts`，內容如下：
   - 用 `DB_MYSQL_*` 的連線資訊建立臨時資料庫 `${DB_MYSQL_DB}_portal_<uuid>`。建立前檢查名稱以 `feastogether_intranet_test` 開頭，不符合就拒絕。
   - 依 [research §0](research.md) 的欄位型別與 collation 建立 `sys_person` 與 `chi_department`。`sys_person` 另加 `person_pass`、`person_id_no`、`birthdate` 欄位，用來填哨兵值。
   - 提供插入合成人員與部門的函式；人員的哨兵欄位一律填固定的哨兵字串。
@@ -38,23 +38,23 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 **⚠️ CRITICAL**：這個 phase 完成前，不能開始任何 user story。
 
-- [ ] T003 [P] 新增 `server/src/infrastructure/portal/portal-directory.service.spec.ts`，驗證以下行為：
+- [x] T003 [P] 新增 `server/src/infrastructure/portal/portal-directory.service.spec.ts`，驗證以下行為：
   - 送出的 SQL 字串與 [contracts](contracts/portal-source.md) 的查詢逐字相同。
   - 所有 SQL 都不含 INSERT、UPDATE、DELETE，也不含 `person_pass`、`person_id_no`、`birthdate`。
   - pool 參數：`charset: 'utf8mb4'`、`connectionLimit: 3`、`connectTimeout: 10_000`；每個查詢都帶 `timeout: 10_000`。
   - 建構服務時不連線，設定缺漏也不拋錯；直到第一次查詢才拒絕，錯誤訊息不含任何設定值。
   - `findStatusesByEmpids`：每批最多 500 個員編；傳入空陣列時不送出查詢。
   - 模組銷毀時呼叫 `pool.end()`。
-- [ ] T004 [P] 新增 `server/src/infrastructure/portal/portal.config.ts` 與 `server/src/infrastructure/portal/portal.types.ts`：
+- [x] T004 [P] 新增 `server/src/infrastructure/portal/portal.config.ts` 與 `server/src/infrastructure/portal/portal.types.ts`：
   - config 照 `server/src/infrastructure/http-client/feastogether/feastogether.config.ts` 的寫法，用 `ConfigService` 讀 `PORTAL_MYSQL_*`，第一次使用時才檢查必填值。缺漏時拋一般 `Error`，不新增 AppError，也不加入 `validateAppEnvironment`。
   - types 定義四個查詢的資料列型別：部門列、組織樹員工列、登入員工列、在職員工列、狀態列。
-- [ ] T005 新增 `server/src/infrastructure/portal/portal-directory.service.ts` 與 `server/src/infrastructure/portal/portal.module.ts`：
+- [x] T005 新增 `server/src/infrastructure/portal/portal-directory.service.ts` 與 `server/src/infrastructure/portal/portal.module.ts`：
   - 在第一次查詢時才用 `mysql2/promise` 的 `createPool` 建立連線池。
   - 照 contracts 實作 `listOrgChartSource()`、`findEmployeesByEmpid(empid)`、`listActiveEmployees()`、`findStatusesByEmpids(empids)`。
   - 查詢錯誤原樣拋出，不寫 log；這個服務不做業務判斷。
   - module 匯出 `PortalConfig` 與 `PortalDirectoryService`，不加入 `InfrastructureModule`。
   - 依賴 T003、T004。
-- [ ] T006 新增 `server/test/portal-directory.e2e-spec.ts`，並加入 `server/test/jest-e2e.json` 的 testRegex 允許清單。使用 T002 的 helper 驗證：
+- [x] T006 新增 `server/test/portal-directory.e2e-spec.ts`，並加入 `server/test/jest-e2e.json` 的 testRegex 允許清單。使用 T002 的 helper 驗證：
   - 四個查詢對合成資料庫的實際回傳。
   - 4-byte 中文、罕用字與前導零員編完整讀回。
   - 哨兵值不出現在任何查詢結果中。

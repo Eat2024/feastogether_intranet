@@ -2,7 +2,7 @@
 
 **What to build:** server 有一個共用的 Portal 唯讀連線：設定由 `PORTAL_MYSQL_*` 環境變數提供，第一次查詢時才連線，所以 Portal 故障不影響服務啟動。只執行合約列出的四個查詢；另有合成 Portal 測試資料庫，供後續 tickets 使用。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Blocked by:** 無（可以立即開始）
 
@@ -24,3 +24,38 @@
 ## Comments & Implementation Results
 
 2026-11-03：只建立 ticket，尚未實作。ready-for-agent 不代表可以忽略 Blocked by；前置 ticket 都 resolved 後才能開始。實作結果追加在這裡。
+
+2026-11-03（implementer，branch `feat/024-t01`，commit `8146002`）：T001–T006 完成。
+
+- 新增 `server/src/infrastructure/portal/`：
+  - `portal.config.ts`：延遲讀 `PORTAL_MYSQL_*`。
+  - `portal.types.ts`
+  - `portal-directory.service.ts`：mysql2 pool，第一次查詢才建立；utf8mb4、3 條連線，連線與查詢逾時各 10 秒；四個合約查詢；4b 每批 500 個；模組銷毀時 `pool.end()`。
+  - `portal.module.ts`
+- `server/.env.example` 新增五個 `PORTAL_MYSQL_*`（只寫佔位與最小 SELECT 權限說明）。
+- 測試：
+  - `test/synthetic-portal.helper.ts`
+  - `test/portal-directory.e2e-spec.ts`（已加入 `jest-e2e.json` 允許清單）
+  - `test/setup-e2e.ts` 新增 Portal env 指向（見下方決定 2）。
+- 與 plan／research／contract 不同的決定：
+  1. `PORTAL_MYSQL_PASS` 允許留空（contract 寫必填）：本機測試 MySQL 的 root 是空密碼，`.env.test.example` 的 `DB_MYSQL_PASS` 也是空的，合成 Portal 沿用 `DB_MYSQL_*` 時必填會讓 e2e 失敗。HOST、USER、DB 仍然必填，因為缺漏時 mysql2 會默默改連 localhost 或用空帳號。
+  2. `PORTAL_MYSQL_*` 改由 `test/setup-e2e.ts` 在每個測試檔載入前無條件指向 `${DB_MYSQL_DB}_portal_<8 碼>`，不是由 helper 在 `beforeAll` 設定。原因：`ConfigModule.forRoot` 在 import 時把 `process.env` 與 `server/.env` 存成驗證後設定，`ConfigService.get` 會優先讀它；若開發者的 `.env` 有真實 Portal 設定，helper 之後改 env 不會生效，e2e 會連到真實 Portal。
+  3. 臨時庫名用 8 碼隨機而非完整 uuid：MySQL 名稱上限 64 字元。
+  4. 4b 依批次展開成 `IN (?, ?, …)`，對應合約的 `(?, ...)`。
+- 驗證：
+  - `pnpm -C server test -- src/infrastructure/portal`：9/9。
+  - `pnpm -C server test`：114 suites／1181 tests 全過（pre-commit hook 亦通過）。
+  - `pnpm -C server lint:check`：0 errors；269 個 warnings 都在既有檔案，新檔沒有。
+  - `pnpm -C server build`：通過。
+  - `pnpm -C server test:e2e -- portal-directory`：3/3。涵蓋四個查詢的實際回傳、二進位排序、4-byte 中文／罕用字／前導零員編、collation 不分大小寫、哨兵值不外流；設定缺漏時 app 照常啟動、查詢才拒絕；不回應 server 約 10 秒拒絕。
+  - `pnpm -C server test:e2e:security`：14/14 suites、84/84。
+  - `pnpm -C server test:e2e` 全套：32/40 suites、368/407 tests，8 個失敗 suite 都不是本變更造成：
+    - 7 個（esign-audit-batch、mail-whitelist-recovery、mail-whitelist-worker、notification-bulk-insert、portal-user-import、portal-user-recovery、signer-batch-insert）：`withSchemaTestDatabase` 產生 `${DB_MYSQL_DB}_<32 碼>`，worktree 的庫名 `feastogether_intranet_test_024_t01` 使它超過 64 字元。換回 baseline 的 `setup-e2e.ts` 跑 signer-batch-insert 同樣 3/3 失敗。
+    - internal-email-capacity：5,001 人測試超過 180 秒逾時，應是同一台 MySQL 的負載造成。
+    - 以 `DB_MYSQL_DB=feastogether_intranet_test_t01` 重跑這 8 個 suite：8/8、45/45 全過。
+- 未驗證／限制：
+  - 沒有連真實 Portal，只用合成資料。
+  - e2e 只驗證「不回應 server」的連線逾時。查詢逾時（server 完成 handshake 後不回應）只由單元測試鎖定 `timeout: 10_000` 參數。
+  - 15 秒上限只在每個 process 同時不超過 3 個查詢時成立。mysql2 pool 沒有 acquire timeout，連線失敗時一次只放行一個排隊者。實測 Portal 不回應、7 個並發查詢：3 個 10 秒、3 個 20 秒、1 個 30 秒才拒絕。是否需要整體期限，由 orchestrator 決定。
+  - mysql2 的錯誤訊息可能含 Portal 主機或帳號，server 錯誤的 `err.sql` 含代入後的員編。後續 tickets 不可把原始錯誤或 error 物件寫進 log 或回應。
+

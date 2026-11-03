@@ -145,6 +145,20 @@ worker 以每批 500 人預查及 CAS 更新本 attempt 進度，鎖內再次驗
 
 04 整合後回歸：保留 latest／小投影與所有異動 guard，只有測試清單衝突並已取聯集；server build 通過，02／03／04／05 四套 45／45 通過。
 
+## Redis 空庫重連驗證（追加 05）
+
+既有 worker 現在會在啟動與 Redis ready 後重建同一個 30 秒 maintenance scheduler、恢復 initiation global concurrency 1。設定失敗會以 1 秒起、上限 30 秒退避重試；期間新 delivery 不 claim DB，原 queued 工作由恢復後的 maintenance 補列。錯誤事件為 `esign.queue_restore_failed`，不含連線字串或工作輸入。
+
+破壞性故障測試僅在以下專用資源啟用；一般測試 DB 會 skip 此 suite。請確保 Redis DB9 專供本測試，測試會清空 DB9 並斷開 DB9 連線，但不重啟 Redis 容器、不影響其他 DB：
+
+```bash
+NODE_ENV=test DB_MYSQL_HOST=127.0.0.1 DB_MYSQL_PORT=13322 DB_MYSQL_USER=root DB_MYSQL_PASS= DB_MYSQL_DB=feastogether_intranet_test022_reconnect REDIS_HOST=127.0.0.1 REDIS_PORT=16322 REDIS_PASSWORD= REDIS_DB=9 ESIGN_STORAGE_ROOT=/tmp/esign-test022-reconnect pnpm -C server test:e2e --testPathPatterns=esign-initiation-reconnect
+```
+
+真 MySQL／Redis、合成員工與 fake mail 驗證：啟動 gate、metadata 清空後兩個 worker 同程序恢復、恢復配置 pending 時 delivery 不 claim、maintenance 補列完成兩份 DB queued 工作；恢復後新工作最大同時處理數 1。02–05 加 reconnect 回歸 5 suites／46 tests；unit 115 suites／1,180 tests，build 通過，lint 0 errors／272 既有 warnings。
+
+這個並行量結果針對配置恢復後的新工作。Redis 資料遺失前已在 DB 正式交易中的不同文件，不能靠消失的 active 記錄保證全域單工；每份文件仍以 DB lease/token 保證舊持有者不能重複提交。單純手動清 keys 而連線未斷不會產生 ready，屬此恢復機制範圍外。
+
 
 ## 06 失敗還原與人工重試（2026-11-03）
 
@@ -164,6 +178,8 @@ worker 以每批 500 人預查及 CAS 更新本 attempt 進度，鎖內再次驗
 明細過期後 GET input／issues 回 410 ESIGN_INITIATION_INPUT_EXPIRED，摘要 detailsExpired=true。若要調整人員與期間，重新設定後送新的 initiation；本輪沒有新增前端過期畫面。原 initiation key 仍可重播摘要，已受理 retry 的同 key 在 parent 清理後仍可回原 child。清理與重試並行只會得到完整新 child 或 410，不會產生空名單工作。
 
 `impl/022-07` 專用 DB `feastogether_intranet_test022_t07`／Redis DB7；retention7項、與02–06回歸共6 suites／60 tests通過；unit113 suites／1,175 tests，build通過，lint0errors／272既有warnings。包含30天±1ms、非終態、正式證據保留、並行retry、206列跨批及鎖定parent下一輪補清。無client、schema、環境變數或排程新增。
+
+Reconnect 合併 06／07 後，build 與完整 7 suites／61 tests 複驗通過。首次整合回歸有一次 07 批次清理 lock wait timeout；單例、07 全套及再次七套回歸均通過，原因尚未重現定位，保留於 ticket 05 追加驗證紀錄，不能以複驗通過抹去首次結果。
 
 
 ## 草稿版本與保留清理補修驗證（2026-11-03）

@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import type { Job } from 'bullmq';
 import { EsignMaintenanceProcessor } from './esign-maintenance.processor';
 import { EsignMaintenanceScheduler } from './esign-maintenance.scheduler';
@@ -9,8 +10,30 @@ import {
 
 describe('Esign maintenance', () => {
   it('scheduler 固定每 30 秒註冊一個喚醒工作', async () => {
-    const queue = { upsertJobScheduler: jest.fn() };
-    await new EsignMaintenanceScheduler(queue as never).onModuleInit();
+    const client = Object.assign(new EventEmitter(), { status: 'ready' });
+    const queue = {
+      client: Promise.resolve(client),
+      upsertJobScheduler: jest.fn(),
+    };
+    const initiation = {
+      client: Promise.resolve(client),
+      setGlobalConcurrency: jest.fn(),
+    };
+    const scheduler = new EsignMaintenanceScheduler(
+      queue as never,
+      initiation as never,
+      { error: jest.fn() } as never,
+    );
+    await scheduler.onModuleInit();
+    client.emit('close');
+    client.emit('ready');
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
+    expect(initiation.setGlobalConcurrency).toHaveBeenCalledTimes(2);
+    scheduler.onModuleDestroy();
+    client.emit('ready');
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
       'esign-maintenance:30s',
       { every: 30_000 },

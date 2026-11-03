@@ -92,6 +92,9 @@ e2e 要覆蓋下列情境：
 - 沒有連真實 Portal，也沒有在 UAT 部署或執行 CLI。runbook 中的 `intranet-uat-worker-1` 是依 Compose 命名規則推得的容器名稱。
 - 啟動 `WorkerModule` 的 e2e 會在測試 Redis 留下 `portal-user-sync:daily`（見 ticket 05）。保留到隔天 04:00 之後再跑 e2e，第一個 worker 會補跑一次；因為對應的 Portal 資料庫不存在，只會記一筆 `sync_failed`，不改資料。
 
+- 新進同仁第一次登入與 04:00 匯入同時發生時，匯入新建同一員編會撞唯一鍵，該次匯入以 `failed_write` 結束、整批 rollback，不會部分寫入；維運可手動執行 `sync` 補上（見 runbook「Portal 故障」）。這是已知限制，沒有 e2e。
+- 無法解碼文字（U+FFFD）的測試是把 U+FFFD 直接存進合成 Portal，沒有重現真實 Portal 的錯誤位元組。只偵測 mysql2 解碼時產生的 U+FFFD；若 MySQL 伺服器轉換字元集時已換成 `?`，與一般問號無法分辨，不在偵測範圍。
+
 ### UAT 上線交接（尚未執行）
 
 1. 部署前，在 `/home/feasteng/deploy/intranet-uat/server.env` 加入五個 `PORTAL_MYSQL_*`，並確認容器到 Portal 的網路，以及帳號對 `sys_person`、`chi_department` 的 SELECT 權限。見 runbook「設定」與 `docs/deployment/uat-cicd.md`。

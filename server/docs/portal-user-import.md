@@ -114,8 +114,10 @@ docker compose --env-file /dev/null -f docker-compose.uat.yml run --rm worker no
    docker compose --env-file /dev/null -f docker-compose.uat.yml run --rm worker node dist/maintenance/portal-users.js sync --allow-deactivations <N>
    ```
 
-   - N 必須等於執行當下算出的停用人數。
-   - dry-run 之後 Portal 若有變動，人數不同時會以結束碼 1 結束、不寫入，並印出新的人數。這時請回到步驟 1 重新確認，不要直接改用新的數字。
+   - 只有停用人數超過 500 時才核對 N：N 必須等於執行當下算出的停用人數。
+   - dry-run 之後 Portal 若有變動：
+     - 停用人數仍超過 500 但不等於 N 時，以結束碼 1 結束、不寫入，並印出新的人數。這時請回到步驟 1 重新確認，不要直接改用新的數字。
+     - 停用人數降到 500 以下時不核對 N，直接套用，與不帶參數的 `sync` 相同。
 4. 隔天早上確認 worker log 有 `portal_users.sync_completed`，且 `outcome` 為 `applied`。
 
 ## Portal 故障
@@ -129,6 +131,10 @@ docker compose --env-file /dev/null -f docker-compose.uat.yml run --rm worker no
   2. 恢復後可以等下一次 04:00，或手動執行 `sync --dry-run` 後再執行 `sync`。
 
 `failed_write` 表示寫入本機 DB 失敗，整批已 rollback。確認 RDS 狀態後，再手動執行一次。
+
+`failed_source` 的 `errorType` 為 `PortalUndecodableTextError` 時，表示 Portal 讀回的文字無法解碼（通常是編碼錯誤的資料）。同一時間登入與部門樹也會失敗。請 Portal 負責人修正資料後重跑。
+
+已知限制：新進同仁的第一次登入與 04:00 匯入同時發生時，登入可能先建立帳號，匯入新建同一員編就會撞唯一鍵。該次匯入以 `failed_write`（`errorType` 為 `ER_DUP_ENTRY`）結束，整批 rollback，不會部分寫入。手動執行 `sync` 即可，不必等隔天。
 
 ## 資料錯誤
 

@@ -5,8 +5,8 @@ import { AppException } from '#app/common/errors/app.exception';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { User } from '#app/features/users/entities/user.entity';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
-import type { StaffLookupDto } from '#app/infrastructure/http-client/feastogether/types/staff-lookup.dto';
+import type { StaffLookupDto } from '../dto/staff-lookup.dto';
+import { EligibleStaffService } from './eligible-staff.service';
 import {
   isDuplicateEntryError,
   OauthIdentityRepository,
@@ -27,7 +27,7 @@ const MAX_ATTEMPTS = 2;
  * 1. 以上游 UserInfo 的 employee_number 找 users.empid。
  * 2. 找不到 → 建立一般 User。
  * 全程在同一 MySQL 交易內並鎖定員工列；並發建立由 empid 唯一約束仲裁，衝突重跑一次。
- * 同步可信 HR 部門與受信任姓名、最後登入時間，不保存 oauth_sub。
+ * 同步 Portal 的可信部門與受信任姓名、最後登入時間，不保存 oauth_sub。
  */
 @Injectable()
 export class OauthIdentityService {
@@ -35,7 +35,7 @@ export class OauthIdentityService {
     private readonly repo: OauthIdentityRepository,
     private readonly logger: AppLoggerService,
     private readonly mysql: MysqlService,
-    private readonly hr: FeastogetherHrService,
+    private readonly eligibleStaff: EligibleStaffService,
   ) {}
 
   async resolve(profile: VerifiedOauthProfile): Promise<User> {
@@ -44,7 +44,7 @@ export class OauthIdentityService {
       throw new AppException(...AppErrors.OAUTH_EMPLOYEE_ID_MISSING);
     }
     // 上游失敗直接拒絕；不開交易，也不以舊部門或客戶端 profile 授權。
-    const staff = await this.hr.lookupEligibleStaff(empId);
+    const staff = await this.eligibleStaff.lookupEligibleStaff(empId);
     for (let attempt = 1; ; attempt += 1) {
       try {
         return await this.mysql.transaction((manager) =>

@@ -1,6 +1,6 @@
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
-import { StaffLookupDto } from '../types/staff-lookup.dto';
+import { StaffLookupDto } from '#app/features/auth/dto/staff-lookup.dto';
 import { parseStaffEmails } from '../types/staff-emails.parser';
 import { Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';

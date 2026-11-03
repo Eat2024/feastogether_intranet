@@ -48,7 +48,7 @@
 | `id`              | BIGINT       |   是 | PK                              | 員工在本系統內的不可變流水號。                                          |
 | `empid`           | VARCHAR(32)  |   是 | UNIQUE                          | 公司員工編號，供 HR／SSO 對應；不可用姓名或 Email 取代。                |
 | `name`            | VARCHAR(100) |   是 |                                 | 員工姓名，由受信任 HR／SSO 來源同步。                                   |
-| `email` | VARCHAR(255) | 否 | NULL、非唯一 | Portal 匯入的員工通知信箱；一般員工查詢預設不讀取。本次只新增欄位，尚未匯入或切換發起／白名單信箱來源，不改寫歷史文件快照。 |
+| `email` | VARCHAR(255) | 否 | NULL、非唯一 | worker 每日從 Portal 匯入的員工通知信箱；一般員工查詢預設不讀取。發起與白名單的信箱讀此欄，匯入不改寫歷史文件快照。 |
 | `person_status`   | VARCHAR(50)  |   否 | INDEX                           | 上游人員狀態原始語意，例如試用、正式、離職。                            |
 | `is_active`       | TINYINT(1)   |   是 | INDEX，預設 1                   | 是否允許登入本系統；建立及驗證 session 時必須為 1。Spec 2 不包含上游狀態變更後的主動撤銷。 |
 | `department_id`   | BIGINT       |   否 | FK → `hr_departments.id`、INDEX | 所屬部門。                                                              |
@@ -364,10 +364,10 @@ esign_signers.user_id = currentUserId
 - `users.is_active = 0` 時，不得建立新 session 或完成新簽署，但既有簽署與稽核資料必須保留。
 
 
-## Spec 023 員工資料來源界線
+## Spec 023／024 員工資料來源界線
 
-`users.email` 由 Portal 受控人工匯入，nullable、非唯一且一般 entity 查詢不選取。員編解析只查本機，不即時建帳；發起交易內鎖定員工、讀取身分及信箱並固定至指派快照。無信箱員工仍可簽署，通知標記缺收件人。
+`users.email` 由 worker 每天 04:00（台北時間）從 Portal 匯入，必要時可手動執行同一套匯入（見 `portal-user-import.md`），nullable、非唯一且一般 entity 查詢不選取。員編解析只查本機，不即時建帳；發起交易內鎖定員工、讀取身分及信箱並固定至指派快照。無信箱員工仍可簽署，通知標記缺收件人。
 
 非正式環境白名單的 employee／department 規則讀本機有效員工，department 使用精確直接所屬 `department_code`，不使用本機外鍵 `department_id` 或部門名稱，也不包含子部門。完整 Email 規則及 production bypass 維持原語意。
 
-部門樹及登入／SSO 仍沿用原人資來源；登入同步不覆寫未選取的 email。Portal 只匯入狀態0／1，不以來源缺席推斷離職；人工停用與軟刪除不自動恢復。主檔異動不回寫歷史文件、通知固定信箱或簽署證據。
+部門樹改由 Portal 組成（快取 1,800 秒），三個登入入口（帳密、WebView、OAuth）的員工資料即時查 Portal；登入同步不覆寫未選取的 email。匯入只建立或更新狀態 0／1 的員工；Portal 有該員編但沒有 0／1 資料時停用本機帳號，查不到則不動，不以來源缺席推斷離職；人工停用與軟刪除不自動恢復。主檔異動不回寫歷史文件、通知固定信箱或簽署證據。

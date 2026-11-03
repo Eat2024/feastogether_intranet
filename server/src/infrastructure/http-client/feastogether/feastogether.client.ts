@@ -86,12 +86,7 @@ export class FeastogetherClient {
 
     const url = `${this.config.baseUrl}${path}`;
     const safePath = path.split('?', 1)[0];
-    const omitBody = [
-      '/api/v1/hr/org_chart',
-      '/api/v1/hr/staff_emails',
-      '/api/v1/hr/staff_lookup',
-      '/api/v1/staff/login',
-    ].includes(safePath);
+    const omitBody = safePath === '/api/v1/staff/login';
     try {
       const response =
         method === 'get'
@@ -153,24 +148,7 @@ export class FeastogetherClient {
     requestBody: unknown,
   ): T {
     const safePath = path.split('?', 1)[0];
-    const omitBody = [
-      '/api/v1/hr/org_chart',
-      '/api/v1/hr/staff_emails',
-      '/api/v1/hr/staff_lookup',
-      '/api/v1/staff/login',
-    ].includes(safePath);
-    if (
-      ['/api/v1/hr/org_chart', '/api/v1/hr/staff_emails'].includes(safePath) &&
-      (!payload || typeof payload !== 'object' || payload.success !== true)
-    ) {
-      this.safeWarn({
-        event: 'feastogether.request_failed',
-        message: '人事來源回應格式錯誤',
-        context: FeastogetherClient.name,
-        metadata: { method, path: safePath, errorType: 'InvalidEnvelope' },
-      });
-      throw new FeastogetherApiError(null, null, '人事來源回應格式錯誤');
-    }
+    const omitBody = safePath === '/api/v1/staff/login';
     if (payload && typeof payload === 'object' && 'success' in payload) {
       if (payload.success === false) {
         this.safeWarn({
@@ -180,9 +158,7 @@ export class FeastogetherClient {
           metadata: {
             method,
             path: safePath,
-            ...(safePath !== '/api/v1/hr/staff_lookup'
-              ? { upstreamCode: payload.code }
-              : {}),
+            upstreamCode: payload.code,
             ...(!omitBody && requestBody !== undefined
               ? { requestBody: maskSensitive(requestBody) }
               : {}),

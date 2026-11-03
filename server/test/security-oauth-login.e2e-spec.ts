@@ -5,12 +5,12 @@ import { DataSource } from 'typeorm';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { AuthService } from '#app/features/auth/services/auth.service';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { OauthIdentityService } from '#app/features/auth/services/oauth-identity.service';
 import { OauthLoginService } from '#app/features/auth/services/oauth-login.service';
 import { OauthTransactionService } from '#app/features/auth/services/oauth-transaction.service';
 import { InfrastructureModule } from '#app/infrastructure/infrastructure.module';
 import { OauthModule } from '#app/infrastructure/http-client/oauth/oauth.module';
-import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
@@ -25,6 +25,7 @@ import * as oidcStub from './stubs/openid-client.stub';
     FeastogetherModule,
   ],
   providers: [
+    EligibleStaffService,
     OauthIdentityService,
     OauthTransactionService,
     {
@@ -74,19 +75,17 @@ describe('dormant SSO/session testing module', () => {
     const testingModule = await Test.createTestingModule({
       imports: [AuthTestingModule],
     })
-      .overrideProvider(FeastogetherClient)
+      .overrideProvider(EligibleStaffService)
       .useValue({
-        get: jest.fn().mockResolvedValue([
-          {
-            person_empid: empid,
-            person_name: '合成安全測試員工',
-            person_status: 1,
-            person_status_name: '正式',
-            department_id: 'SECURITY-OAUTH',
-            department_name: '合成安全測試部門',
-            title: null,
-          },
-        ]),
+        lookupEligibleStaff: jest.fn().mockResolvedValue({
+          person_empid: empid,
+          person_name: '合成安全測試員工',
+          person_status: 1,
+          person_status_name: '正式',
+          department_id: 'SECURITY-OAUTH',
+          department_name: '合成安全測試部門',
+          title: null,
+        }),
       })
       .compile();
     await testingModule.init();

@@ -1,109 +1,142 @@
-# Portal 員工資料人工維護
+# Portal 員工主檔匯入
 
-此工具維護電子簽本機 `users`，不連線 Portal、不啟動 HTTP／worker、不寄信。使用既有 `DB_MYSQL_*` 設定及已部署的 `users.email` migration；來源擷取由可連 Portal 的維運主機唯讀執行。不新增排程或環境變數。
+worker 每天 04:00（台北時間）直接讀 Portal 的在職名單，更新電子簽本機的 `users`。需要臨時同步時，維運可以手動執行同一套匯入，規則相同。
 
-## 資料與資格
+匯入不讀寫任何檔案，也不寄信。Portal 是唯一權威：資料有錯時修正 Portal 後重跑，沒有回復功能。
 
-只建立／更新來源狀態 0（試用）及 1（正式）。其他狀態分類略過；來源未出現的員工不代表離職，也不自動停用。離職、人工停用與恢復另循管理程序。既有停用或軟刪除帳號整筆保護，不更新、恢復或刪除。
+## 設定
 
-員編為精確字串，保留前導零及大小寫。來源同員編資料或狀態互相衝突整批拒絕，包含一列合格、一列不合格；完全相同重複列合併並計數。Email trim／小寫、可空且非唯一；明確空值會清除舊 email。來源部門代碼只寫 `department_code`，不覆寫本機 `department_id` 外鍵。保留本機 ID、登入紀錄、歷史文件、通知結果與簽署證據。
+- `PORTAL_MYSQL_*` 寫在 `/home/feasteng/deploy/intranet-uat/server.env`，server 與 worker 都透過 `x-backend` 載入。欄位說明見 `server/.env.example`。
+- Portal 帳號只需要 `sys_person` 與 `chi_department` 兩張表的 SELECT 權限。
+- 修改 `server.env` 後，依 `docs/deployment/uat-cicd.md`「人工操作」recreate server 與 worker。
+- 不要把實際主機、帳號或密碼寫進 Git、指令參數、log 或聊天。
 
-## 來源檔
+## 匯入規則
 
-在 Portal 使用唯讀帳號擷取，記錄真正的取得時間（ISO 8601 含時區）。不知道原始取得時間時重新擷取，不能以今天預覽時間或檔案修改時間冒充。不要把密碼寫在命令參數、SQL 或版本控制。
+- **建立與更新**：讀取 Portal 狀態 0（試用）與 1（正式）的人。
+  - 本機沒有這個員編就建立。
+  - 欄位有差異才更新；完全相同時不寫入，`updated_at` 也不變。
+- **寫入欄位**：員編、姓名、部門代碼與名稱、人員狀態、職稱、Email。
+  - 部門代碼只寫入 `department_code`，不改本機的部門外鍵 `department_id`。
+  - Portal 的 Email 空白時，會清除本機的舊 Email。
+  - 不改本機 ID、登入紀錄，以及已發起文件的身分與信箱快照。
+- **略過**：缺姓名、Email 格式錯、欄位超長、員編不合法，或同員編的資料互相衝突（包括只差大小寫）。
+  - 只略過該員編，其餘照常匯入。
+  - 被略過的人，本機資料不更新，也不停用。
+  - log 只記各原因的人數。
+- **停用**：本機在職的人，若 Portal 有這個員編、但沒有任何狀態 0／1 的資料，就停用。
+  - Portal 查不到這個員編時，不停用也不更新。
+- **不恢復**：已停用或軟刪除的帳號不會自動恢復，Portal 恢復在職也一樣；恢復走既有的人工程序。
+- **停用門檻**：單次要停用超過 500 人時，整批不寫入，新建與更新也不寫。
+  - 每日匯入只記錄 `portal_users.sync_blocked`。
+  - 手動執行時，確認人數後才會套用，見下方「停用人數超過門檻」。
 
-```sql
-SELECT
-  HEX(TRIM(person_empid)) AS empid_hex,
-  HEX(TRIM(person_name)) AS name_hex,
-  HEX(TRIM(department_id)) AS department_code_hex,
-  HEX(TRIM(department_name)) AS department_name_hex,
-  HEX(LOWER(TRIM(email))) AS email_hex,
-  person_status,
-  HEX(TRIM(title)) AS title_name_hex
-FROM sys_person
-WHERE person_status IN (0, 1)
-ORDER BY person_empid;
-```
+## 每日自動匯入
 
-用 MySQL client `--batch` 匯出，保留七欄 header；tab 分欄、LF 或 CRLF 分行，HEX 以 UTF-8 解碼，字面 `NULL` 表示 SQL NULL。不要以 Excel 重新儲存。非空 email 必須合法；缺姓名或資料格式錯誤整批停止。
+- worker 每天 04:00（台北時間）執行一次。部署多個 worker 也只會執行一次；worker 停機錯過時，恢復後補跑一次。
+- 失敗不重試，隔天 04:00 照常執行。
+- 在 UAT 主機查看最近一次的結果：
 
-檔案放 repository 外的私人目錄（0700），所有來源、排除、預覽與結果檔案為 0600，且不可使用 symbolic link。不要上傳真實名冊／備份到 Git、一般 log 或聊天。
+  ```bash
+  docker logs --since 24h intranet-uat-worker-1 2>&1 | grep 'portal_users.sync_'
+  ```
 
-若有經確認必須排除的單筆來源，建立私人 JSON 排除檔，每筆需完整員編與理由；以下只是假資料格式：
+| 事件 | 等級 | 意義 |
+| --- | --- | --- |
+| `portal_users.sync_completed` | info | 完成。`metadata.outcome` 為 `applied`（手動 dry-run 為 `dry_run`） |
+| `portal_users.sync_blocked` | warn | 要停用的人數超過 500，整批未寫入；`metadata.deactivated` 是要停用的人數 |
+| `portal_users.sync_failed` | error | 失敗，整批未寫入。`metadata.outcome` 為 `failed_source`（讀 Portal 失敗）或 `failed_write`（寫本機 DB 失敗），`metadata.errorType` 是錯誤代碼 |
 
-```json
-[{"employeeNo":"SYN00001","reason":"維運已核對來源缺姓名，待來源修正"}]
-```
+`sync_completed` 與 `sync_blocked` 的 `metadata` 是匯入摘要：
 
-排除名單不寫死進產品；適用所有該完整員編來源列，摘要顯示略過列數。
+| 欄位 | 說明 |
+| --- | --- |
+| `trigger` | `schedule`（每日匯入）或 `manual`（手動執行） |
+| `sourceAcquiredAt` | 讀取 Portal 的時間（UTC） |
+| `sourceRows`／`eligibleEmployees` | Portal 在職資料列數、實際分類的員工數 |
+| `created`／`updated`／`unchanged`／`protected`／`deactivated` | 新建、更新、不變、已停用或軟刪除而不動、停用的人數 |
+| `skipped` | 依原因分類的略過人數 |
 
-## AWS Session 執行
+log 不含員編、姓名或 Email。手動執行的 log 只出現在執行的終端機，`docker logs` 看不到。
 
-使用已包含本工具的 server image，另開短命容器，不重啟線上服務。以下範例沿用既有部署 DB env 檔；不要 `source migration.env`，也不要列印它。`--env-file` 由 Docker 讀取，保留原有密碼字元。
+## 手動執行
+
+用於以下情況：
+- 新進同仁需要在下一次 04:00 前就能被選為簽署人。
+- Portal 修正資料或恢復連線後，想立即同步。
+- 停用人數超過門檻，經確認後套用。
+
+在 repository 目錄先載入部署產生的版本 manifest（不要 source `migration.env`）：
 
 ```bash
-portal_image=$(docker inspect --format '{{.Config.Image}}' intranet-uat-server-1)
-portal_acquired_at='請替換為本次實際來源取得時間，例如 2026-11-03T07:00:00Z'
-
-docker run --rm \
-  --network intranet-uat_default \
-  --user "$(id -u):$(id -g)" \
-  --env-file /home/feasteng/deploy/intranet-uat/migration.env \
-  -v /home/feasteng/imports:/imports \
-  --entrypoint node "$portal_image" \
-  dist/maintenance/portal-users.js preview \
-  --input /imports/portal_users.hex.tsv \
-  --acquired-at "$portal_acquired_at" \
-  --output /imports/preview-001.json
+cd /path/to/feastogether_intranet
+set -a
+. /home/feasteng/deploy/intranet-uat/releases/current.env
+set +a
 ```
 
-如需排除，在 preview 後加 `--exclude-file /imports/exclusions.json`。`portal_acquired_at` 須換成合法值，範例提示文字會被工具拒絕。
+### 1. 預覽（dry-run）
 
-CLI 僅印批次 ID 與摘要；核對來源列數、唯一員工、新建、更新、同值、保護、排除、不合格、缺信箱與清空信箱數。預覽不寫 DB；私有預覽檔包含原值與預計變更，僅由具權限維運人員檢視。
-
-確認後使用同一 image／network／env-file／mount／user 參數，將最後操作換成：
-
-```text
-node dist/maintenance/portal-users.js apply --preview /imports/preview-001.json --output /imports/result-001.json
+```bash
+docker compose --env-file /dev/null -f docker-compose.uat.yml run --rm worker node dist/maintenance/portal-users.js sync --dry-run
 ```
 
-若沿用前面的 `--entrypoint node`，最後命令省略開頭的 `node`。來源 hash 或目標 DB 身分不符、原值被修改（包含登入時間與微秒 updated_at）、新增同員編競態、任何寫入失敗都不留下部分提交。既有使用者透過 repository.save 更新，只改有差異資料；同來源重新預覽／apply 應為零變更、不修改 updated_at。
+dry-run 不寫入。終端機會輸出：
+- `摘要：{...}`：摘要 JSON，欄位同上表，`outcome` 為 `dry_run`。
+- `略過：<員編>（<原因>）`：每個被略過的員編一行。這份清單只出現在終端機，不寫入 log；不要貼到聊天或工單，請到 Portal 修正對應資料。
+- `要停用：<N> 人`：本次要停用的人數。
 
-## 失敗與重跑
+### 2. 正式執行
 
-- 正式結果 `status=applied` 才表示提交且完成結果紀錄；成功退出碼為 0。
-- 每次 apply 使用新的預覽及結果檔名。`.apply-lock` 表示該預覽已嘗試，不可刪除後重播；先核對 DB，再產生新預覽。
-- `<result>.intent` 保存預覽與原值；`<result>.prepared` 保存交易內實際 before／after 及新增 ID；正式 `<result>` 保存提交完成狀態。
-- DB commit 前失敗整批回滾；commit 後檔案寫入失敗會明確回報「資料庫已提交」，必須以 intent／prepared 與 DB 人工對帳。程序被終止而僅留下 prepared 時，也不能猜測 DB 已提交或已回滾。
-- 不可把 prepared 手改為 applied；工具要求正式結果、intent 與 prepared 完整一致。人工對帳後的資料修復另循維運程序。
-
-## 受控回復
-
-使用同一執行環境，先執行：
-
-```text
-node dist/maintenance/portal-users.js rollback-preview --result /imports/result-001.json --output /imports/rollback-001.json
+```bash
+docker compose --env-file /dev/null -f docker-compose.uat.yml run --rm worker node dist/maintenance/portal-users.js sync
 ```
 
-核對還原既有帳號（restore）與移除新帳號（remove）數量後：
+- 正式執行會重新讀取 Portal，不沿用 dry-run 的結果。
+- 要停用的人數不超過 500 時，不需要 `--allow-deactivations`。
+- 結束碼：
+  - 成功為 0。
+  - 參數錯誤、Portal 讀取失敗、超過門檻未確認或寫入失敗都是 1，而且本機不會有任何變更。
+- 只接受 `sync --dry-run`、`sync` 與 `sync --allow-deactivations <N>`。不接受檔案參數，也沒有 rollback 指令。
 
-```text
-node dist/maintenance/portal-users.js rollback --preview /imports/rollback-001.json
-```
+## 停用人數超過門檻
 
-回復使用單一交易及固定 ID 鎖順序，先確認目前完整資料等於該批寫入後值。只還原既有帳號的本批管理欄位與原 updated_at；不覆寫其他登入欄位。新帳號已有外鍵、session、audit 或明確使用者欄位引用，或無法確認相依，整批拒絕自動回復；不可為了通過回復而刪除歷史紀錄。回復前新增引用或資料異動也會拒絕。
+第一次上線最可能遇到這個情況：023 的人工匯入從不停用帳號，本機在職帳號中可能已累積許多離職者。
 
-只要偵測到沒有 users 外鍵保護的使用者引用欄位，即使該表完全空白，也會拒絕包含新帳號的整批自動回復：非 FK writer 可能在刪除提交後才插入引用，不能靠空表檢查或 gap lock 保證安全。這種環境只允許自動還原純既有帳號更新批次；含新增帳號的批次需人工處理，不會先部分還原。repository schema.sql 中目前辨識到的使用者欄位都有 users 外鍵；部署實際 schema 仍由工具每次檢查。
+門檻沒有解除前，每天的匯入都會整批不寫入，新進同仁也不會建立，請盡快處理：
 
-檢查依據為目前資料庫 metadata、持久紀錄與欄位，不能推論已被外部刪除的歷史使用。若系統存在工具無法辨識的外部／非結構化引用，不使用自動刪除，交由人工資料修復。權限不足而無法讀 metadata 或相依表時也必須停止。
+1. 執行 dry-run，記下 `要停用：<N> 人`。
+2. 對照人資提供的離職人數，確認 N 合理。
+   - 不合理（例如 Portal 的人員狀態大量出錯）時不要確認。請 Portal 負責人修正後，回到步驟 1。
+3. 帶入同一個 N 正式執行：
 
-回復的 `.rollback-lock`／`.rollback-prepared`／`.rollback-result` 保留完整作業依據。只有 rollback-result 的 `status=rolled-back` 是完成紀錄；DB 已回復但結果檔失敗同樣要人工對帳，不能盲目重跑。
+   ```bash
+   docker compose --env-file /dev/null -f docker-compose.uat.yml run --rm worker node dist/maintenance/portal-users.js sync --allow-deactivations <N>
+   ```
 
-## 維運交接與清理
+   - 只有停用人數超過 500 時才核對 N：N 必須等於執行當下算出的停用人數。
+   - dry-run 之後 Portal 若有變動：
+     - 停用人數仍超過 500 但不等於 N 時，以結束碼 1 結束、不寫入，並印出新的人數。這時請回到步驟 1 重新確認，不要直接改用新的數字。
+     - 停用人數降到 500 以下時不核對 N，直接套用，與不帶參數的 `sync` 相同。
+4. 隔天早上確認 worker log 有 `portal_users.sync_completed`，且 `outcome` 為 `applied`。
 
-維運負責人在新人或異動需要使用電子簽前人工同步，並記錄來源時間、批次 ID、提交時間及彙總結果。本機資料不是即時 Portal 同步；選人部門樹與登入驗證仍用原來源。沒有 email 的有效員工仍可簽署，通知標示缺信箱。
+## Portal 故障
 
-依組織受控備份保留政策保存完整 source／preview／intent／prepared／result／lock 檔案集合，確認不再需要回復後再清理該批檔案；不要只留下 result 而刪掉回復依據。不要把清理指令套用其他批次或整個 imports 目錄。
+- **徵兆**：
+  - worker log 出現 `portal_users.sync_failed`，`outcome` 為 `failed_source`；`errorType` 例如 `ECONNREFUSED`、`ER_ACCESS_DENIED_ERROR`。
+  - 同一時間，登入會回 `STAFF_LOOKUP_FAILED`，選人部門樹會回 502 `ORG_CHART_UPSTREAM_UNAVAILABLE`。
+- **本機資料**：不會有任何變更。Portal 故障不會被當成「沒有任何員工」，也不會停用任何人。
+- **處理**：
+  1. 確認 `server.env` 的 `PORTAL_MYSQL_*`、容器到 Portal 的網路，以及帳號對兩張表的 SELECT 權限。
+  2. 恢復後可以等下一次 04:00，或手動執行 `sync --dry-run` 後再執行 `sync`。
 
-應用版本回滾先恢復相容的 server／worker／client，保留 email 欄位及員工資料；不要以回滾程式為由刪除已建立帳號或歷史文件。實際部署與真實寄信須另行操作，工具本身不觸發。
+`failed_write` 表示寫入本機 DB 失敗，整批已 rollback。確認 RDS 狀態後，再手動執行一次。
+
+`failed_source` 的 `errorType` 為 `PortalUndecodableTextError` 時，表示 Portal 讀回的文字無法解碼（通常是編碼錯誤的資料）。同一時間登入與部門樹也會失敗。請 Portal 負責人修正資料後重跑。
+
+已知限制：新進同仁的第一次登入與 04:00 匯入同時發生時，登入可能先建立帳號，匯入新建同一員編就會撞唯一鍵。該次匯入以 `failed_write`（`errorType` 為 `ER_DUP_ENTRY`）結束，整批 rollback，不會部分寫入。手動執行 `sync` 即可，不必等隔天。
+
+## 資料錯誤
+
+- 匯入結果有錯時，修正 Portal 後重跑；沒有回復指令。
+- 被誤停用的帳號不會被匯入自動恢復，請走既有的人工恢復程序。

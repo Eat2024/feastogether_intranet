@@ -32,6 +32,7 @@
 const SupertestTest: any = require('supertest/lib/test');
 const {
   generateKeyPairSync,
+  randomUUID,
 }: typeof import('node:crypto') = require('node:crypto');
 
 {
@@ -57,6 +58,16 @@ process.env.ESIGN_INVITATION_ENCRYPTION_KEY_B64 ??= Buffer.alloc(
   32,
   'e2e',
 ).toString('base64');
+
+// Spec 024：Portal 連線一律指向本測試檔專屬的合成 Portal 資料庫（由 test/synthetic-portal.helper.ts 建立）。
+// 必須在 AppModule 載入前無條件覆寫：ConfigModule 載入時把當下的 process.env 與 server/.env 存成驗證後設定，
+// 之後再改 process.env 不會生效；在這裡覆寫，.env 中的真實 Portal 設定才不會被 e2e 讀到。
+// 隨機碼只取 8 碼：MySQL 資料庫名稱上限 64 字元，worktree 的 DB_MYSQL_DB 已經比較長。
+process.env.PORTAL_MYSQL_HOST = process.env.DB_MYSQL_HOST ?? '127.0.0.1';
+process.env.PORTAL_MYSQL_PORT = process.env.DB_MYSQL_PORT ?? '3306';
+process.env.PORTAL_MYSQL_USER = process.env.DB_MYSQL_USER ?? 'root';
+process.env.PORTAL_MYSQL_PASS = process.env.DB_MYSQL_PASS ?? '';
+process.env.PORTAL_MYSQL_DB = `${process.env.DB_MYSQL_DB ?? ''}_portal_${randomUUID().slice(0, 8)}`;
 
 const originalServerAddress = SupertestTest.prototype.serverAddress;
 SupertestTest.prototype.serverAddress = function serverAddressV6Loopback(

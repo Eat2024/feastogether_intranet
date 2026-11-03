@@ -268,10 +268,10 @@ async function run() {
   await setup();
   const { createSecurityE2eApp } =
     require('../security-e2e.helper') as typeof import('../security-e2e.helper');
-  const { FeastogetherHrService } =
-    require('#app/infrastructure/http-client/feastogether/services/feastogether-hr.service') as typeof import('#app/infrastructure/http-client/feastogether/services/feastogether-hr.service');
+  const { EligibleStaffService } =
+    require('#app/features/auth/services/eligible-staff.service') as typeof import('#app/features/auth/services/eligible-staff.service');
   const ctx = await createSecurityE2eApp((b) =>
-    b.overrideProvider(FeastogetherHrService).useValue({
+    b.overrideProvider(EligibleStaffService).useValue({
       lookupEligibleStaff: (empid: string) =>
         Promise.resolve({
           person_empid: empid,

@@ -78,7 +78,7 @@ Portal 的 `person_name`、`department_id`、`department_name`、`title` 是 `NO
 | `skipped:<原因>` | 該員編的 Portal 在職資料不合法或互相衝突 | 不寫入，也不停用 |
 | （不列入） | 本機員編在 Portal 查不到 | 不動 |
 
-`skipped` 的原因有：`missing_name`、`invalid_email`、`too_long`、`invalid_empid`、`conflict`（同員編資料不同，或員編只差大小寫）。完全相同的重複資料列合併計算，不算衝突。
+`skipped` 的原因有：`missing_name`、`invalid_email`、`too_long`、`invalid_empid`、`conflict`（同員編資料不同，或員編只差大小寫）。完全相同的重複資料列合併計算，不算衝突。Portal 員編與本機既有員編只差大小寫時也算 `conflict`，因為本機 `empid` 唯一鍵不分大小寫。
 
 ## 帳號啟用狀態的轉換
 
@@ -103,3 +103,5 @@ is_active = false --(匯入)--> 不轉換                                 # 只�
 | `outcome` | `applied`、`dry_run`、`blocked_deactivation_threshold`、`failed_source`、`failed_write` |
 
 這份摘要不包含員編、姓名、Email 或其他個資。
+
+`failed_source`／`failed_write` 只出現在失敗 log；`run` 失敗時拋出不含原始錯誤的例外，不回傳摘要。

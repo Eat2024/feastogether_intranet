@@ -74,6 +74,8 @@ log 事件（內容都不含員編或其他個資）：
 - `portal_users.sync_blocked`：停用人數超過門檻，附停用人數。
 - `portal_users.sync_failed`：失敗分類（`source` 或 `write`）與錯誤類型。
 
+這三個事件由匯入服務自己寫出，processor 與 CLI 不重複記錄。
+
 ## 手動 CLI
 
 ```text

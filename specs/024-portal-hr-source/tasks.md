@@ -203,7 +203,7 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
   - 新增 `server/src/worker/users/` 下的四個檔案：
     - `portal-user-sync.constants.ts`
     - `portal-user-sync.scheduler.ts`（含 `.spec.ts`）：scheduler id 為 `portal-user-sync:daily`，排程為 `{ pattern: '0 4 * * *', tz: TAIPEI_TIME_ZONE_ID }`。
-    - `portal-user-sync.processor.ts`（含 `.spec.ts`）：concurrency 1；以 `trigger: 'schedule'` 呼叫 `run`；超過門檻或失敗時記錄 contracts 的 log 事件，不重試。
+    - `portal-user-sync.processor.ts`（含 `.spec.ts`）：concurrency 1；以 `trigger: 'schedule'` 呼叫 `run`；log 事件由 PortalUserSyncService 寫出，processor 不重複記錄；不重試。
     - `portal-user-sync-worker.module.ts`
   - 在 `server/src/worker.module.ts` import 這個 module。queue 只在 worker 註冊，HTTP app 不註冊。
   - 依賴 T022。

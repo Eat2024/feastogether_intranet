@@ -6,7 +6,7 @@
 - 單次停用超過 500 人時，整批不寫入。
 - 在單一交易中鎖定後寫入，不留任何檔案。
 
-**Status:** claimed
+**Status:** resolved
 
 **Blocked by:** [01-portal-connection](01-portal-connection.md)
 
@@ -105,3 +105,5 @@
   - `too_long` 只有單元測試。Portal 每個欄位的長度上限都比本機短（姓名 50／100、部門代碼 11／50、部門名稱 40／150、職稱 20／100、Email 50／255），合成 Portal 用相同型別，無法產生超長資料；以 Portal 現有 schema，這個原因實際上不會出現。
   - 4b（狀態查詢）失敗沒有獨立的 e2e，與 4a 共用同一個錯誤分類路徑。
   - 沒有連真實 Portal；5,001 人只用本機 MySQL 測量（單次匯入約 1–2 秒）。
+
+整合 commit：`dbdff39`（feat/024-portal-hr-source）。

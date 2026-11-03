@@ -164,7 +164,7 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 ### Tests for User Story 3
 
-- [ ] T020 [P] [US3] 新增 `server/src/features/users/portal-user-sync.rules.spec.ts`：
+- [x] T020 [P] [US3] 新增 `server/src/features/users/portal-user-sync.rules.spec.ts`：
   - 從 `server/src/maintenance/portal-users.spec.ts` 移植欄位正規化測試，去掉 HEX 與 TSV 解析的部分。
   - 依 [data-model](data-model.md)「匯入分類」新增：
     - 略過原因 `missing_name`、`invalid_email`、`too_long`、`invalid_empid`、`conflict`。
@@ -177,8 +177,8 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 ### Implementation for User Story 3
 
-- [ ] T021 [US3] 新增 `server/src/features/users/portal-user-sync.rules.ts`，把 `server/src/maintenance/portal-users-source.ts` 的欄位規則與 `server/src/maintenance/portal-users-import.ts` 的 `planOperations`／`summarize` 搬進來，輸入改成 Portal 查詢的資料列。加入略過分類、停用規劃與門檻常數 `PORTAL_USER_DEACTIVATION_LIMIT = 500`。依賴 T020。
-- [ ] T022 [US3] 新增 `server/src/features/users/services/portal-user-sync.service.ts` 與 `server/src/features/users/portal-user-sync.module.ts`，照 [research §6](research.md) 實作 `run({ trigger, dryRun, confirmedDeactivations? })`：
+- [x] T021 [US3] 新增 `server/src/features/users/portal-user-sync.rules.ts`，把 `server/src/maintenance/portal-users-source.ts` 的欄位規則與 `server/src/maintenance/portal-users-import.ts` 的 `planOperations`／`summarize` 搬進來，輸入改成 Portal 查詢的資料列。加入略過分類、停用規劃與門檻常數 `PORTAL_USER_DEACTIVATION_LIMIT = 500`。依賴 T020。
+- [x] T022 [US3] 新增 `server/src/features/users/services/portal-user-sync.service.ts` 與 `server/src/features/users/portal-user-sync.module.ts`，照 [research §6](research.md) 實作 `run({ trigger, dryRun, confirmedDeactivations? })`：
   1. 讀 Portal 在職名單。
   2. 對本機在職、但不在名單中的員編，用 `findStatusesByEmpids` 查狀態。
   3. 在單一交易中，用 `server/src/features/users/repositories/user.repository.ts` 既有的依 id 升冪鎖定方法鎖定，並檢查新員編。
@@ -186,7 +186,7 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
   5. 回傳摘要；log 事件照 contracts。
 
   module import `PortalModule`。依賴 T021。
-- [ ] T023 [US3] 整理匯入的 e2e：
+- [x] T023 [US3] 整理匯入的 e2e：
   - 新增 `server/test/portal-user-sync.e2e-spec.ts`，使用 T002 的合成 Portal，覆蓋 spec US3 情境 1–9、11、12，以及 SC-005、SC-009、SC-010：
     - 5,001 人兩次匯入。
     - 不合法資料列只略過該員編，log 不含它們的員編。

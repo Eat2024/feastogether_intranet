@@ -2,6 +2,8 @@ import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
 import type {
   CreateExcelExportRecordBody,
+  PrepareExportDownloadBody,
+  PreparedExportDownload,
   EsignExportJob,
   EsignExportPreviewDocument,
   EsignExportRequestResult,
@@ -90,6 +92,16 @@ export const getDocumentExportPreview = async (id: string): Promise<EsignExportP
     method: 'GET',
     url: endpoints.ESIGN_DOCUMENT(id),
     params: { view: 'export' },
+  });
+  return res.data;
+};
+
+/** 驗證當次匯出名稱與資格；不保存設定、不產檔或記錄匯出。 */
+export const prepareExportDownload = async (id: string, body: PrepareExportDownloadBody): Promise<PreparedExportDownload> => {
+  const res = await api<PreparedExportDownload>({
+    method: 'POST',
+    url: endpoints.ESIGN_DOCUMENT_EXPORT_DOWNLOADS(id),
+    data: body,
   });
   return res.data;
 };

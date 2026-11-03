@@ -47,3 +47,13 @@ pnpm build
 ## 交付紀錄
 
 記錄各測試實際結果及未執行原因；區分單元／HTTP／DB 整合／瀏覽器證據。此次 plan 不更動應用程式、migration 或設定。
+
+
+## Ticket 01 實作驗證（2026-11-03）
+
+- TDD：名稱 helper 首次因模組尚未存在失敗；最小中文案例通過後，補空白／副檔名／非法字元／長度案例確認 33 failed，再實作完整規則至通過。新增準備下載 HTTP 首次回 404，實作後 200；目前兩個 suites 共 51 tests 通過。
+- HTTP 測試採真 ExportsController、EsignExportService、EsignAccessPolicyService、AuthGuard、OriginGuard 與 ValidationPipe；僅資料庫／queue／session 查詢邊界替換。service 規則由此整合 seam 一併覆蓋，未另造重複 service 測試檔。
+- 已通過 server build、server lint:check（既有 268 warnings、0 errors）、client lint。
+- Worktree 透過既有 node_modules symlink 使用已安裝套件；pnpm 以 `pnpm_config_verify_deps_before_run=false` 避免重裝。client 預設 Turbopack build 因 node_modules 指向 worktree filesystem root 之外而失敗，須由整合工作目錄重跑，不能記為建置通過。
+- T001 由主代理執行臨時合成內容 probe：Chrome 156.0.8078.74，同源 attachment 不附 filename，延遲觸發 a.download「年度副本.zip」＋獨立 target/noopener；建議名稱正確、download.failure=null、原頁保留。此結果僅為最小機制確認，不替代入口網／完整 UI 驗收。
+- Excel 真前端合成資料驗收與整合分支建置由主代理於合併後執行；本階段尚未驗證實際 UI 或完成 ticket 結案。

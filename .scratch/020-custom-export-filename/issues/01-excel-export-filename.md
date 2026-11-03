@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 
 **Source:** [Spec 020](../../../specs/020-custom-export-filename/spec.md)、[Plan](../../../specs/020-custom-export-filename/plan.md)、[Tasks](../../../specs/020-custom-export-filename/tasks.md)。
@@ -28,3 +28,8 @@
 尚未實作。後續結果追加於此，保留上述驗收條件。
 
 使用者已於本次指示批准拆分並要求 implement-spec 與 code review。
+
+
+### 實作進度（2026-11-03）
+
+Excel 路徑與名稱驗證已實作；helper／真 HTTP-service-policy 共 51 tests 通過。server build、兩 package lint 通過。T001 的 Chrome 最小下載機制 probe 通過。狀態保留 claimed，等待整合分支的 client build、真前端 Excel 驗收及合併紀錄；worktree client build 因外部 node_modules symlink 受 Turbopack 限制，並非已驗證成功。詳細指令與結果見 quickstart。

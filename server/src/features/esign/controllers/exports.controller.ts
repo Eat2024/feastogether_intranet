@@ -3,6 +3,8 @@ import {
   Controller,
   Get,
   Headers,
+  Header,
+  HttpCode,
   Inject,
   Param,
   Post,
@@ -10,6 +12,16 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiCookieAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
+import {
+  PrepareExportDownloadDto,
+  PreparedExportDownloadDto,
+} from '../dto/export.dto';
 import type { FastifyReply } from 'fastify';
 import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
@@ -28,6 +40,36 @@ export class ExportsController {
     private readonly exports: EsignExportService,
     @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
   ) {}
+
+  @Post('documents/:documentId/export-downloads')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  @UseGuards(OriginGuard)
+  @ApiCookieAuth('sessionCookie')
+  @ApiOperation({
+    summary: '準備當次匯出下載',
+    description:
+      '需有效員工 session、同源 Origin，以及同部門已發起且未刪除的文件。驗證名稱並補上 Excel 副檔名；空白回 null 以沿用原預設。此操作不保存設定、不產檔、不新增歷史紀錄。',
+  })
+  @ApiOkResponse({ type: PreparedExportDownloadDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      'INVALID_REQUEST：檔名、類型或欄位不合法；文件 ID 沿用既有錯誤',
+  })
+  @ApiResponse({ status: 401, description: '需有效員工 session' })
+  @ApiResponse({ status: 403, description: 'CSRF_ORIGIN_REJECTED：來源不允許' })
+  @ApiResponse({
+    status: 404,
+    description: 'ESIGN_RESOURCE_NOT_FOUND：文件不存在、草稿、已刪除或非同部門',
+  })
+  prepareDownload(
+    @Param('documentId') id: string,
+    @CurrentUserId() userId: number,
+    @Body() body: PrepareExportDownloadDto,
+  ): Promise<PreparedExportDownloadDto> {
+    return this.exports.prepareDownload(numericId(id), userId, body);
+  }
 
   // 查詢可匯出簽署副本的文件。
   @Get('exportable-documents') list(

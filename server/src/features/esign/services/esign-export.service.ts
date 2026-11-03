@@ -1,3 +1,8 @@
+import { exportFileName } from '../helpers/export-file-name';
+import type {
+  PrepareExportDownloadDto,
+  PreparedExportDownloadDto,
+} from '../dto/export.dto';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { canonicalSha256 } from './esign-audit.service';
 import { randomUUID } from 'node:crypto';
@@ -41,6 +46,26 @@ export class EsignExportService {
     @InjectQueue(ESIGN_EXPORT_QUEUE) private readonly queue: Queue,
     private readonly access: EsignAccessPolicyService,
   ) {}
+
+  /** 只讀準備當次下載，實際匯出仍沿用既有授權與記錄流程。 */
+  async prepareDownload(
+    documentId: number,
+    userId: number,
+    body: PrepareExportDownloadDto,
+  ): Promise<PreparedExportDownloadDto> {
+    const manager = this.mysql.getManager();
+    const document = await this.access.checkDepartmentDocument(
+      await this.documents.findById(documentId, manager),
+      userId,
+      manager,
+    );
+    if (document.status === 'draft')
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    return {
+      type: body.type,
+      fileName: exportFileName(body.fileName, body.type),
+    };
+  }
 
   async request(documentId: number, userId: number) {
     const result = await this.mysql.transaction((manager) =>

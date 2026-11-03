@@ -12,13 +12,13 @@
 
 **Purpose**: 提早確認 ZIP 命名方式可用，避免小功能演變成下載框架重寫。
 
-- [ ] T001 依 `specs/020-custom-export-filename/research.md` 的同源 `a.download`＋`Content-Disposition: attachment` 設計，以臨時、合成內容的最小瀏覽器驗證確認命名優先序、獨立 target 與原頁保留，將瀏覽器／結果記入 `specs/020-custom-export-filename/quickstart.md`；不提交測試站台、不動安全標頭。失敗先修訂 plan，不加入 Blob fallback、檔名 query 或儲存票證；實際入口網驗收留至 T012。
+- [x] T001 依 `specs/020-custom-export-filename/research.md` 的同源 `a.download`＋`Content-Disposition: attachment` 設計，以臨時、合成內容的最小瀏覽器驗證確認命名優先序、獨立 target 與原頁保留，將瀏覽器／結果記入 `specs/020-custom-export-filename/quickstart.md`；不提交測試站台、不動安全標頭。失敗先修訂 plan，不加入 Blob fallback、檔名 query 或儲存票證；實際入口網驗收留至 T012。
 
 ## Phase 2: Foundational
 
 **Purpose**: 共用命名與 API 邊界；不建立資料模型、migration 或新的 infrastructure。
 
-- [ ] T002 在 `server/src/features/esign/helpers/export-file-name.spec.ts` 先建立名稱規則案例，再實作 `server/src/features/esign/helpers/export-file-name.ts` 與 `server/src/common/errors/app-errors.ts` 的中文 INVALID_REQUEST 定義：遵循「可省略的字串；null／非字串拒絕。trim 後輸入最多 100 Unicode code points；未指定或空白表示原預設。」及「最終含副檔名最多 255 UTF-8 bytes。」；trim 前拒絕控制／禁止字元，結尾 `.xlsx`／`.zip` 不分大小寫移除一次後補所選格式，拒絕空主檔名、起訖句點與 spec 保留名稱，覆蓋臨界值與不同副檔名切換，不回顯原名稱。
+- [x] T002 在 `server/src/features/esign/helpers/export-file-name.spec.ts` 先建立名稱規則案例，再實作 `server/src/features/esign/helpers/export-file-name.ts` 與 `server/src/common/errors/app-errors.ts` 的中文 INVALID_REQUEST 定義：遵循「可省略的字串；null／非字串拒絕。trim 後輸入最多 100 Unicode code points；未指定或空白表示原預設。」及「最終含副檔名最多 255 UTF-8 bytes。」；trim 前拒絕控制／禁止字元，結尾 `.xlsx`／`.zip` 不分大小寫移除一次後補所選格式，拒絕空主檔名、起訖句點與 spec 保留名稱，覆蓋臨界值與不同副檔名切換，不回顯原名稱。
 - [ ] T003 在 `server/src/features/esign/dto/export.dto.ts` 定義準備下載 request/response 與 GET query DTO：`type` 為「`excel` 或 `zip`。」；`documentId` 為「路徑中的既有文件 ID，後端驗證未刪除、非草稿與同部門權限。」；`exportId` 為「僅 ZIP 必填，既有匯出工作公開 UUID。」；`fileId` 為「僅 ZIP 必填，既有檔案 ID；必須屬於該文件的該工作。」；Excel 禁止這兩欄、未知欄位與不合法 ID 拒絕。名稱規則沿用 T002，不先 trim 掉控制字元；回應依 type 區分 Excel 的 nullable fileName 與 ZIP 的 fileName/downloadPath；GET 僅接受省略或單一 `downloadName=client`。
 - [ ] T004 [P] 在 `client/src/api/endpoints.ts`、`client/src/api/types/esignExports.ts`、`client/src/api/requests/esignExports.ts` 登記 `POST /api/esign/documents/:documentId/export-downloads` 與 discriminated union 型別／純請求函式；確認 `client/src/api/types/index.ts`、`client/src/api/requests/index.ts` 可匯出。依契約解析現有 envelope，不新增 query hook、快取、token 或傳送身分／任意 URL。
 
@@ -30,9 +30,9 @@
 
 **Independent Test**: 填寫「年度簽署紀錄」匯出，名稱為 `年度簽署紀錄.xlsx`、資料符合篩選；空白使用原名稱，非法名稱不記錄且可原頁修正。
 
-- [ ] T005 [US1] 在 `server/src/features/esign/controllers/export-file-name.spec.ts` 及 `server/src/features/esign/services/esign-export-file-name.spec.ts` 先補 Excel 準備的 HTTP/service 測試：有效 session／Origin、200 envelope、null 預設、400 非法欄位／類型／名稱、401 無或失效 session／僅外部憑證、403 Origin、404 跨部門／草稿／刪除文件；確認準備操作只讀、錯誤不包含原名稱。
-- [ ] T006 [US1] 在 `server/src/features/esign/services/esign-export.service.ts` 實作 Excel 準備分支，重用既有同部門 policy 並排除草稿；於 `server/src/features/esign/controllers/exports.controller.ts` 新增準備下載 POST，套用現有員工驗證、OriginGuard、200/no-store、DTO 與 Swagger。僅回 `{ type: 'excel', fileName }`，不記錄、不產檔、不保存設定，通過 T005。
-- [ ] T007 [US1] 在 `client/src/features/esign-documents/DocumentExportView.tsx` 與 `client/src/features/esign-documents/buildExportXlsx.ts` 接入 T004：點擊時擷取檔名與篩選值，準備成功後才沿用既有記錄及產檔；非 null 採自訂名稱、null 採原預設。請求失敗保留輸入／條件且停止後續記錄與下載，不修改歷史重下載流程。
+- [x] T005 [US1] 在 `server/src/features/esign/controllers/export-file-name.spec.ts` 及 `server/src/features/esign/services/esign-export-file-name.spec.ts` 先補 Excel 準備的 HTTP/service 測試：有效 session／Origin、200 envelope、null 預設、400 非法欄位／類型／名稱、401 無或失效 session／僅外部憑證、403 Origin、404 跨部門／草稿／刪除文件；確認準備操作只讀、錯誤不包含原名稱。
+- [x] T006 [US1] 在 `server/src/features/esign/services/esign-export.service.ts` 實作 Excel 準備分支，重用既有同部門 policy 並排除草稿；於 `server/src/features/esign/controllers/exports.controller.ts` 新增準備下載 POST，套用現有員工驗證、OriginGuard、200/no-store、DTO 與 Swagger。僅回 `{ type: 'excel', fileName }`，不記錄、不產檔、不保存設定，通過 T005。
+- [x] T007 [US1] 在 `client/src/features/esign-documents/DocumentExportView.tsx` 與 `client/src/features/esign-documents/buildExportXlsx.ts` 接入 T004：點擊時擷取檔名與篩選值，準備成功後才沿用既有記錄及產檔；非 null 採自訂名稱、null 採原預設。請求失敗保留輸入／條件且停止後續記錄與下載，不修改歷史重下載流程。
 
 **Checkpoint**: Excel 可獨立展示與驗收；這是 MVP，不代表 ZIP 與完整功能已完成。
 
@@ -121,3 +121,8 @@ US1／US2／US3 → T015、T016 → T017 → T018
 | SC-001–SC-005 | T002、T005、T008、T012、T014–T018 |
 
 **任務統計**：18 項；Setup 1、Foundational 3、US1 3、US2 5、US3 2、跨功能驗證 4。
+
+
+### Ticket 01 進度
+
+T003／T004 已完成 Excel 所需 DTO 與請求層；ZIP 型別與旗標留給 ticket 02，故暫不勾選。T005 的 service 測試已整合至真 HTTP／service／policy seam，避免重複 fixture。詳細驗證與未完成限制見 quickstart。

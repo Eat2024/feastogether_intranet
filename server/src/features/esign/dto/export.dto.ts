@@ -1,4 +1,6 @@
 import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AppErrors } from '#app/common/errors/app-errors';
 import {
   Equals,
   IsInt,
@@ -8,6 +10,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 /** 數字 ID 字串（文件 ID、游標）：正整數、最多 15 位，轉成 Number 仍是安全整數。 */
@@ -42,4 +45,31 @@ export class ExportJobViewDto {
     sha256: string;
     downloadPath: string;
   }[];
+}
+
+/** 當次下載設定：不保存檔名，空白沿用既有預設。 */
+export class PrepareExportDownloadDto {
+  @ApiProperty({ enum: ['excel'] })
+  @Equals('excel', { message: AppErrors.ESIGN_EXPORT_DOWNLOAD_TYPE_INVALID[1] })
+  type!: 'excel';
+
+  @ApiPropertyOptional({
+    description:
+      'trim 後最多 100 Unicode 字元；省略或空白沿用預設，不接受 null',
+  })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsString({ message: AppErrors.ESIGN_EXPORT_FILE_NAME_INVALID[1] })
+  fileName?: string;
+}
+
+export class PreparedExportDownloadDto {
+  @ApiProperty({ enum: ['excel'] })
+  type!: 'excel';
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: '正規化後的當次名稱；null 表示由 Excel 產檔器沿用既有預設',
+  })
+  fileName!: string | null;
 }

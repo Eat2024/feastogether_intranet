@@ -101,7 +101,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
   const { showSnackbar } = useSnackbar();
   const [, startTransition] = useTransition();
   const [content, setContent] = useState<ContentType>('list');
-  // TODO: 後端補上自訂檔名的 API 後，串接到 Excel 與 ZIP 的匯出（目前只保留輸入，不影響匯出檔名）
+  // Excel 已串接當次名稱；ZIP 串接由下一張 ticket 完成。
   const [fileName, setFileName] = useState('');
   const query = useMemo(() => parseExportQuery(params), [params]);
   const deptOptions = useMemo(() => buildDeptOptions(doc.signers), [doc.signers]);
@@ -126,10 +126,10 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
   };
 
   const download = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input: { fileName: string; query: ExportQuery }) => {
       // exceljs 較大，點擊時才載入
       const { recordAndDownloadExcel } = await import('./buildExportXlsx');
-      await recordAndDownloadExcel(doc, query);
+      await recordAndDownloadExcel(doc, input.query, input.fileName);
     },
     meta: { suppressGlobalErrorToast: true },
     onError: (err) => showSnackbar(getErrorMessage(err, '匯出失敗，請稍後再試'), 'error'),
@@ -181,8 +181,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
               value={fileName}
               onChange={(e) => setFileName(e.target.value)}
               placeholder="未填寫時使用系統預設檔名"
-              helperText="尚未完成：待後端支援後，才會套用到匯出的檔案名稱"
-              slotProps={{ htmlInput: { maxLength: 100 } }}
+              helperText={content === 'list' ? '僅套用本次 Excel 下載，自動處理副檔名；留白使用預設檔名' : 'ZIP 自訂檔名尚未完成，下載仍使用系統預設名稱'}
               sx={{ mt: 2, width: '100%', maxWidth: 480 }}
             />
           </Section>
@@ -307,7 +306,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
             size="large"
             variant="contained"
             startIcon={<FileDownloadRoundedIcon />}
-            onClick={() => download.mutate()}
+            onClick={() => download.mutate({ fileName, query })}
             loading={download.isPending}
             disabled={rows.length === 0}
           >

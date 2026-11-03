@@ -4,7 +4,7 @@
 
 **Blocked by:** 01-email-rule-schema
 
-**Status:** claimed
+**Status:** resolved
 
 **Source:** [Spec 021](../../../specs/021-external-mail-whitelist/spec.md)、[Plan](../../../specs/021-external-mail-whitelist/plan.md)、[Tasks](../../../specs/021-external-mail-whitelist/tasks.md)。
 
@@ -17,7 +17,7 @@
 - [x] Worker e2e：外部催簽命中信箱規則且人資來源故障時為 delivered。
 - [x] Spec 018 的 spec、data-model、contract 相關段落註明已由 Spec 021 修訂，不改寫歷史驗證紀錄。
 - [x] 執行 021 quickstart 全部指令並記錄結果；完成 Standards／Spec 雙軸 code review 並修正確認的發現。
-- [ ] 驗收通過後整合至功能整合分支，追加驗證與 commit 紀錄，再改為 resolved。
+- [x] 驗收通過後整合至功能整合分支，追加驗證與 commit 紀錄，再改為 resolved。
 
 ## Comments & Implementation Results
 
@@ -81,3 +81,7 @@ Spec 發現與處理：
 - `pnpm -C server lint:check`：0 errors、268 warnings（皆在未變更檔案；本次 5 個 server 檔 ESLint 0 problems）。
 - `pnpm -C server build`：通過。
 - 未執行：021 quickstart「環境上版」三步驟（部署時維運程序）。Status 維持 `claimed`，待整合後改為 resolved。
+
+### 2026-11-03 整合
+
+- 主控檢視後以 fast-forward 整合至 `docs/spec-021-external-mail-whitelist`：實作 `1a1e410..c1fafec`、code review 修正 `c1fafec..a8c9d01`，皆無衝突；Status 改為 resolved。

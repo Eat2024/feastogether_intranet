@@ -2,7 +2,7 @@
 
 > **契約更新（Spec 019）**：本文件的兩小時／7,200 秒快取契約已由 [Spec 019](../019-esign-uat-refinements/spec.md) US4 取代：有效期為 1,800 秒，按需更新且讀取不續期；Redis key namespace 改為 `esign:org-chart:v2:`，不讀取 v1 舊快取、不新增排程。下文與既有測試紀錄保留當時決策。
 
-> **來源更新（Spec 024，Draft）**：[Spec 024](../024-portal-hr-source/spec.md) 規劃將組織樹上游由饗賓人 `GET /api/v1/hr/org_chart` 改為直接查詢 Portal，組樹規則沿用饗賓人現行行為；回應、授權與快取契約不變。
+> **來源更新（Spec 024）**：[Spec 024](../024-portal-hr-source/spec.md) 已將組織樹上游由饗賓人 `GET /api/v1/hr/org_chart` 改為直接查詢 Portal 的部門表與人員表，取代 FR-002、API Contract 的「上游」列，以及 Assumptions 中沿用 `FEASTOGETHER_*` 設定的描述；連線改用 `PORTAL_MYSQL_*`。組樹規則沿用饗賓人現行行為；回應、授權、錯誤碼與 1,800 秒快取契約不變。快取 key 仍在 `esign:org-chart:v2:` 之下，但改以 Portal 連線設定區隔，舊的饗賓人快取不再命中。FR-009 的 10 秒上游逾時改為每個 Portal 查詢各 10 秒，部門樹依序執行兩個查詢。
 
 **Feature Branch**: `006-signer-candidate-org-chart`
 

@@ -256,8 +256,8 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 ## Phase 7: Polish & 整合驗證
 
-- [ ] T033 執行 `pnpm -C server lint:check`、`pnpm -C server test`、`pnpm -C server build`、`pnpm -C server test:e2e`，再執行 root `pnpm lint` 與 `pnpm build`，確認 client 沒有變更也能建置。在 `specs/024-portal-hr-source/quickstart.md` 追加實際結果與未驗證的限制。依賴 T001–T032。
-- [ ] T034 檢查 `specs/006-signer-candidate-org-chart/spec.md` 與 `specs/023-portal-user-email/spec.md` 的 Spec 024 註記。實作若改變了取代範圍，同步更新（FR-012）。依賴 T033。
+- [x] T033 執行 `pnpm -C server lint:check`、`pnpm -C server test`、`pnpm -C server build`、`pnpm -C server test:e2e`，再執行 root `pnpm lint` 與 `pnpm build`，確認 client 沒有變更也能建置。在 `specs/024-portal-hr-source/quickstart.md` 追加實際結果與未驗證的限制。依賴 T001–T032。
+- [x] T034 檢查 `specs/006-signer-candidate-org-chart/spec.md` 與 `specs/023-portal-user-email/spec.md` 的 Spec 024 註記。實作若改變了取代範圍，同步更新（FR-012）。依賴 T033。
 
 ---
 

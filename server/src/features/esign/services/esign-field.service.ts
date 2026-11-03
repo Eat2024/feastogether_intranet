@@ -10,6 +10,7 @@ import {
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 import type { FieldPlacementDto } from '../dto/field.dto';
 import type { EsignDocument } from '../entities/esign-document.entity';
+import { DocumentRepository } from '../repositories/document.repository';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
@@ -27,6 +28,7 @@ export class EsignFieldService {
     private readonly pdf: PdfValidationService,
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
+    private readonly documents: DocumentRepository,
   ) {}
 
   replace(
@@ -49,6 +51,7 @@ export class EsignFieldService {
         inputs,
         manager,
       );
+      await this.documents.touchDraftVersion(documentId, manager);
       return fields;
     });
   }

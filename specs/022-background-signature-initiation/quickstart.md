@@ -164,3 +164,10 @@ worker 以每批 500 人預查及 CAS 更新本 attempt 進度，鎖內再次驗
 明細過期後 GET input／issues 回 410 ESIGN_INITIATION_INPUT_EXPIRED，摘要 detailsExpired=true。若要調整人員與期間，重新設定後送新的 initiation；本輪沒有新增前端過期畫面。原 initiation key 仍可重播摘要，已受理 retry 的同 key 在 parent 清理後仍可回原 child。清理與重試並行只會得到完整新 child 或 410，不會產生空名單工作。
 
 `impl/022-07` 專用 DB `feastogether_intranet_test022_t07`／Redis DB7；retention7項、與02–06回歸共6 suites／60 tests通過；unit113 suites／1,175 tests，build通過，lint0errors／272既有warnings。包含30天±1ms、非終態、正式證據保留、並行retry、206列跨批及鎖定parent下一輪補清。無client、schema、環境變數或排程新增。
+
+
+## 草稿版本與保留清理補修驗證（2026-11-03）
+
+`impl/022-integrity` 在專用 `feastogether_intranet_test022_integrity`／Redis DB11，HTTP重現fields／純名單／note／同秒dirty save版本未變，修後12項完整性驗收通過。所有成功草稿修改（同值儲存亦含）於文件鎖內單調推進DB微秒版本；save前raw版本可抵抗ORM整秒回退，save後回傳entity時間重讀DB。忙碌及無效修改不提交版本，worker不在buildFields中途touch，正式成功與非草稿note維持舊規則。
+
+保留清理另以performance_schema捕獲批次IN UPDATE等待不在清單內的已鎖parent；改每批100列交易內逐唯一PK更新後，同DB原timeout案例轉綠。完整7套背景發起回歸72／72、unit113 suites／1,175、build通過，lint0errors／272既有warnings。舊draft-settings內201→202驗收遷移由票08處理；沒有改前端、schema或新增env。

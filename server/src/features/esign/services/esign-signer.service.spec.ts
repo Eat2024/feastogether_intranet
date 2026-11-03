@@ -294,8 +294,39 @@ describe('草稿完整設定', () => {
       watermarkEnabled: false,
       allowReject: false,
     });
+    // DB 邊界替身；版本推進的真 SQL 行為由 integrity e2e 驗證。
+    class DatabaseQuery {
+      select() {
+        return this;
+      }
+      where() {
+        return this;
+      }
+      setLock() {
+        return this;
+      }
+      getRawOne() {
+        return Promise.resolve({ version: '2026-01-01 00:00:00.000000' });
+      }
+      update() {
+        return this;
+      }
+      set() {
+        return this;
+      }
+      setParameters() {
+        return this;
+      }
+      execute() {
+        return Promise.resolve({ affected: 1 });
+      }
+    }
+    const query = new DatabaseQuery();
     const manager = {
       findOne: () => Promise.resolve(document),
+      findOneOrFail: () =>
+        Promise.resolve({ id: document.id, updatedAt: new Date() }),
+      createQueryBuilder: () => query,
       save: (value: EsignDocument) => Promise.resolve(value),
     };
     const service = new EsignSignerService(

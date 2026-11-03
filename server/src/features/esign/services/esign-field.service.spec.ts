@@ -56,6 +56,7 @@ describe('EsignFieldService', () => {
           Readable.from([Buffer.from('pdf')]),
         ),
       } as never,
+      { touchDraftVersion: jest.fn() } as never,
     );
     return { service, fields, access };
   }

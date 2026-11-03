@@ -156,7 +156,7 @@
 - **Rationale**：
   - 這沿用 `EsignMaintenanceScheduler` 的 `upsertJobScheduler` 寫法。
   - 每個 worker 都會 upsert 同一個 scheduler id，Redis 中只會有一份，BullMQ 每次只把 job 交給一個 worker，所以多個 worker 也不會重複執行（SC-006）。
-  - worker 停機時，下一次排程會以延遲 job 的形式留在 Redis，恢復後執行一次。spec 的 edge case 已經同步這個行為。
+  - worker 停機錯過 04:00 時，BullMQ 5.81.5 的 `upsertJobScheduler` 會刪除 scheduler 待執行的 job 並排下一次 04:00，單純 upsert 會丟掉錯過的那次。所以 scheduler 先讀已儲存的 `next`：已到期就跳過 upsert，讓 worker 先執行一次補跑；其餘情況照常 upsert，套用目前設定。spec 的 edge case 已經同步這個行為。
   - 這會是 codebase 中第一個 cron pattern。時區使用 `common/date-time.helper.ts` 的 `TAIPEI_TIME_ZONE_ID`。
 - **Alternatives considered**：
   - `@nestjs/schedule`：要新增 dependency，而且多個 worker 會重複執行。

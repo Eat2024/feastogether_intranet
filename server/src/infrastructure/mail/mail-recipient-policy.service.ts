@@ -24,15 +24,18 @@ export class MailRecipientPolicyService {
 
   /**
    * 每次寄送重新讀取，查詢結果只在本次呼叫共用。
+   * 收件地址須已由寄送邊界正規化（trim、小寫）。
    * 收件人全數命中信箱規則時不查人資來源。
    */
-  async allowedRecipients(emails: readonly string[]): Promise<Set<string>> {
+  async allowedRecipients(recipients: readonly string[]): Promise<Set<string>> {
     try {
       const rules = await this.loadActiveRules();
       const allowed = new Set(
-        emails.filter((email) => rules.emails.has(email)),
+        recipients.filter((recipient) => rules.emails.has(recipient)),
       );
-      const remaining = emails.filter((email) => !allowed.has(email));
+      const remaining = recipients.filter(
+        (recipient) => !allowed.has(recipient),
+      );
       if (!remaining.length) return allowed;
 
       const employeeIds = await this.collectCandidateEmployeeIds(rules);
@@ -98,10 +101,10 @@ export class MailRecipientPolicyService {
   /** 分批取得可信信箱，只保留本次收件人，重複信箱由 Set 去重。 */
   private async matchRecipientEmails(
     employeeIds: ReadonlySet<string>,
-    emails: readonly string[],
+    recipients: readonly string[],
   ): Promise<Set<string>> {
     const ids = [...employeeIds];
-    const requestedEmails = new Set(emails);
+    const requestedEmails = new Set(recipients);
     const addresses = new Set<string>();
     for (let offset = 0; offset < ids.length; offset += 100) {
       const mapped = await this.hr.getStaffEmails(

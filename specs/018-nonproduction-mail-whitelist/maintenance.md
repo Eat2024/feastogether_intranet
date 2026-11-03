@@ -24,7 +24,7 @@ ORDER BY type, value FOR UPDATE;
 
 每次維護皆在同一連線／交易內先查原值並 `FOR UPDATE`，列出預期 key 與影響筆數。以下 `?` 代表 DB 工具的字串參數，不是可直接執行的字面值；員編須傳完整字串，不轉數字、不 trim 或改大小寫；信箱須由維護人先轉為小寫完整地址再傳入。
 
-有效格式由 DB 同時強制（`email` 類型由 [Spec 021](../021-external-mail-whitelist/spec.md) 新增）：`type` 精確為 `department`、`employee` 或 `email`；部門值 1–50 個 ASCII 英數、底線或連字號；員編 1–20 個 ASCII 英數；信箱值為小寫完整地址，最多 255 字元，恰好一個 `@` 且前後非空，不含空白或控制字元。部門與員編不得填空白、換行或 Email。值的大小寫精確區分，含大寫的信箱會被拒絕。
+有效格式由 DB 同時強制（`email` 類型由 [Spec 021](../021-external-mail-whitelist/spec.md) 新增）：`type` 精確為 `department`、`employee` 或 `email`；部門值 1–50 個 ASCII 英數、底線或連字號；員編 1–20 個 ASCII 英數；信箱值為小寫完整地址，最多 255 字元，恰好一個 `@` 且前後非空，不含空白或控制字元。部門與員編不得填空白、換行或 Email。值的大小寫精確區分，含大寫的信箱會被拒絕。DB 不做完整信箱格式驗證，規則值須為寄送端可接受的地址，否則永遠不會命中。
 
 信箱規則範例（僅示意，實際地址不提交 repo）：`type = 'email'`、`value = 'tester@example.test'`。
 

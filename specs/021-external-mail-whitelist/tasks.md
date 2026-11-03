@@ -6,7 +6,7 @@
 
 **Tests**: 測試任務先於對應實作，先確認新案例在尚未實作時失敗。只使用 `feastogether_intranet_test` 前綴資料庫與合成人資／SMTP，不操作 UAT。
 
-**Organization**: 先完成 DB 支援（US3 的資料面），再完成寄送政策（US1、US2）。僅 server，不改 client。T001–T012 已執行並勾選（Ticket 01、02 實作與驗證）；T013 最終 code review 尚未執行。
+**Organization**: 先完成 DB 支援（US3 的資料面），再完成寄送政策（US1、US2）。僅 server，不改 client。T001–T013 已執行並勾選（Ticket 01、02 實作與驗證，T013 code review 修正見 Ticket 02 Comments）。
 
 ## Phase 1: Setup
 
@@ -41,7 +41,7 @@
 
 - [x] T011 [P] 在 `specs/018-nonproduction-mail-whitelist/spec.md`（Assumptions「不新增 email 白名單型別」、FR-002、FR-004、US4-2）、`data-model.md`（「不存 Email」）、`contracts/mail-whitelist.md`（可信收件人政策）相關段落加一行「已由 [Spec 021](../021-external-mail-whitelist/spec.md) 修訂」；不改寫 018 歷史驗證紀錄。
 - [x] T012 執行 [quickstart.md](quickstart.md) 全部指令，記錄實際結果、通過數與未驗證項目於 quickstart；server 使用 `lint:check`。
-- [ ] T013 進行最後 code review（Standards 與 Spec 雙軸），修正確認的發現；逐項核對 spec FR／SC，只勾選實際完成的任務，交付摘要分述後端、migration、文件變更與限制，不部署、不對 UAT 執行 migration。
+- [x] T013 進行最後 code review（Standards 與 Spec 雙軸），修正確認的發現；逐項核對 spec FR／SC，只勾選實際完成的任務，交付摘要分述後端、migration、文件變更與限制，不部署、不對 UAT 執行 migration。
 
 ## Dependencies & Execution Order
 

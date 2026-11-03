@@ -16,7 +16,7 @@
 - [x] OTP e2e：信箱規則命中且人資來源故障時回 200、可驗證、`external_otp.sent` 一筆。
 - [x] Worker e2e：外部催簽命中信箱規則且人資來源故障時為 delivered。
 - [x] Spec 018 的 spec、data-model、contract 相關段落註明已由 Spec 021 修訂，不改寫歷史驗證紀錄。
-- [ ] 執行 021 quickstart 全部指令並記錄結果；完成 Standards／Spec 雙軸 code review 並修正確認的發現。
+- [x] 執行 021 quickstart 全部指令並記錄結果；完成 Standards／Spec 雙軸 code review 並修正確認的發現。
 - [ ] 驗收通過後整合至功能整合分支，追加驗證與 commit 紀錄，再改為 resolved。
 
 ## Comments & Implementation Results
@@ -52,3 +52,32 @@ TDD 紅→綠：
 2. OTP e2e 的 `allow()` 改為可帶 `(type, value)`，預設仍為員編規則；`beforeEach` 另刪除同一信箱規則。合成 `hr.post` 非 jest mock，「人資查詢 0 次」以 `sourceFailed` 時 `post` 必丟錯仍回 200，加上既有 `afterEach` 的 `hr.get` 0 次斷言證明。
 3. Worker e2e 每案使用獨立 schema DB，不需清除；fixture 原有員編規則 `WL0301`，若未短路就會呼叫已設為失敗的 `upstream.post`，案例直接斷言 0 次。
 4. Spec 018 註記：spec 的 US4-2、FR-002、FR-004、Assumptions 各加一行巢狀項目；data-model 除「不存 Email」外，欄位表下也加一行（表中 `type`／`value` 定義同被修訂）；contract 於「可信收件人政策」開頭加一行。018 maintenance 已於 Ticket 01 更新，本票未再修改；018 歷史驗證紀錄未改寫。
+
+### 2026-11-03 Code review 修正（`implement/spec021-review-fixes`）
+
+基準為整合分支 `docs/spec-021-external-mail-whitelist` tip `c1fafec`。只改 server 測試、政策服務命名與文件，不動 client、migration、seed、guarded sender、worker processor 或 OTP service。
+
+Standards 發現與處理：
+
+1. 命名：`allowedRecipients(emails)` 的參數與 `rules.emails` 同名易混。改名為 `recipients`，`matchRecipientEmails()` 參數一併對齊；JSDoc 註明「收件地址須已由寄送邊界正規化（trim、小寫）」。行為不變。
+2. 測試重複：`mail-whitelist-schema.e2e-spec.ts` 自寫的「最後一支 migration」SQL 與 `revertAfter` 相同。`schema-migration.helper.ts` 匯出 `lastMigrationName()`，`revertAfter()` 與回滾測試共用；回滾測試另抽出 `tableDefinitionBefore021()`，主測試只留 down／up 流程。
+3. 測試重複：政策單元測試兩個新案例重複的三行「不查人資」斷言抽成 `expectNoHrLookup()`；worker e2e 的 `manager.save(MailRecipientWhitelist, manager.create(...))`（fixture 員編規則、群發新增規則、信箱規則共三處）抽成 `saveRule()`，remark 統一為「合成規則」。
+
+Spec 發現與處理：
+
+1. FR-010：回滾測試未證明既有規則 id 保留。新增斷言：成功 down 與再 up 後，員編規則 `E001` 的 id 與 down 前相同。紅燈以暫時在 down 後刪除並重新插入 `E001` 確認斷言會失敗（Expected/Received 不同），移除變異後綠燈。
+2. SC-001／FR-004：worker e2e 只涵蓋外部催簽。原案例改為 `it.each(['invitation', 'reminder'])`，兩者皆斷言人資 `post` 0 次、delivered、`external_<kind>.delivered` 稽核一筆。暫時讓政策的信箱規則比對恆為 false 時兩案皆失敗，還原後通過。
+3. Spec 狀態過時：`spec.md` Status 改為 Implemented（未部署）；Assumptions「本次交付僅規格與品質檢查」改為 server 已實作、上版程序待執行。
+4. 行為變更未記載：Edge Cases 補「群發輸入全部不是合法單一信箱時，白名單檢查收到空清單，不查人資即全數 blocked，與單封不合法地址一致；取代先前可能因人資故障記為 check-failed 的結果」，並註明規則表讀取失敗仍為 check-failed。
+5. US3-2 過度承諾：改為只承諾 DB 拒絕列舉的格式錯誤，並補「DB 不做完整信箱格式驗證，規則值須為寄送端可接受的地址，否則永遠不會命中」；`specs/018-nonproduction-mail-whitelist/maintenance.md` 信箱格式段落加註同一句。
+6. US2-2 無 021 專屬測試：不新增，於 quickstart 註明由既有 `guarded-invitation-mail-sender.service.spec.ts`「單一地址正規化後核對並將相同地址交付 adapter」案例涵蓋。
+
+驗證（同步記於 021 quickstart）：
+
+- `pnpm -C server test --runInBand`：109 suites／1,085 tests 通過。
+- `pnpm -C server test:schema`：4 suites／25 tests 通過。
+- `pnpm -C server test:e2e:security`：14 suites／84 tests 通過。
+- `pnpm -C server test:e2e`：34 suites／380 tests 通過，181.167 秒（新增外部邀請案例）。
+- `pnpm -C server lint:check`：0 errors、268 warnings（皆在未變更檔案；本次 5 個 server 檔 ESLint 0 problems）。
+- `pnpm -C server build`：通過。
+- 未執行：021 quickstart「環境上版」三步驟（部署時維運程序）。Status 維持 `claimed`，待整合後改為 resolved。

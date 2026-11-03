@@ -8,18 +8,19 @@
 - 全部命中信箱規則時人資來源丟錯：仍允許。
 - 信箱與員編規則並存：只以未命中地址查人資，結果聯集。
 - 仍有未命中者且人資故障：`MailWhitelistCheckFailedError`。
+- US2-2（大小寫或前後空白不同視為同一地址）：不另增測試，由既有 `guarded-invitation-mail-sender.service.spec.ts`「單一地址正規化後核對並將相同地址交付 adapter」案例涵蓋；政策服務只接收寄送邊界已正規化的地址。
 
 ## Schema
 
 - `email` 合法：一般地址、255 字元地址。
 - `email` 非法：含大寫、前後或中間空白、換行、缺 `@`、兩個 `@`、`@` 開頭或結尾、256 字元。
 - 部門 51 字元、員編 21 字元仍被拒。
-- 有信箱列（含已撤銷）時 down 失敗且資料不變；刪除後 down／up 成功。
+- 有信箱列（含已撤銷）時 down 失敗且資料不變；刪除後 down／up 成功，既有員編規則 id 不變。
 
 ## E2E
 
 - OTP：信箱規則命中、合成人資來源丟錯 → 200、可驗證、`external_otp.sent` 一筆。
-- 外部催簽：信箱規則命中、合成人資來源丟錯 → delivered。
+- 外部邀請與催簽：信箱規則命中、合成人資來源丟錯 → delivered。
 
 ## 指令
 
@@ -50,3 +51,15 @@ pnpm -C server build
 - `pnpm -C server lint:check`：0 errors、268 warnings，皆在未變更檔案；本次變更的 4 個 server 檔另以 ESLint 檢查為 0 problems。
 - `pnpm -C server build`：通過。
 - 未驗證：「環境上版」三步驟（套用 migration、寫入實際信箱、實際寄達）未執行，屬部署時的維運程序；最終 code review（T013）尚未執行。
+
+## 2026-11-03 code review 修正驗證紀錄（T013，`implement/spec021-review-fixes`）
+
+- 環境同上：隔離 MySQL 8.4（`127.0.0.1:13321`）、Redis 7（`127.0.0.1:16321`），合成人資與 fake SMTP，未操作 UAT。
+- 新增斷言：回滾測試在成功 down 與再 up 後斷言既有員編規則 `E001` 的 id 不變（以刪除後重新插入 `E001` 的暫時變異確認會失敗）；worker e2e 的信箱規則命中案例改為同時涵蓋外部邀請與催簽（暫時停用政策的信箱規則比對時兩案皆失敗）。其餘為命名與測試重構，行為不變。
+- `pnpm -C server test --runInBand`：109 suites／1,085 tests 通過。
+- `pnpm -C server test:schema`：4 suites／25 tests 通過。
+- `pnpm -C server test:e2e:security`：14 suites／84 tests 通過。
+- `pnpm -C server test:e2e`：34 suites／380 tests 通過，181.167 秒（新增外部邀請案例，前次為 379）。
+- `pnpm -C server lint:check`：0 errors、268 warnings，皆在未變更檔案；本次變更的 5 個 server 檔以 ESLint 檢查為 0 problems。
+- `pnpm -C server build`：通過。
+- 未驗證：「環境上版」三步驟仍屬部署時的維運程序，未執行。

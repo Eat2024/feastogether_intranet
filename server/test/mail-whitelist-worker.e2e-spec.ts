@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type { Job } from 'bullmq';
-import { DataSource } from 'typeorm';
+import { DataSource, type EntityManager } from 'typeorm';
 import nodemailer, { type SendMailOptions } from 'nodemailer';
 import { SmtpInvitationMailSender } from '#app/infrastructure/mail/smtp-invitation-mail-sender.service';
 import { User } from '#app/features/users/entities/user.entity';
@@ -21,9 +21,24 @@ import { FeastogetherDepartmentService } from '#app/infrastructure/http-client/f
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { GuardedInvitationMailSender } from '#app/infrastructure/mail/guarded-invitation-mail-sender.service';
 import { MailRecipientPolicyService } from '#app/infrastructure/mail/mail-recipient-policy.service';
-import { MailRecipientWhitelist } from '#app/infrastructure/mail/mail-recipient-whitelist.entity';
+import {
+  MailRecipientWhitelist,
+  type MailRecipientWhitelistType,
+} from '#app/infrastructure/mail/mail-recipient-whitelist.entity';
 import { MailRecipientWhitelistRepository } from '#app/infrastructure/mail/mail-recipient-whitelist.repository';
 import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
+
+/** 新增一筆合成白名單規則。 */
+function saveRule(
+  manager: EntityManager,
+  type: MailRecipientWhitelistType,
+  value: string,
+) {
+  return manager.save(
+    MailRecipientWhitelist,
+    manager.create(MailRecipientWhitelist, { type, value, remark: '合成規則' }),
+  );
+}
 
 async function fixture(ds: DataSource) {
   const mysql = new MysqlService(ds);
@@ -79,14 +94,7 @@ async function fixture(ds: DataSource) {
       }),
     ),
   );
-  const rule = await manager.save(
-    MailRecipientWhitelist,
-    manager.create(MailRecipientWhitelist, {
-      type: 'employee',
-      value: 'WL0301',
-      remark: '合成規則',
-    }),
-  );
+  const rule = await saveRule(manager, 'employee', 'WL0301');
   async function batch(
     kind: 'invitation' | 'reminder',
     emails: string[],
@@ -257,40 +265,35 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
     });
   });
 
-  it('外部催簽命中信箱規則時人資來源故障仍 delivered 並寫入成功稽核', async () => {
-    await withFixture(async ({ batch, adapter, manager, upstream }) => {
-      await manager.save(
-        MailRecipientWhitelist,
-        manager.create(MailRecipientWhitelist, {
-          type: 'email',
-          value: 'external@example.test',
-          remark: '合成信箱規則',
-        }),
-      );
-      upstream.post.mockRejectedValue(new Error('合成來源故障'));
-      const work = await batch('reminder', ['external@example.test'], 'email');
-      await work.run();
-      expect(upstream.post).not.toHaveBeenCalled();
-      expect(adapter.deliveries).toEqual([
-        expect.objectContaining({
-          kind: 'reminder',
-          recipientEmail: 'external@example.test',
-        }),
-      ]);
-      expect((await work.logs())[0]).toMatchObject({
-        result: 'delivered',
-        errorCode: null,
-        attemptCount: 1,
-        processingStartedAt: null,
-        leaseToken: null,
-        nextAttemptAt: null,
+  it.each(['invitation', 'reminder'] as const)(
+    '外部 %s 命中信箱規則時人資來源故障仍 delivered 並寫入成功稽核',
+    async (kind) => {
+      await withFixture(async ({ batch, adapter, manager, upstream }) => {
+        await saveRule(manager, 'email', 'external@example.test');
+        upstream.post.mockRejectedValue(new Error('合成來源故障'));
+        const work = await batch(kind, ['external@example.test'], 'email');
+        await work.run();
+        expect(upstream.post).not.toHaveBeenCalled();
+        expect(adapter.deliveries).toEqual([
+          expect.objectContaining({
+            recipientEmail: 'external@example.test',
+          }),
+        ]);
+        expect((await work.logs())[0]).toMatchObject({
+          result: 'delivered',
+          errorCode: null,
+          attemptCount: 1,
+          processingStartedAt: null,
+          leaseToken: null,
+          nextAttemptAt: null,
+        });
+        expect(await work.counts()).toEqual({ delivered: 1 });
+        expect((await work.events()).map((event) => event.eventType)).toEqual([
+          `external_${kind}.delivered`,
+        ]);
       });
-      expect(await work.counts()).toEqual({ delivered: 1 });
-      expect((await work.events()).map((event) => event.eventType)).toEqual([
-        'external_reminder.delivered',
-      ]);
-    });
-  });
+    },
+  );
 
   it.each([
     ['invitation', 'user'],
@@ -416,14 +419,7 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
         'blocked@example.test',
       ]);
       await work.run();
-      await manager.save(
-        MailRecipientWhitelist,
-        manager.create(MailRecipientWhitelist, {
-          type: 'employee',
-          value: 'WL0302',
-          remark: '明確新增合成規則',
-        }),
-      );
+      await saveRule(manager, 'employee', 'WL0302');
       await work.run();
       expect(sendGroup).toHaveBeenCalledTimes(1);
       expect(await work.counts()).toEqual({ unknown: 1, skipped: 1 });

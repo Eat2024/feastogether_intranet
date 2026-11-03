@@ -28,6 +28,16 @@ function setup() {
   return { service, rules, departments, upstream };
 }
 
+/** 組織樹、員工信箱與逐人資格皆未查詢。 */
+function expectNoHrLookup({
+  departments,
+  upstream,
+}: Pick<ReturnType<typeof setup>, 'departments' | 'upstream'>) {
+  expect(departments.getOrgChart).not.toHaveBeenCalled();
+  expect(upstream.post).not.toHaveBeenCalled();
+  expect(upstream.get).not.toHaveBeenCalled();
+}
+
 describe('寄信收件人政策', () => {
   it('額外員編只需可信信箱，資格來源不可用仍允許，不查組織樹或逐人資格', async () => {
     const { service, departments, upstream } = setup();
@@ -57,9 +67,7 @@ describe('寄信收件人政策', () => {
         'tester1@example.test',
       ]),
     ).resolves.toEqual(new Set(['tester@example.test']));
-    expect(departments.getOrgChart).not.toHaveBeenCalled();
-    expect(upstream.post).not.toHaveBeenCalled();
-    expect(upstream.get).not.toHaveBeenCalled();
+    expectNoHrLookup({ departments, upstream });
   });
 
   it('收件人全數命中信箱規則時不查人資來源，來源故障仍允許', async () => {
@@ -74,9 +82,7 @@ describe('寄信收件人政策', () => {
     await expect(
       service.allowedRecipients(['tester@example.test']),
     ).resolves.toEqual(new Set(['tester@example.test']));
-    expect(departments.getOrgChart).not.toHaveBeenCalled();
-    expect(upstream.post).not.toHaveBeenCalled();
-    expect(upstream.get).not.toHaveBeenCalled();
+    expectNoHrLookup({ departments, upstream });
   });
 
   it('信箱與員編規則並存時，未命中信箱規則者沿用人資解析並取聯集', async () => {

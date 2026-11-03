@@ -101,3 +101,14 @@ Network 確認按發起後沒有先打整份 resolutions，不呼叫 detail 等�
 在受控環境先 migration，再於發起入口維護窗口協調 worker／server／client 更新；舊頁缺key顯示重新整理提示。清點queued／processing與工作成功後的通知狀態。
 
 回退前停止新受理並處理非終態工作；不能直接部署沒有草稿busy guard的舊server。保留工作表；down遇非空表必須拒絕。所有結果以 [契約](contracts/background-initiation.md) 與 [資料模型](data-model.md) 為準。
+
+## Ticket 01 實作驗證（2026-11-03）
+
+- 基準：`eee0890`（程式基準 `4b79d08`，已合併 Spec 023 的 `1ab6b99`）。本機 UserRepository 每 500 筆查詢；發起信箱只讀本機主檔，signer／notification 既有 250 筆批次寫入，未改回 HR 查詢。
+- Worktree／分支：`feastogether_intranet-022-01`／`impl/022-01`。使用本次專用 MySQL 13322、Redis 16322，DB `feastogether_intranet_test022_t01`、Redis DB 1；`.env.test` 未提交。合成資料與 fake mail，沒有使用 UAT。
+- 已核准測試 seam：正式發起 service 的呼叫端交易／actor，以及 HTTP 與真實隔離 DB 的原子性。先新增 core seam 測試，因 `initiateInTransaction` 尚不存在失敗，再完成拆分；5 個單元案例通過。
+- `initiateInTransaction(input, manager)` 只使用傳入 manager，回傳 document／notificationJobs，不自行 commit 或 enqueue。原 HTTP 包裝沿用既有結果，於交易提交後才 enqueue。
+- `core-esign-flow.e2e-spec.ts` 完整 25／25 通過，新增「呼叫端於核心完成後拋錯」驗證：原草稿／欄位／名單恢復且沒有入列；移除不適用的 document updatedBy 斷言後，再跑該原子案例通過。
+- `pnpm -C server build` 通過；`lint:check` 0 errors／272 既有 warnings。無 client、migration 或環境設定變更。
+- Actor 邊界：文件 entity 只有 createdByUserId，沒有 updatedByUserId 欄位，故不新增 schema；核心的 signer 更新、notification notifiedByUserId 與 audit actorUserId 都明確來自 input.creatorUserId。後續 worker 必須傳入原建立人，不依賴 HTTP CLS。
+- 這一票只完成核心重構，尚未啟用背景受理或 busy guard；後續票驗收不能由本節推定通過。

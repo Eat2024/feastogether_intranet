@@ -58,95 +58,100 @@ export class EsignInitiationService {
   ) {}
 
   async initiate(input: InitiateDocumentInput) {
-    this.validateSigningPeriod(input);
-    const userIds = await this.prepareEmployeeIds(input);
-    const result = await this.mysql.transaction(async (manager) => {
-      const lockedUsers = await this.employeeEmails.resolveForInitiation(
-        userIds,
-        input.creatorUserId,
-        manager,
-      );
-      const document = await this.access.checkAndLockDraftDoc(
-        input.documentId,
-        input.creatorUserId,
-        manager,
-      );
-      const preparedSigners = await this.signerService.prepareSigners(
-        document,
-        input.creatorUserId,
-        input.signers,
-        manager,
-        lockedUsers,
-      );
-      for (const signer of preparedSigners) {
-        if (signer.signerType !== 'user') continue;
-        const fixed = signer.userId
-          ? lockedUsers.get(Number(signer.userId))
-          : undefined;
-        if (!fixed || fixed.empid !== signer.empidSnapshot)
-          throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED);
-        signer.email = fixed.email ?? null;
-      }
-      const { fields, sourceMetadata } = await this.fieldService.buildFields(
-        document,
-        input.creatorUserId,
-        input.fields,
-        manager,
-      );
-      this.validateSigningAssignments(
-        document,
-        preparedSigners,
-        fields,
-        sourceMetadata.pageCount,
-      );
-      this.prepareInvitationTokens(input, preparedSigners);
-      await this.signers.deleteDraftSigners(document.id, manager);
-      const signers = await this.signers.insertMany(preparedSigners, manager);
-      const snapshot = this.buildSigningSnapshot(
-        input,
-        document,
-        signers,
-        fields,
-        sourceMetadata,
-      );
-      const initiatedAt = new Date();
-      await this.activateDocument(
-        input,
-        document,
-        snapshot,
-        initiatedAt,
-        manager,
-      );
-      const notificationJobs = await this.createInvitationNotifications(
-        input,
-        document.id,
-        signers,
-        initiatedAt,
-        manager,
-      );
-      await this.recordInitiationAudit(
-        input,
-        document,
-        signers,
-        snapshot.consentVersion,
-        initiatedAt,
-        manager,
-      );
-      return { document, notificationJobs };
-    });
-
+    const result = await this.mysql.transaction((manager) =>
+      this.initiateInTransaction(input, manager),
+    );
     // 通知工作須在交易提交後才入列。
     await this.jobs.enqueueInvitations(...result.notificationJobs);
     return result.document;
   }
 
+  /** 呼叫端負責交易生命週期與提交後入列；正式資料只寫入傳入的交易。 */
+  async initiateInTransaction(
+    input: InitiateDocumentInput,
+    manager: EntityManager,
+  ) {
+    this.validateSigningPeriod(input);
+    const userIds = await this.prepareEmployeeIds(input, manager);
+    const lockedUsers = await this.employeeEmails.resolveForInitiation(
+      userIds,
+      input.creatorUserId,
+      manager,
+    );
+    const document = await this.access.checkAndLockDraftDoc(
+      input.documentId,
+      input.creatorUserId,
+      manager,
+    );
+    const preparedSigners = await this.signerService.prepareSigners(
+      document,
+      input.creatorUserId,
+      input.signers,
+      manager,
+      lockedUsers,
+    );
+    for (const signer of preparedSigners) {
+      if (signer.signerType !== 'user') continue;
+      const fixed = signer.userId
+        ? lockedUsers.get(Number(signer.userId))
+        : undefined;
+      if (!fixed || fixed.empid !== signer.empidSnapshot)
+        throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED);
+      signer.email = fixed.email ?? null;
+    }
+    const { fields, sourceMetadata } = await this.fieldService.buildFields(
+      document,
+      input.creatorUserId,
+      input.fields,
+      manager,
+    );
+    this.validateSigningAssignments(
+      document,
+      preparedSigners,
+      fields,
+      sourceMetadata.pageCount,
+    );
+    this.prepareInvitationTokens(input, preparedSigners);
+    await this.signers.deleteDraftSigners(document.id, manager);
+    const signers = await this.signers.insertMany(preparedSigners, manager);
+    const snapshot = this.buildSigningSnapshot(
+      input,
+      document,
+      signers,
+      fields,
+      sourceMetadata,
+    );
+    const initiatedAt = new Date();
+    await this.activateDocument(
+      input,
+      document,
+      snapshot,
+      initiatedAt,
+      manager,
+    );
+    const notificationJobs = await this.createInvitationNotifications(
+      input,
+      document.id,
+      signers,
+      initiatedAt,
+      manager,
+    );
+    await this.recordInitiationAudit(
+      input,
+      document,
+      signers,
+      snapshot.consentVersion,
+      initiatedAt,
+      manager,
+    );
+    return { document, notificationJobs };
+  }
+
   private async prepareEmployeeIds(
     input: InitiateDocumentInput,
+    manager: EntityManager,
   ): Promise<string[]> {
-    const document = await this.documents.findById(
-      input.documentId,
-      this.mysql.getManager(),
-    );
+    const document = await this.documents.findById(input.documentId, manager);
     this.access.checkEsignDraftCreator(document, input.creatorUserId);
     if (!Array.isArray(input.signers) || !input.signers.length)
       throw new AppException(...AppErrors.ESIGN_SIGNER_REQUIRED);

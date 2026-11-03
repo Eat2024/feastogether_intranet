@@ -49,19 +49,19 @@
 
 獨立驗收：同來源重跑零變更；原值衝突、被使用的新帳號回復一律拒絕，歷史不改。
 
-- [ ] T019 [US4] 在 server/src/maintenance/portal-users.ts 實作 no-op與原值並行防護、rollback-preview／rollback；回復時核對現值、FK／session／audit引用，無法證明安全則拒絕整批，不刪已使用帳號；commit後artifact失敗回報待人工對帳。
-- [ ] T020 [P] [US4] 在 server/test/portal-user-import.e2e-spec.ts 加入同批重跑updated_at不變、預覽後登入更新／新增同員編競態、回復原值、安全新增刪除與引用／後續修改拒絕、commit後檔案失敗測試。
+- [x] T019 [US4] 在 server/src/maintenance/portal-users.ts 實作 no-op與原值並行防護、rollback-preview／rollback；回復時核對現值、FK／session／audit引用，無法證明安全則拒絕整批，不刪已使用帳號；commit後artifact失敗回報待人工對帳。
+- [x] T020 [P] [US4] 在 server/test/portal-user-import.e2e-spec.ts 加入同批重跑updated_at不變、預覽後登入更新／新增同員編競態、回復原值、安全新增刪除與引用／後續修改拒絕、commit後檔案失敗測試。
 - [x] T021 [P] [US4] 在 server/src/features/auth/services/auth.service.spec.ts 與 server/test/internal-email-initiation.e2e-spec.ts 驗證登入save不清空email、一般回應不洩漏、匯入更新不動歷史快照及通知固定email。
-- [ ] T022 [US4] 新增 server/docs/portal-user-import.md 維護runbook，記錄來源只讀取得、0／1狀態、預覽／apply／回復命令、排除名單理由、私有檔案權限與清理、無排程及離職另行管理；不得寫真實員編／密碼。
+- [x] T022 [US4] 新增 server/docs/portal-user-import.md 維護runbook，記錄來源只讀取得、0／1狀態、預覽／apply／回復命令、排除名單理由、私有檔案權限與清理、無排程及離職另行管理；不得寫真實員編／密碼。
 
 ## Phase 7: Polish 與整合交接
 
 所有 stories 完成後才作完整交接。
 
 - [x] T023 在 specs/016-internal-portal-signing/、specs/018-nonproduction-mail-whitelist/ 與 specs/021-external-mail-whitelist/ 的spec／contract標示023來源決策取代範圍，保留歷史驗證紀錄；同步 server/docs/internal-electronic-signature-data-dictionary.md 資料來源說明。
-- [ ] T024 依 specs/023-portal-user-email/quickstart.md 執行server lint/test/build與e2e/security、client lint/build及root檢查，修正此次變更引起的失敗；記錄未執行限制。
-- [ ] T025 在 server/test/internal-email-capacity.e2e-spec.ts 與 specs/023-portal-user-email/quickstart.md 記錄同環境5001人前後各三次各階段時間、DB查詢數、HR零請求；驗收組織樹／登入例外與缺人UI阻止送出。
-- [ ] T026 於 .scratch/023-portal-user-email/issues/06-verification-handoff.md 記錄驗收、code review、整合commit及維運更新責任／時機、應用回滾順序；未部署項目明列，不自行寄信或發布。
+- [x] T024 依 specs/023-portal-user-email/quickstart.md 執行server lint/test/build與e2e/security、client lint/build及root檢查，修正此次變更引起的失敗；記錄未執行限制。
+- [x] T025 在 server/test/internal-email-capacity.e2e-spec.ts 與 specs/023-portal-user-email/quickstart.md 記錄同環境5001人前後各三次各階段時間、DB查詢數、HR零請求；驗收組織樹／登入例外與缺人UI阻止送出。
+- [x] T026 於 .scratch/023-portal-user-email/issues/06-verification-handoff.md 記錄驗收、code review、整合commit及維運更新責任／時機、應用回滾順序；未部署項目明列，不自行寄信或發布。
 
 ## Dependencies & Execution Order
 

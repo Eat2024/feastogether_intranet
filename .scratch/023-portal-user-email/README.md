@@ -1,6 +1,6 @@
 # Spec 023 本機 tickets
 
-所有 tickets 初始 ready-for-agent；必須先滿足 Blocked by。未建立 GitHub Issues、未發布PR。
+六張 tickets 已驗收並整合於 feat/023-portal-user-email；狀態皆為 resolved。未建立 GitHub Issues、未發布 PR 或部署。
 
 | Ticket | Tasks | Blocked by |
 | --- | --- | --- |

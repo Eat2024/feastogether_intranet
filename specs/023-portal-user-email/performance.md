@@ -47,3 +47,24 @@
 - 結構化彙總：`/tmp/spec023-benchmark-results.json`；彙總程式：`/tmp/spec023-benchmark-summary.py`。baseline 測試差異保留於 `/tmp/spec023-benchmark-baseline-instrumentation.patch`。
 - 測試：`server/test/internal-email-capacity.e2e-spec.ts`，指令 `pnpm -C server test:e2e --runTestsByPath test/internal-email-capacity.e2e-spec.ts -t '5001|6000'`。使用現有 DB／Redis 環境設定指向隔離測試資源；不得指向 UAT 或 production。
 - baseline 的改動限測試量測 instrumentation、6,000→5,001 的 fixture／尾批斷言；產品程式未修改。早期尾批索引仍指向第 6,000 人的失敗／中止 log 不列入結果。
+
+## 發起 HTTP 的單次細項追蹤
+
+使用者追問 N+1 後，另以同樣 5,001 人增加方法層級 spy，量測不重疊區間。這是單次診斷，不加入前述三輪中位數；額外 instrumentation、執行時負載不同，總時間為 19,110 ms，不能拿它與 15,088 ms 直接當作效能退步。
+
+| 步驟 | 呼叫次數 | 時間 ms | DB query |
+|---|---:|---:|---:|
+| 員工與 email 批次查核 | 1 | 53 | 11 |
+| 簽署人第一次保存 | 1 | 4,424 | 10,002 |
+| 欄位建立 | 1 | 7 | 4 |
+| 簽署人第二次保存 | 1 | 2,983 | 10,023 |
+| 通知紀錄保存 | 1 | 2,933 | 10,002 |
+| 稽核事件追加 | 5,002 | 8,095 | 20,008 |
+| 其他（授權、文件、入列、回應等） | — | 615 | 23 |
+| 合計 | — | 19,110 | 50,073 |
+
+主要的逐人重複讀寫在 `EsignAuditService.append`：每筆重新鎖文件、讀最新事件，再追加稽核。發起包含 5,001 筆 signer.assigned 與 1 筆 document.initiated。SignerRepository.saveMany 的 TypeORM save(array, {chunk:250}) 也不代表單一批次 INSERT，且發起保存簽署人兩輪；通知同樣使用 save(array)。
+
+後續批次寫入優化應維持完整稽核與交易：單次鎖文件並取得起始 hash，在記憶體按順序計算 hash 鏈後批次追加；簽署人預先準備固定 email、通知批次保存並核對生成 ID／快照／hooks。不可把稽核迴圈直接改 Promise.all。本次僅量測與記錄，沒有擴大修改這些寫入語意，也未完成 Spec022 背景發起。
+
+診斷 log：`/tmp/spec023-initiation-breakdown.log`；測試輸出標記 `SPEC023_INITIATION_BREAKDOWN`。

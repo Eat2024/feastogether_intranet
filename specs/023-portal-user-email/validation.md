@@ -20,13 +20,15 @@
 
 1. 完整 e2e 抓到草稿鎖文件後等待 users 外鍵、發起鎖 users 後等待文件的 deadlock。InnoDB 確認後統一先排序鎖 users、再鎖文件；保留原「發起必須成功」測試期待。
 2. Review 發現來源取得時間不能等同預覽執行時間；工具改為要求顯式提供來源取得時間，保存在預覽與完整性摘要。
-3. 舊測試由 HR stub 提供員工信箱，現改為事前建立本機合成 email，避免把不再使用的 API mock 當成本機資料已存在。
+3. 回復工具 review 發現非 FK 引用的 gap lock 只能延後寫入，不能阻止刪除後插入孤兒引用。現在偵測到非 FK 使用者引用欄位，即使空表，也拒絕含新增帳號的自動回復；純既有帳號回復仍可執行。新增回歸測試通過。
+4. 舊測試由 HR stub 提供員工信箱，現改為事前建立本機合成 email，避免把不再使用的 API mock 當成本機資料已存在。
 
 ## Review
 
 - 核心流程：檢查解析精確匹配、交易快照、隱私、白名單及匯入原值防護；來源時間問題已列入修正。
 - 維護入口：TS 與 compiled CLI 的無效命令實測均非零退出，未啟動 HTTP／worker；檢查私人 artifact、目標 DB 綁定、來源 hash、保護帳號及 no-op。
-- 最終回復工具與整合檢查結果在完成後補入本紀錄。
+- 回復工具已覆核完整原值、微秒時間、引用競態與提交後 artifact 失敗；非 FK 引用缺口已修正並通過 7 項回復 e2e。
+- 維護解析單元 16 項、匯入 e2e 8 項、回復 e2e 7 項通過。
 
 ## 維運交接
 
@@ -36,3 +38,14 @@
 - server／worker 必須同版本部署；同步上版 client 的不可用提示。
 - 應用回滾先回復 server／worker 與 client 版本，保留 users.email、帳號及歷史資料。資料回復是另一個受控動作，依維護 runbook 執行，不能用刪帳號取代應用回滾。
 - 私人原值檔包含員工資料，只保存在 repository 外的 0700 目錄／0600 檔案；保存期限到期且確認不再需要回復後，依組織規定清理。
+
+## 最終檢查
+
+- server 單元測試：112 suites／1,168 tests 通過。
+- root pnpm build（server＋client）：通過。
+- root pnpm lint（server＋client）：通過；server 0 errors、269 warnings，未以本任務清理無關既有警告。
+- 完整 e2e：36 suites／398 tests 通過（174.253 秒）。
+- Security e2e：14 suites／84 tests 通過（9.338 秒）。
+- 5,001 人前後各三輪：六輪全部通過，詳見 [performance.md](performance.md)；沒有真實 HR 網路／SMTP，不能推算 UAT 加速倍數。
+- 程式整合 commit：`32f72a7`；基礎與規劃 commit：`e14b26a`。
+- Schema 未變更，因此不新增 migration 或執行不相關的 schema 變更流程；本次真實 DB 整合測試仍由既有 migration 建立 schema。

@@ -92,6 +92,7 @@ describe('e-sign schema migrations', () => {
           'id',
         ]);
         expect(await ds.query(evidenceSql)).toEqual(before);
+        await revertAfter(ds, 'DepartmentDocumentVisibility1793664000000');
         await ds.undoLastMigration();
         expect(await hasColumn(ds, database, 'users', 'department_code')).toBe(
           false,

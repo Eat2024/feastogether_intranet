@@ -79,6 +79,7 @@ describe('buildMysqlOptions', () => {
       'ExportHistory1792454406000',
       'MailRecipientWhitelist1793577600000',
       'DepartmentDocumentVisibility1793664000000',
+      'MailWhitelistEmailRule1793664001000',
     ]);
   });
 

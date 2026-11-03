@@ -466,16 +466,16 @@ DROP TABLE IF EXISTS `mail_recipient_whitelist`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `mail_recipient_whitelist` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '白名單規則流水號',
-  `type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL COMMENT '規則類型：department 部門、employee 員工',
-  `value` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL COMMENT '完整部門代碼或員編，保留前導零',
+  `type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL COMMENT '規則類型：department 部門、employee 員工、email 收件信箱',
+  `value` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL COMMENT '完整部門代碼、員編或小寫收件信箱',
   `remark` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '維護備註',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_mail_recipient_whitelist_type_value` (`type`,`value`),
-  CONSTRAINT `chk_mail_recipient_whitelist_type` CHECK ((`type` in (_utf8mb4'department',_utf8mb4'employee'))),
-  CONSTRAINT `chk_mail_recipient_whitelist_value` CHECK ((((`type` = _utf8mb4'department') and (char_length(`value`) between 1 and 50) and (not(regexp_like(`value`,_utf8mb4'[^A-Za-z0-9_-]',_utf8mb4'c')))) or ((`type` = _utf8mb4'employee') and (char_length(`value`) between 1 and 20) and (not(regexp_like(`value`,_utf8mb4'[^A-Za-z0-9]',_utf8mb4'c'))))))
+  CONSTRAINT `chk_mail_recipient_whitelist_type` CHECK ((`type` in (_utf8mb4'department',_utf8mb4'employee',_utf8mb4'email'))),
+  CONSTRAINT `chk_mail_recipient_whitelist_value` CHECK ((((`type` = _utf8mb4'department') and (char_length(`value`) between 1 and 50) and (not(regexp_like(`value`,_utf8mb4'[^A-Za-z0-9_-]',_utf8mb4'c')))) or ((`type` = _utf8mb4'employee') and (char_length(`value`) between 1 and 20) and (not(regexp_like(`value`,_utf8mb4'[^A-Za-z0-9]',_utf8mb4'c')))) or ((`type` = _utf8mb4'email') and (`value` = lower(`value`)) and regexp_like(`value`,_utf8mb4'^[^@[:space:][:cntrl:]]+@[^@[:space:][:cntrl:]]+\\z',_utf8mb4'c'))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='非正式環境寄信收件人白名單';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `users`;

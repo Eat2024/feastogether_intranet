@@ -1,7 +1,7 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import { AuditableEntity } from '#app/infrastructure/database/auditable.entity';
 
-export type MailRecipientWhitelistType = 'department' | 'employee';
+export type MailRecipientWhitelistType = 'department' | 'employee' | 'email';
 
 @Entity({
   name: 'mail_recipient_whitelist',
@@ -18,15 +18,15 @@ export class MailRecipientWhitelist extends AuditableEntity {
     type: 'varchar',
     length: 20,
     collation: 'utf8mb4_0900_bin',
-    comment: '規則類型：department 部門、employee 員工',
+    comment: '規則類型：department 部門、employee 員工、email 收件信箱',
   })
   type!: MailRecipientWhitelistType;
 
   @Column({
     type: 'varchar',
-    length: 50,
+    length: 255,
     collation: 'utf8mb4_0900_bin',
-    comment: '完整部門代碼或員編，保留前導零',
+    comment: '完整部門代碼、員編或小寫收件信箱',
   })
   value!: string;
 

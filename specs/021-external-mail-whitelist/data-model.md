@@ -21,13 +21,14 @@ CONSTRAINT `chk_mail_recipient_whitelist_type`
 CONSTRAINT `chk_mail_recipient_whitelist_value` CHECK (
   (`type` = 'department' AND CHAR_LENGTH(`value`) BETWEEN 1 AND 50 AND NOT REGEXP_LIKE(`value`, '[^A-Za-z0-9_-]', 'c'))
   OR (`type` = 'employee' AND CHAR_LENGTH(`value`) BETWEEN 1 AND 20 AND NOT REGEXP_LIKE(`value`, '[^A-Za-z0-9]', 'c'))
-  OR (`type` = 'email' AND `value` = LOWER(`value`) AND REGEXP_LIKE(`value`, '^[^@[:space:][:cntrl:]]+@[^@[:space:][:cntrl:]]+$', 'c'))
+  OR (`type` = 'email' AND `value` = LOWER(`value`) AND REGEXP_LIKE(`value`, '^[^@[:space:][:cntrl:]]+@[^@[:space:][:cntrl:]]+\\z', 'c'))
 )
 ```
 
 - 長度上限由欄位 VARCHAR(255) 保證，email 分支不再重複檢查。
 - `value = LOWER(value)` 在 bin collation 下區分大小寫，含大寫即違反。
-- 實作時以 schema 測試確認 MySQL 8.4 的 ICU regex 支援巢狀 `[:space:]`／`[:cntrl:]`；若不支援，改為等價的明確字元集合。
+- 已於 MySQL 8.4.11 實測（Ticket 01）：ICU regex 支援巢狀 `[:space:]`／`[:cntrl:]`（空白、Tab、全形空白、BEL 皆被拒），不需改用明確字元集合。
+- 結尾錨點用 `\z` 而非 `$`：ICU 的 `$` 在結尾換行前也成立，`'a@example.test\n'` 會被誤收。SQL 字串內寫作 `'\\z'`。
 
 ## 唯一鍵
 

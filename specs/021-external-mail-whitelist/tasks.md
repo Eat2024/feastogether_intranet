@@ -10,17 +10,17 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 依 `specs/018-nonproduction-mail-whitelist/quickstart.md` 前置條件準備隔離 MySQL 8.4 與 Redis（DB 前綴 `feastogether_intranet_test`、Redis DB 非 0），確認 `pnpm -C server test:schema` 在變更前通過，作為基線。
+- [x] T001 依 `specs/018-nonproduction-mail-whitelist/quickstart.md` 前置條件準備隔離 MySQL 8.4 與 Redis（DB 前綴 `feastogether_intranet_test`、Redis DB 非 0），確認 `pnpm -C server test:schema` 在變更前通過，作為基線。
 
 ## Phase 2: Foundational — DB 支援信箱規則（Ticket 01）
 
 **Purpose**: 讓 `mail_recipient_whitelist` 能存放並驗證 `email` 規則；政策尚未使用，寄送行為不變。
 
-- [ ] T002 [US3] 在 `server/test/mail-whitelist-schema.e2e-spec.ts` 先改寫與新增案例：`['email', 'a@example.test']` 由非法改合法；`email` 合法值含 255 字元地址；非法值含大寫、前後與中間空白、換行、缺 `@`、兩個 `@`、`@` 開頭或結尾、256 字元；部門 51 字元、員編 21 字元仍被拒；有 `email` 列（含已撤銷）時 `MailWhitelistEmailRule1793664001000` 的 down 失敗且資料不變，刪除後 down／up 成功。於 `server/src/infrastructure/database/mysql/mysql.options.spec.ts` 的 migration 清單加入新名稱。確認新案例失敗。
-- [ ] T003 [US3] 新增 `server/src/infrastructure/database/migrations/1793664001000-MailWhitelistEmailRule.ts`，依 [data-model.md](data-model.md) 以單一 `ALTER TABLE` 重建兩條同名 CHECK、放寬 `value` 至 255 並更新 `type`／`value` 註解；down 還原原定義、不刪資料。於 `server/src/infrastructure/database/mysql/mysql.options.ts` 註冊。若 MySQL 拒絕同句同名刪加或巢狀 POSIX 字元類，依 plan 改為兩句或明確字元集合，並記錄於本票。
-- [ ] T004 [US3] 更新 `server/src/infrastructure/mail/mail-recipient-whitelist.entity.ts`：`MailRecipientWhitelistType` 加 `'email'`，`value` length 255，註解與 migration 一致。
-- [ ] T005 [US3] 以隔離 DB 套用全部 migration 後依 018 方式 mysqldump 重新產生 `server/src/infrastructure/database/schema.sql`，確認 diff 只有白名單表；`pnpm -C server test:schema` 全數通過（含既有 `revertAfter` 經過新 migration down）。
-- [ ] T006 [US3] 更新 `specs/018-nonproduction-mail-whitelist/maintenance.md`：有效格式加入 `email`（小寫完整地址、最多 255 字元），新增範例只用 `example.test`；回滾段落加入「回滾 021 migration 前須備份並刪除所有 `type = 'email'` 列（含已撤銷）」。
+- [x] T002 [US3] 在 `server/test/mail-whitelist-schema.e2e-spec.ts` 先改寫與新增案例：`['email', 'a@example.test']` 由非法改合法；`email` 合法值含 255 字元地址；非法值含大寫、前後與中間空白、換行、缺 `@`、兩個 `@`、`@` 開頭或結尾、256 字元；部門 51 字元、員編 21 字元仍被拒；有 `email` 列（含已撤銷）時 `MailWhitelistEmailRule1793664001000` 的 down 失敗且資料不變，刪除後 down／up 成功。於 `server/src/infrastructure/database/mysql/mysql.options.spec.ts` 的 migration 清單加入新名稱。確認新案例失敗。
+- [x] T003 [US3] 新增 `server/src/infrastructure/database/migrations/1793664001000-MailWhitelistEmailRule.ts`，依 [data-model.md](data-model.md) 以單一 `ALTER TABLE` 重建兩條同名 CHECK、放寬 `value` 至 255 並更新 `type`／`value` 註解；down 還原原定義、不刪資料。於 `server/src/infrastructure/database/mysql/mysql.options.ts` 註冊。若 MySQL 拒絕同句同名刪加或巢狀 POSIX 字元類，依 plan 改為兩句或明確字元集合，並記錄於本票。
+- [x] T004 [US3] 更新 `server/src/infrastructure/mail/mail-recipient-whitelist.entity.ts`：`MailRecipientWhitelistType` 加 `'email'`，`value` length 255，註解與 migration 一致。
+- [x] T005 [US3] 以隔離 DB 套用全部 migration 後依 018 方式 mysqldump 重新產生 `server/src/infrastructure/database/schema.sql`，確認 diff 只有白名單表；`pnpm -C server test:schema` 全數通過（含既有 `revertAfter` 經過新 migration down）。
+- [x] T006 [US3] 更新 `specs/018-nonproduction-mail-whitelist/maintenance.md`：有效格式加入 `email`（小寫完整地址、最多 255 字元），新增範例只用 `example.test`；回滾段落加入「回滾 021 migration 前須備份並刪除所有 `type = 'email'` 列（含已撤銷）」。
 
 **Checkpoint**: Ticket 01 可獨立合併；寄信結果與變更前相同，只是 DB 可寫入信箱規則。
 

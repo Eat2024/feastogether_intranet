@@ -69,6 +69,7 @@ specs/021-external-mail-whitelist/
 | `server/src/infrastructure/mail/mail-recipient-policy.service.spec.ts` | 新增信箱規則案例。 |
 | `server/src/infrastructure/database/mysql/mysql.options.spec.ts` | migration 清單加新名稱。 |
 | `server/test/mail-whitelist-schema.e2e-spec.ts` | `email` 由非法改合法；新增信箱格式正負向與回滾案例。 |
+| `server/test/schema-migration.e2e-spec.ts` | 部門 migration 案例先 `revertAfter` 固定在自身版本再 down（新 migration 成為最新後必要，Ticket 01 補列）。 |
 | `server/test/mail-whitelist-otp.e2e-spec.ts` | 信箱規則命中且人資來源故障時 OTP 仍可寄出並驗證。 |
 | `server/test/mail-whitelist-worker.e2e-spec.ts` | 外部催簽命中信箱規則時人資來源故障仍 delivered。 |
 | `specs/018-nonproduction-mail-whitelist/{spec.md,data-model.md,contracts/mail-whitelist.md,maintenance.md}` | 加註被 021 修訂之處；maintenance 補信箱規則格式、範例與回滾前置步驟。 |
@@ -79,7 +80,7 @@ specs/021-external-mail-whitelist/
 
 ## Implementation Design
 
-1. **Migration up**：單一 `ALTER TABLE` 依序 `DROP CHECK` 兩條、`MODIFY type`（只改註解）、`MODIFY value VARCHAR(255)`、`ADD CONSTRAINT` 同名兩條 CHECK。MySQL 8 的 InnoDB DDL 為原子操作，失敗不會留下半套。若 MySQL 拒絕同一 statement 內同名先刪後加，改為兩個 statement（先刪與改欄位、再加回），以 schema 測試確認。定義見 [data-model.md](data-model.md)。
+1. **Migration up**：單一 `ALTER TABLE` 依序 `DROP CHECK` 兩條、`MODIFY type`（只改註解）、`MODIFY value VARCHAR(255)`、`ADD CONSTRAINT` 同名兩條 CHECK。MySQL 8 的 InnoDB DDL 為原子操作，失敗不會留下半套。若 MySQL 拒絕同一 statement 內同名先刪後加，改為兩個 statement（先刪與改欄位、再加回），以 schema 測試確認。定義見 [data-model.md](data-model.md)。實測（Ticket 01，MySQL 8.4.11）：同句同名刪加可行，維持單一 `ALTER TABLE`；巢狀 POSIX 字元類可用，但 regex 結尾錨點須用 `\z`（ICU 的 `$` 會在結尾換行前成立）。
 2. **Migration down**：同樣單一 `ALTER TABLE` 還原 VARCHAR(50) 與原 CHECK。仍有 `email` 列（含已撤銷）時，MySQL 會因 CHECK 拒絕而整句失敗，不靜默刪資料；維護人須先備份並刪除信箱規則列再回滾（寫入 018 maintenance）。
 3. **Entity**：type union 加 `'email'`，`value` length 改 255，兩個欄位註解與 migration 一致。
 4. **政策服務**：

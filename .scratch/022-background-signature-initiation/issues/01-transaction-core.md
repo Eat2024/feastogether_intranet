@@ -7,7 +7,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — FR-007、008、014、015；後續 US1–US3 共用。
 
@@ -17,14 +17,20 @@
 
 ## 驗收條件
 
-- [ ] 確認 Spec 023 本機主檔、Email 與批次能力已在基準分支；記錄 commit 與隔離驗證前提，不即時呼叫 HR 或新建帳號。
-- [ ] 正式核心由呼叫端傳同一交易與 actor；保留使用者升冪後鎖文件、欄位寫入、完整快照／audit 的原子性。
-- [ ] 既有 HTTP 發起與正式證據不變；通知僅在 commit 後派送，任一必要寫入失敗整份回滾。
-- [ ] 原核心單元與相關 e2e 通過，記錄 server lint、build 與受影響測試；尚不改成背景產品流程。
+- [x] 確認 Spec 023 本機主檔、Email 與批次能力已在基準分支；記錄 commit 與隔離驗證前提，不即時呼叫 HR 或新建帳號。
+- [x] 正式核心由呼叫端傳同一交易與 actor；保留使用者升冪後鎖文件、欄位寫入、完整快照／audit 的原子性。
+- [x] 既有 HTTP 發起與正式證據不變；通知僅在 commit 後派送，任一必要寫入失敗整份回滾。
+- [x] 原核心單元與相關 e2e 通過，記錄 server lint、build 與受影響測試；尚不改成背景產品流程。
 
 ## 實作與驗證紀錄
 
-尚未開始。
+已完成 T001–T003，等待整合，狀態保持 claimed。
+
+- 公開核心 seam：`initiateInTransaction(input, manager)` 回傳 `{ document, notificationJobs }`；同一 manager 完成正式資料，呼叫端管理 commit 及通知入列。
+- Actor 顯式由 creatorUserId 傳入 signer、通知建立人與 audit；document 本來沒有 updatedByUserId 欄位，不新增欄位或依賴 CLS 模擬 session。
+- TDD：新增核心測試先因方法不存在紅燈；實作後單元 5／5。隔離 DB 的完整 core e2e 25／25，再驗原子性案例 1／1；build 通過，lint 0 errors／272 既有 warnings。
+- 驗證與環境詳見規格 quickstart「Ticket 01 實作驗證」。本票不含後續 202 或 busy guard，以下共通補充條件由後續票完成，不虛標完成。
+- Commit：本節隨核心實作 commit 一同提交；整合者追加確切 SHA 與合併結果。
 
 ## 本輪後端補充驗收
 

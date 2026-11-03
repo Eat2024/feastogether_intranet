@@ -1,3 +1,5 @@
+import { EsignInitiationService } from '#app/features/esign/services/esign-initiation.service';
+import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import { todayInTaipei } from '#app/common/date-time.helper';
 import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
 import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
@@ -311,6 +313,49 @@ describe('核心電子簽 US1', () => {
       .send({ fields: [{ ...placement }] })
       .expect(200);
     const before = await detail();
+    // worker 將在核心之後標記工作成功；若後續寫入失敗，也必須一併回滾正式發起。
+    const draft = await ctx.app
+      .get(DocumentRepository)
+      .findById(id, db.manager);
+    if (!draft) throw new Error('測試草稿不存在');
+    const enqueue = jest.spyOn(
+      ctx.app.get(EsignJobProducerService),
+      'enqueueInvitations',
+    );
+    try {
+      await expect(
+        db.transaction(async (manager) => {
+          const result = await ctx.app
+            .get(EsignInitiationService)
+            .initiateInTransaction(
+              {
+                documentId: id,
+                creatorUserId: draft.createdByUserId,
+                signers: [
+                  {
+                    type: 'email',
+                    name: '原子測試',
+                    email: 'atomic@example.test',
+                  },
+                ],
+                fields: [{ ...field, type: 'signature' }],
+                signStartAt: new Date(input.signStartAt),
+                signEndAt: new Date(input.signEndAt),
+                watermark: false,
+                allowReject: false,
+              },
+              manager,
+            );
+          expect(result.document.status).toBe('active');
+          expect(result.notificationJobs[0]).toHaveLength(1);
+          throw new Error('測試呼叫端交易失敗');
+        }),
+      ).rejects.toThrow('測試呼叫端交易失敗');
+      expect(enqueue).not.toHaveBeenCalled();
+    } finally {
+      enqueue.mockRestore();
+    }
+    expect(await detail()).toEqual(before);
     for (const invalid of [
       { ...input, fields: [{ ...field, signerIndex: 1 }] },
       { ...input, fields: [{ ...field, page: 2 }] },

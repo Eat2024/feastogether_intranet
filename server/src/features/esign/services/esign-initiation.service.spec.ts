@@ -1,5 +1,8 @@
 import { User } from '#app/features/users/entities/user.entity';
-import { EsignInitiationService } from './esign-initiation.service';
+import {
+  type InitiateDocumentInput,
+  EsignInitiationService,
+} from './esign-initiation.service';
 
 describe('EsignInitiationService', () => {
   const manager = {} as never;
@@ -147,6 +150,8 @@ describe('EsignInitiationService', () => {
     );
     return {
       service,
+      mysql,
+      documents,
       signerRepository,
       employeeEmails,
       signerService,
@@ -159,6 +164,48 @@ describe('EsignInitiationService', () => {
       audit,
     };
   }
+
+  it('呼叫端交易可完成發起核心但不自行提交或派送通知', async () => {
+    const { service, mysql, documents, jobs, audit } = setup();
+    const input: InitiateDocumentInput = {
+      documentId: 3,
+      creatorUserId: 7,
+      signers: [
+        { type: 'email', name: '候選人', email: 'candidate@example.test' },
+      ],
+      fields: [
+        {
+          type: 'signature',
+          page: 1,
+          xPercent: 10,
+          yPercent: 20,
+          widthPercent: 30,
+          heightPercent: 15,
+          sortOrder: 0,
+        },
+      ],
+      signStartAt: start,
+      signEndAt: end,
+      watermark: false,
+      allowReject: false,
+    };
+    const result = await service.initiateInTransaction(input, manager);
+    expect(result.document.status).toBe('active');
+    expect(result.notificationJobs).toEqual([[51]]);
+    expect(mysql.transaction).not.toHaveBeenCalled();
+    expect(mysql.getManager).not.toHaveBeenCalled();
+    expect(documents.save).toHaveBeenCalledWith(result.document, manager);
+    expect(audit.appendMany).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actorUserId: 7,
+          eventType: 'document.initiated',
+        }),
+      ]),
+      manager,
+    );
+    expect(jobs.enqueueInvitations).not.toHaveBeenCalled();
+  });
 
   it('鎖定草稿後固定 canonical payload 並只建立一次外部邀請 outbox', async () => {
     const {

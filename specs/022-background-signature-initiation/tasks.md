@@ -10,14 +10,14 @@
 
 確認既有能力與隔離驗證前提；不新增套件、環境變數或排程。
 
-- [ ] T001 核對 Spec 023 已整合的本機主檔／Email 與批次寫入能力，於 `specs/022-background-signature-initiation/quickstart.md` 記錄基準 commit、測試 DB／Redis 隔離方式及缺漏；前置不成立時不得改回即時 HR 查詢。
+- [x] T001 核對 Spec 023 已整合的本機主檔／Email 與批次寫入能力，於 `specs/022-background-signature-initiation/quickstart.md` 記錄基準 commit、測試 DB／Redis 隔離方式及缺漏；前置不成立時不得改回即時 HR 查詢。
 
 ## Phase 2：Foundational
 
 先完成無行為變更的交易核心重構；以現有發起測試驗證，完成後才進入 US1。
 
-- [ ] T002 將 `server/src/features/esign/services/esign-initiation.service.ts` 正式核心拆成接受 EntityManager 與明確 creatorUserId 的入口；保留 users ID 升冪 → document 鎖序、buildFields 在交易內、完整快照／audit 與 commit 後通知；本票保留既有 HTTP 行為，待 T009 一起切換。
-- [ ] T003 在 `server/src/features/esign/services/esign-initiation.service.spec.ts` 與 `server/test/core-esign-flow.e2e-spec.ts` 驗證核心失敗全回滾、actor 正確、通知只於 commit 後派送；重構不能改變既有簽署證據與授權。
+- [x] T002 將 `server/src/features/esign/services/esign-initiation.service.ts` 正式核心拆成接受 EntityManager 與明確 creatorUserId 的入口；保留 users ID 升冪 → document 鎖序、buildFields 在交易內、完整快照／audit 與 commit 後通知；本票保留既有 HTTP 行為，待 T009 一起切換。
+- [x] T003 在 `server/src/features/esign/services/esign-initiation.service.spec.ts` 與 `server/test/core-esign-flow.e2e-spec.ts` 驗證核心失敗全回滾、actor 正確、通知只於 commit 後派送；重構不能改變既有簽署證據與授權。
 
 ## Phase 3：US1 — 全部名單背景受理（P1）
 

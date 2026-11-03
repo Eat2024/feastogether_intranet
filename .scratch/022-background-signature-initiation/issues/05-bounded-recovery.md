@@ -7,7 +7,7 @@
 
 **Blocked by:** [03 完整大量與混合名單背景發起](03-complete-roster.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — US3；FR-005、007、010–013、016、017；SC-004–006、008。
 
@@ -26,7 +26,7 @@
 
 ## 實作與驗證紀錄
 
-尚未開始。
+本票已完成實作、驗收及整合，詳細證據見下方紀錄。
 
 ## 本輪後端補充驗收
 
@@ -55,3 +55,10 @@
 - 長時間 lease／期限使用受控時鐘加真實 DB 驗證；沒有宣稱已跑 5,001 秒實時間 SC-006，正式效能矩陣仍由 08 執行。
 
 04 整合後回歸：保留 latest／小投影與所有異動 guard，只有測試清單衝突並已取聯集；server build 通過，02／03／04／05 四套 45／45 通過。
+
+## 整合驗收紀錄
+
+- 實作分支 `impl/022-05`（已納入 04）commit `4f541e2d3ec29eea7c7b296f82f2938f4c49ab51` 無衝突合併至 `impl/022-integration`，merge commit `6761488a2b75a2f1b467d62ee3aa21eaf819d7e6`。
+- 合併 hook：lint 0 errors／272 既有 warnings，單元 113 suites／1,175 tests 通過；實作 recovery 13／13、02–05 四套回歸 45／45、build 通過，query／recovery 測試清單均保留。
+- T021–T024 完成並整合，狀態改 resolved，04 與 05 前置皆已成立，06 可開始。client 未修改。
+- 長時間期限證據為受控時鐘與真實 DB，並非 5,001 秒實時 SC-006 驗收；此限制保留給 08。

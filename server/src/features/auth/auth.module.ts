@@ -23,14 +23,17 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from '#app/framework/guards/auth.guard';
 import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
 import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
+import { PortalModule } from '#app/infrastructure/portal/portal.module';
 import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
+import { EligibleStaffService } from './services/eligible-staff.service';
 
 /** WebView SSO 與 OAuth 統一登入共用 MySQL 員工 session。 */
 @Module({
   imports: [
     MysqlModule,
     FeastogetherModule,
+    PortalModule,
     OauthModule,
     RedisModule,
     ThrottlerModule.forRootAsync({
@@ -56,6 +59,7 @@ import { AuthService } from './services/auth.service';
   controllers: [AuthController, OauthController],
   providers: [
     AuthService,
+    EligibleStaffService,
     OauthLoginService,
     OauthIdentityService,
     OauthTransactionService,

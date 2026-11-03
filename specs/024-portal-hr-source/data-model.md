@@ -42,6 +42,8 @@
 | `person_status` | `person_status` | 只接受 0 或 1 |
 | `person_status_name` | 由狀態推得 | 0 為「試用」、1 為「正式」 |
 
+Portal 的 `person_name`、`department_id`、`department_name`、`title` 是 `NOT NULL DEFAULT ''`。驗證前先 trim，空字串轉為 null（與 fgapi `SyncUsersFromPortal` 相同）。員編不 trim，尾端空白不算相符。
+
 精確比對後必須剛好一筆。寫入本機的方式與現行相同：
 - 帳密登入與 WebView：寫入 `name`、`personStatus`、`departmentCode`（空白轉 null）、`departmentName`、`titleName`。
 - OAuth：只寫入 `departmentCode`、`departmentName`；姓名來自 OAuth profile。

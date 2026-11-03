@@ -168,6 +168,73 @@ describe('022 員工共享鎖與跨文件受理', () => {
       const start = performance.now();
       const accepted = await submit(second);
       acceptedMs = performance.now() - start;
+      const edits = [
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}/draft-settings`)
+            .send({ watermark: false }),
+        () =>
+          request(ctx.server)
+            .put(`/api/esign/documents/${doc}/draftSave`)
+            .send({ signers: [{ type: 'user', userId: String(users[1].id) }] }),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}`)
+            .field('title', '修改標題'),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}`)
+            .attach('file', pdf, {
+              filename: 'new.pdf',
+              contentType: 'application/pdf',
+            }),
+        () => request(ctx.server).delete(`/api/esign/documents/${doc}`),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}/signers/${randomUUID()}/note`)
+            .send({ note: '註記' }),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/stoppages`)
+            .send({ reason: '停止' }),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/reopenings`)
+            .send({
+              reason: '補簽',
+              expectedSignEndAt: body().signEndAt,
+              signEndAt: body().signEndAt,
+            }),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/notification-batches`)
+            .send({ requestId: randomUUID(), selection: 'all_pending' }),
+      ];
+      for (const edit of edits) {
+        const response = await edit()
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .timeout({ response: 1500, deadline: 2000 });
+        expect(response.status).toBe(409);
+        expect(apiError(response).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
+        expect(apiError(response).message).toBe(
+          '文件正在背景發起中（worker 執行中），暫時無法修改文件或簽署人，請稍後再試。',
+        );
+        const forbidden = await edit()
+          .set('Cookie', otherCookie)
+          .set('Origin', origin)
+          .timeout({ response: 1500, deadline: 2000 });
+        expect(forbidden.status).toBe(404);
+        expect(apiError(forbidden).code).toBe('ESIGN_RESOURCE_NOT_FOUND');
+      }
+      const denied = await request(ctx.server)
+        .put(`/api/esign/documents/${doc}/fields`)
+        .set('Cookie', otherCookie)
+        .set('Origin', origin)
+        .send({ fields: body().fields })
+        .timeout({ response: 1500, deadline: 2000 });
+      expect(denied.status).toBe(404);
+      expect(apiError(denied).code).toBe('ESIGN_RESOURCE_NOT_FOUND');
       await processing;
       const same = await mutation;
       await writeFile(
@@ -193,6 +260,8 @@ describe('022 員工共享鎖與跨文件受理', () => {
       ).toBe('succeeded');
       expect(heldMs).toBeGreaterThanOrEqual(4900);
       expect(acceptedMs).toBeLessThan(3000);
+      expect(same.elapsedMs).toBeLessThan(3000);
+      expect(apiError(same.response).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
     } finally {
       gate.mockRestore();
       await processing;

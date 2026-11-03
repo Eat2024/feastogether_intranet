@@ -34,6 +34,11 @@ export class EsignStoppageService {
     creatorUserId: number,
   ) {
     return this.mysql.transaction(async (manager) => {
+      await this.access.assertCreatorNotInitiating(
+        documentId,
+        creatorUserId,
+        manager,
+      );
       const document = await this.documents.findByIdForUpdate(
         documentId,
         manager,

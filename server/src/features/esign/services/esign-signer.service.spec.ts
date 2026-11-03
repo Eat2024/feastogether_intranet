@@ -30,7 +30,10 @@ describe('EsignSignerService', () => {
       status: 'draft',
       createdByUserId: 7,
     });
-    const access = { checkAndLockDraftDoc: jest.fn() };
+    const access = {
+      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
+      checkAndLockDraftDoc: jest.fn(),
+    };
     const signers = {
       create: jest.fn((value: object) => value),
       deleteDraftSigners: jest.fn(async () => {
@@ -71,6 +74,7 @@ describe('EsignSignerService', () => {
       transaction: (run: (manager: object) => Promise<unknown>) => run(manager),
     };
     const documents = {
+      findInitiationAccess: jest.fn().mockResolvedValue(document),
       findByIdForUpdate: jest.fn().mockResolvedValue(document),
     };
     const service = new EsignSignerService(
@@ -81,7 +85,10 @@ describe('EsignSignerService', () => {
         new EsignDocumentValidationService(),
         documents as never,
         {} as never,
-        { active: jest.fn().mockResolvedValue(null) } as never,
+        {
+          active: jest.fn().mockResolvedValue(null),
+          hasActive: jest.fn().mockResolvedValue(false),
+        } as never,
       ),
       new DocumentRepository(),
     );
@@ -109,6 +116,7 @@ describe('EsignSignerService', () => {
       }),
     };
     const access = {
+      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
       checkAndLockDraftDoc: jest.fn(() => {
         events.push('lock');
         return Promise.resolve(document);
@@ -340,7 +348,10 @@ describe('草稿完整設定', () => {
         new EsignDocumentValidationService(),
         new DocumentRepository(),
         {} as never,
-        { active: jest.fn().mockResolvedValue(null) } as never,
+        {
+          active: jest.fn().mockResolvedValue(null),
+          hasActive: jest.fn().mockResolvedValue(false),
+        } as never,
       ),
       new DocumentRepository(),
     );

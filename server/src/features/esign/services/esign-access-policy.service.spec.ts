@@ -9,7 +9,10 @@ describe('EsignAccessPolicyService', () => {
     new EsignDocumentValidationService(),
     {} as never,
     {} as never,
-    { active: jest.fn().mockResolvedValue(null) } as never,
+    {
+      active: jest.fn().mockResolvedValue(null),
+      hasActive: jest.fn().mockResolvedValue(false),
+    } as never,
   );
   const now = new Date('2026-10-13T12:00:00.000Z');
   const document = () =>
@@ -51,12 +54,18 @@ describe('EsignAccessPolicyService', () => {
   describe('checkAndLockDraftDoc', () => {
     const manager = {} as never;
     const setup = (found: EsignDocument | null) => {
-      const documents = { findByIdForUpdate: jest.fn(async () => found) };
+      const documents = {
+        findInitiationAccess: jest.fn().mockResolvedValue(found),
+        findByIdForUpdate: jest.fn(async () => found),
+      };
       const locking = new EsignAccessPolicyService(
         new EsignDocumentValidationService(),
         documents as never,
         {} as never,
-        { active: jest.fn().mockResolvedValue(null) } as never,
+        {
+          active: jest.fn().mockResolvedValue(null),
+          hasActive: jest.fn().mockResolvedValue(false),
+        } as never,
       );
       return { locking, documents };
     };
@@ -379,7 +388,10 @@ describe('部門文件授權', () => {
         new EsignDocumentValidationService(),
         {} as never,
         users as never,
-        { active: jest.fn().mockResolvedValue(null) } as never,
+        {
+          active: jest.fn().mockResolvedValue(null),
+          hasActive: jest.fn().mockResolvedValue(false),
+        } as never,
       ),
     };
   };

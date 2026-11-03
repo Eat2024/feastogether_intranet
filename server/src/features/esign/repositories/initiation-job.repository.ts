@@ -71,6 +71,14 @@ export class InitiationJobRepository {
       .getOne();
   }
 
+  /** 僅作有權修改者的快速拒絕；真正寫入仍須鎖內 current read。 */
+  hasActive(documentId: number, manager: EntityManager) {
+    return manager
+      .createQueryBuilder(EsignInitiationJob, 'job')
+      .where('job.activeDocumentId = :documentId', { documentId })
+      .getExists();
+  }
+
   active(documentId: number, manager: EntityManager) {
     return manager
       .createQueryBuilder(EsignInitiationJob, 'job')

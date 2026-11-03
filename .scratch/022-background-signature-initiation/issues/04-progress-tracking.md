@@ -55,3 +55,9 @@
 - 實作 commit `0fdf05089e9c716aa6ff7bf6dedef51fdbc5c51b` 已由 `impl/022-04` 無衝突合併至 `impl/022-integration`，merge commit `5560f028c1ac4c74350e8a7b321883c7ffb15df8`。
 - 合併 hook：lint 0 errors／272 既有 warnings，單元 113 suites／1,175 tests 通過。實作驗證 query 8＋acceptance 11＋capacity 13，共 32／32；server build 通過。
 - T016–T020 後端範圍驗收完成並整合，狀態改 resolved；無 client 變更。05 仍在實作，06 必須等待 05 resolved。
+
+### 2026-11-04 committing 忙碌訊息補修
+
+- 文件／欄位／簽署名單／PDF／刪除／註記／停止／補簽／催簽，先小欄位建立人授權及 active EXISTS，再取得寫入鎖；正式 lease 保留原鎖內檢查。名單 users X、PDF prepare 前亦先拒絕。
+- 真 worker 交易持鎖 5 秒，修改原本等約 5 秒才回 STATE_CONFLICT，修正後 1–3ms 固定 worker 409；各入口越權 404，無 job 資訊。新增受理／重試的 key 重播優先與快速拒絕另以後續小 commit 處理。
+- 8 suites / 79 e2e、115 suites / 1180 unit、build 通過；既有 unit fixture 配合新增預檢更新，無前端／schema／env 變更。

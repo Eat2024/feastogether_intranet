@@ -174,6 +174,11 @@ export class EsignDraftService {
 
   async update(documentId: number, userId: number, input: UpdateDraftInput) {
     const title = this.validateUpdateInput(input);
+    await this.access.assertCreatorNotInitiating(
+      documentId,
+      userId,
+      this.mysql.getManager(),
+    );
     const newPdf = input.file
       ? await this.prepareNewPdf(documentId, userId, input.file)
       : undefined;

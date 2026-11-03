@@ -43,7 +43,7 @@ SC-008 真 Bull Worker、queue global concurrency=1：先提交5001人，再提�
 
 共享鎖另外暴露跨文件並行受理deadlock：原internal-email雙POST案例在worker尚未執行時收到202／503。MySQL最新deadlock顯示兩個INSERT互等`uq_esign_initiation_jobs_request` insert-intention，底層`ER_LOCK_DEADLOCK`，API映射`ESIGN_INITIATION_TRANSIENT_FAILURE`。補修僅讓accept／retry短交易使用READ COMMITTED，保留document鎖、current reads與unique約束，正式worker仍用原隔離層級。沒有吞503或放寬測試；原雙POST案例及barrier重現已在最終回歸通過。
 
-## SC-006 實時間長測（進行中，尚未標通過）
+## SC-006 實時間長測（完成，保留主機睡眠造成的 queue 異常）
 
 UTC 2026-11-03T15:14:35.183Z 開始；期限120分鐘，簽署截止設為24小時後。測試在每批首次 `UserRepository.findByIds` 查核注入 `batch人數 × 1000ms` 真實 timer，每位選中者只加一次，正式鎖內信箱重核不再加第二輪延遲。真Bull Worker進入正式service，heartbeat獨立續租；沒有使用 fake clock。
 
@@ -52,6 +52,10 @@ UTC 2026-11-03T15:14:35.183Z 開始；期限120分鐘，簽署截止設為24小�
 過程異常保留：唯讀電源紀錄確認本機2026-11-03 23:44:05 Sleep、23:44:07 Wake後再Sleep、23:49:56 Wake（UTC15:44–15:49）。Redis未在該時段重啟。Bull工作2於UTC15:50:55.819Z發生stalled、回waiting，stalledCounter=1、queue lock消失；原process仍執行，DB lease持續續租且attempt=1，2,500筆預查時正式signers仍0。原始console的`could not renew lock`不隱藏，不只以Jest綠燈判定結果。
 
 UTC16:01:03起使用`caffeinate -i -w 12482`僅綁長測process防止後續idle sleep；沒有改app/worker config或deadline。另以唯讀observer記錄DB狀態／lease／正式指派數與Bull狀態及原process存活，最終結果需對照 `/tmp/022-long-observer.jsonl`、`/tmp/022-long-terminal-observation.json`、`/tmp/022-long-observer-final.json`，不扣除睡眠造成的等待。
+
+最終於 UTC 2026-11-03T16:39:59.178Z 完成，實測 5,123.645 秒（85.39 分鐘），5,001 位各首次延遲 1 秒，POST 114.93ms。DB succeeded／completed、processed=total=5,001、attempt=1、lease=null；獨立 observer 及 GET detail 皆驗正式 signers=5,001。Jest 1 passed、exit0；這輪驗收滿足120分鐘門檻，僅對啟動時 `fadfc3f8` 的功能路徑提供證據，不代表新版 Portal／重連補修也在同一長測被驗證。
+
+Queue 的最終真相：原 process 完成DB提交後，因睡眠期間遺失 Bull lock，`moveToFinished` 記錄 `Missing lock for job 2`；同一 job 於16:39:58.804從waiting再active，16:39:58.809發出completed。DB completedAt為16:39:58.783；再次領取遇DB終態後no-op，未增加DB attempt或重複指派，隨removeOnComplete移除queue metadata。終態取樣16:39:59.294時process仍alive／DB成功／signers5,001／Bull absent，16:39:59.711 process已退出且測試自身fixture清理完。Redis事件沒有fixture removed事件，不能把absent誤稱尚未完成或宣稱原delivery正常完成。事件證據 `/tmp/022-long-queue-events.json`，完整console `/tmp/022-long-benchmark.log` 保留；沒有隱藏異常或重跑83分鐘來取代這次結果。
 
 ## 回歸與測試遷移
 
@@ -87,5 +91,17 @@ UTC16:01:03起使用`caffeinate -i -w 12482`僅綁長測process防止後續idle 
 
 - 原 review baseline：`4b79d08dc8ea931afd73bb868089c9b16c13bede`；最新固定 dev baseline：`ef0fdca6da66afe8495b589390ddaf647c9dcdbf`（含 Spec024 Portal 來源）。後續正式 review 應比較新 baseline 與 022 整合分支，避免將已上線的 024 列為本功能差異。
 - 在獨立 022 worktree 合併 dev；e2e testRegex 取兩邊仍存在 suite 的聯集，保留 Portal 與背景發起測試。production server build 通過。
-- 測試仍有 11 個檔案引用 Spec024 已刪除的 synthetic-staff-emails helper，022 acceptance／recovery／reconnect 另有舊 FeastogetherHrService override，必須遷移合成 Portal fixture後重跑。未復活舊 HR 路徑、不宣稱整合後 e2e 已通過。
+- Fixture 遷移 `e98172e`：022 acceptance／recovery／reconnect 使用 `createSyntheticPortal` 與真實 PortalDirectory／EligibleStaffService 登入；其餘既有業務測試保留原 EligibleStaffService stub，直接安排自身合成本機 users.email。清除全部 11 個檔案的舊 helper 引用並刪除 helper；未復活 HR 網路路徑或正式 fallback。
+- 合併 reviewfix 後基準 `8a92bc5`：正常 hook unit119 suites／1213 tests、root lint0errors／272warnings；root build、security14 suites／84 tests、新 Portal fixture 的專用 Redis DB9 reconnect 1／1 通過。schema5 suites／30 tests亦通過；完整 e2e 尚在執行。
+- 新完整回歸發現 reminder 兩個並發案例（email／user）皆回 `[202,202]`，違反只接受一批的 `[202,409]` 斷言。獨立重現一致，未放寬測試。原因定位為 document 鎖前 busy 預檢在 REPEATABLE READ 交易內建立 snapshot，後續催簽 history 查詢看不到前交易提交；補修與全 mutation 盤點由 reviewfix 分支進行。
 - 08 長測仍在舊 worktree／DB10，不變動；原 checkout 由使用者操作，本次沒有切換或修改。新 base 的完整回歸及正式 review 仍待完成。
+
+## 最新 dev 合併後補充驗收
+
+`8a92bc5` 上 Redis13 專屬重跑80次矩陣全過（前一Redis11與另一代理短暫共用的輪次即使綠燈亦捨棄）。1／100／101／5,001 的 POST P95 分別12.40／12.58／18.15／99.45ms，背景最大92.76／107.61／121.47／1,414.57ms；5001人測試程序峰值RSS893,403,136bytes。混排大型85.96ms、小型7.38ms受理，大型成功後18ms小型開始。仍是本機合成users、無SMTP寄送，正常無鎖競爭負載，不替代正式環境量測。
+
+第一次最新base全e2e：47 suites通過、3失敗、1專用reconnect跳過；524 tests通過、6失敗、1跳過。保留失敗原因及修復，不將舊結果冒稱新版全綠：
+
+- 催簽三項並發失敗是前述RR snapshot，正式修正將busy預檢移出交易，鎖內current-read查核保留。
+- 兩項午夜fixture把Date固定今日UTC15:59:50，真DB時鐘過了該時間30分鐘後，新的背景deadline會正確判逾時。改取下一個未來午夜邊界，保留跨日及群寄斷言；兩項2/2通過。這是假時鐘的既有催簽日界線驗證，與SC-006真實時間長測分開。
+- 直接 `Promise.all(service.process)` 的跨文件案例刻意繞過正式queue global concurrency=1；真MySQL顯示兩個 `esign_document_fields` INSERT互等 `idx_esign_document_fields_doc_page_sort_id` supremum gap，rollback一筆。該job正確queued／`ESIGN_INITIATION_TRANSIENT_FAILURE`／attempt1／nextAttemptAt，另一筆成功。只在此案例明確驗暫時錯誤與排程後，提前測試自身job的nextAttemptAt、有限最多3次真process，再斷言兩份succeeded及指派完整；未改production隔離、未讓共用helper偷偷重試。單例修後1/1通過；這是直接service並發恢復驗證，不宣稱正式queue同時執行兩份。

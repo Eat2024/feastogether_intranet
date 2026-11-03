@@ -1,3 +1,4 @@
+import { EsignInitiationJob } from '#app/features/esign/entities/esign-initiation-job.entity';
 import {
   completeInitiation,
   driveInitiation,
@@ -993,6 +994,27 @@ describe('Spec016 內部發起與邀請', () => {
       const jobs = await Promise.all(
         accepted.map((res) => driveInitiation(ctx, res, cookie)),
       );
+      // 直接同時呼叫 service 刻意繞過正式 queue global concurrency=1。
+      // InnoDB gap deadlock 可進有限重試；只在此故障案例提前到期時間。
+      for (let index = 0; index < jobs.length; index++) {
+        if (jobs[index].status !== 'queued') continue;
+        expect(jobs[index]).toMatchObject({
+          errorCode: 'ESIGN_INITIATION_TRANSIENT_FAILURE',
+          attemptCount: 1,
+        });
+        expect(jobs[index].nextAttemptAt).not.toBeNull();
+        for (let attempt = 1; jobs[index].status === 'queued' && attempt < 3; attempt++) {
+          expect(jobs[index].errorCode).toBe('ESIGN_INITIATION_TRANSIENT_FAILURE');
+          expect(jobs[index].nextAttemptAt).not.toBeNull();
+          await ctx.app.get(MysqlService).getManager().update(
+            EsignInitiationJob,
+            { publicId: jobs[index].jobId },
+            { nextAttemptAt: new Date(Date.now() - 1000) },
+          );
+          jobs[index] = await driveInitiation(ctx, accepted[index], cookie);
+        }
+        expect(jobs[index].attemptCount).toBeLessThanOrEqual(3);
+      }
       expect(jobs.map((job) => job.status)).toEqual(['succeeded', 'succeeded']);
       const rows = await ctx.app
         .get(MysqlService)

@@ -51,6 +51,7 @@ export class EsignInitiationJobService {
     const input = this.normalize(body);
     const hash = canonicalSha256(input);
     const key = requestKey ?? randomUUID();
+    await this.preflightAcceptance(documentId, userId, requestKey);
     const accepted = await this.mysql
       .transaction(async (manager) => {
         const creator = await this.users.findByIdForShare(userId, manager);
@@ -134,6 +135,7 @@ export class EsignInitiationJobService {
           Object.keys(body).length))
     )
       throw new AppException(...AppErrors.ESIGN_INITIATION_INVALID_REQUEST);
+    await this.preflightAcceptance(documentId, userId, requestKey, publicId);
     const accepted = await this.mysql
       .transaction(async (manager) => {
         const creator = await this.users.findByIdForShare(userId, manager);
@@ -319,6 +321,33 @@ export class EsignInitiationJobService {
       items,
       nextOffset: next < job.issueCount ? next : null,
     };
+  }
+
+  /** 只快拒新請求；歷史 key 也必須保留鎖內 hash/parent 驗證及重播優先。 */
+  private async preflightAcceptance(
+    documentId: number,
+    userId: number,
+    requestKey?: string,
+    parentPublicId?: string,
+  ): Promise<void> {
+    try {
+      const manager = await this.queryManager(documentId, userId);
+      if (
+        parentPublicId &&
+        !(await this.jobs.hasPublicId(documentId, parentPublicId, manager))
+      )
+        throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
+      if (
+        requestKey &&
+        (await this.jobs.hasKey(documentId, requestKey, manager))
+      )
+        return;
+      if (await this.jobs.hasActive(documentId, manager))
+        throw new AppException(...AppErrors.ESIGN_INITIATION_IN_PROGRESS);
+    } catch (error: unknown) {
+      if (error instanceof AppException) throw error;
+      throw new AppException(...AppErrors.ESIGN_INITIATION_TRANSIENT_FAILURE);
+    }
   }
 
   /** 查詢仍核對目前有效建立人，不沿用部門唯讀權限。 */

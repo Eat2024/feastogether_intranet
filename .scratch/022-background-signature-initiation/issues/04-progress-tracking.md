@@ -62,6 +62,12 @@
 - 真 worker 交易持鎖 5 秒，修改原本等約 5 秒才回 STATE_CONFLICT，修正後 1–3ms 固定 worker 409；各入口越權 404，無 job 資訊。新增受理／重試的 key 重播優先與快速拒絕另以後續小 commit 處理。
 - 8 suites / 79 e2e、115 suites / 1180 unit、build 通過；既有 unit fixture 配合新增預檢更新，無前端／schema／env 變更。
 
+### 2026-11-04 重複發起／重試預檢補齊
+
+- 新 key／無 key 的重複發起，以及新 key retry，committing 時立即固定 worker 409。先驗有效建立人／文件，retry 再驗 parent 存在及關聯，避免 busy 洩漏或蓋過 404。
+- document+key EXISTS 命中時保留原鎖內重播：測試 active 同 key 等 commit 回原 succeeded；歷史 initial/retry key 即使已有新 active 工作仍回原 failed 摘要；錯 hash/parent 仍 REQUEST_CONFLICT，錯 parent 404。
+- 最終專用鎖測試增為 8 項；不增加 JSON 讀取、表、環境變數或前端修改。
+
 ## 正式交易期間快速 busy 補修整合紀錄
 
 - 僅指定 commit `3f3f7f913c71a35358a3c256d89fed6558034141` 無衝突合併至 `impl/022-integration`，merge commit `34d3077974efd51e0791707c5652f16a57318033`；未取用 locks worktree 後續未提交變更，票 04 保持 resolved。

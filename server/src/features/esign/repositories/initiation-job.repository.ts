@@ -71,6 +71,26 @@ export class InitiationJobRepository {
       .getOne();
   }
 
+  hasKey(documentId: number, requestKey: string, manager: EntityManager) {
+    return manager
+      .createQueryBuilder(EsignInitiationJob, 'job')
+      .where('job.documentId = :documentId AND job.requestKey = :requestKey', {
+        documentId,
+        requestKey,
+      })
+      .getExists();
+  }
+
+  hasPublicId(documentId: number, publicId: string, manager: EntityManager) {
+    return manager
+      .createQueryBuilder(EsignInitiationJob, 'job')
+      .where('job.documentId = :documentId AND job.publicId = :publicId', {
+        documentId,
+        publicId,
+      })
+      .getExists();
+  }
+
   /** 僅作有權修改者的快速拒絕；真正寫入仍須鎖內 current read。 */
   hasActive(documentId: number, manager: EntityManager) {
     return manager

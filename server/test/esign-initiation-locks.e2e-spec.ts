@@ -131,10 +131,12 @@ describe('022 員工共享鎖與跨文件受理', () => {
   it('正式worker持users/document/job鎖5秒時，同建立人另一份文件仍在3秒內受理', async () => {
     const doc = await newDoc();
     const second = await newDoc();
-    const job = await submit(doc, {
+    const initialKey = randomUUID();
+    const initialInput = {
       ...body(),
-      signers: [{ type: 'user', userId: String(users[1].id) }],
-    });
+      signers: [{ type: 'user' as const, userId: String(users[1].id) }],
+    };
+    const job = await submit(doc, initialInput, initialKey);
     const storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
     const original: PrivateFileStorage['openReadStream'] =
       storage.openReadStream.bind(
@@ -168,6 +170,31 @@ describe('022 員工共享鎖與跨文件受理', () => {
       const start = performance.now();
       const accepted = await submit(second);
       acceptedMs = performance.now() - start;
+      for (const key of [undefined, randomUUID()]) {
+        const attempt = request(ctx.server)
+          .post(`/api/esign/documents/${doc}/initiations`)
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .send(body());
+        if (key) attempt.set('Idempotency-Key', key);
+        const response = await attempt.timeout({
+          response: 1500,
+          deadline: 2000,
+        });
+        expect(response.status).toBe(409);
+        expect(apiError(response).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
+      }
+      const retry = await request(ctx.server)
+        .post(
+          `/api/esign/documents/${doc}/initiation-jobs/${job.publicId}/retries`,
+        )
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .set('Idempotency-Key', randomUUID())
+        .send({})
+        .timeout({ response: 1500, deadline: 2000 });
+      expect(retry.status).toBe(409);
+      expect(apiError(retry).code).toBe('ESIGN_INITIATION_IN_PROGRESS');
       const edits = [
         () =>
           request(ctx.server)
@@ -235,7 +262,20 @@ describe('022 員工共享鎖與跨文件受理', () => {
         .timeout({ response: 1500, deadline: 2000 });
       expect(denied.status).toBe(404);
       expect(apiError(denied).code).toBe('ESIGN_RESOURCE_NOT_FOUND');
+      const replayPromise = request(ctx.server)
+        .post(`/api/esign/documents/${doc}/initiations`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .set('Idempotency-Key', initialKey)
+        .send(initialInput)
+        .expect(200)
+        .then((response) => apiData<InitiationJobDto>(response));
       await processing;
+      expect(await replayPromise).toMatchObject({
+        jobId: job.publicId,
+        status: 'succeeded',
+        reused: true,
+      });
       const same = await mutation;
       await writeFile(
         '/tmp/022-worker-shared-lock-benchmark.json',
@@ -290,6 +330,70 @@ describe('022 員工共享鎖與跨文件受理', () => {
     }
     throw new Error('沒有觀察到預期的員工列鎖等待');
   }
+  it('已有新active工作時，歷史initial與retry key仍重播原摘要且驗證hash/parent', async () => {
+    const doc = await newDoc();
+    const initialKey = randomUUID();
+    const input = {
+      ...body(),
+      signers: [{ type: 'employee' as const, employeeNo: 'MISSINGLOCK22' }],
+    };
+    const parent = await submit(doc, input, initialKey);
+    await ctx.app.get(EsignInitiationJobService).process(parent.id);
+    // 模擬可人工重試的暫時失敗，聚焦歷史 key 的重播順序。
+    await mysql.getManager().update(EsignInitiationJob, parent.id, {
+      retryable: true,
+      errorCode: 'ESIGN_INITIATION_TRANSIENT_FAILURE',
+    });
+    const retryKey = randomUUID();
+    const retryRequest = (parentId = parent.publicId) =>
+      request(ctx.server)
+        .post(`/api/esign/documents/${doc}/initiation-jobs/${parentId}/retries`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .set('Idempotency-Key', retryKey)
+        .send({});
+    const child = apiData<InitiationJobDto>(await retryRequest().expect(202));
+    const childEntity = await mysql
+      .getManager()
+      .findOneByOrFail(EsignInitiationJob, { publicId: child.jobId });
+    ownedJobs.add(childEntity.id);
+    await ctx.app.get(EsignInitiationJobService).process(childEntity.id);
+    await submit(doc);
+    const original = apiData<InitiationJobDto>(
+      await request(ctx.server)
+        .post(`/api/esign/documents/${doc}/initiations`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .set('Idempotency-Key', initialKey)
+        .send(input)
+        .expect(200),
+    );
+    expect(original).toMatchObject({
+      jobId: parent.publicId,
+      status: 'failed',
+      reused: true,
+    });
+    const replay = apiData<InitiationJobDto>(await retryRequest().expect(200));
+    expect(replay).toMatchObject({
+      jobId: child.jobId,
+      status: 'failed',
+      reused: true,
+    });
+    const conflict = await request(ctx.server)
+      .post(`/api/esign/documents/${doc}/initiations`)
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .set('Idempotency-Key', initialKey)
+      .send(body())
+      .expect(409);
+    expect(apiError(conflict).code).toBe('ESIGN_INITIATION_REQUEST_CONFLICT');
+    const wrongParent = await retryRequest(child.jobId).expect(409);
+    expect(apiError(wrongParent).code).toBe(
+      'ESIGN_INITIATION_REQUEST_CONFLICT',
+    );
+    await retryRequest(randomUUID()).expect(404);
+  });
+
   it.each([
     ['停用', 'UPDATE users SET is_active=0 WHERE id=?'],
     ['信箱', "UPDATE users SET email='after@example.test' WHERE id=?"],

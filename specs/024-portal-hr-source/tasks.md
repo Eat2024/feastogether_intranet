@@ -73,10 +73,10 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] 搬移組織樹 DTO，內容不變：
+- [x] T007 [P] [US1] 搬移組織樹 DTO，內容不變：
   - 把 `server/src/infrastructure/http-client/feastogether/types/org-chart.dto.ts` 與 `org-chart.dto.spec.ts` 搬到 `server/src/features/esign/dto/`。
   - 更新 `server/src/features/esign/dto/employee-directory-response.dto.ts`、`server/src/features/esign/controllers/signer-candidates.controller.ts`、`server/src/features/esign/services/esign-signer-candidate.service.ts` 與 `server/src/infrastructure/http-client/feastogether/services/feastogether-department.service.ts` 的 import。
-- [ ] T008 [P] [US1] 新增 `server/src/features/esign/services/org-chart.builder.spec.ts`，移植 fgapi `app/Services/OrgChartBuilder.php` 與 `tests/Feature/OrgChartTest.php` 的規則（fgapi 位於本機 `/Users/user/Documents/fgapi`，只作參考）。涵蓋：
+- [x] T008 [P] [US1] 新增 `server/src/features/esign/services/org-chart.builder.spec.ts`，移植 fgapi `app/Services/OrgChartBuilder.php` 與 `tests/Feature/OrgChartTest.php` 的規則（fgapi 位於本機 `/Users/user/Documents/fgapi`，只作參考）。涵蓋：
   - 多根節點與深層巢狀；沒有員工的部門保留空的 `children` 與 `employees`。
   - 子部門的員工不會複製到上層。
   - 上層代碼為空字串時視為 null；上層部門不存在或已停用時，該部門成為根節點。
@@ -87,24 +87,24 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] 新增 `server/src/features/esign/services/org-chart.builder.ts`：純函式，輸入 Portal 部門列與員工列，輸出 `{ tree: OrgDepartmentDto[], unmappedEmployees: number }`；規則見 [research §4](research.md)。依賴 T007、T008。
-- [ ] T010 [US1] 更新 `server/src/features/esign/services/esign-signer-candidate.service.spec.ts`，驗證：
+- [x] T009 [US1] 新增 `server/src/features/esign/services/org-chart.builder.ts`：純函式，輸入 Portal 部門列與員工列，輸出 `{ tree: OrgDepartmentDto[], unmappedEmployees: number }`；規則見 [research §4](research.md)。依賴 T007、T008。
+- [x] T010 [US1] 更新 `server/src/features/esign/services/esign-signer-candidate.service.spec.ts`，驗證：
   - 快取未命中時改用 `PortalDirectoryService.listOrgChartSource()` 加上 builder，並寫入 1,800 秒快取。
   - 快取 key 維持 `esign:org-chart:v2:` 前綴，命名空間為 `sha256(JSON.stringify([NODE_ENV, 'portal', host, port, db]))`。
   - Portal 錯誤或組樹失敗：拋 `ORG_CHART_UPSTREAM_UNAVAILABLE`，不寫快取。
   - Redis 錯誤：仍是 `ORG_CHART_UNAVAILABLE`。
   - log 只記未對應人數，不記員編或姓名。
-- [ ] T011 [US1] 修改 `server/src/features/esign/services/esign-signer-candidate.service.ts` 與 `server/src/features/esign/esign.module.ts`：
+- [x] T011 [US1] 修改 `server/src/features/esign/services/esign-signer-candidate.service.ts` 與 `server/src/features/esign/esign.module.ts`：
   - 改注入 `PortalDirectoryService` 與 `PortalConfig`，不再依賴 `FeastogetherDepartmentService` 與 `FeastogetherConfig`。
   - `EsignModule` 改 import `PortalModule`，移除 `FeastogetherModule`。
   - 讀快取時仍用 `parseOrgChart` 驗證。
   - 依賴 T009、T010。
-- [ ] T012 [US1] 改寫 `server/test/org-chart.e2e-spec.ts`，改用 T002 的合成 Portal，覆蓋 spec US1 情境 1–6，並另外驗證：
+- [x] T012 [US1] 改寫 `server/test/org-chart.e2e-spec.ts`，改用 T002 的合成 Portal，覆蓋 spec US1 情境 1–6，並另外驗證：
   - 饗賓人 client 一被呼叫就讓測試失敗。
   - 刪除合成 `chi_department` 表（模擬權限被收回）時回傳 502、不寫快取，帳密以外的登入仍可用。
   - Portal 不回應時，15 秒內回傳 502。
   - 回應中不出現哨兵值。
-- [ ] T013 [US1] 更新 `server/test/mail-whitelist-runtime.e2e-spec.ts`：移除對 `/api/v1/hr/org_chart` 的合成回應，改成只要呼叫任何 `hr/*` 路徑就讓測試失敗；寄信白名單仍只讀本機資料。
+- [x] T013 [US1] 更新 `server/test/mail-whitelist-runtime.e2e-spec.ts`：移除對 `/api/v1/hr/org_chart` 的合成回應，改成只要呼叫任何 `hr/*` 路徑就讓測試失敗；寄信白名單仍只讀本機資料。
 
 **Checkpoint**：部門樹完全由 Portal 提供；`pnpm -C server test` 與 `org-chart`、`mail-whitelist-runtime` 的 e2e 通過。
 

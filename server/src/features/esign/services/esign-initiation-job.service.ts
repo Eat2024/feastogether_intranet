@@ -47,9 +47,10 @@ export class EsignInitiationJobService {
         const creator = await this.users.findByIdForUpdate(userId, manager);
         if (!creator || !creator.isActive || creator.deletedAt)
           throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
-        const document = await this.documents.findByIdForUpdate(
+        const document = await this.documents.findInitiationAccess(
           documentId,
           manager,
+          true,
         );
         this.access.checkEsignCreator(document, userId);
         const previous = await this.jobs.byKey(documentId, key, manager);
@@ -104,14 +105,34 @@ export class EsignInitiationJobService {
     return { ...this.summary(accepted.job), reused: accepted.reused };
   }
 
+  async latest(
+    documentId: number,
+    userId: number,
+  ): Promise<InitiationJobDto | null> {
+    const manager = await this.queryManager(documentId, userId);
+    const job = await this.jobs.latest(documentId, manager);
+    return job ? this.summary(job) : null;
+  }
+
   async get(
     documentId: number,
     publicId: string,
     userId: number,
   ): Promise<InitiationJobDto> {
+    const manager = await this.queryManager(documentId, userId);
+    const job = await this.jobs.find(documentId, publicId, manager);
+    if (!job) throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
+    return this.summary(job);
+  }
+
+  /** 查詢仍核對目前有效建立人，不沿用部門唯讀權限。 */
+  private async queryManager(documentId: number, userId: number) {
     const manager = this.mysql.getManager();
     const creator = await this.users.findById(userId, manager);
-    const document = await this.documents.findById(documentId, manager);
+    const document = await this.documents.findInitiationAccess(
+      documentId,
+      manager,
+    );
     if (
       !creator ||
       !creator.isActive ||
@@ -121,9 +142,7 @@ export class EsignInitiationJobService {
       document.createdByUserId !== userId
     )
       throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
-    const job = await this.jobs.find(documentId, publicId, manager);
-    if (!job) throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
-    return this.summary(job);
+    return manager;
   }
 
   /** Queue 與測試都使用同一正式服務入口；不依 HTTP session 執行。 */

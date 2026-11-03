@@ -40,11 +40,11 @@
 
 獨立驗收：queued／processing／終態時關頁及重登入皆能查回同工作；其他部門讀者看不到工作資料；以固定 fixture 狀態驗證 UI，不依賴故障重試實作。
 
-- [ ] T016 [US2] 擴充 `server/src/features/esign/controllers/initiation-jobs.controller.ts` 與 `server/src/features/esign/services/esign-initiation-job.service.ts` 的 GET latest（無工作 null）／job 摘要：只讀、非建立人與不存在統一 404、未登入 401、no-store；暴露 attempt／deadline／nextAttempt／issueCount，不暴露 lease 或 JSON。
-- [ ] T017 [US2] 在 `server/test/esign-initiation-query.e2e-spec.ts` 驗證原文件列表行為不變、queued／processing 仍 draft、worker 成功才 active；不新增列表 initiationSummary，不選取工作 JSON 參與列表排序。
-- [ ] T018 [US2] 在 `server/test/esign-initiation-query.e2e-spec.ts` 驗證 job/latest 輕量摘要的授權、終態與失聯回應語意；僅 API 驗收，不新增 client hooks 或輪詢。
-- [ ] T019 [US2] 在 `server/test/esign-initiation-acceptance.e2e-spec.ts` 完整驗證 queued／processing 對文件資料與簽署人增刪替換、註記、期間、設定、PDF、刪除皆回 409 與固定 worker 執行中訊息；驗證競態、failed 解鎖與 succeeded 既有規則。
-- [ ] T020 [US2] 新增 `server/test/esign-initiation-query.e2e-spec.ts` 並登記 `server/test/jest-e2e.json`，驗證摘要授權／只讀／無 JSON／無 N+1、22 份大 input 在 256KiB sort buffer 下列表成功；於 `specs/022-background-signature-initiation/quickstart.md` 記錄重整、關頁、失聯與 10 秒可見驗收。
+- [x] T016 [US2] 擴充 `server/src/features/esign/controllers/initiation-jobs.controller.ts` 與 `server/src/features/esign/services/esign-initiation-job.service.ts` 的 GET latest（無工作 null）／job 摘要：只讀、非建立人與不存在統一 404、未登入 401、no-store；暴露 attempt／deadline／nextAttempt／issueCount，不暴露 lease 或 JSON。
+- [x] T017 [US2] 在 `server/test/esign-initiation-query.e2e-spec.ts` 驗證原文件列表行為不變、queued／processing 仍 draft、worker 成功才 active；不新增列表 initiationSummary，不選取工作 JSON 參與列表排序。
+- [x] T018 [US2] 在 `server/test/esign-initiation-query.e2e-spec.ts` 驗證 job/latest 輕量摘要的授權、終態與失聯回應語意；僅 API 驗收，不新增 client hooks 或輪詢。
+- [x] T019 [US2] 在 `server/test/esign-initiation-acceptance.e2e-spec.ts` 完整驗證 queued／processing 對文件資料與簽署人增刪替換、註記、期間、設定、PDF、刪除皆回 409 與固定 worker 執行中訊息；驗證競態、failed 解鎖與 succeeded 既有規則。
+- [x] T020 [US2] 新增 `server/test/esign-initiation-query.e2e-spec.ts` 並登記 `server/test/jest-e2e.json`，驗證摘要授權／只讀／無 JSON／無 N+1、22 份大 input 在 256KiB sort buffer 下列表成功；於 `specs/022-background-signature-initiation/quickstart.md` 記錄重整、關頁、失聯與 10 秒可見驗收。
 
 ## Phase 5：US3 — 失敗修正與安全恢復（P1）
 

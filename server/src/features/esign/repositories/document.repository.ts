@@ -16,6 +16,20 @@ export class DocumentRepository {
     });
   }
 
+  /** 工作受理／查詢只讀權限與狀態，重播不載入正式簽署快照。 */
+  findInitiationAccess(id: number, manager: EntityManager, lock = false) {
+    return manager.findOne(EsignDocument, {
+      where: { id },
+      select: {
+        id: true,
+        createdByUserId: true,
+        deletedAt: true,
+        status: true,
+      },
+      ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    });
+  }
+
   findByIdForUpdate(id: number, manager: EntityManager) {
     return manager.findOne(EsignDocument, {
       where: { id, deletedAt: IsNull() },

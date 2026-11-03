@@ -48,7 +48,7 @@ describe('本機發起簽署員工資料', () => {
     expect(findByIdsWithEmail).toHaveBeenCalledWith([9], manager, true);
   });
 
-  it.each([1, 100, 101, 6000])(
+  it.each([1, 100, 101, 6000, 6001])(
     '接受 %i 位員工；批次與鎖順序交由 repository 控制',
     async (count) => {
       const { service, manager, findByIdsWithEmail } = fixture();
@@ -97,8 +97,8 @@ describe('本機發起簽署員工資料', () => {
     ).rejects.toMatchObject({ status: 422 });
   });
 
-  it.each([['01'], ['9007199254740992'], Array<string>(6001).fill('1')])(
-    '格式或上限錯誤不查DB %#',
+  it.each([['01'], ['9007199254740992']])(
+    '格式錯誤不查DB %#',
     async (...ids) => {
       const { service, manager, findByIdsWithEmail } = fixture();
       await expect(

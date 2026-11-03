@@ -31,10 +31,10 @@
 - [x] T009 [US1] 修改 `server/src/features/esign/controllers/documents.controller.ts` 發起為首次 202／合法重播 200／Location，不再載入 detail；新增 `server/src/features/esign/controllers/initiation-jobs.controller.ts` 的最小 GET job 摘要並註冊 `server/src/features/esign/esign.module.ts`，只允許建立人，沿用 session／OriginGuard／envelope；同步 Swagger。
 - [x] T010 [US1] 在 `server/test/esign-initiation-acceptance.e2e-spec.ts` 驗證未修改 client 的既有 userId/email body、未帶 key 也可受理，server 生成 request key；進行中無 key 重送 409，已成功不可再發起，有 key 保留安全重播。禁止修改 client。
 - [x] T011 [US1] 新增 `server/test/esign-initiation-acceptance.e2e-spec.ts` 與 `server/test/esign-initiation-schema.e2e-spec.ts`，登記 `server/test/jest-e2e.json`／`server/test/jest-schema.json`；驗證 1 人端到端、schema 唯一性、非空 down 拒絕、所有草稿 busy guard、授權、同／不同 key 競態與已過期原 key 重播；在 `specs/022-background-signature-initiation/quickstart.md` 記錄前端受理驗收。
-- [ ] T012 [US1] 修改 `server/src/features/esign/services/esign-employee-email.service.ts` 與 `server/src/features/esign/services/esign-signer.service.ts`，本機 500 人一批解析，移除 6,000 總數拒絕，正式鎖內重新核對員編映射、有效帳號與建立人；缺帳號整份失敗、缺信箱保留資格，不建帳。
-- [ ] T013 [US1] 在 `server/src/features/esign/services/esign-initiation.service.ts` 與 `server/src/worker/esign/document-initiation.processor.ts` 整合完整混合名單、250 筆批次寫入但不分批 commit；鎖內核對微秒版本與 source file，stage=committing 於交易前有效 lease CAS 提交，禁止提前宣告成功或重送初邀。
-- [ ] T014 [US1] 新增 `server/test/esign-initiation-capacity.e2e-spec.ts`，登記 `server/test/jest-e2e.json`：1／100／101／5,001／6,001、混合與全外部、缺信箱／白名單、無效身分與中途失敗全回滾；比對完整指派、快照順序、audit／通知批次唯一性。
-- [ ] T015 [US1] 在 `server/test/esign-initiation-acceptance.e2e-spec.ts` 與 `specs/022-background-signature-initiation/quickstart.md` 驗證既有混合名單提交與前端呼叫相容；記錄前置 resolutions 及 flash=published 限制，不宣稱 UI 已改為背景進度。
+- [x] T012 [US1] 修改 `server/src/features/esign/services/esign-employee-email.service.ts` 與 `server/src/features/esign/services/esign-signer.service.ts`，本機 500 人一批解析，移除 6,000 總數拒絕，正式鎖內重新核對員編映射、有效帳號與建立人；缺帳號整份失敗、缺信箱保留資格，不建帳。
+- [x] T013 [US1] 在 `server/src/features/esign/services/esign-initiation.service.ts` 與 `server/src/worker/esign/document-initiation.processor.ts` 整合完整混合名單、250 筆批次寫入但不分批 commit；鎖內核對微秒版本與 source file，stage=committing 於交易前有效 lease CAS 提交，禁止提前宣告成功或重送初邀。
+- [x] T014 [US1] 新增 `server/test/esign-initiation-capacity.e2e-spec.ts`，登記 `server/test/jest-e2e.json`：1／100／101／5,001／6,001、混合與全外部、缺信箱／白名單、無效身分與中途失敗全回滾；比對完整指派、快照順序、audit／通知批次唯一性。
+- [x] T015 [US1] 在 `server/test/esign-initiation-acceptance.e2e-spec.ts` 與 `specs/022-background-signature-initiation/quickstart.md` 驗證既有混合名單提交與前端呼叫相容；記錄前置 resolutions 及 flash=published 限制，不宣稱 UI 已改為背景進度。
 
 ## Phase 4：US2 — 重整後追蹤進度（P1）
 

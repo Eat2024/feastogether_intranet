@@ -19,7 +19,6 @@ export class EsignEmployeeEmailService {
   ): Promise<Map<number, User>> {
     if (
       !Array.isArray(userIds) ||
-      userIds.length > 6000 ||
       !Number.isSafeInteger(creatorUserId) ||
       creatorUserId < 1 ||
       userIds.some(

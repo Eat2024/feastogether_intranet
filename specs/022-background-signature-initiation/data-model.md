@@ -76,3 +76,15 @@ failed → 明確人工 retry → 新 queued 列（原 failed 列不變）
 - 終態完成 30 天後，由既有 maintenance 分批清空 input_json、document_version_json、issues_json；保留 ID、關聯、request key/hash、計數、分類錯誤、時間、狀態，支援重播與稽核。清理不新增 scheduler。
 - 完整 input／issues 被清理後回 410；原 key 重播仍返回原摘要。失敗內容無法重試時由建立人重新設定並提交，不假造空名單。
 - migration 新增一表、唯一約束與 FK，同步 entity／schema.sql／MysqlModule。不得更動舊文件與證據。down 只允許工作表為空；有資料需拒絕而非 DROP 後遺失受理紀錄。
+
+
+## 草稿版本完整性補修（2026-11-03）
+
+`document.updated_at` 作為草稿編輯版本時，所有成功的標題／PDF／欄位／名單／期間／選項／草稿簽署人註記／軟刪除都須在同一 document 鎖及交易內單調推進。採 DB `UTC_TIMESTAMP(6)` 與舊值加 1 微秒取較大值；不能僅依賴 ORM save 的 dirty 判斷或自動整秒 CURRENT_TIMESTAMP。即使重新儲存相同值也保守推進，使舊 failed 工作必須重新確認。
+
+對既有 draft 的 save，先以 current read 保存原微秒字串，完成一般欄位 save 後，再用窄 SQL 取 DB 現在、save 後當前值+1µs、save 前原值+1µs 的最大值，抵抗 ORM timestamp 回退；回傳 entity 的 updatedAt 重讀 DB。外部版本比對仍用 raw 微秒字串，不能以 JS Date 當唯一版本。fields 與草稿 note 無文件 save 時直接 touch，updateDraft／softDeleteDraft 在 SQL 自身遞增。
+
+此 touch 是草稿異動的必要窄 SQL 例外，業務欄位仍沿用 save 與既有 audit。新建無舊版；正式核心先驗 job 受理版，再 buildFields，activate 已變為 active 後沿原 save，沒有在 worker 中途自行推進版本。非草稿註記維持不改正式文件或簽署證據。
+
+
+保留清理的 SELECT SKIP LOCKED 後，UPDATE 也必須只定位已鎖定PK。MySQL對批次 IN UPDATE 可能選掃描計畫而等待未選parent，因此每批100列交易內逐唯一PK窄更新，不能只依賴SELECT端略過鎖。

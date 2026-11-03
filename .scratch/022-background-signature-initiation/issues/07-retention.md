@@ -44,3 +44,10 @@
 - 實作 commit `d3c48743a2f0b3252467d13e6420e397f3bbd009` 已由 `impl/022-07` 無衝突合併至 `impl/022-integration`，merge commit `3256b8aca377d1a353610b7ebcac1a8fa143f231`。
 - 合併 hook：lint 0 errors／272 既有 warnings、單元 113 suites／1,175 tests 通過；實作 retention 7／7、六套 initiation e2e 60／60、server build 通過。
 - T029–T030 完成並整合，狀態改 resolved，08 可開始；無 client／schema／新 scheduler 變更。Redis reconnect 補修與整體整合驗收仍在後續範圍，沒有將整份規格結案。
+
+
+### SKIP LOCKED 更新階段後續補修（2026-11-03，待整合）
+
+跨批測試在pool4重現Lock wait timeout。唯讀 performance_schema.data_lock_waits 捕獲：bulk UPDATE `id IN (378..477)` 實際等待 PRIMARY key377，377是已被SELECT SKIP LOCKED略過的parent，且不在IN清單內。故非增加pool或timeout可解決，而是UPDATE計畫掃描到未選列。
+
+改為同一100列短交易內，逐個已鎖定唯一PK執行窄UPDATE，更新階段也不碰未選工作；仍保留全部summary／微秒時間。原失敗retention7項在相同隔離DB、同樣資料統計下轉綠（約2秒；修前約53秒）。沒有新增重試／排程或放寬鎖規則。

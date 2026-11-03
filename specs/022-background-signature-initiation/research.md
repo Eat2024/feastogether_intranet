@@ -69,3 +69,16 @@
 - **Rationale**：重播不應因時間經過或子工作已建立而失效；正式交易內尚未提交的階段更新不能讓一般輪詢即時看見。
 - **Alternatives considered**：先檢查所有業務前置條件會令成功後重送變成 400／409；只在正式交易內更新階段會讓前端持續顯示舊階段。
 - **Verification**：唯讀交叉複核現有鎖序、buildFields 寫入、6,000 人守門及 commit 後通知入列。補充過期／清理後重播與 retry 子工作重播驗收；尚未執行功能測試。
+
+
+## R11：草稿版本必須覆蓋子資料異動且單調
+
+- **證據**：本機 TypeORM Subject 的 mustBeUpdated 依 dirty change maps；UpdateQueryBuilder 的 UpdateDateColumn 使用 CURRENT_TIMESTAMP（整秒）。真 HTTP 測試重現 fields、純名單、note、同秒 title／period 編輯後，舊 retry 錯誤地回 202。
+- **決定**：沿現有 document.updated_at，在 document lock 同交易內以 DB UTC_TIMESTAMP(6)、原值+1µs、save後值+1µs 取最大值。不是先 touch 再 save，後者仍可能被 ORM 改回整秒。fields/note 不經 document save 時直接 touch；同值儲存也失效舊 retry。
+- **邊界**：新建無舊版本；正式 worker 在驗完 job 後才 activate，status active 的原 save 不觸發草稿 touch，避免自我版本衝突。只有適用公開草稿修改推進版本，不新增 schema。回傳 entity 時間重讀 DB，可信版本仍為 DB raw 微秒字串。
+- **驗證**：HTTP 與隔離真 DB；以 SET timestamp 固定此 app pool 的 session clock 驗同秒 dirty/no-dirty，最後重設 session clock，不調整全域 DB 時間。其他測試涵蓋全部草稿修改入口、busy拒絕不改版本、無效修改不提交、worker成功及非草稿note不改文件版本。
+
+
+## R12：清理 UPDATE 也須只定位已取得的鎖
+
+真DB跨批保留測試重現pool4仍等待50秒；performance_schema證據顯示 `WHERE id IN (378..477)` 的清理UPDATE在PRIMARY key377等待，而377是被SKIP LOCKED略過且不在清單中的parent。決定在每批100列交易內逐個已鎖唯一PK更新；避免最佳化器選掃描計畫而重新碰到略過列。保留既有batch／skip_locked／時間與summary，不以延長timeout或加重試掩蓋。原測試同DB轉綠。

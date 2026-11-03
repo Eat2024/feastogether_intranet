@@ -135,3 +135,8 @@ Spec 023 的本機主檔與信箱能力是查核前置條件；實作前核對�
 | input／issues 按需讀取 | 重整後修正完整名單且不讓輪詢洩漏大量資料 | 只回摘要無法還原尚未落地的名單；每次輪詢回整份輸入成本過高。 |
 
 無憲章例外；移除成本為先停止受理、結清工作、保留稽核摘要，再移除讀寫入口，不需搬遷已成立簽署證據。
+
+
+### 草稿編輯版本補修
+
+2026-11-03 真 HTTP 紅燈確認：只換欄位／簽署人／註記不一定會更新 document.updated_at；ORM 即使 dirty save 也可能在同秒碰撞，讓 failed parent retry 覆蓋剛修改的名單。因此所有草稿編輯在文件鎖內以 DB 單調微秒 touch 完成版本更新，不新增版本欄位／表／環境變數。DocumentRepository.save 對既有 draft 保存原 raw 版本再 save/touch，公開 fields/note 自行 touch；新建及正式 worker activate 不走該分支。save 後回傳時間重讀 DB，原 job 仍以 raw 微秒版本比對。保守將同值儲存也視為新編輯版本。

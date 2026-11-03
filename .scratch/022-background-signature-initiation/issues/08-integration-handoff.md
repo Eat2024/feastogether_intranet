@@ -48,3 +48,10 @@
 - 指定 commit `a2ae05095e0bcd287b3ed4be29e563eea9cf9271` 無衝突合併至 `impl/022-integration`，merge commit `edcfbe4b70367e7fab50445f60d333fb84369798`。只將 accept／retry 短交易設為 READ COMMITTED，正式 worker 交易及 session／global 隔離設定不變。
 - 實作 82 e2e、build/lint 通過；整合 hook lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過。跨文件不存在 key／active 查詢造成的 gap lock deadlock 已修正，仍需 08 擴大回歸驗收。
 - 僅操作獨立 integration worktree，沒有切換／修改使用者原 checkout 或部署；client 無變更，08 保持 claimed。
+
+## 預審交付整合紀錄
+
+- `impl/022-08` 指定 commit `05cb53ae82c8b71e8e3fc46d41061d71bbc260d6` 無衝突合併至 `impl/022-integration`，merge commit `8f97afb6326f1ceef1b5bd9b17160a0327a018da`。本次先整合測試遷移、Swagger 與效能測試供預審，不結案。
+- 已交付證據：完整 e2e 47 suites／483 passed＋1 skipped、最後受影響回歸 16 suites／204 passed、schema 5 suites／30、security 14 suites／84、unit 115 suites／1,180，lint／build 通過。merge hook 再驗 lint 0 errors／272 既有 warnings、115 suites／1,180 unit 通過。
+- T031、T034 已驗完成；T032／T033 仍未勾選，真實長時間測試與正式 code review 尚未完成。票 08 保持 claimed。
+- client 差異為空，只操作獨立 integration worktree，未部署。

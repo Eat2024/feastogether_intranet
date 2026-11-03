@@ -4,24 +4,24 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** claimed
+**Status:** resolved
 
 
 **Source:** [Spec 020](../../../specs/020-custom-export-filename/spec.md)、[Plan](../../../specs/020-custom-export-filename/plan.md)、[Tasks](../../../specs/020-custom-export-filename/tasks.md)。
 
 **Scope:** US1，以及 US3 適用於 Excel 的提示與錯誤修正。對應 T001–T007、T013–T014 的 Excel 部分及 T016–T018 的本票驗證。依既有 plan，先完成最小 ZIP 瀏覽器命名可行性檢查，避免共用契約建立後才發現方案不可行；實際 ZIP 功能由 02 完成。
 
-- [ ] 使用者填寫「年度簽署紀錄」並匯出時，取得「年度簽署紀錄.xlsx」；篩選、欄位、內容與既有成功匯出記錄規則不變。
-- [ ] 空白、純空白或省略檔名維持原預設；依所選格式處理結尾 `.xlsx`／`.zip`，去除前後空白，不重複追加副檔名。
-- [ ] 後端拒絕 null、非字串、未知欄位、不支援類型，以及 spec 列出的路徑、控制字元、保留名稱與無效主檔名；trim 後輸入最多 100 Unicode 字元，最終名稱最多 255 UTF-8 bytes，錯誤不回顯原名稱。
-- [ ] 準備下載需有效員工 session、允許的 Origin、已發起且未刪除的同部門文件；草稿、跨部門或僅外部簽署憑證不得使用。
-- [ ] 準備操作只讀、不產檔、不新增匯出紀錄；準備成功後才執行既有 Excel 記錄與產檔，名稱驗證或準備失敗不產生成功紀錄。
-- [ ] 點擊時擷取名稱與篩選條件；準備中有忙碌狀態且防止重複提交，失敗保留輸入／篩選並以繁體中文提示，修正後可重試。
-- [ ] Excel 啟用後提示清楚說明當次性、留白預設與副檔名規則；02 尚未完成前不得讓 ZIP 選項誤顯為已支援。
-- [ ] 名稱只用於當次下載，不更動文件名稱、歷史紀錄或共用成果，不放入 URL 或日誌；不新增資料表、環境變數、依賴或持久狀態。
-- [ ] 完成名稱邊界與 HTTP／權限測試，以及 Excel 畫面正常、空白、錯誤修正的實際驗收；執行變更範圍的 lint/build 與必要測試，留下結果及未驗證限制。
-- [ ] 最小瀏覽器檢查確認同源下載連結在 attachment 不含 filename 時採用指定名稱，且原頁保留；失敗先調整設計，不加入 spec 外機制。
-- [ ] 驗收通過後整合至單一功能整合分支，追加驗證與 commit 紀錄，再改為 resolved；未測通的必要項目不能視為完成。
+- [x] 使用者填寫「年度簽署紀錄」並匯出時，取得「年度簽署紀錄.xlsx」；篩選、欄位、內容與既有成功匯出記錄規則不變。
+- [x] 空白、純空白或省略檔名維持原預設；依所選格式處理結尾 `.xlsx`／`.zip`，去除前後空白，不重複追加副檔名。
+- [x] 後端拒絕 null、非字串、未知欄位、不支援類型，以及 spec 列出的路徑、控制字元、保留名稱與無效主檔名；trim 後輸入最多 100 Unicode 字元，最終名稱最多 255 UTF-8 bytes，錯誤不回顯原名稱。
+- [x] 準備下載需有效員工 session、允許的 Origin、已發起且未刪除的同部門文件；草稿、跨部門或僅外部簽署憑證不得使用。
+- [x] 準備操作只讀、不產檔、不新增匯出紀錄；準備成功後才執行既有 Excel 記錄與產檔，名稱驗證或準備失敗不產生成功紀錄。
+- [x] 點擊時擷取名稱與篩選條件；準備中有忙碌狀態且防止重複提交，失敗保留輸入／篩選並以繁體中文提示，修正後可重試。
+- [x] Excel 啟用後提示清楚說明當次性、留白預設與副檔名規則；02 尚未完成前不得讓 ZIP 選項誤顯為已支援。
+- [x] 名稱只用於當次下載，不更動文件名稱、歷史紀錄或共用成果，不放入 URL 或日誌；不新增資料表、環境變數、依賴或持久狀態。
+- [x] 完成名稱邊界與 HTTP／權限測試，以及 Excel 畫面正常、空白、錯誤修正的實際驗收；執行變更範圍的 lint/build 與必要測試，留下結果及未驗證限制。
+- [x] 最小瀏覽器檢查確認同源下載連結在 attachment 不含 filename 時採用指定名稱，且原頁保留；失敗先調整設計，不加入 spec 外機制。
+- [x] 驗收通過後整合至單一功能整合分支，追加驗證與 commit 紀錄，再改為 resolved；未測通的必要項目不能視為完成。
 
 ## Comments & Implementation Results
 
@@ -33,3 +33,10 @@
 ### 實作進度（2026-11-03）
 
 Excel 路徑與名稱驗證已實作；helper／真 HTTP-service-policy 共 51 tests 通過。server build、兩 package lint 通過。T001 的 Chrome 最小下載機制 probe 通過。狀態保留 claimed，等待整合分支的 client build、真前端 Excel 驗收及合併紀錄；worktree client build 因外部 node_modules symlink 受 Turbopack 限制，並非已驗證成功。詳細指令與結果見 quickstart。
+
+### 整合驗收（2026-11-03）
+
+- 實作 commit：`b0ea2a0399ae528c01f02b0ec2b883eef9243915`，已 fast-forward 整合至 `feat/020-custom-export-filename`。
+- root `pnpm build` 成功（server 與 client）；precommit lint 與 111 suites／1132 tests 通過。
+- Chrome 156 實際前端＋合成 API 回應驗收：自訂、空白預設、副檔名轉換、錯誤不記錄、原頁修正重試全部通過；讀取實際下載的 XLSX，確認姓名欄為合成簽署人。HTTP／授權另由真 controller/service/policy 測試驗證，未使用真實個資。
+- 最小 ZIP 原生下載 probe 已確認正確名稱與原頁保留。完整 ZIP／跨瀏覽器與真 DB 驗收由 02 負責。

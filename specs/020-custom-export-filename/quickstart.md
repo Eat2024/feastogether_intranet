@@ -57,3 +57,7 @@ pnpm build
 - Worktree 透過既有 node_modules symlink 使用已安裝套件；pnpm 以 `pnpm_config_verify_deps_before_run=false` 避免重裝。client 預設 Turbopack build 因 node_modules 指向 worktree filesystem root 之外而失敗，須由整合工作目錄重跑，不能記為建置通過。
 - T001 由主代理執行臨時合成內容 probe：Chrome 156.0.8078.74，同源 attachment 不附 filename，延遲觸發 a.download「年度副本.zip」＋獨立 target/noopener；建議名稱正確、download.failure=null、原頁保留。此結果僅為最小機制確認，不替代入口網／完整 UI 驗收。
 - Excel 真前端合成資料驗收與整合分支建置由主代理於合併後執行；本階段尚未驗證實際 UI 或完成 ticket 結案。
+
+### Ticket 01 整合驗收
+
+2026-11-03，commit `b0ea2a0` 已整合；root `pnpm build` 通過。Chrome 156 的實際前端以合成攔截 API 驗證 Excel 自訂／預設／副檔名切換／錯誤不新增紀錄／修正重試，並讀取真實下載 XLSX 的儲存格，全部通過。此為前端驗收，後端授權證據為獨立真 HTTP/service/policy 測試，不混稱完整 DB 端到端驗收。

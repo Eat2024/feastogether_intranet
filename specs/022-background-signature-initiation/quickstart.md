@@ -204,3 +204,7 @@ Reconnect 合併 06／07 後，build 與完整 7 suites／61 tests 複驗通過�
 ## 員工共享鎖補修（2026-11-03）
 
 正式worker持users/document/job鎖5秒時，另一份既有草稿受理由約5027ms降至約12ms。worker及accept/retry使用users S current read，與job creator FK相容；停用／信箱／同步UPDATE仍被阻擋，先停用則worker拒絕正式發起。以專用test022_integrity／Redis11驗證，不更動長測DB10。此為受控持鎖情境，不替代08完整容量矩陣；同文件committing期間固定busy訊息另行補修。
+
+## 最新 dev 最終回歸（2026-11-04）
+
+包含Spec024與busy預檢snapshot補修的 `2f0657d`：完整e2e50 suites／531 tests通過，專用reconnect另DB9 1／1通過；unit119 suites／1213、schema5／30、security14／84、root build與lint通過（0errors／272既有warnings）。前輪主機睡眠造成的超時保留於validation；最終以caffeinate僅綁測試子程序生命週期重跑全綠。新版隔離80次矩陣P95為12.40／12.58／18.15／99.45ms，5001→5混排大型成功後18ms小型開始。T031–T034完成，票08保持claimed待最終合併與正式review；沒有部署或瀏覽器驗收。

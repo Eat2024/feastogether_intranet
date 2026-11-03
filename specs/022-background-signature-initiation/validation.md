@@ -87,14 +87,14 @@ Queue 的最終真相：原 process 完成DB提交後，因睡眠期間遺失 Bu
 
 `esign-initiation-schema.e2e-spec.ts` 真MySQL驗非空工作表down拒絕且資料保留，測試自身合成列清空後down/up可重建；這只是空表DDL回退演練，不是建議刪除正式工作紀錄。非空表正常回退保留schema，既有簽署證據不可刪除。
 
-## 最新 dev 整合基準（2026-11-04，待完整回歸）
+## 最新 dev 整合基準（2026-11-04）
 
 - 原 review baseline：`4b79d08dc8ea931afd73bb868089c9b16c13bede`；最新固定 dev baseline：`ef0fdca6da66afe8495b589390ddaf647c9dcdbf`（含 Spec024 Portal 來源）。後續正式 review 應比較新 baseline 與 022 整合分支，避免將已上線的 024 列為本功能差異。
 - 在獨立 022 worktree 合併 dev；e2e testRegex 取兩邊仍存在 suite 的聯集，保留 Portal 與背景發起測試。production server build 通過。
 - Fixture 遷移 `e98172e`：022 acceptance／recovery／reconnect 使用 `createSyntheticPortal` 與真實 PortalDirectory／EligibleStaffService 登入；其餘既有業務測試保留原 EligibleStaffService stub，直接安排自身合成本機 users.email。清除全部 11 個檔案的舊 helper 引用並刪除 helper；未復活 HR 網路路徑或正式 fallback。
-- 合併 reviewfix 後基準 `8a92bc5`：正常 hook unit119 suites／1213 tests、root lint0errors／272warnings；root build、security14 suites／84 tests、新 Portal fixture 的專用 Redis DB9 reconnect 1／1 通過。schema5 suites／30 tests亦通過；完整 e2e 尚在執行。
+- 合併 reviewfix 後基準 `8a92bc5`：正常 hook unit119 suites／1213 tests、root lint0errors／272warnings；root build、security14 suites／84 tests、新 Portal fixture 的專用 Redis DB9 reconnect 1／1 通過。schema5 suites／30 tests亦通過；該基準後續完整 e2e 與補修結果列於下。
 - 新完整回歸發現 reminder 兩個並發案例（email／user）皆回 `[202,202]`，違反只接受一批的 `[202,409]` 斷言。獨立重現一致，未放寬測試。原因定位為 document 鎖前 busy 預檢在 REPEATABLE READ 交易內建立 snapshot，後續催簽 history 查詢看不到前交易提交；補修與全 mutation 盤點由 reviewfix 分支進行。
-- 08 長測仍在舊 worktree／DB10，不變動；原 checkout 由使用者操作，本次沒有切換或修改。新 base 的完整回歸及正式 review 仍待完成。
+- 08 長測仍在舊 worktree／DB10，不變動；原 checkout 由使用者操作，本次沒有切換或修改。新 base 的完整回歸結果見末節；正式 review 由整合者收尾。
 
 ## 最新 dev 合併後補充驗收
 
@@ -105,3 +105,29 @@ Queue 的最終真相：原 process 完成DB提交後，因睡眠期間遺失 Bu
 - 催簽三項並發失敗是前述RR snapshot，正式修正將busy預檢移出交易，鎖內current-read查核保留。
 - 兩項午夜fixture把Date固定今日UTC15:59:50，真DB時鐘過了該時間30分鐘後，新的背景deadline會正確判逾時。改取下一個未來午夜邊界，保留跨日及群寄斷言；兩項2/2通過。這是假時鐘的既有催簽日界線驗證，與SC-006真實時間長測分開。
 - 直接 `Promise.all(service.process)` 的跨文件案例刻意繞過正式queue global concurrency=1；真MySQL顯示兩個 `esign_document_fields` INSERT互等 `idx_esign_document_fields_doc_page_sort_id` supremum gap，rollback一筆。該job正確queued／`ESIGN_INITIATION_TRANSIENT_FAILURE`／attempt1／nextAttemptAt，另一筆成功。只在此案例明確驗暫時錯誤與排程後，提前測試自身job的nextAttemptAt、有限最多3次真process，再斷言兩份succeeded及指派完整；未改production隔離、未讓共用helper偷偷重試。單例修後1/1通過；這是直接service並發恢復驗證，不宣稱正式queue同時執行兩份。
+
+最終補修整合 `2f0657d` 的第一次完整回歸受到主機再次睡眠干擾：電源紀錄顯示本機2026-11-04 00:40:19 Idle Sleep，之後反覆Maintenance Sleep／DarkWake；suite記錄2015.86秒（不等於全部牆鐘期間），5 suites／8 tests失敗，內容為超時、worker未到終態與Portal15秒回應量測變41.421秒。前述RR／午夜／並行service六個原失敗已通過，但不能因此稱該輪全綠，也不把每個新失敗未經重驗直接歸因睡眠。保留 `/tmp/022-final-full-e2e.log`，以 `caffeinate -i pnpm -C server test:e2e` 僅綁後續測試子程序生命週期重跑，不改系統永久設定、不重跑SC-006。
+
+## 最終交付驗證（2026-11-04）
+
+程式基準 `2f0657d`，包含最新 dev `ef0fdca`／Portal fixture／reviewfix／busy預檢snapshot補修；後續僅驗收文件狀態變更。
+
+- 完整 e2e 防睡眠重跑：50 suites／531 tests通過、reconnect專用1 suite／1 test依環境保護跳過；219.023秒、exit0。前一睡眠輪8項失敗皆恢復綠燈，沒有放寬timeout或業務斷言。
+- reconnect已於相同新Portal fixture在專用DB9獨立1／1通過；合計51套聯集皆有執行證據。
+- merge hook：server lint:check／root lint通過（0 errors／272既有warnings），unit119 suites／1213 tests通過；root build通過。
+- 新base schema5 suites／30 tests、security14 suites／84 tests通過，均使用隔離本機測試資料庫；之後source補修只移動busy預檢位置，完整e2e再次覆蓋授權與409行為。
+- 6001人完整性案例已包含於完整e2e：全部指派／payload順序／6001筆稽核／初邀log／唯一batch，重複process不增加attempt、不雙發。
+- 長測phase觀測：初次queue等待約30秒；首次active15:15:05.361至committing16:39:57.708約5092.35秒（包含受控查核延遲與主機睡眠），committing至DB成功16:39:58.783約1.075秒。這是stage邊界的觀測時間，非純SQL CPU時間；正常矩陣另列合計背景處理與測試程序RSS。
+- 重跑初期host／MySQL UTC／Redis TIME差約3ms，沒有把driver本機時區解析造成的Date顯示差誤當容器時鐘偏移。`caffeinate`隨測試子程序結束，沒有永久電源設定。
+
+```bash
+DB_MYSQL_DB=feastogether_intranet_test029 caffeinate -i pnpm -C server test:e2e
+DB_MYSQL_DB=feastogether_intranet_test022_reconnect REDIS_DB=9 ESIGN_STORAGE_ROOT=/tmp/esign-test022-reconnect pnpm -C server test:e2e --testPathPatterns esign-initiation-reconnect
+DB_MYSQL_DB=feastogether_intranet_test029s pnpm -C server test:schema
+DB_MYSQL_DB=feastogether_intranet_test029q REDIS_DB=13 ESIGN_STORAGE_ROOT=/tmp/esign-test022-security pnpm -C server test:e2e:security
+# security結束後才將同一專用Redis13交給矩陣；不得並行共用。
+DB_MYSQL_DB=feastogether_intranet_test022_t08bench REDIS_DB=13 ESIGN_STORAGE_ROOT=/tmp/esign-test022-t08bench pnpm -C server test:e2e --testRegex 'esign-initiation-benchmark.e2e-spec.ts$' --testNamePattern 'SC-001|SC-008'
+pnpm build
+```
+
+T031–T034的後端實作與隔離驗收已完成，票08維持claimed，待合併至整合分支及正式code review後由整合者結案。client／瀏覽器互動／UAT部署／真實寄信及新版基準重跑85分鐘仍未執行，不把舊基準長測或API smoke冒稱涵蓋這些項目。

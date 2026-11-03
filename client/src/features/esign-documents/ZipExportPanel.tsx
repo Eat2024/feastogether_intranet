@@ -76,6 +76,11 @@ export default function ZipExportPanel({ documentId, signedCount, exportSummary,
   });
 
   const data = job.data ?? exportSummary;
+  // 預覽本次下載名稱；實際下載仍由後端驗證並回傳最終檔名。
+  const requestedFileName = fileName.trim();
+  const downloadFileName = requestedFileName
+    ? `${requestedFileName.replace(/\.(xlsx|zip)$/i, '')}.zip`
+    : null;
   const busy = request.isPending || retry.isPending || download.isPending;
   const generateButton = (label: string) => (
     <Button
@@ -138,7 +143,7 @@ export default function ZipExportPanel({ documentId, signedCount, exportSummary,
             <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
               <Box sx={{ mr: 'auto' }}>
                 <Typography variant="content" component="div">
-                  {f.fileName}
+                  {downloadFileName ?? f.fileName}
                 </Typography>
                 <Typography variant="helper" component="div">
                   {data.expectedCount} 份・{formatSize(f.size)}・{formatDateTime(data.snapshotAt) ?? '—'} 的簽署資料

@@ -61,3 +61,10 @@
 - 文件／欄位／簽署名單／PDF／刪除／註記／停止／補簽／催簽，先小欄位建立人授權及 active EXISTS，再取得寫入鎖；正式 lease 保留原鎖內檢查。名單 users X、PDF prepare 前亦先拒絕。
 - 真 worker 交易持鎖 5 秒，修改原本等約 5 秒才回 STATE_CONFLICT，修正後 1–3ms 固定 worker 409；各入口越權 404，無 job 資訊。新增受理／重試的 key 重播優先與快速拒絕另以後續小 commit 處理。
 - 8 suites / 79 e2e、115 suites / 1180 unit、build 通過；既有 unit fixture 配合新增預檢更新，無前端／schema／env 變更。
+
+## 正式交易期間快速 busy 補修整合紀錄
+
+- 僅指定 commit `3f3f7f913c71a35358a3c256d89fed6558034141` 無衝突合併至 `impl/022-integration`，merge commit `34d3077974efd51e0791707c5652f16a57318033`；未取用 locks worktree 後續未提交變更，票 04 保持 resolved。
+- 有權人的 fields／draftSave／settings／title／PDF／delete／note／stop／reopen／reminder 在正式 committing 文件鎖期間先取得固定 409 worker 執行中訊息，越權仍 404；原鎖內 busy guard 保留作競態防線。
+- 實作 79 e2e、build/lint 通過；整合 hook lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過。
+- 無 client 修改；accept／retry 重複發起 fast busy 與歷史 key 重播優先仍待下一補修，08 整體驗收未完成。

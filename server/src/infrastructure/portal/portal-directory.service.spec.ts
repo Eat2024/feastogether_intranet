@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createPool } from 'mysql2/promise';
 import { PortalConfig } from './portal.config';
@@ -192,6 +193,29 @@ describe('PortalDirectoryService', () => {
     );
   });
 
+  describe('整體期限', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('含排隊等連線在內，查詢 10 秒未完成即拒絕', async () => {
+      jest.useFakeTimers();
+      query.mockReturnValue(new Promise(() => {}));
+
+      const rejection = createService().listActiveEmployees();
+      const assertion = expect(rejection).rejects.toThrow('10 秒');
+      await jest.advanceTimersByTimeAsync(10_000);
+
+      await assertion;
+    });
+
+    it('查詢完成後不留下計時器', async () => {
+      jest.useFakeTimers();
+
+      await createService().listActiveEmployees();
+
+      expect(jest.getTimerCount()).toBe(0);
+    });
+  });
+
   it('模組銷毀時關閉連線池；從未查詢時不建立連線池', async () => {
     const used = createService();
     await used.listActiveEmployees();
@@ -201,5 +225,25 @@ describe('PortalDirectoryService', () => {
     jest.mocked(createPool).mockClear();
     await createService().onModuleDestroy();
     expect(createPool).not.toHaveBeenCalled();
+  });
+
+  it('Portal 不可用時關閉連線池失敗不阻擋應用結束，log 只記錯誤代碼', async () => {
+    const logError = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    end.mockRejectedValue(
+      Object.assign(new Error('connect ECONNRESET portal.synthetic.invalid'), {
+        code: 'ECONNRESET',
+      }),
+    );
+    const service = createService();
+    await service.listActiveEmployees();
+
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+    const logged = JSON.stringify(logError.mock.calls);
+    expect(logged).toContain('ECONNRESET');
+    expect(logged).not.toContain('portal.synthetic.invalid');
+    logError.mockRestore();
   });
 });

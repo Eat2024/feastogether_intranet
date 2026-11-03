@@ -29,12 +29,13 @@
   - `connectionLimit: 3`
   - `connectTimeout: 10_000`
   - 每個查詢帶 `timeout: 10_000`
-  - 模組銷毀時呼叫 `pool.end()`
+  - 每次呼叫再以計時器 race 出 10 秒的整體期限，涵蓋排隊等連線（實作時補上，見下方 Rationale）
+  - 模組銷毀時呼叫 `pool.end()`；Portal 不可用時 `end()` 會拒絕，只記錯誤代碼，不阻擋其他模組關閉
 - **Rationale**：
   - Portal 只有四個固定的唯讀 SELECT，沒有 entity 或 migration。
   - mysql2 pool 在第一次查詢才建立連線，Portal 故障不會影響 HTTP 與 worker 啟動（FR-003），Portal 恢復後也會自動重連。
   - 主 DB 的 provider 在啟動時呼叫 `initialize()`，失敗後吞錯、留下未初始化的 DataSource 且不重試，不適合用在 Portal。
-  - 10 秒逾時可滿足 SC-007「15 秒內回報」。
+  - 10 秒逾時可滿足 SC-007「15 秒內回報」。但 mysql2 pool 沒有 acquire timeout，連線失敗時一次只放行一個排隊者：實測 Portal 不回應、7 個並發查詢分別在 10、20、30 秒才拒絕。所以每次呼叫另加 10 秒整體期限，讓排隊中的呼叫也在 15 秒內回報。
   - 連線上限 3 是因為 Portal 由多系統共用，`max_connections` 只有 151。
 - **Alternatives considered**：
   - 第二個 TypeORM DataSource：啟動時就要連線，還要處理 entity 與生命週期，多了不必要的複雜度。
@@ -62,7 +63,7 @@
   | `PORTAL_MYSQL_HOST` | Portal 主機 |
   | `PORTAL_MYSQL_PORT` | 埠，預設 3306 |
   | `PORTAL_MYSQL_USER` | 帳號 |
-  | `PORTAL_MYSQL_PASS` | 密碼 |
+  | `PORTAL_MYSQL_PASS` | 密碼，可為空（與 `DB_MYSQL_PASS` 相同） |
   | `PORTAL_MYSQL_DB` | 資料庫 |
 
   - 連線上限與逾時是程式常數，不開成環境變數。

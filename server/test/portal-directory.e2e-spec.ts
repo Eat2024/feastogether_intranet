@@ -100,8 +100,9 @@ describe('Portal 唯讀連線（合成 Portal）', () => {
   });
 
   afterAll(async () => {
-    await Promise.all(apps.map((app) => app.close()));
+    // 先關不回應的 server：逾時後 pool 仍在替排隊的呼叫建立連線，pool.end() 會等它們連線逾時
     await unresponsive?.close();
+    await Promise.all(apps.map((app) => app.close()));
     await portal?.drop();
   });
 
@@ -238,7 +239,7 @@ describe('Portal 唯讀連線（合成 Portal）', () => {
     await expect(rejection).rejects.not.toThrow('portal.synthetic.invalid');
   });
 
-  it('Portal 不回應時 HTTP app 照常啟動，查詢在 15 秒內拒絕', async () => {
+  it('Portal 不回應時 HTTP app 照常啟動，超過連線上限的 7 個並發查詢都在 15 秒內拒絕', async () => {
     unresponsive = await startUnresponsivePortal();
     const { config } = unresponsive;
     const app = await startApp((builder) =>
@@ -248,10 +249,15 @@ describe('Portal 唯讀連線（合成 Portal）', () => {
     const health = await app.inject({ method: 'GET', url: '/api/health' });
     expect(health.statusCode).toBe(200);
 
+    const service = app.get(PortalDirectoryService);
     const startedAt = Date.now();
-    await expect(
-      app.get(PortalDirectoryService).findEmployeesByEmpid('000123'),
-    ).rejects.toMatchObject({ code: 'ETIMEDOUT' });
+    const results = await Promise.allSettled(
+      Array.from({ length: 7 }, () => service.findEmployeesByEmpid('000123')),
+    );
+
     expect(Date.now() - startedAt).toBeLessThan(15_000);
+    expect(results.map((result) => result.status)).toEqual(
+      Array(7).fill('rejected'),
+    );
   }, 20_000);
 });

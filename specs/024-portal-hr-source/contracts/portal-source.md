@@ -7,11 +7,12 @@
 | `PORTAL_MYSQL_HOST` | 是 | | Portal MySQL 主機 |
 | `PORTAL_MYSQL_PORT` | 否 | 3306 | |
 | `PORTAL_MYSQL_USER` | 是 | | UAT 使用 `survey_role` |
-| `PORTAL_MYSQL_PASS` | 是 | | 只存在於部署環境 |
+| `PORTAL_MYSQL_PASS` | 否，可為空 | 空字串 | 只存在於部署環境；可為空是因為合成 Portal 沿用本機測試 DB 的帳密 |
 | `PORTAL_MYSQL_DB` | 是 | | `portal` |
 
 - 第一次查詢時才檢查必填值；缺漏時視為來源不可用，不影響服務啟動。
 - 連線上限 3、連線逾時與查詢逾時各 10 秒，都是程式常數。
+- 每次呼叫另有 10 秒的整體期限，涵蓋排隊等連線、建立連線與查詢；mysql2 pool 沒有 acquire timeout，Portal 不回應時，超過 3 個的並發呼叫也在期限內拒絕。
 
 ## Portal 查詢（只有這四個）
 

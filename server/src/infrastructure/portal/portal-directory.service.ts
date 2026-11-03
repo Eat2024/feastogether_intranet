@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { createPool, type Pool, type RowDataPacket } from 'mysql2/promise';
 import { PortalConfig } from './portal.config';
 import type {
@@ -10,10 +10,11 @@ import type {
   PortalStatusRow,
 } from './portal.types';
 
-// Portal 由多個系統共用（max_connections 151），每個 process 最多 3 條連線；10 秒逾時讓呼叫端在 15 秒內回報。
+// Portal 由多個系統共用（max_connections 151），每個 process 最多 3 條連線。
+// 連線、查詢與每次呼叫的整體期限都是 10 秒，讓呼叫端在 15 秒內回報；整體期限也涵蓋排隊等連線，
+// 因為 mysql2 pool 沒有 acquire timeout，Portal 不回應時排在後面的呼叫會等前面的連線逾時。
 const CONNECTION_LIMIT = 3;
-const CONNECT_TIMEOUT_MS = 10_000;
-const QUERY_TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 10_000;
 const STATUS_BATCH_SIZE = 500;
 
 const ORG_CHART_DEPARTMENTS_SQL = [
@@ -46,6 +47,7 @@ const ACTIVE_EMPLOYEES_SQL = [
  */
 @Injectable()
 export class PortalDirectoryService implements OnModuleDestroy {
+  private readonly logger = new Logger(PortalDirectoryService.name);
   private pool?: Pool;
 
   constructor(private readonly config: PortalConfig) {}
@@ -87,16 +89,36 @@ export class PortalDirectoryService implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.pool?.end();
+    try {
+      await this.pool?.end();
+    } catch (error) {
+      // Portal 不可用時，進行中的連線會讓 end() 拒絕；不得阻擋其他模組關閉。只記代碼，訊息可能含主機或帳號。
+      const { code } = error as { code?: string };
+      this.logger.error(`Portal 連線池關閉失敗：${code ?? 'unknown'}`);
+    }
   }
 
   private async query<T>(sql: string, values?: unknown[]): Promise<T[]> {
-    const [rows] = await this.getPool().query<RowDataPacket[]>({
-      sql,
-      values,
-      timeout: QUERY_TIMEOUT_MS,
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error('Portal 查詢超過 10 秒未完成')),
+        TIMEOUT_MS,
+      );
     });
-    return rows as T[];
+    try {
+      const [rows] = await Promise.race([
+        this.getPool().query<RowDataPacket[]>({
+          sql,
+          values,
+          timeout: TIMEOUT_MS,
+        }),
+        deadline,
+      ]);
+      return rows as T[];
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private getPool(): Pool {
@@ -108,7 +130,7 @@ export class PortalDirectoryService implements OnModuleDestroy {
       database: this.config.database,
       charset: 'utf8mb4',
       connectionLimit: CONNECTION_LIMIT,
-      connectTimeout: CONNECT_TIMEOUT_MS,
+      connectTimeout: TIMEOUT_MS,
     });
     return this.pool;
   }

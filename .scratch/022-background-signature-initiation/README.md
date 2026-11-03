@@ -2,7 +2,7 @@
 
 **最新範圍**：只實作後端 worker，排隊／執行中禁止修改文件及簽署人，前端相關驗收暫緩。詳見 [範圍決策](../../specs/022-background-signature-initiation/backend-only-scope.md)。
 
-已依 tasks 拆成 8 張本機票單。01–05 已驗收並整合，狀態 `resolved`；06–08 尚未開始。04 與 05 皆 resolved，06 前置已完成，目前 frontier 為 06。整合分支為 `impl/022-integration`。
+已依 tasks 拆成 8 張本機票單。01–07 已驗收並整合，狀態 `resolved`；08 尚未開始，目前 frontier 為 08。另有 Redis reconnect 補修與整體整合驗收待完成，整份規格尚未結案。整合分支為 `impl/022-integration`。
 
 [規格](../../specs/022-background-signature-initiation/spec.md) · [計畫](../../specs/022-background-signature-initiation/plan.md) · [Tasks](../../specs/022-background-signature-initiation/tasks.md)
 

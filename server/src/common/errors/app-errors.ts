@@ -15,6 +15,21 @@ export function signAfterHint(startAt: Date): string {
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  ESIGN_INITIATION_INPUT_EXPIRED: [
+    AppErrorCode.ESIGN_INITIATION_INPUT_EXPIRED,
+    '背景發起明細已清理，請重新確認後發起。',
+    HttpStatus.GONE,
+  ],
+  ESIGN_INITIATION_ISSUES_NOT_READY: [
+    AppErrorCode.ESIGN_INITIATION_ISSUES_NOT_READY,
+    '背景發起尚未失敗，無法讀取問題明細。',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_INITIATION_RETRY_NOT_ALLOWED: [
+    AppErrorCode.ESIGN_INITIATION_RETRY_NOT_ALLOWED,
+    '此工作無法重試，請重新確認後發起。',
+    HttpStatus.CONFLICT,
+  ],
   ESIGN_INITIATION_IN_PROGRESS: [
     AppErrorCode.ESIGN_INITIATION_IN_PROGRESS,
     '文件正在背景發起中（worker 執行中），暫時無法修改文件或簽署人，請稍後再試。',

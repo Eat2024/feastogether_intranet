@@ -158,3 +158,25 @@ NODE_ENV=test DB_MYSQL_HOST=127.0.0.1 DB_MYSQL_PORT=13322 DB_MYSQL_USER=root DB_
 真 MySQL／Redis、合成員工與 fake mail 驗證：啟動 gate、metadata 清空後兩個 worker 同程序恢復、恢復配置 pending 時 delivery 不 claim、maintenance 補列完成兩份 DB queued 工作；恢復後新工作最大同時處理數 1。02–05 加 reconnect 回歸 5 suites／46 tests；unit 115 suites／1,180 tests，build 通過，lint 0 errors／272 既有 warnings。
 
 這個並行量結果針對配置恢復後的新工作。Redis 資料遺失前已在 DB 正式交易中的不同文件，不能靠消失的 active 記錄保證全域單工；每份文件仍以 DB lease/token 保證舊持有者不能重複提交。單純手動清 keys 而連線未斷不會產生 ready，屬此恢復機制範圍外。
+
+
+## 06 失敗還原與人工重試（2026-11-03）
+
+建立人重新登入後先 GET `.../initiation-jobs/latest` 取得 jobId，再按需 GET `.../{jobId}/input` 還原當次確認輸入。來源組織樹已無該員工仍回原員編；外部原填 name/email 只提供給建立人。GET `.../{jobId}/issues?offset=0&limit=100` 只在 failed 可讀，下一頁依 nextOffset；外部問題只回 inputIndex，不回信箱。
+
+若最新 failed 的 retryable=true 且輸入／版本／簽署期限仍有效，以新的 UUID Idempotency-Key、空 body POST `.../{jobId}/retries`。新工作202，同 key重播200，Location 指向子工作。回應遺失時保留同 key重送；child成功、parent非latest或明細已清理都能重播原 child。欲改名單／欄位／期間應 POST新的 initiations，不能覆寫 retry body。
+
+錯誤分流：非failed issues→409 ESIGN_INITIATION_ISSUES_NOT_READY；已清理明細→410 ESIGN_INITIATION_INPUT_EXPIRED；過期或內容變更→409 對應 DEADLINE_PASSED／DOCUMENT_CHANGED；非最新／不可重試→409 ESIGN_INITIATION_RETRY_NOT_ALLOWED；新工作進行中異動→固定409 worker執行中訊息。無session401、非建立人404。前端未改，以上為API能力與驗收，不宣稱已有還原或分頁畫面。
+
+`impl/022-06` 使用專用DB `feastogether_intranet_test022_t06`／Redis DB6。retry8項及02–05回歸共53／53通過；含實際員工查核問題、外部索引、鎖內停用競態、版本鎖、回應遺失與清理後重播。unit113 suites／1,175 tests，build通過，lint0errors／272既有warnings。自動30天清理由票07實作。
+
+
+## 07 終態明細保留驗證（2026-11-03）
+
+沿既有 maintenance 每次恢復後，每批 100 筆清理 completedAt 滿 30 天（含邊界）的 succeeded／failed input、version、issues。被 retry 持有的工作列以 skip_locked 留待下輪。只另記 inputPurgedAt，保留原摘要 updatedAt（含微秒）與其他時間、key/hash、parent、計數、錯誤及正式簽署證據；非終態永不依此保留期清除。
+
+明細過期後 GET input／issues 回 410 ESIGN_INITIATION_INPUT_EXPIRED，摘要 detailsExpired=true。若要調整人員與期間，重新設定後送新的 initiation；本輪沒有新增前端過期畫面。原 initiation key 仍可重播摘要，已受理 retry 的同 key 在 parent 清理後仍可回原 child。清理與重試並行只會得到完整新 child 或 410，不會產生空名單工作。
+
+`impl/022-07` 專用 DB `feastogether_intranet_test022_t07`／Redis DB7；retention7項、與02–06回歸共6 suites／60 tests通過；unit113 suites／1,175 tests，build通過，lint0errors／272既有warnings。包含30天±1ms、非終態、正式證據保留、並行retry、206列跨批及鎖定parent下一輪補清。無client、schema、環境變數或排程新增。
+
+Reconnect 合併 06／07 後，build 與完整 7 suites／61 tests 複驗通過。首次整合回歸有一次 07 批次清理 lock wait timeout；單例、07 全套及再次七套回歸均通過，原因尚未重現定位，保留於 ticket 05 追加驗證紀錄，不能以複驗通過抹去首次結果。

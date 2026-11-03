@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { randomUUID } from 'node:crypto';
-import { isUUID } from 'class-validator';
+import { isUUID, isEmail } from 'class-validator';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
@@ -12,8 +12,15 @@ import {
 } from '../repositories/initiation-job.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { type InitiateDocumentDto } from '../dto/initiation.dto';
-import { type InitiationJobDto } from '../dto/initiation-job.dto';
-import { type EsignInitiationJob } from '../entities/esign-initiation-job.entity';
+import {
+  type InitiationJobDto,
+  type InitiationIssuesDto,
+  type InitiationIssuesQueryDto,
+} from '../dto/initiation-job.dto';
+import {
+  type EsignInitiationJob,
+  type InitiationIssue,
+} from '../entities/esign-initiation-job.entity';
 import { type SignerInputDto } from '../dto/signer.dto';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { canonicalSha256 } from './esign-audit.service';
@@ -109,6 +116,134 @@ export class EsignInitiationJobService {
     return { ...this.summary(accepted.job), reused: accepted.reused };
   }
 
+  /** 人工重試的 key 屬於 parent + 原 hash；重播不依賴仍保留敏感明細。 */
+  async retry(
+    documentId: number,
+    publicId: string,
+    userId: number,
+    requestKey: string | undefined,
+    body: unknown,
+  ): Promise<InitiationJobDto> {
+    if (
+      !requestKey ||
+      !isUUID(requestKey) ||
+      (body !== undefined &&
+        (body === null ||
+          typeof body !== 'object' ||
+          Array.isArray(body) ||
+          Object.keys(body).length))
+    )
+      throw new AppException(...AppErrors.ESIGN_INITIATION_INVALID_REQUEST);
+    const accepted = await this.mysql
+      .transaction(async (manager) => {
+        const creator = await this.users.findByIdForUpdate(userId, manager);
+        if (!creator || !creator.isActive || creator.deletedAt)
+          throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
+        const document = await this.documents.findInitiationAccess(
+          documentId,
+          manager,
+          true,
+        );
+        if (
+          !document ||
+          document.deletedAt ||
+          document.createdByUserId !== userId
+        )
+          throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
+        const previous = await this.jobs.byKey(documentId, requestKey, manager);
+        const parent = await this.jobs.find(
+          documentId,
+          publicId,
+          manager,
+          undefined,
+          true,
+        );
+        if (!parent)
+          throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
+        const hash = canonicalSha256({
+          operation: 'retry',
+          parentJobId: String(parent.id),
+          requestHash: parent.requestHash,
+        });
+        if (previous) {
+          if (
+            String(previous.parentJobId) !== String(parent.id) ||
+            previous.requestHash !== hash
+          )
+            throw new AppException(
+              ...AppErrors.ESIGN_INITIATION_REQUEST_CONFLICT,
+            );
+          return { job: previous, reused: true };
+        }
+        await this.access.assertNotInitiating(documentId, manager);
+        const latest = await this.jobs.latest(documentId, manager, true);
+        if (
+          latest?.id !== parent.id ||
+          parent.status !== 'failed' ||
+          !parent.retryable ||
+          document.status !== 'draft'
+        )
+          throw new AppException(
+            ...AppErrors.ESIGN_INITIATION_RETRY_NOT_ALLOWED,
+          );
+        const detail = await this.jobs.byId(parent.id, manager, true, true);
+        if (
+          parent.inputPurgedAt ||
+          !detail?.inputJson ||
+          !detail.documentVersionJson
+        )
+          throw new AppException(...AppErrors.ESIGN_INITIATION_INPUT_EXPIRED);
+        const version = await this.jobs.version(documentId, manager);
+        if (
+          !version ||
+          canonicalSha256(version) !==
+            canonicalSha256(detail.documentVersionJson)
+        )
+          throw new AppException(
+            ...AppErrors.ESIGN_INITIATION_DOCUMENT_CHANGED,
+          );
+        const now = new Date();
+        const end = new Date(detail.inputJson.signEndAt);
+        if (end <= now)
+          throw new AppException(...AppErrors.ESIGN_INITIATION_DEADLINE_PASSED);
+        const job = await this.jobs.create(
+          {
+            publicId: randomUUID(),
+            documentId,
+            createdByUserId: userId,
+            requestKey,
+            requestHash: hash,
+            parentJobId: parent.id,
+            inputJson: detail.inputJson,
+            documentVersionJson: detail.documentVersionJson,
+            status: 'queued',
+            stage: 'queued',
+            totalCount: detail.inputJson.signers.length,
+            processedCount: 0,
+            attemptCount: 0,
+            issueCount: 0,
+            retryable: false,
+            acceptedAt: now,
+            deadlineAt: new Date(
+              Math.min(now.getTime() + 7200000, end.getTime()),
+            ),
+            lastProgressAt: now,
+          },
+          manager,
+        );
+        return { job, reused: false };
+      })
+      .catch((error: unknown) => {
+        if (error instanceof AppException) throw error;
+        throw new AppException(...AppErrors.ESIGN_INITIATION_TRANSIENT_FAILURE);
+      });
+    if (!accepted.reused) {
+      this.logJob(accepted.job, 'esign.initiation_accepted');
+      await this.producer.enqueueInitiation(accepted.job.id);
+    }
+    return { ...this.summary(accepted.job), reused: accepted.reused };
+  }
+
   async latest(
     documentId: number,
     userId: number,
@@ -127,6 +262,63 @@ export class EsignInitiationJobService {
     const job = await this.jobs.find(documentId, publicId, manager);
     if (!job) throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
     return this.summary(job);
+  }
+
+  async input(
+    documentId: number,
+    publicId: string,
+    userId: number,
+  ): Promise<InitiateDocumentDto> {
+    const manager = await this.queryManager(documentId, userId);
+    const job = await this.jobs.find(
+      documentId,
+      publicId,
+      manager,
+      'inputJson',
+    );
+    if (!job) throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
+    if (job.inputPurgedAt || !job.inputJson)
+      throw new AppException(...AppErrors.ESIGN_INITIATION_INPUT_EXPIRED);
+    const { signers, fields, signStartAt, signEndAt, watermark, allowReject } =
+      job.inputJson;
+    return { signers, fields, signStartAt, signEndAt, watermark, allowReject };
+  }
+
+  async issues(
+    documentId: number,
+    publicId: string,
+    userId: number,
+    query: InitiationIssuesQueryDto,
+  ): Promise<InitiationIssuesDto> {
+    const manager = await this.queryManager(documentId, userId);
+    const job = await this.jobs.find(
+      documentId,
+      publicId,
+      manager,
+      'issuesJson',
+    );
+    if (!job) throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
+    if (job.status !== 'failed')
+      throw new AppException(...AppErrors.ESIGN_INITIATION_ISSUES_NOT_READY);
+    if (job.inputPurgedAt)
+      throw new AppException(...AppErrors.ESIGN_INITIATION_INPUT_EXPIRED);
+    const items = (job.issuesJson ?? [])
+      .slice(query.offset, query.offset + query.limit)
+      .map((issue) => ({
+        inputIndex: issue.inputIndex,
+        ...(issue.employeeNo ? { employeeNo: issue.employeeNo } : {}),
+        code: issue.code,
+        message:
+          issue.code === 'EMPLOYEE_UNAVAILABLE'
+            ? AppErrors.ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE[1]
+            : AppErrors.ESIGN_INITIATION_INPUT_INVALID[1],
+      }));
+    const next = query.offset + items.length;
+    return {
+      total: job.issueCount,
+      items,
+      nextOffset: next < job.issueCount ? next : null,
+    };
   }
 
   /** 查詢仍核對目前有效建立人，不沿用部門唯讀權限。 */
@@ -164,6 +356,7 @@ export class EsignInitiationJobService {
     if (!claimed?.leaseToken || !claimed.inputJson) return;
     const lease: InitiationLease = { jobId, leaseToken: claimed.leaseToken };
     const heartbeat = this.startHeartbeat(lease);
+    const issues: InitiationIssue[] = [];
     let notificationJobs:
       | Parameters<EsignJobProducerService['enqueueInvitations']>
       | undefined;
@@ -172,6 +365,7 @@ export class EsignInitiationJobService {
       const { signers, employees } = await this.resolveSigners(
         claimed.inputJson,
         lease,
+        issues,
       );
       lease.expectedEmployees = employees;
       // 此短 CAS 先提交，摘要才能在正式交易進行中看見階段；不代表成功。
@@ -235,9 +429,17 @@ export class EsignInitiationJobService {
     } catch (error) {
       await heartbeat.stop();
       const failure = this.classifyFailure(error, claimed.createdByUserId);
+      if (!issues.length)
+        issues.push(...this.validationIssues(error, claimed.inputJson, lease));
       try {
         const settled = await this.mysql.transaction((manager) =>
-          this.jobs.fail(lease, failure.code, failure.transient, manager),
+          this.jobs.fail(
+            lease,
+            failure.code,
+            failure.transient,
+            manager,
+            issues,
+          ),
         );
         if (settled)
           this.logJob(
@@ -330,7 +532,7 @@ export class EsignInitiationJobService {
       const rows = await this.mysql.transaction((manager) =>
         this.jobs.recover(now, afterId, manager),
       );
-      if (!rows.length) return;
+      if (!rows.length) break;
       for (const row of rows) {
         if (
           row.status === 'queued' &&
@@ -340,6 +542,15 @@ export class EsignInitiationJobService {
         else this.logJob(row, 'esign.initiation_reconciled');
       }
       afterId = rows[rows.length - 1].id;
+    }
+    // 沿既有 maintenance 喚醒分批清理；不以一般保留期限清除非終態工作。
+    afterId = 0;
+    while (true) {
+      const ids = await this.mysql.transaction((manager) =>
+        this.jobs.purgeInputs(now, afterId, manager),
+      );
+      if (!ids.length) return;
+      afterId = ids[ids.length - 1];
     }
   }
 
@@ -355,6 +566,51 @@ export class EsignInitiationJobService {
         attempt: job.attemptCount,
         errorCode: job.errorCode ?? null,
       },
+    });
+  }
+
+  /** 鎖內身分查核的 ID 只用來對回此次輸入，不回傳帳號資料或原始錯誤。 */
+  private validationIssues(
+    error: unknown,
+    input: InitiateDocumentDto,
+    lease: InitiationLease,
+  ): InitiationIssue[] {
+    if (!(error instanceof AppException)) return [];
+    const response = error.getResponse();
+    if (typeof response !== 'object' || !('details' in response)) return [];
+    const details: unknown = response.details;
+    if (
+      !details ||
+      typeof details !== 'object' ||
+      !('userIds' in details) ||
+      !Array.isArray(details.userIds)
+    )
+      return [];
+    const ids = new Set(
+      details.userIds.filter((id): id is string => typeof id === 'string'),
+    );
+    const employeeNos = new Set(
+      [...(lease.expectedEmployees ?? [])]
+        .filter(([id]) => ids.has(String(id)))
+        .map(([, employeeNo]) => employeeNo),
+    );
+    return input.signers.flatMap((signer, inputIndex) => {
+      const invalid =
+        signer.type === 'user'
+          ? ids.has(signer.userId!)
+          : signer.type === 'employee' && employeeNos.has(signer.employeeNo!);
+      if (!invalid) return [];
+      const employeeNo =
+        signer.type === 'employee'
+          ? signer.employeeNo
+          : lease.expectedEmployees?.get(Number(signer.userId));
+      return [
+        {
+          inputIndex,
+          ...(employeeNo ? { employeeNo } : {}),
+          code: 'EMPLOYEE_UNAVAILABLE',
+        },
+      ];
     });
   }
 
@@ -419,6 +675,7 @@ export class EsignInitiationJobService {
   private async resolveSigners(
     input: InitiateDocumentDto,
     lease: InitiationLease,
+    issues: InitiationIssue[],
   ): Promise<{ signers: SignerInputDto[]; employees: Map<number, string> }> {
     const signers: SignerInputDto[] = [];
     const employees = new Map<number, string>();
@@ -445,8 +702,18 @@ export class EsignInitiationJobService {
           user,
         ]),
       );
-      for (const signer of batch) {
+      for (const [index, signer] of batch.entries()) {
         if (signer.type === 'email') {
+          if (
+            !signer.name?.trim() ||
+            signer.name.trim().length > 100 ||
+            !signer.email ||
+            signer.email.length > 255 ||
+            !isEmail(signer.email)
+          ) {
+            issues.push({ inputIndex: offset + index, code: 'INPUT_INVALID' });
+            continue;
+          }
           signers.push({
             type: 'email',
             name: signer.name,
@@ -463,15 +730,29 @@ export class EsignInitiationJobService {
           !user.isActive ||
           user.deletedAt ||
           !/^[A-Za-z0-9]{1,20}$/.test(user.empid)
-        )
-          throw new AppException(
-            ...AppErrors.ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE,
-          );
+        ) {
+          issues.push({
+            inputIndex: offset + index,
+            ...(signer.type === 'employee'
+              ? { employeeNo: signer.employeeNo }
+              : user?.empid
+                ? { employeeNo: user.empid }
+                : {}),
+            code: 'EMPLOYEE_UNAVAILABLE',
+          });
+          continue;
+        }
         employees.set(Number(user.id), user.empid);
         signers.push({ type: 'user', userId: String(user.id) });
       }
-      await this.recordProgress(lease, 'resolving', signers.length);
+      await this.recordProgress(lease, 'resolving', offset + batch.length);
     }
+    if (issues.some((issue) => issue.code === 'EMPLOYEE_UNAVAILABLE'))
+      throw new AppException(
+        ...AppErrors.ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE,
+      );
+    if (issues.length)
+      throw new AppException(...AppErrors.ESIGN_INITIATION_INPUT_INVALID);
     await this.recordProgress(lease, 'validating', signers.length);
     return { signers, employees };
   }

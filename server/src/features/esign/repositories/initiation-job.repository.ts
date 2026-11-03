@@ -4,6 +4,7 @@ import { type DeepPartial, type EntityManager } from 'typeorm';
 import {
   EsignInitiationJob,
   type InitiationDocumentVersion,
+  type InitiationIssue,
 } from '../entities/esign-initiation-job.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignFileObject } from '../entities/esign-file-object.entity';
@@ -31,15 +32,30 @@ export class InitiationJobRepository {
     return query.getOne();
   }
 
-  find(documentId: number, publicId: string, manager: EntityManager) {
-    return manager.findOneBy(EsignInitiationJob, { documentId, publicId });
+  find(
+    documentId: number,
+    publicId: string,
+    manager: EntityManager,
+    detail?: 'inputJson' | 'issuesJson',
+    lock = false,
+  ) {
+    const query = manager
+      .createQueryBuilder(EsignInitiationJob, 'job')
+      .where('job.documentId = :documentId AND job.publicId = :publicId', {
+        documentId,
+        publicId,
+      });
+    if (detail) query.addSelect(`job.${detail}`);
+    if (lock) query.setLock('pessimistic_write');
+    return query.getOne();
   }
 
   /** 最新以資料庫流水號判斷；摘要查詢不載入大型輸入與問題 JSON。 */
-  latest(documentId: number, manager: EntityManager) {
+  latest(documentId: number, manager: EntityManager, lock = false) {
     return manager.findOne(EsignInitiationJob, {
       where: { documentId },
       order: { id: 'DESC' },
+      ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
 
@@ -190,6 +206,47 @@ export class InitiationJobRepository {
     return jobs;
   }
 
+  /** 僅鎖終態小欄位；被 retry 持有的 parent 留待下輪，不能反向鎖文件。 */
+  async purgeInputs(
+    now: Date,
+    afterId: number,
+    manager: EntityManager,
+  ): Promise<number[]> {
+    const cutoff = new Date(now.getTime() - 30 * 86400000);
+    const jobs = await manager
+      .createQueryBuilder(EsignInitiationJob, 'job')
+      .select('job.id')
+      .where('job.id > :afterId', { afterId })
+      .andWhere('job.status IN (:...statuses)', {
+        statuses: ['succeeded', 'failed'],
+      })
+      .andWhere('job.completed_at <= :cutoff AND job.input_purged_at IS NULL', {
+        cutoff,
+      })
+      .orderBy('job.id', 'ASC')
+      .take(100)
+      .setLock('pessimistic_write')
+      .setOnLocked('skip_locked')
+      .getMany();
+    const ids = jobs.map((job) => job.id);
+    if (!ids.length) return [];
+    // 此為明細保留清理，非業務狀態轉移；窄 UPDATE 避免 save 自動改寫摘要 updated_at。
+    // 同一交易已取得 current-read job 鎖，僅清三個 JSON 並另記清理時間，保留原微秒時間。
+    await manager
+      .createQueryBuilder()
+      .update(EsignInitiationJob)
+      .set({
+        inputJson: null,
+        documentVersionJson: null,
+        issuesJson: null,
+        inputPurgedAt: now,
+        updatedAt: () => 'updated_at',
+      })
+      .whereInIds(ids)
+      .execute();
+    return ids;
+  }
+
   /** 續租與查核批次獨立；失去租約或期限到即停止，不重新取得所有權。 */
   async renew(
     lease: InitiationLease,
@@ -229,6 +286,7 @@ export class InitiationJobRepository {
     errorCode: string,
     transient: boolean,
     manager: EntityManager,
+    issues: InitiationIssue[] = [],
   ): Promise<EsignInitiationJob | null> {
     const job = await this.byId(lease.jobId, manager, true);
     const now = new Date();
@@ -241,6 +299,8 @@ export class InitiationJobRepository {
     )
       return null;
     this.failureState(job, now, errorCode, transient);
+    job.issuesJson = job.completedAt ? issues : [];
+    job.issueCount = job.issuesJson.length;
     return this.save(job, manager);
   }
 

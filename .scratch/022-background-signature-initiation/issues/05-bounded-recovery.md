@@ -71,3 +71,5 @@
 - TDD：原版 ready 後只註冊一次及沒有 bootstrap gate 的紅燈已重現；單元涵蓋重試、過時 epoch、初始化失敗、shutdown 清理。真 Redis 故障測試在 DB9 做 FLUSHDB，再只斷開 DB9 連線，沒有重啟共享 Redis 或 worker；雙 worker 恢復單一 scheduler/global1，配置 pending 時 delivery 被消費但 DB 保持 queued，恢復後兩份文件 succeeded，恢復完成後的新工作實測最大同時處理數 1。
 - 驗證：5 suites／46 e2e 通過（acceptance/capacity/query/recovery/reconnect）；115 suites／1,180 unit 通過；server build 通過；lint 0 errors／272 既有 warnings。新增 reconnect suite 只有精確專用 DB 名才啟用，並對 test mode、host、port、DB9 再 fail-closed 守門，一般 e2e 不清 Redis。
 - 限制：不宣稱 metadata 遺失前已進入 DB 交易的不同文件仍嚴格全域單工；遺失 Redis active 記錄的極端窗口由每份文件的 DB lease/token 防止雙發。未斷線的手動刪 keys/FLUSHDB 不會觸發 ready，本修正不涵蓋該操作。未改 client、migration、env、task 勾選或 ticket 狀態。
+
+追加修正整合 06／07 後：只解決 quickstart 與 e2e regex 聯集衝突，build 通過；完整 7 suites／61 tests 複驗通過。首次整合回歸的 07「超過一批終態＋鎖 parent 略過」曾出現一次 MySQL lock wait timeout；該例單跑、07 全跑及再次七套回歸均通過，後續等待監測未取得重現證據，未修改 07 程式或宣稱已定位原因。此偶發結果保留供最終 review／08 驗收追蹤。

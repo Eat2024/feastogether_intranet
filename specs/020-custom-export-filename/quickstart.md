@@ -1,6 +1,6 @@
 # Quickstart: 自訂當次匯出檔名驗收
 
-本文件供後續實作驗收使用，目前尚未實作。不要將下列指令列出視為已執行或測試通過。
+本文件包含驗收操作與實際結果；下列操作指南不代表每項均通過，請以文末驗證紀錄為準。
 
 ## 前置條件
 
@@ -70,3 +70,29 @@ pnpm build
 - `.env.test` 原本的本機 MySQL 認證失敗；確認本機 root 空密碼可唯讀連線後，僅以程序環境 `DB_MYSQL_PASS=''` 執行上述測試，維持既有測試 DB 前綴保護，沒有修改 `.env` 或組態。
 - 檢查 access log 既有電子簽 body 排除仍有效；新 GET 只有固定旗標、不含名稱，API 回應不含 storage key。成果不可用的既有狀態為 503，契約與 Swagger 已更正描述，未變更既有錯誤行為。
 - 此 worktree 的 client build 仍由整合目錄驗證；T012／T014／T017／T018 未勾選。Safari/Edge 與實際入口網驗收不可用既有單元或 HTTP 結果代替。
+
+## 最終整合驗證與 Review（2026-11-03）
+
+整合分支：`feat/020-custom-export-filename`。功能 commit 為 `b0ea2a0`（Excel）、`18fbd9d`（ZIP），review 清理為 `45188ba`。
+
+- 後端全單元／HTTP：111 suites、1150 tests 通過；其中新命名及真 controller/service/policy 案例共 69 tests。
+- 真 DB 整合：esign-export、esign-export-history 共 2 suites、96 tests 通過。本機測試認證僅透過 process env 調整，未修改 .env，測試 DB 前綴保護維持。
+- root lint 及 build 通過（server 與 client）；既有 lint warnings 無 errors。Review 清理只涉及註解／OpenAPI，commit hooks 再次通過 lint 與全單元測試。
+- 實際 production frontend，透過同源臨時 HTTP proxy 提供合成 API 與真正 ZIP 串流：Chrome 156.0.8078.80、Firefox 144.0.2、WebKit 26.0，三者皆通過合成跨 origin iframe 的 Excel／ZIP 自訂及預設檔名、格式切換與錯誤修正。實際下載 XLSX 的內容亦核對成功。這是前端加合成後端資料，不是完整真實入口網驗收。
+- Chrome 額外通過 33,554,566 bytes（約 32 MiB）合成 ZIP 下載與 SHA-256 比對、ZIP 錯誤不發出下載、準備中按鈕停用、請求期間改值仍使用點擊時名稱、刷新後輸入清空。原頁保留且 URL 不含名稱。臨時測試工具未提交，未新增專案依賴。
+- 初始 Chrome route.fulfill 攔截下載回報 canceled；改用真正 HTTP 串流後成功。最終 ZIP 證據以 HTTP 串流測試為準。
+
+### Standards
+
+獨立 reviewer 依 `git diff 9b74cff4a5ab784707a39dfdc377870f12c63fcd...HEAD` 檢查 repo 規範及 code smells，未發現實質違反。兩項非阻擋清理（過時 ZIP 註解、409／503 說明）已於 `45188ba` 修正。無新增 schema、環境設定、依賴或額外抽象。
+
+### Spec
+
+獨立 reviewer 未發現功能缺陷或需求外擴張，保留 1 項驗收缺口：T012 尚缺實際入口網、實機 Edge／Safari 與原生中斷續傳。HTTP Range／If-Range 與大檔證據不替代未測的實機情境。
+
+### 尚待人工驗收
+
+- Safari 26.6.2 WebDriver 回報未啟用 Allow remote automation；未修改使用者設定。WebKit 測試不冒稱 Safari 實機測試。
+- 本機未安裝 Edge，未取得真實入口網測試 session；合成 iframe 不冒稱實際入口網。
+- 原生瀏覽器中斷／續傳仍需人工確認，不只以 HTTP 206 宣稱完整通過。
+- 未收到縮減原驗收範圍的指示，T012 保持未完成，ticket 02 轉 ready-for-human；其餘實作、review 及可執行驗證完成。未部署或推送遠端。

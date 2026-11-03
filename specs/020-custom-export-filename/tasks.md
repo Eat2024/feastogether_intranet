@@ -57,7 +57,7 @@
 **Independent Test**: 輸入非法路徑看到中文提示，保留條件並修正成合法名稱後成功下載；切換 Excel／ZIP 不重複追加副檔名。
 
 - [x] T013 [US3] 在 `client/src/features/esign-documents/DocumentExportView.tsx` 與 `client/src/features/esign-documents/ZipExportPanel.tsx` 移除未完成 TODO／提示，改為當次下載、留白預設與副檔名說明；沿用既有錯誤處理／session 過期 UI，準備中顯示 busy 並防重複提交。確認輸入限制不以 UTF-16 maxlength 取代後端 Unicode 規則，不清除失敗輸入、不永久保存名稱、不宣稱原生下載成功。
-- [ ] T014 [US3] 依 `specs/020-custom-export-filename/quickstart.md` 驗收非法名稱→修正重試、`.xlsx`→ZIP／`.zip`→Excel、準備失敗、連續點擊、下載前後改值及重新整理清空；將結果記入同文件，確認無默默退回預設、篩選遺失或額外歷史紀錄。
+- [x] T014 [US3] 依 `specs/020-custom-export-filename/quickstart.md` 驗收非法名稱→修正重試、`.xlsx`→ZIP／`.zip`→Excel、準備失敗、連續點擊、下載前後改值及重新整理清空；將結果記入同文件，確認無默默退回預設、篩選遺失或額外歷史紀錄。
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
@@ -65,8 +65,8 @@
 
 - [x] T015 擴充並執行 `server/test/esign-export.e2e-spec.ts` 的真 DB 驗證：兩位同部門員工可準備同一成果、跨部門與 export/file 不匹配拒絕、重複準備／GET 不改 job/file metadata 或歷史筆數；搭配既有 `server/test/esign-export-history.e2e-spec.ts` 確認歷史重下載行為不變。僅使用 `feastogether_intranet_test` 前綴資料庫，未具備環境時記錄未完成。
 - [x] T016 [P] 檢查 `server/src/framework/interceptors/http-access-log.interceptor.ts` 的既有電子簽日誌排除及 `server/src/features/esign/controllers/exports.controller.ts`／`client/src/api/requests/esignExports.ts` 的資料邊界，確認請求與錯誤 log 不含檔名、URL 僅含固定旗標、回應不含 entity／object key／其他個資；把檢查結果記入 `specs/020-custom-export-filename/quickstart.md`，只有發現缺口才作必要修正。
-- [ ] T017 執行 `specs/020-custom-export-filename/quickstart.md` 的 server helper／HTTP／e2e、package lint/build 與 root lint/build，記錄實際指令、結果與限制；server 使用 lint:check，不新增 client 測試框架，不以舊草稿測試結果替代本次驗證。
-- [ ] T018 逐項核對 `specs/020-custom-export-filename/spec.md` 的 FR／SC 與驗收紀錄，必要時同步 `specs/020-custom-export-filename/contracts/export-downloads-http-api.md`、`specs/020-custom-export-filename/quickstart.md` 及本檔勾選狀態；只有實際完成的任務才勾選。交付分述前端、後端、無 migration/config 變更及尚未驗證項目，不執行部署或發布。
+- [x] T017 執行 `specs/020-custom-export-filename/quickstart.md` 的 server helper／HTTP／e2e、package lint/build 與 root lint/build，記錄實際指令、結果與限制；server 使用 lint:check，不新增 client 測試框架，不以舊草稿測試結果替代本次驗證。
+- [x] T018 逐項核對 `specs/020-custom-export-filename/spec.md` 的 FR／SC 與驗收紀錄，必要時同步 `specs/020-custom-export-filename/contracts/export-downloads-http-api.md`、`specs/020-custom-export-filename/quickstart.md` 及本檔勾選狀態；只有實際完成的任務才勾選。交付分述前端、後端、無 migration/config 變更及尚未驗證項目，不執行部署或發布。
 
 ## Dependencies & Execution Order
 
@@ -126,3 +126,7 @@ US1／US2／US3 → T015、T016 → T017 → T018
 ### Ticket 01 進度
 
 T003／T004 已完成 Excel 所需 DTO 與請求層；ZIP 型別與旗標留給 ticket 02，故暫不勾選。T005 的 service 測試已整合至真 HTTP／service／policy seam，避免重複 fixture。詳細驗證與未完成限制見 quickstart。
+
+## 實作狀態（2026-11-03）
+
+17／18 項完成。T012 的可執行部分已通過，實機 Edge／Safari、實際入口網及原生中斷續傳仍未驗證，保留未完成。兩軸 code review 無未修正的程式缺陷；詳見 quickstart 最終驗證。

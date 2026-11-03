@@ -1,6 +1,6 @@
 // 在瀏覽器端產生簽署紀錄清單 Excel（格式與 mock 版 features/forms/export/buildXlsx.ts 相同）。
 // exceljs 套件較大，由呼叫端在點擊匯出時以 dynamic import 載入本檔。
-import { createExcelExportRecord } from '@/api/requests';
+import { createExcelExportRecord, prepareExportDownload } from '@/api/requests';
 import type { ExcelExportDocument } from '@/api/types';
 import { color } from '@/theme/tokens';
 import dayjs from 'dayjs';
@@ -89,7 +89,8 @@ export async function buildExportXlsx(
  * 匯出簽署紀錄 Excel：先以 POST /api/esign/history/export 記錄匯出，成功後才產生並下載。
  * 僅供新匯出使用；歷史重新下載直接產檔，不再次記錄。
  */
-export async function recordAndDownloadExcel(doc: ExportDocument & { id: string }, query: ExportQuery) {
+export async function recordAndDownloadExcel(doc: ExportDocument & { id: string }, query: ExportQuery, requestedFileName = '') {
+  const prepared = await prepareExportDownload(doc.id, { type: 'excel', fileName: requestedFileName });
   const rows = exportRows(doc.signers, query);
   const deptNames = selectedDeptNames(query.depts, buildDeptOptions(doc.signers));
   await createExcelExportRecord({
@@ -103,7 +104,7 @@ export async function recordAndDownloadExcel(doc: ExportDocument & { id: string 
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = fileName;
+  a.download = prepared.fileName ?? fileName;
   a.click();
   URL.revokeObjectURL(url);
 }

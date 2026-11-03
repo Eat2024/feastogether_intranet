@@ -2,6 +2,8 @@ import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
 import type {
   CreateExcelExportRecordBody,
+  PrepareExportDownloadBody,
+  PreparedExportDownload,
   EsignExportJob,
   EsignExportPreviewDocument,
   EsignExportRequestResult,
@@ -92,4 +94,22 @@ export const getDocumentExportPreview = async (id: string): Promise<EsignExportP
     params: { view: 'export' },
   });
   return res.data;
+};
+
+/** 驗證當次匯出名稱與資格；不保存設定、不產檔或記錄匯出。 */
+export const prepareExportDownload = async (id: string, body: PrepareExportDownloadBody): Promise<PreparedExportDownload> => {
+  const res = await api<PreparedExportDownload>({
+    method: 'POST',
+    url: endpoints.ESIGN_DOCUMENT_EXPORT_DOWNLOADS(id),
+    data: body,
+  });
+  return res.data;
+};
+
+/** 只接受準備下載 API 的同源 ZIP 路徑；檔名永遠不放在 URL。 */
+export const preparedExportFileUrl = (path: string): string => {
+  if (!/^\/api\/esign\/documents\/[1-9]\d*\/exports\/[0-9a-f-]{36}\/files\/[1-9]\d*(?:\?downloadName=client)?$/i.test(path)) {
+    throw new Error('下載路徑格式不正確');
+  }
+  return new URL(path, window.location.origin).href;
 };

@@ -18,6 +18,7 @@ export const endpoints = {
   ESIGN_EXPORT_HISTORY: 'esign/history/export',
   ESIGN_EXPORT_HISTORY_DOCUMENT: (id: string) => `esign/history/export/${encodeURIComponent(id)}/document`,
   ESIGN_EXPORT_HISTORY_DOWNLOADS: (id: string) => `esign/history/export/${encodeURIComponent(id)}/downloads`,
+  ESIGN_DOCUMENT_EXPORT_DOWNLOADS: (id: string) => `esign/documents/${encodeURIComponent(id)}/export-downloads`,
   ESIGN_DOCUMENT_EXPORTS: (id: string) => `esign/documents/${encodeURIComponent(id)}/exports`,
   ESIGN_DOCUMENT_EXPORT: (id: string, exportId: string) =>
     `esign/documents/${encodeURIComponent(id)}/exports/${encodeURIComponent(exportId)}`,

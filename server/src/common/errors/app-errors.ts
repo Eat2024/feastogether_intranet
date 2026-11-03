@@ -15,6 +15,26 @@ export function signAfterHint(startAt: Date): string {
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  ESIGN_EXPORT_FILE_NAME_INVALID: [
+    AppErrorCode.INVALID_REQUEST,
+    '匯出檔名須為最多 100 字、含副檔名最多 255 bytes，且不可包含路徑、控制字元或系統保留名稱',
+    HttpStatus.BAD_REQUEST,
+  ],
+  ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID: [
+    AppErrorCode.INVALID_REQUEST,
+    'ZIP 必須提供有效的匯出工作與檔案識別值；Excel 不接受這些欄位',
+    HttpStatus.BAD_REQUEST,
+  ],
+  ESIGN_EXPORT_DOWNLOAD_NAME_MODE_INVALID: [
+    AppErrorCode.INVALID_REQUEST,
+    '下載命名模式不合法',
+    HttpStatus.BAD_REQUEST,
+  ],
+  ESIGN_EXPORT_DOWNLOAD_TYPE_INVALID: [
+    AppErrorCode.INVALID_REQUEST,
+    '請選擇支援的匯出類型',
+    HttpStatus.BAD_REQUEST,
+  ],
   ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE: [
     AppErrorCode.ESIGN_EMPLOYEE_EMAIL_UNAVAILABLE,
     '所選員工無有效信箱，請調整名單後再發起',

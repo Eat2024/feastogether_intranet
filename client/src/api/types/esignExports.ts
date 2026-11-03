@@ -152,3 +152,12 @@ export interface EsignExportPreviewDocument extends ExcelExportDocument {
   exportSummary: EsignExportJob | null;
   status: EsignDocumentStatus;
 }
+
+/** 當次下載名稱，僅供準備請求，不保存為文件設定。 */
+export type PrepareExportDownloadBody =
+  | { type: 'excel'; fileName?: string }
+  | { type: 'zip'; fileName?: string; exportId: string; fileId: string };
+
+export type PreparedExportDownload =
+  | { type: 'excel'; fileName: string | null }
+  | { type: 'zip'; fileName: string; downloadPath: string };

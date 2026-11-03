@@ -20,30 +20,38 @@ DB_MYSQL_DB=feastogether_intranet_test022_long REDIS_DB=10 ESIGN_STORAGE_ROOT=/t
 
 ## 受理效能與排隊
 
-基準 `fadfc3f8`（01–07 整合），測試 harness 見 `f6d9de7`。每組20次，P95取排序後第19次；只量 POST受理，不含上傳、既有前置員編解析或後續GET詳細資料。背景處理仍由真實 `EsignInitiationJobService.process` 使用真 MySQL/Redis 執行，逐次驗成功與完整簽署人數。資料與負載僅代表本機合成環境。
+最新矩陣基準 `6f2861ee`（共享鎖／快速busy／短交易READ COMMITTED補修整合），08 merge為`170e83c`。每組20次，P95取排序後第19次；只量 POST受理，不含上傳、既有前置員編解析或後續GET詳細資料。背景處理仍由真實 `EsignInitiationJobService.process` 使用真 MySQL/Redis 執行，逐次驗成功與完整簽署人數。資料與負載僅代表本機合成環境。
 
 | 簽署人 | 樣本 | POST P50 ms | POST P95 ms | 背景處理最大 ms | 測試程序峰值 RSS bytes |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 20 | 10.35 | 12.39 | 64.44 | 440287232 |
-| 100 | 20 | 12.97 | 16.99 | 107.53 | 459964416 |
-| 101 | 20 | 9.77 | 14.15 | 83.95 | 475955200 |
-| 5001 | 20 | 90.82 | 102.57 | 1546.16 | 1090961408 |
+| 1 | 20 | 9.28 | 14.09 | 63.90 | 478347264 |
+| 100 | 20 | 10.22 | 15.03 | 204.59 | 485195776 |
+| 101 | 20 | 10.66 | 12.80 | 69.10 | 271417344 |
+| 5001 | 20 | 92.83 | 98.19 | 1529.50 | 717602816 |
 
 80次全通過 P95≤3000ms。背景處理數字包含完成後摘要／詳細資料HTTP驗證；RSS是Jest測試程序累積峰值，不是獨立正式worker記憶體基準。
 
-SC-008 真 Bull Worker、queue global concurrency=1：先提交5001人，再提交5人；大型POST95.30ms、小型POST11.47ms。大型成功後13ms小型取得執行權，兩份皆 succeeded，符合60秒門檻。原始結果存本機 `/tmp/022-acceptance-benchmark.json`、`/tmp/022-mixed-benchmark.json`。
+SC-008 真 Bull Worker、queue global concurrency=1：先提交5001人，再提交5人；大型POST106.86ms、小型POST8.08ms。大型成功後9ms小型取得執行權，兩份皆 succeeded，符合60秒門檻。原始結果存本機 `/tmp/022-acceptance-benchmark.json`、`/tmp/022-mixed-benchmark.json`。
 
 ## Review 發現：同建立人跨文件受理仍可能等鎖
 
 獨立DataSource先持有建立人users列5,000ms，模擬另一份文件worker正式交易；第二份草稿已先上傳，才開始計POST受理。實測5,030.89ms後回202，釋放後正常完成。正式pool維持2、鎖順序未改。重現為benchmark的`review 同建立人`案例，結果 `/tmp/022-creator-lock-benchmark.json`。
 
-這證實accept仍會等同建立人users行鎖；上述80次無競爭P95通過不代表此情境滿足3秒。5001秒預查本身不持此鎖，但最後正式交易及其他相同員工寫入仍可能延長另一份文件受理。本項交正式review評估，沒有自行放寬授權查核或改鎖順序。
+這證實原accept會等同建立人users行鎖；上述80次無競爭P95通過不代表此情境滿足3秒。5001秒預查本身不持此鎖，但最後正式交易可能延長另一份文件受理。後續補修 `2655231` 將正式資格與受理鎖改為共享鎖，保留 users→document→job 及與停用／Email寫入的排他隔離；真worker持鎖5秒的另文件受理降至約8–12ms，證據見共享鎖補修票及quickstart。獨立排他寫入仍會阻擋FK引用，不能把原測試的排他鎖改稱為新版worker鎖。
+
+08在最終補修整合後重新量測真worker持鎖5,000.88ms：另一份POST受理18.91ms；同文件PUT fields在6.20ms回409 `ESIGN_INITIATION_IN_PROGRESS`與固定worker執行中訊息。結果 `/tmp/022-worker-shared-lock-benchmark.json`。中間版本同文件修改等待文件鎖佔用pool2，連帶讓另一文件受理等待5秒；快速busy預檢修正後不再佔住連線等待正式交易，原鎖內二次查核仍保留。
+
+共享鎖另外暴露跨文件並行受理deadlock：原internal-email雙POST案例在worker尚未執行時收到202／503。MySQL最新deadlock顯示兩個INSERT互等`uq_esign_initiation_jobs_request` insert-intention，底層`ER_LOCK_DEADLOCK`，API映射`ESIGN_INITIATION_TRANSIENT_FAILURE`。補修僅讓accept／retry短交易使用READ COMMITTED，保留document鎖、current reads與unique約束，正式worker仍用原隔離層級。沒有吞503或放寬測試；原雙POST案例及barrier重現已在最終回歸通過。
 
 ## SC-006 實時間長測（進行中，尚未標通過）
 
 UTC 2026-11-03T15:14:35.183Z 開始；期限120分鐘，簽署截止設為24小時後。測試在每批首次 `UserRepository.findByIds` 查核注入 `batch人數 × 1000ms` 真實 timer，每位選中者只加一次，正式鎖內信箱重核不再加第二輪延遲。真Bull Worker進入正式service，heartbeat獨立續租；沒有使用 fake clock。
 
 進度 `/tmp/022-long-benchmark-progress.json` 每30秒記錄 UTC/實際elapsed/processed/total/lastHeartbeat/status/stage/attempt，不含名單；結束另寫 `/tmp/022-long-benchmark-result.json`。啟動時正式程式基準為 `fadfc3f8`；後續Redis重連補修不在此已載入程序內，不把此長測宣稱為重連測試。初始錯誤 seam（鎖內重核延遲）已停止並捨棄，不計成功結果。正確這輪包含約30秒的初始排隊等待，總實際時間不扣除此等待。
+
+過程異常保留：唯讀電源紀錄確認本機2026-11-03 23:44:05 Sleep、23:44:07 Wake後再Sleep、23:49:56 Wake（UTC15:44–15:49）。Redis未在該時段重啟。Bull工作2於UTC15:50:55.819Z發生stalled、回waiting，stalledCounter=1、queue lock消失；原process仍執行，DB lease持續續租且attempt=1，2,500筆預查時正式signers仍0。原始console的`could not renew lock`不隱藏，不只以Jest綠燈判定結果。
+
+UTC16:01:03起使用`caffeinate -i -w 12482`僅綁長測process防止後續idle sleep；沒有改app/worker config或deadline。另以唯讀observer記錄DB狀態／lease／正式指派數與Bull狀態及原process存活，最終結果需對照 `/tmp/022-long-observer.jsonl`、`/tmp/022-long-terminal-observation.json`、`/tmp/022-long-observer-final.json`，不扣除睡眠造成的等待。
 
 ## 回歸與測試遷移
 
@@ -58,7 +66,8 @@ UTC 2026-11-03T15:14:35.183Z 開始；期限120分鐘，簽署截止設為24小�
 - `pnpm -C server lint:check`：0 errors／272既有warnings；root `pnpm lint`與`pnpm build`通過。最終完整性補修整合後將再驗必要範圍。
 - `test:schema`：5 suites／30 tests通過，包含新工作表約束、非空down拒絕／空表down-up及drift。
 - `test:e2e:security`：14 suites／84 tests通過。
-- 完整e2e第三輪（integrity整合基準a24d409，merge f7eefd0）：47 suites／483 tests通過，reconnect專用環境跳過1項。前輪唯一pool自我餓死案例已修，這輪完整通過。後續鎖競態補修將再跑受影響範圍。
+- 完整e2e第三輪（integrity整合基準a24d409，merge f7eefd0）：47 suites／483 tests通過，reconnect專用環境跳過1項。前輪唯一pool自我餓死案例已修，這輪完整通過。後續鎖競態補修的受影響範圍回歸另列於下。
+- 最終補修基準6f2861ee（08 merge 170e83c）：受影響16 suites／204 tests全通過，包含受理／查詢／資格／恢復／retry／保留／版本／共享鎖及並行gap、原core簽署三套、internal-email兩套、草稿／簽署人異動與API coverage。root build再次通過；merge hook unit115 suites／1180 tests、root lint通過。
 - Redis重新連線suite只在專用DB9執行，一般DB8按既有保護跳過；本票沒有重新操作DB9。
 - benchmark/helper與既有export benchmark以TypeScript semantic program檢查通過；Spec009整套大型ZIP容量腳本未重跑，本輪只遷移其HTTP發起fixture。
 

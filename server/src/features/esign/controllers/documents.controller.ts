@@ -6,6 +6,7 @@ import { ReopenDocumentDto, type ReopeningInput } from '../dto/reopening.dto';
 import { EsignReopeningService } from '../services/esign-reopening.service';
 import {
   ApiBody,
+  ApiHeader,
   ApiOperation,
   ApiResponse,
   ApiOkResponse,
@@ -224,6 +225,12 @@ export class DocumentsController {
 
   // 可靠受理，正式發起只由 worker 執行。
   @UseGuards(OriginGuard)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    schema: { type: 'string', format: 'uuid' },
+    description: '選填 UUID；相同 key 與內容重播原工作',
+  })
   @ApiOperation({
     summary: '受理背景文件發起',
     description:

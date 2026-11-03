@@ -185,7 +185,7 @@ Reconnect 合併 06／07 後，build 與完整 7 suites／61 tests 複驗通過�
 
 工作分支 `impl/022-08`，整合至 `impl/022-integration`；完整證據與重現指令見 [validation.md](validation.md)。本輪不修改client、不部署UAT、不寄真信；MySQL8.4.11／Redis7.4.11皆為隔離本機。
 
-80次POST受理矩陣（1／100／101／5001各20次）P95為12.39／16.99／14.15／102.57ms；真queue的5001→5混排，大型成功後13ms小型開始。這是受理時間，不包含既有前端解析。SC-006真實5001秒延遲長測仍在執行，未把fake-clock或局部進度當成通過。
+80次POST受理矩陣（1／100／101／5001各20次）P95為14.09／15.03／12.80／98.19ms；真queue的5001→5混排，大型成功後9ms小型開始。這是受理時間，不包含既有前端解析。SC-006真實5001秒延遲長測仍在執行，未把fake-clock或局部進度當成通過。
 
 發布順序演練：`test:schema`在空的合成schema執行全部正式migrations，並驗實際表／索引／CHECK及drift。共5 suites／30 tests通過。實際發布時先migration，再協調切換worker與server；client本輪不部署。受理完成只代表queued，應以工作GET摘要確認成功，再查文件詳情。
 

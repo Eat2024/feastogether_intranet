@@ -50,6 +50,13 @@ describe('runtime API coverage', () => {
       new DocumentBuilder().build(),
     );
     const base = '/api/esign/documents/{documentId}';
+    expect(api.paths[`${base}/initiations`].post?.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'Idempotency-Key',
+        in: 'header',
+        required: false,
+      }),
+    );
     expect(
       api.paths[`${base}/initiations`].post?.responses['202'],
     ).toMatchObject({

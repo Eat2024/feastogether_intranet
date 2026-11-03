@@ -134,3 +134,13 @@ worker 以每批 500 人預查及 CAS 更新本 attempt 進度，鎖內再次驗
 - 使用專用測試資料庫、Redis DB4 及合成私有檔案；未修改 client，UI 輪詢與畫面進度驗收按 backend-only scope 暫緩。
 
 - 補充查詢斷線案例：DB connection 邊界注入失敗，API 沿用 503；恢復後原工作仍 queued、attempt=0、errorCode=null，不把讀取失敗變成背景失敗。
+
+## 05 有限恢復驗證紀錄（2026-11-03）
+
+分支 `impl/022-05`，隔離 MySQL `feastogether_intranet_test022_t05`／Redis DB5，合成名單與 fake mail。recovery 13／13；02／03／05 回歸 36／36；unit 113 suites／1,175 tests；server build 通過，lint 0 errors／272 既有 warnings。
+
+涵蓋退避／耗盡、過期租約與舊 token、可靠補列、正式交易持鎖略過、全部寫入後回滾、commit 前期限、DB 無法保存失敗狀態後恢復，以及成功後通知失敗不回退。單批跨 5 分鐘及 120 分鐘期限以受控時鐘搭配真 DB 驗證，不是 5,001 秒實時間效能結果。
+
+實作在正式交易開始前停止並排空在途 heartbeat，再取得新鮮租約；因此不會持 job 鎖等待自己的 heartbeat。正式交易等待過久導致租約失效時仍由鎖內驗證拒絕，不讓舊持有者提交。
+
+04 整合後回歸：保留 latest／小投影與所有異動 guard，只有測試清單衝突並已取聯集；server build 通過，02／03／04／05 四套 45／45 通過。

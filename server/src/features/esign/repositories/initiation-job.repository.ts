@@ -116,11 +116,7 @@ export class InitiationJobRepository {
     )
       return null;
     if (job.deadlineAt <= now) {
-      job.status = 'failed';
-      job.stage = 'failed';
-      job.completedAt = now;
-      job.errorCode = 'ESIGN_INITIATION_PROCESSING_TIMEOUT';
-      job.retryable = true;
+      this.failureState(job, now, this.deadlineCode(job), false);
       await this.save(job, manager);
       return null;
     }
@@ -130,6 +126,8 @@ export class InitiationJobRepository {
     job.processedCount = 0;
     job.leaseToken = randomUUID();
     job.leaseExpiresAt = new Date(now.getTime() + 300000);
+    job.errorCode = null;
+    job.retryable = false;
     job.startedAt ??= now;
     job.lastProgressAt = now;
     job.nextAttemptAt = null;
@@ -161,28 +159,124 @@ export class InitiationJobRepository {
     return result.affected === 1;
   }
 
-  async fail(
-    lease: InitiationLease,
-    errorCode: string,
+  /** 僅取得可立即鎖定的工作，不與正式交易互相等待。 */
+  async recover(
+    now: Date,
+    afterId: number,
     manager: EntityManager,
-  ): Promise<void> {
-    // CAS 是工作擁有權邊界；updated_at 由 QueryBuilder 的 UpdateDateColumn 維護。
-    await manager
+  ): Promise<EsignInitiationJob[]> {
+    const jobs = await manager
+      .createQueryBuilder(EsignInitiationJob, 'job')
+      .where('job.id > :afterId', { afterId })
+      .andWhere(
+        `((job.status = 'queued' AND (job.next_attempt_at IS NULL OR job.next_attempt_at <= :now OR job.deadline_at <= :now)) OR (job.status = 'processing' AND (job.lease_expires_at <= :now OR job.deadline_at <= :now)))`,
+        { now },
+      )
+      .orderBy('job.id', 'ASC')
+      .take(100)
+      .setLock('pessimistic_write')
+      .setOnLocked('skip_locked')
+      .getMany();
+    for (const job of jobs) {
+      if (
+        job.deadlineAt <= now ||
+        job.status === 'processing' ||
+        job.attemptCount >= 3
+      ) {
+        this.failureState(job, now, 'ESIGN_INITIATION_TRANSIENT_FAILURE', true);
+        await this.save(job, manager);
+      }
+    }
+    return jobs;
+  }
+
+  /** 續租與查核批次獨立；失去租約或期限到即停止，不重新取得所有權。 */
+  async renew(
+    lease: InitiationLease,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    return this.heartbeat(lease, true, manager);
+  }
+
+  async heartbeat(
+    lease: InitiationLease,
+    renew: boolean,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    const now = new Date();
+    const result = await manager
       .createQueryBuilder()
       .update(EsignInitiationJob)
-      .set({
-        status: 'failed',
-        stage: 'failed',
-        errorCode,
-        completedAt: new Date(),
-        leaseToken: null,
-        leaseExpiresAt: null,
-        retryable: false,
-      })
+      .set(
+        renew
+          ? {
+              leaseExpiresAt: new Date(now.getTime() + 300000),
+              lastProgressAt: now,
+            }
+          : { lastProgressAt: now },
+      )
       .where(
-        'id = :id AND status = :status AND lease_token = :token AND lease_expires_at > UTC_TIMESTAMP(6)',
+        'id = :id AND status = :status AND lease_token = :token AND lease_expires_at > UTC_TIMESTAMP(6) AND deadline_at > UTC_TIMESTAMP(6)',
         { id: lease.jobId, status: 'processing', token: lease.leaseToken },
       )
       .execute();
+    return result.affected === 1;
+  }
+
+  /** 失敗處理使用短 job 鎖；持有者與期限在 current read 後重新確認。 */
+  async fail(
+    lease: InitiationLease,
+    errorCode: string,
+    transient: boolean,
+    manager: EntityManager,
+  ): Promise<EsignInitiationJob | null> {
+    const job = await this.byId(lease.jobId, manager, true);
+    const now = new Date();
+    if (
+      !job ||
+      job.status !== 'processing' ||
+      job.leaseToken !== lease.leaseToken ||
+      !job.leaseExpiresAt ||
+      job.leaseExpiresAt <= now
+    )
+      return null;
+    this.failureState(job, now, errorCode, transient);
+    return this.save(job, manager);
+  }
+
+  private failureState(
+    job: EsignInitiationJob,
+    now: Date,
+    code: string,
+    transient: boolean,
+  ): void {
+    const expired = job.deadlineAt <= now;
+    job.leaseToken = null;
+    job.leaseExpiresAt = null;
+    job.lastProgressAt = now;
+    if (!expired && transient && job.attemptCount < 3) {
+      job.status = 'queued';
+      job.stage = 'queued';
+      job.nextAttemptAt = new Date(
+        now.getTime() + (job.attemptCount === 1 ? 30000 : 120000),
+      );
+      job.errorCode = 'ESIGN_INITIATION_TRANSIENT_FAILURE';
+      job.retryable = false;
+      return;
+    }
+    job.status = 'failed';
+    job.stage = 'failed';
+    job.completedAt = now;
+    job.nextAttemptAt = null;
+    job.errorCode = expired ? this.deadlineCode(job) : code;
+    job.retryable =
+      job.errorCode === 'ESIGN_INITIATION_TRANSIENT_FAILURE' ||
+      job.errorCode === 'ESIGN_INITIATION_PROCESSING_TIMEOUT';
+  }
+
+  private deadlineCode(job: EsignInitiationJob): string {
+    return job.deadlineAt.getTime() < job.acceptedAt.getTime() + 7200000
+      ? 'ESIGN_INITIATION_DEADLINE_PASSED'
+      : 'ESIGN_INITIATION_PROCESSING_TIMEOUT';
   }
 }

@@ -2,7 +2,7 @@
 
 **最新範圍**：只實作後端 worker，排隊／執行中禁止修改文件及簽署人，前端相關驗收暫緩。詳見 [範圍決策](../../specs/022-background-signature-initiation/backend-only-scope.md)。
 
-已依 tasks 拆成 8 張本機票單。01–03 已驗收並整合，狀態 `resolved`；04–08 為 `ready-for-agent`。前置皆為 resolved 才能開始，目前 frontier 為 04 與 05，可在獨立 worktree 平行實作。整合分支為 `impl/022-integration`。
+已依 tasks 拆成 8 張本機票單。01–04 已驗收並整合，狀態 `resolved`；05 正在獨立 worktree 實作，06–08 尚未開始。06 的 04 前置已完成，仍須等待 05 resolved；目前 frontier 為 05。整合分支為 `impl/022-integration`。
 
 [規格](../../specs/022-background-signature-initiation/spec.md) · [計畫](../../specs/022-background-signature-initiation/plan.md) · [Tasks](../../specs/022-background-signature-initiation/tasks.md)
 

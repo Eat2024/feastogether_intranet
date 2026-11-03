@@ -7,7 +7,7 @@
 
 **Blocked by:** [03 完整大量與混合名單背景發起](03-complete-roster.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — US2；FR-008–010、016；SC-003、007。
 
@@ -49,3 +49,9 @@
 - [x] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
 
 - 補充查詢斷線案例：DB connection 邊界注入失敗，API 沿用 503；恢復後原工作仍 queued、attempt=0、errorCode=null，不把讀取失敗變成背景失敗。
+
+## 整合驗收紀錄
+
+- 實作 commit `0fdf05089e9c716aa6ff7bf6dedef51fdbc5c51b` 已由 `impl/022-04` 無衝突合併至 `impl/022-integration`，merge commit `5560f028c1ac4c74350e8a7b321883c7ffb15df8`。
+- 合併 hook：lint 0 errors／272 既有 warnings，單元 113 suites／1,175 tests 通過。實作驗證 query 8＋acceptance 11＋capacity 13，共 32／32；server build 通過。
+- T016–T020 後端範圍驗收完成並整合，狀態改 resolved；無 client 變更。05 仍在實作，06 必須等待 05 resolved。

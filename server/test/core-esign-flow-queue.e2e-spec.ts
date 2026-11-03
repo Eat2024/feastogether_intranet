@@ -19,7 +19,7 @@ import {
   PRIVATE_FILE_STORAGE,
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { EsignMaintenanceProcessor } from '#app/worker/esign/esign-maintenance.processor';
 import { apiData } from './api-response.helper';
 import {
@@ -59,8 +59,7 @@ describe('核心電子簽真實 queue e2e', () => {
       throw new Error('queue e2e 只允許使用隔離的 test Redis DB');
     }
     ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
+      builder.overrideProvider(EligibleStaffService).useValue({
         lookupEligibleStaff: jest.fn((empid: string) =>
           Promise.resolve({
             person_empid: empid,
@@ -535,7 +534,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import {
-  syntheticStaffEmails,
-  seedSyntheticStaffEmails,
-} from './synthetic-staff-emails.helper';
+import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';

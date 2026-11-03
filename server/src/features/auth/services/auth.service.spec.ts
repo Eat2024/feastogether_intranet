@@ -68,7 +68,9 @@ describe('AuthService WebView SSO', () => {
       department_name: '資訊部',
       title: '工程師',
     };
-    const hr = { lookupEligibleStaff: jest.fn().mockResolvedValue(staff) };
+    const eligibleStaff = {
+      lookupEligibleStaff: jest.fn().mockResolvedValue(staff),
+    };
     const logger = { info: jest.fn() };
     const passwordAuth = {
       authenticate: jest.fn().mockResolvedValue(undefined),
@@ -79,7 +81,7 @@ describe('AuthService WebView SSO', () => {
         sessions,
         users as never,
         mysql as never,
-        hr as never,
+        eligibleStaff as never,
         logger as never,
         passwordAuth as never,
       ),
@@ -88,19 +90,19 @@ describe('AuthService WebView SSO', () => {
       sessions,
       users,
       mysql,
-      hr,
+      eligibleStaff,
       user,
     };
   };
 
   it('帳密通過且員工符合資格才建立本地 session', async () => {
-    const { service, passwordAuth, hr, sessions } = setup();
+    const { service, passwordAuth, eligibleStaff, sessions } = setup();
     const result = await service.login('00123', 'synthetic-password');
     expect(passwordAuth.authenticate).toHaveBeenCalledWith(
       '00123',
       'synthetic-password',
     );
-    expect(hr.lookupEligibleStaff).toHaveBeenCalledWith('00123');
+    expect(eligibleStaff.lookupEligibleStaff).toHaveBeenCalledWith('00123');
     expect(sessions.createActive).toHaveBeenCalledTimes(1);
     expect(result.session.user.empId).toBe('00123');
     expect(result.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -109,8 +111,8 @@ describe('AuthService WebView SSO', () => {
   it.each(['001a_B-02', 'IT'])(
     '新增帳號保存可信部門原字串 %s',
     async (code) => {
-      const { service, hr, users } = setup();
-      hr.lookupEligibleStaff.mockResolvedValue({
+      const { service, eligibleStaff, users } = setup();
+      eligibleStaff.lookupEligibleStaff.mockResolvedValue({
         person_empid: '00123',
         person_name: '合成員工',
         person_status: 1,
@@ -130,36 +132,33 @@ describe('AuthService WebView SSO', () => {
     },
   );
 
-  it.each([null, undefined, '', '  '])(
-    '缺部門 %p 清除既有代碼與名稱，不沿用舊授權',
-    async (code) => {
-      const { service, hr, users, user } = setup();
-      users.findByEmpidForUpdate.mockResolvedValue({
-        ...user,
+  it('缺部門（EligibleStaffService 給 null）清除既有代碼與名稱，不沿用舊授權', async () => {
+    const { service, eligibleStaff, users, user } = setup();
+    users.findByEmpidForUpdate.mockResolvedValue({
+      ...user,
+      departmentId: 42,
+      departmentCode: 'OLD',
+      departmentName: '舊部門',
+    });
+    eligibleStaff.lookupEligibleStaff.mockResolvedValue({
+      person_empid: '00123',
+      person_name: '合成員工',
+      person_status: 1,
+      person_status_name: '正式',
+      department_id: null,
+      department_name: null,
+      title: null,
+    });
+    await service.login('00123', 'synthetic-password');
+    expect(users.save).toHaveBeenCalledWith(
+      expect.objectContaining({
         departmentId: 42,
-        departmentCode: 'OLD',
-        departmentName: '舊部門',
-      });
-      hr.lookupEligibleStaff.mockResolvedValue({
-        person_empid: '00123',
-        person_name: '合成員工',
-        person_status: 1,
-        person_status_name: '正式',
-        department_id: code,
-        department_name: null,
-        title: null,
-      });
-      await service.login('00123', 'synthetic-password');
-      expect(users.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          departmentId: 42,
-          departmentCode: null,
-          departmentName: null,
-        }),
-        manager,
-      );
-    },
-  );
+        departmentCode: null,
+        departmentName: null,
+      }),
+      manager,
+    );
+  });
 
   it('登入同步不寫入未選取的 email，登入回應也不揭露信箱', async () => {
     const { service, users, user } = setup();
@@ -172,10 +171,10 @@ describe('AuthService WebView SSO', () => {
     expect(JSON.stringify(result)).not.toContain('private@example.test');
   });
 
-  it('HR 同步失敗不寫入帳號或建立 session', async () => {
-    const { service, hr, users, sessions } = setup();
+  it('員工資料查詢失敗不寫入帳號或建立 session', async () => {
+    const { service, eligibleStaff, users, sessions } = setup();
     const failure = new Error('合成上游失敗');
-    hr.lookupEligibleStaff.mockRejectedValue(failure);
+    eligibleStaff.lookupEligibleStaff.mockRejectedValue(failure);
     await expect(service.login('00123', 'synthetic-password')).rejects.toBe(
       failure,
     );
@@ -184,10 +183,10 @@ describe('AuthService WebView SSO', () => {
   });
 
   it('錯誤密碼不查員工也不建立 session', async () => {
-    const { service, passwordAuth, hr, sessions } = setup();
+    const { service, passwordAuth, eligibleStaff, sessions } = setup();
     passwordAuth.authenticate.mockRejectedValue(new Error('驗證失敗'));
     await expect(service.login('00123', 'wrong')).rejects.toThrow('驗證失敗');
-    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
     expect(sessions.createActive).not.toHaveBeenCalled();
   });
 
@@ -242,15 +241,15 @@ describe('AuthService WebView SSO', () => {
           dependencies.sessions as never,
           dependencies.users as never,
           dependencies.mysql as never,
-          dependencies.hr as never,
+          dependencies.eligibleStaff as never,
           { info: jest.fn() } as never,
           dependencies.passwordAuth as never,
         ),
     ).toThrow('WEBVIEW_JWT_PUBLIC_KEY_B64 必須是有效 RSA 公鑰 PEM');
   });
 
-  it('有效 JWT 先 claim jti，再精確查 FGAPI 並建立 43 字元 launch code', async () => {
-    const { service, sessions, hr } = setup();
+  it('有效 JWT 先 claim jti，再查員工資料並建立 43 字元 launch code', async () => {
+    const { service, sessions, eligibleStaff } = setup();
     const result = await service.createWebviewLaunch(jwt());
     expect(result.launchUrl).toMatch(
       /^https:\/\/esign\.example\.test\/api\/auth\/webview\?code=[A-Za-z0-9_-]{43}$/,
@@ -262,7 +261,7 @@ describe('AuthService WebView SSO', () => {
       expect.any(Date),
       manager,
     );
-    expect(hr.lookupEligibleStaff).toHaveBeenCalledWith('00123');
+    expect(eligibleStaff.lookupEligibleStaff).toHaveBeenCalledWith('00123');
     expect(sessions.markPending).toHaveBeenCalledWith(
       1,
       7,
@@ -283,7 +282,7 @@ describe('AuthService WebView SSO', () => {
     [{}, { jti: 'not-uuid-v4' }],
     [{}, { exp: Math.floor(Date.now() / 1000) + 180 }],
   ])('錯誤 header/claim 在 FGAPI 與 DB 前拒絕', async (header, claims) => {
-    const { service, mysql, hr } = setup();
+    const { service, mysql, eligibleStaff } = setup();
     await expect(
       service.createWebviewLaunch(jwt(claims, header)),
     ).rejects.toMatchObject({
@@ -291,7 +290,7 @@ describe('AuthService WebView SSO', () => {
       status: HttpStatus.UNAUTHORIZED,
     });
     expect(mysql.transaction).not.toHaveBeenCalled();
-    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -306,12 +305,12 @@ describe('AuthService WebView SSO', () => {
     { nbf: '0' },
     { exp: -1 },
   ])('缺少或格式錯誤的必要 claim 在外部呼叫前拒絕：%p', async (claims) => {
-    const { service, mysql, hr } = setup();
+    const { service, mysql, eligibleStaff } = setup();
     await expect(
       service.createWebviewLaunch(jwt(claims)),
     ).rejects.toMatchObject({ code: AppErrorCode.AUTH_EXCHANGE_FAILED });
     expect(mysql.transaction).not.toHaveBeenCalled();
-    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -322,12 +321,12 @@ describe('AuthService WebView SSO', () => {
   ])('超出 JWT 時間容忍或最大壽命時拒絕：%p', async (claims) => {
     jest.useFakeTimers().setSystemTime(new Date(1_800_000_000 * 1000));
     try {
-      const { service, mysql, hr } = setup();
+      const { service, mysql, eligibleStaff } = setup();
       await expect(
         service.createWebviewLaunch(jwt(claims)),
       ).rejects.toMatchObject({ code: AppErrorCode.AUTH_EXCHANGE_FAILED });
       expect(mysql.transaction).not.toHaveBeenCalled();
-      expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+      expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }
@@ -351,8 +350,8 @@ describe('AuthService WebView SSO', () => {
     }
   });
 
-  it('拒絕簽章遭竄改的 JWT，且不呼叫 FGAPI 或 DB', async () => {
-    const { service, mysql, hr } = setup();
+  it('拒絕簽章遭竄改的 JWT，且不查員工資料或 DB', async () => {
+    const { service, mysql, eligibleStaff } = setup();
     const token = jwt();
     const [header, payload, encodedSignature] = token.split('.');
     const signature = Buffer.from(encodedSignature, 'base64url');
@@ -362,7 +361,7 @@ describe('AuthService WebView SSO', () => {
       code: AppErrorCode.AUTH_EXCHANGE_FAILED,
     });
     expect(mysql.transaction).not.toHaveBeenCalled();
-    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
   });
 
   it('啟動 code 只能消耗一次並建立獨立 8 小時 opaque session', async () => {
@@ -396,7 +395,7 @@ describe('AuthService WebView SSO', () => {
     });
   });
 
-  it('既有 User 只更新 FGAPI 白名單欄位並保留 departmentId', async () => {
+  it('既有 User 只更新員工資料白名單欄位並保留 departmentId', async () => {
     const { service, users } = setup();
     const existing = {
       id: 7,

@@ -6,7 +6,7 @@
 
 - Decision：修改 `server/src/features/esign/services/esign-signer-candidate.service.ts` 的 resolve，保留 org chart、Redis 快取與搜尋；刪除 importStaff 與 resolve 路徑 HR 注入依賴。
 - Rationale：目前先 findByEmpids，缺人時才循序 lookupEligibleStaff + transaction；這是已觀察到的 110 秒解析請求的可疑熱點，但尚無逐段 profiling 可斷言全部時間都在 HR。
-- Alternatives considered：提高 proxy timeout、背景逐人呼叫 HR 都不符合此輪切換本機來源目的。非同步受理另屬 Spec 022。
+- Alternatives considered：提高 proxy timeout、背景逐人呼叫 HR 都不符合此輪切換本機來源目的。
 - DTO 每次 1–100 個完整英數員編；client 以 100 人分批，維持契約。未知帳號回 unavailable，UI 提醒同步；不在解析建立帳號。
 
 ## 2. Email 為顯式查詢欄位

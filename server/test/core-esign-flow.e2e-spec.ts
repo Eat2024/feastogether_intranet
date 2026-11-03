@@ -25,7 +25,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import type { Job, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import {
   PRIVATE_FILE_STORAGE,
   type PrivateFileStorage,
@@ -112,8 +112,7 @@ describe('核心電子簽 US1', () => {
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
+      builder.overrideProvider(EligibleStaffService).useValue({
         lookupEligibleStaff: jest.fn(async (empid: string) => ({
           person_empid: empid,
           person_name: empid === creatorEmpid ? '建立人' : '未參與員工',
@@ -537,10 +536,10 @@ describe('核心電子簽 US1', () => {
 
   it('簽署人候選：GET 與 POST 僅解析既有本機帳號', async () => {
     await db.query('DELETE FROM users WHERE empid = ?', [importedEmpid]);
-    const hr = ctx.app.get<{ lookupEligibleStaff: jest.Mock }>(
-      FeastogetherHrService,
+    const eligibleStaff = ctx.app.get<{ lookupEligibleStaff: jest.Mock }>(
+      EligibleStaffService,
     );
-    hr.lookupEligibleStaff.mockClear();
+    eligibleStaff.lookupEligibleStaff.mockClear();
     const search = async (q: string) =>
       apiData<Array<{ id: string; employeeNo: string; name: string }>>(
         await request(ctx.server)
@@ -551,7 +550,7 @@ describe('核心電子簽 US1', () => {
       );
 
     expect(await search(importedEmpid)).toEqual([]);
-    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
     await request(ctx.server)
       .post('/api/esign/signer-candidates/resolutions')
       .set('Cookie', creatorCookie)
@@ -559,7 +558,7 @@ describe('核心電子簽 US1', () => {
       .send({ employeeNos: [importedEmpid] })
       .expect(200);
     expect(await search(importedEmpid)).toEqual([]);
-    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
     await db.query(
       'INSERT INTO users (empid, name, is_active) VALUES (?, ?, 1)',
       [importedEmpid, '未參與員工'],
@@ -577,7 +576,7 @@ describe('核心電子簽 US1', () => {
         name: '未參與員工',
       }),
     ]);
-    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
     const rows = await db.query<Array<{ is_active: number }>>(
       'SELECT is_active FROM users WHERE empid = ?',
       [importedEmpid],
@@ -589,7 +588,7 @@ describe('核心電子簽 US1', () => {
       first[0].id,
     ]);
     await search(importedEmpid.slice(0, 5));
-    expect(hr.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
   });
 
   it('共用簽名與日期欄位可先存，更換名單及發起後均不複製', async () => {
@@ -4022,7 +4021,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import {
-  syntheticStaffEmails,
-  seedSyntheticStaffEmails,
-} from './synthetic-staff-emails.helper';
+import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';

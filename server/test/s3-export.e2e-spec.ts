@@ -25,7 +25,7 @@ import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { apiData } from './api-response.helper';
 import {
   createSecurityE2eApp,
@@ -50,7 +50,7 @@ describe('Spec009 S3 匯出 API/worker', () => {
       builder
         .overrideProvider(PRIVATE_FILE_STORAGE)
         .useValue(s3.storage)
-        .overrideProvider(FeastogetherHrService)
+        .overrideProvider(EligibleStaffService)
         .useValue({
           lookupEligibleStaff: (empid: string) =>
             Promise.resolve({

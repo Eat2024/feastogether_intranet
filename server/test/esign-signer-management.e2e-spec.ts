@@ -4,7 +4,7 @@ import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { apiData } from './api-response.helper';
 import { openInternalEmployeeSession } from './external-session.helper';
@@ -55,8 +55,7 @@ describe('Spec009 管理備註與歷程 API', () => {
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
+      builder.overrideProvider(EligibleStaffService).useValue({
         lookupEligibleStaff: (empid: string) =>
           Promise.resolve({
             person_empid: empid,
@@ -461,7 +460,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import {
-  syntheticStaffEmails,
-  seedSyntheticStaffEmails,
-} from './synthetic-staff-emails.helper';
+import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';

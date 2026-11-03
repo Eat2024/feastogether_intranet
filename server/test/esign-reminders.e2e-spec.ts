@@ -13,7 +13,7 @@ import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { apiData, apiError } from './api-response.helper';
 import {
   closeSecurityE2eApp,
@@ -50,8 +50,7 @@ describe('內外部催簽 API', () => {
   const origin = 'http://localhost:3000';
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
+      builder.overrideProvider(EligibleStaffService).useValue({
         lookupEligibleStaff: async (empid: string) => ({
           person_empid: empid,
           person_name: '催簽測試',
@@ -651,70 +650,64 @@ describe('內外部催簽 API', () => {
         [doc.id],
       );
     const originalSnapshot = await snapshot();
-    const hr = jest.spyOn(ctx.app.get(FeastogetherHrService), 'getStaffEmails');
     const mailer = mailFixture(ctx).adapter;
     const sent = {
       external: mailer.deliveries.length,
       internal: mailer.internalGroupDeliveries.length,
     };
-    try {
-      const body = { requestId: randomUUID(), selection: 'all_pending' };
-      const skipped = apiData<Batch>(await post(doc.id, body).expect(202));
-      expect(skipped).toMatchObject({
-        selectedCount: 1,
-        queuedCount: 0,
-        notSentCount: 1,
-        items: [
-          {
-            signerPublicId: doc.signers[0].publicId,
-            status: 'skipped',
-            reasonCode: 'RECIPIENT_UNAVAILABLE',
-          },
-        ],
-      });
-      expect(apiData<Batch>(await post(doc.id, body).expect(202))).toEqual(
-        skipped,
-      );
-      const batches = apiData<{ items: Array<{ batchId: string }> }>(
-        await request(ctx.server)
-          .get(
-            `/api/esign/documents/${doc.id}/notification-batches?kind=reminder`,
-          )
-          .set('Cookie', cookie)
-          .expect(200),
-      );
-      expect(batches.items.map((batch) => batch.batchId)).toEqual([
-        skipped.batchId,
-      ]);
-      const logs = await db.query<
-        Array<{
-          id: number;
-          result: string;
-          error_code: string;
-          attempt_count: number;
-        }>
-      >(
-        'SELECT l.id,l.result,l.error_code,l.attempt_count FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.public_id=?',
-        [skipped.batchId],
-      );
-      expect(logs).toEqual([
-        expect.objectContaining({
-          result: 'skipped',
-          error_code: 'RECIPIENT_UNAVAILABLE',
-          attempt_count: 0,
-        }),
-      ]);
-      for (const log of logs)
-        await worker().process({ data: { notificationLogId: log.id } } as Job<{
-          notificationLogId: number;
-        }>);
-      expect(hr).not.toHaveBeenCalled();
-      expect(mailer.deliveries).toHaveLength(sent.external);
-      expect(mailer.internalGroupDeliveries).toHaveLength(sent.internal);
-      expect(await snapshot()).toEqual(originalSnapshot);
-    } finally {
-      hr.mockRestore();
-    }
+    const body = { requestId: randomUUID(), selection: 'all_pending' };
+    const skipped = apiData<Batch>(await post(doc.id, body).expect(202));
+    expect(skipped).toMatchObject({
+      selectedCount: 1,
+      queuedCount: 0,
+      notSentCount: 1,
+      items: [
+        {
+          signerPublicId: doc.signers[0].publicId,
+          status: 'skipped',
+          reasonCode: 'RECIPIENT_UNAVAILABLE',
+        },
+      ],
+    });
+    expect(apiData<Batch>(await post(doc.id, body).expect(202))).toEqual(
+      skipped,
+    );
+    const batches = apiData<{ items: Array<{ batchId: string }> }>(
+      await request(ctx.server)
+        .get(
+          `/api/esign/documents/${doc.id}/notification-batches?kind=reminder`,
+        )
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+    expect(batches.items.map((batch) => batch.batchId)).toEqual([
+      skipped.batchId,
+    ]);
+    const logs = await db.query<
+      Array<{
+        id: number;
+        result: string;
+        error_code: string;
+        attempt_count: number;
+      }>
+    >(
+      'SELECT l.id,l.result,l.error_code,l.attempt_count FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.public_id=?',
+      [skipped.batchId],
+    );
+    expect(logs).toEqual([
+      expect.objectContaining({
+        result: 'skipped',
+        error_code: 'RECIPIENT_UNAVAILABLE',
+        attempt_count: 0,
+      }),
+    ]);
+    for (const log of logs)
+      await worker().process({ data: { notificationLogId: log.id } } as Job<{
+        notificationLogId: number;
+      }>);
+    expect(mailer.deliveries).toHaveLength(sent.external);
+    expect(mailer.internalGroupDeliveries).toHaveLength(sent.internal);
+    expect(await snapshot()).toEqual(originalSnapshot);
   });
   it('selected 去重，混合內部均受理；跨批併發僅寄一次且可追查初邀/催簽摘要', async () => {
     const [user] = await db.query<Array<{ id: number }>>(
@@ -903,7 +896,4 @@ describe('內外部催簽 API', () => {
     );
   });
 });
-import {
-  syntheticStaffEmails,
-  seedSyntheticStaffEmails,
-} from './synthetic-staff-emails.helper';
+import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';

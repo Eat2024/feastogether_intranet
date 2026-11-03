@@ -1,4 +1,4 @@
-import { OrgDepartmentDto } from '#app/infrastructure/http-client/feastogether/types/org-chart.dto';
+import { OrgDepartmentDto } from '../dto/org-chart.dto';
 import { ApiOperation, ApiOkResponse, ApiResponse } from '@nestjs/swagger';
 import {
   Body,

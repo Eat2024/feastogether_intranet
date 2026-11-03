@@ -82,3 +82,10 @@ UTC16:01:03起使用`caffeinate -i -w 12482`僅綁長測process防止後續idle 
 只在隔離本機演練 migration；未部署 UAT。新表migration必須先於新版worker/server，然後協調切換兩個entrypoint；本輪client不部署。回退前先停止新受理並結清所有queued/processing，保留工作表與終態摘要，不能把尚有非終態工作的server直接換回舊同步版本。
 
 `esign-initiation-schema.e2e-spec.ts` 真MySQL驗非空工作表down拒絕且資料保留，測試自身合成列清空後down/up可重建；這只是空表DDL回退演練，不是建議刪除正式工作紀錄。非空表正常回退保留schema，既有簽署證據不可刪除。
+
+## 最新 dev 整合基準（2026-11-04，待完整回歸）
+
+- 原 review baseline：`4b79d08dc8ea931afd73bb868089c9b16c13bede`；最新固定 dev baseline：`ef0fdca6da66afe8495b589390ddaf647c9dcdbf`（含 Spec024 Portal 來源）。後續正式 review 應比較新 baseline 與 022 整合分支，避免將已上線的 024 列為本功能差異。
+- 在獨立 022 worktree 合併 dev；e2e testRegex 取兩邊仍存在 suite 的聯集，保留 Portal 與背景發起測試。production server build 通過。
+- 測試仍有 11 個檔案引用 Spec024 已刪除的 synthetic-staff-emails helper，022 acceptance／recovery／reconnect 另有舊 FeastogetherHrService override，必須遷移合成 Portal fixture後重跑。未復活舊 HR 路徑、不宣稱整合後 e2e 已通過。
+- 08 長測仍在舊 worktree／DB10，不變動；原 checkout 由使用者操作，本次沒有切換或修改。新 base 的完整回歸及正式 review 仍待完成。

@@ -16,7 +16,7 @@ import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { DataSource, type EntityManager } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { apiData } from './api-response.helper';
@@ -57,8 +57,7 @@ describe('拒簽 HTTP 與結案', () => {
   const documentIds: string[] = [];
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
+      builder.overrideProvider(EligibleStaffService).useValue({
         lookupEligibleStaff: async (empid: string) => ({
           person_empid: empid,
           person_name: '拒簽測試',
@@ -516,7 +515,4 @@ describe('拒簽 HTTP 與結案', () => {
       .expect(200);
   });
 });
-import {
-  syntheticStaffEmails,
-  seedSyntheticStaffEmails,
-} from './synthetic-staff-emails.helper';
+import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';

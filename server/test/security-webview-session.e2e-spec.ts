@@ -8,13 +8,18 @@ import {
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
+import { PortalDirectoryService } from '#app/infrastructure/portal/portal-directory.service';
 import { apiData, apiError } from './api-response.helper';
 import {
   closeSecurityE2eApp,
   createSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import {
+  createSyntheticPortal,
+  type SyntheticPortal,
+} from './synthetic-portal.helper';
 
 interface LaunchView {
   launchUrl: string;
@@ -23,38 +28,52 @@ interface LaunchView {
 describe('WebView session security', () => {
   let ctx: SecurityE2eContext;
   let db: DataSource;
-  const lookupEligibleStaff = jest.fn((empid: string) =>
-    Promise.resolve({
-      person_empid: empid,
-      person_name: '安全測試員工',
-      person_status: 1,
-      person_status_name: '正式',
-      department_id: null,
-      department_name: null,
-      title: null,
-    }),
-  );
+  let portal: SyntheticPortal;
+  // 員工資料來自合成 Portal；饗賓人 hr/staff_lookup 不得再被呼叫。
+  const feastogether = { get: jest.fn(), post: jest.fn() };
 
   beforeAll(async () => {
+    portal = await createSyntheticPortal();
+    await portal.insertPeople(
+      [
+        'SEC00201',
+        'SEC00202',
+        'SEC00203',
+        'SEC00204',
+        'SEC00205',
+        'SEC00206',
+      ].map((empid) => ({
+        person_empid: empid,
+        person_name: '安全測試員工',
+        person_status: 1,
+      })),
+    );
     ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        lookupEligibleStaff,
-      }),
+      builder.overrideProvider(FeastogetherClient).useValue(feastogether),
     );
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
   });
 
+  afterEach(() => expect(feastogether.get).not.toHaveBeenCalled());
+
   afterAll(async () => {
-    await db.query(
-      `DELETE a FROM auth_sessions a
-        LEFT JOIN users u ON u.id = a.user_id
-        WHERE u.empid LIKE 'SEC002%' OR a.user_id IS NULL`,
-    );
-    await db.query("DELETE FROM users WHERE empid LIKE 'SEC002%'");
-    await closeSecurityE2eApp(ctx);
+    if (ctx) {
+      await db.query(
+        `DELETE a FROM auth_sessions a
+          LEFT JOIN users u ON u.id = a.user_id
+          WHERE u.empid LIKE 'SEC002%' OR a.user_id IS NULL`,
+      );
+      await db.query("DELETE FROM users WHERE empid LIKE 'SEC002%'");
+      await closeSecurityE2eApp(ctx);
+    }
+    await portal?.drop();
   });
 
-  it('偽造簽章在 FGAPI 與 User 查詢前拒絕，錯誤不洩漏細節', async () => {
+  it('偽造簽章在 Portal 與 User 查詢前拒絕，錯誤不洩漏細節', async () => {
+    const lookup = jest.spyOn(
+      ctx.app.get(PortalDirectoryService),
+      'findEmployeesByEmpid',
+    );
     const otherKey = generateKeyPairSync('rsa', {
       modulusLength: 2048,
     }).privateKey;
@@ -66,7 +85,8 @@ describe('WebView session security', () => {
       code: 'AUTH_EXCHANGE_FAILED',
       message: '無法完成登入交換',
     });
-    expect(lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
+    lookup.mockRestore();
   });
 
   it('query、body 或 cookie 中的 JWT 不會被當作 launch credential', async () => {

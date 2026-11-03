@@ -5,20 +5,6 @@ import {
 } from './feastogether.client';
 
 describe('FeastogetherClient logging', () => {
-  it('員工解析來源 success=false 不得經 code 欄位洩漏個資', async () => {
-    const { client, http, logger } = build();
-    http.get.mockReturnValue(
-      of({
-        data: { success: false, code: 'private@example.test', data: null },
-      }),
-    );
-    await expect(
-      client.get('/api/v1/hr/staff_lookup?person_empid=00123'),
-    ).rejects.toBeInstanceOf(FeastogetherApiError);
-    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(
-      'private@example.test',
-    );
-  });
   const build = () => {
     const http = { get: jest.fn(), post: jest.fn() };
     const config = {
@@ -97,31 +83,6 @@ describe('FeastogetherClient logging', () => {
     );
   });
 
-  it('staff lookup 失敗不記 query、員編或 response 個資', async () => {
-    const { client, http, logger } = build();
-    http.get.mockReturnValue(
-      throwError(() => ({
-        isAxiosError: true,
-        name: 'AxiosError',
-        response: { status: 503, data: { person_name: '王小明' } },
-      })),
-    );
-    await expect(
-      client.get('/api/v1/hr/staff_lookup?person_empid=00123'),
-    ).rejects.toBeInstanceOf(FeastogetherApiError);
-    expect(logger.warn).toHaveBeenCalledWith({
-      event: 'feastogether.request_failed',
-      message: '饗賓 API GET /api/v1/hr/staff_lookup 失敗',
-      context: FeastogetherClient.name,
-      metadata: {
-        method: 'get',
-        path: '/api/v1/hr/staff_lookup',
-        status: 503,
-        errorType: 'AxiosError',
-      },
-    });
-  });
-
   it('登入 success=false 只記錄 upstream code，不記錄 body', async () => {
     const { client, http, logger } = build();
     const upstreamBody = {
@@ -149,28 +110,18 @@ describe('FeastogetherClient logging', () => {
       },
     });
   });
-  it.each([
-    [],
-    { data: [] },
-    { success: 'true', data: [] },
-    { success: false, code: '合成人員', data: [] },
-  ])('組織樹拒絕非成功 envelope %#', async (payload) => {
-    const { client, http, logger } = build();
-    http.get.mockReturnValue(of({ data: payload }));
-    await expect(client.get('/api/v1/hr/org_chart')).rejects.toBeInstanceOf(
-      FeastogetherApiError,
-    );
-    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('合成人員');
-  });
 
-  it('組織樹使用既有 API Key 與 10 秒 timeout，不傳使用者 Bearer', async () => {
+  it('登入使用既有 API Key 與指定 timeout，不傳使用者 Bearer', async () => {
     const { client, http } = build();
-    http.get.mockReturnValue(of({ data: { success: true, data: [] } }));
+    const requestBody = { account_id: '00123', password: 'secret-password' };
+    const data = { token: 'upstream-token', user: { person_empid: '00123' } };
+    http.post.mockReturnValue(of({ data: { success: true, data } }));
     await expect(
-      client.get('/api/v1/hr/org_chart', { timeoutMs: 10_000 }),
-    ).resolves.toEqual([]);
-    expect(http.get).toHaveBeenCalledWith(
-      'https://upstream.example.com/api/v1/hr/org_chart',
+      client.post('/api/v1/staff/login', requestBody, { timeoutMs: 10_000 }),
+    ).resolves.toEqual(data);
+    expect(http.post).toHaveBeenCalledWith(
+      'https://upstream.example.com/api/v1/staff/login',
+      requestBody,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -179,36 +130,5 @@ describe('FeastogetherClient logging', () => {
         timeout: 10_000,
       },
     );
-  });
-
-  it('組織樹 HTTP 錯誤日誌不包含上游 body 或憑證', async () => {
-    const { client, http, logger } = build();
-    http.get.mockReturnValue(
-      throwError(() => ({
-        isAxiosError: true,
-        name: 'AxiosError',
-        message: '合成人員',
-        response: {
-          status: 403,
-          data: {
-            person_name: '合成人員',
-            person_empid: '00000001',
-            token: 'synthetic-token',
-          },
-        },
-      })),
-    );
-    await expect(client.get('/api/v1/hr/org_chart')).rejects.toBeInstanceOf(
-      FeastogetherApiError,
-    );
-    const logs = JSON.stringify(logger.warn.mock.calls);
-    for (const value of [
-      '合成人員',
-      '00000001',
-      'synthetic-token',
-      'secret-api-key',
-      'responseBody',
-    ])
-      expect(logs).not.toContain(value);
   });
 });

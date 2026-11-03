@@ -235,17 +235,17 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 **Purpose**：US1 與 US2 完成後，這三條路徑已沒有呼叫者，一次刪除相關程式，不保留為 fallback。
 
-- [ ] T029 [P] 修改 `server/src/infrastructure/http-client/feastogether/services/feastogether-hr.service.ts` 與其 `.spec.ts`：
+- [x] T029 [P] 修改 `server/src/infrastructure/http-client/feastogether/services/feastogether-hr.service.ts` 與其 `.spec.ts`：
   - 刪除 `getStaffEmails`、`lookupStaff`、`lookupEligibleStaff`、`staffLookupError`、`staffRejectedError`。
   - 刪除 `server/src/infrastructure/http-client/feastogether/types/staff-emails.parser.ts`（含 `.spec.ts`）與 `server/src/infrastructure/http-client/feastogether/services/staff-emails-source.spec.ts`。
   - 依賴 T019。
-- [ ] T030 [P] 從 `server/src/infrastructure/http-client/feastogether/services/feastogether-department.service.ts` 與其 `.spec.ts` 刪除 `getOrgChart`。依賴 T011。
-- [ ] T031 修改 `server/src/infrastructure/http-client/feastogether/feastogether.client.ts` 與 `feastogether.client.spec.ts`：
+- [x] T030 [P] 從 `server/src/infrastructure/http-client/feastogether/services/feastogether-department.service.ts` 與其 `.spec.ts` 刪除 `getOrgChart`。依賴 T011。
+- [x] T031 修改 `server/src/infrastructure/http-client/feastogether/feastogether.client.ts` 與 `feastogether.client.spec.ts`：
   - 從 `omitBody` 清單移除這三條路徑，並移除它們的 envelope 檢查與 `staff_lookup` 特例。
   - 移除 log 文字「人事來源回應格式錯誤」。
   - `staff/login` 與 WebView token 驗證的行為不變。
   - 依賴 T029、T030。
-- [ ] T032 確認移除完整：
+- [x] T032 確認移除完整：
   - `rg "hr/(org_chart|staff_lookup|staff_emails)" server/src` 沒有結果。
   - `server/test` 中只剩「呼叫數為 0」的斷言。
   - `FeastogetherModule` 只被 `server/src/features/auth/auth.module.ts` import。

@@ -1,3 +1,4 @@
+import { createSyntheticPortal, type SyntheticPortal } from './synthetic-portal.helper';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { INestApplicationContext } from '@nestjs/common';
 import { Queue } from 'bullmq';
@@ -7,7 +8,7 @@ import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
 import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import {
@@ -32,6 +33,7 @@ const reconnectSuite =
 reconnectSuite('022 Redis metadata 遺失後同程序恢復', () => {
   jest.setTimeout(70_000);
   let ctx: SecurityE2eContext;
+  let portal: SyntheticPortal;
   let redis: Redis;
   let cookie: string;
   let ownerId: string;
@@ -51,21 +53,8 @@ reconnectSuite('022 Redis metadata 遺失後同程序恢復', () => {
     }
     redis = new Redis({ host: '127.0.0.1', port: 16322, db: 9 });
     await redis.flushdb();
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherHrService).useValue({
-        getStaffEmails: syntheticStaffEmails,
-        lookupEligibleStaff: (empid: string) =>
-          Promise.resolve({
-            person_empid: empid,
-            person_name: '重連測試員工',
-            person_status: 1,
-            person_status_name: '正式',
-            department_id: 'D022',
-            department_name: '測試部',
-            title: '測試員工',
-          }),
-      }),
-    );
+    portal = await createSyntheticPortal();
+    ctx = await createSecurityE2eApp();
     cookie = await login('RC02201');
     const db = ctx.app.get<DataSource>(MYSQL_MAIN);
     const users = await db.query<Array<{ id: number }>>(
@@ -76,6 +65,7 @@ reconnectSuite('022 Redis metadata 遺失後同程序恢復', () => {
   afterAll(async () => {
     await Promise.all(workers.map((worker) => worker.close()));
     if (ctx) await closeSecurityE2eApp(ctx);
+    if (portal) await portal.drop();
     if (redis) await redis.quit();
   });
 
@@ -302,6 +292,7 @@ reconnectSuite('022 Redis metadata 遺失後同程序恢復', () => {
     );
   });
   async function login(empid: string): Promise<string> {
+    await portal.insertPeople([{ person_empid: empid, person_name: '背景合成員工', person_status: 1, department_id: 'D022', department_name: '測試部', title: '測試員工', email: `${empid.toLowerCase()}@example.test` }]);
     const launched = await request(ctx.server)
       .post('/api/auth/webview-launches')
       .set('Authorization', `Bearer ${createLaunchJwt(empid)}`)
@@ -317,7 +308,7 @@ reconnectSuite('022 Redis metadata 遺失後同程序恢復', () => {
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');
-    await seedSyntheticStaffEmails(ctx.app, [empid]);
+    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     return value;
   }
 });
@@ -348,7 +339,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import {
-  syntheticStaffEmails,
-  seedSyntheticStaffEmails,
-} from './synthetic-staff-emails.helper';
+

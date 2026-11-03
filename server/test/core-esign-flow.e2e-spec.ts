@@ -3965,7 +3965,7 @@ describe('核心電子簽 US1', () => {
     const raw: unknown = activated.headers['set-cookie'];
     const cookie = Array.isArray(raw) ? raw[0] : raw;
     if (typeof cookie !== 'string') throw new Error('缺少 session cookie');
-    await seedSyntheticStaffEmails(ctx.app, [empid]);
+    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     return cookie;
   }
 });
@@ -4021,4 +4021,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';
+

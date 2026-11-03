@@ -170,12 +170,7 @@
     - `sync --dry-run`：不寫入；在 stdout 輸出摘要 JSON、被略過的員編與原因，以及要停用的人數。
     - `sync [--allow-deactivations <N>]`：正式執行。
   - 不讀檔也不寫檔。
-  - UAT 的執行方式：
-
-    ```bash
-    docker compose -f docker-compose.uat.yml run --rm worker node dist/maintenance/portal-users.js sync --dry-run
-    ```
-
+  - UAT 的執行方式：先載入 `releases/current.env`，再以 `docker compose --env-file /dev/null -f docker-compose.uat.yml run --rm worker` 執行，完整步驟見 runbook [手動執行](../../server/docs/portal-user-import.md#手動執行)。
     這會沿用 `x-backend` 的 env_file 與 `intranet-uat_default` 網路，這個網路已實測可以連到 Portal。
 - **Rationale**：
   - 與每日匯入共用同一個服務，規則一定相同。

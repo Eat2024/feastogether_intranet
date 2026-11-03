@@ -152,7 +152,7 @@ server/.env.example                               # 加 PORTAL_MYSQL_*，值為�
 ## UAT 上線前置（維運）
 
 - 在 `/home/feasteng/deploy/intranet-uat/server.env` 加入 `PORTAL_MYSQL_*`（`survey_role`）。`docker-compose.uat.yml` 的 server 與 worker 都透過 `x-backend` 載入這個檔。
-- 部署後先跑 `sync --dry-run`；第一次停用人數若超過 500，先確認名單，再帶 `--allow-deactivations` 執行。
+- 部署後先跑 `sync --dry-run`；第一次停用人數若超過 500，先確認停用人數合理，再帶 `--allow-deactivations` 執行。
 - 正式環境由 SRE 依 UAT 架構建置，上線前同樣驗證連線與兩張表的讀取權限。
 
 ## Complexity Tracking

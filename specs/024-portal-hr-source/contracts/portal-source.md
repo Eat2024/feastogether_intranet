@@ -92,8 +92,4 @@ node dist/maintenance/portal-users.js sync [--allow-deactivations <N>]
   - 沒有超過門檻時，不需要這個參數。
 - 結束碼：成功為 0；參數錯誤、來源失敗、超過門檻未確認或寫入失敗為非零。
 - 不讀檔，也不寫檔；不接受 `--input`、`--output`、`--exclude-file`、`--acquired-at`，也沒有 rollback 指令。
-- UAT 執行方式：
-
-  ```bash
-  docker compose -f docker-compose.uat.yml run --rm worker node dist/maintenance/portal-users.js sync --dry-run
-  ```
+- UAT 執行方式：先載入 `releases/current.env`，再以 `docker compose --env-file /dev/null -f docker-compose.uat.yml run --rm worker` 執行，完整步驟見 runbook [手動執行](../../../server/docs/portal-user-import.md#手動執行)。

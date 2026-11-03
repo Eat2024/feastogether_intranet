@@ -6,7 +6,7 @@
 
 023 的 HEX TSV 檔案輸入、預覽檔、原值檔與 rollback 全部移除；runbook 改寫成每日自動匯入的維運說明。
 
-**Status:** claimed
+**Status:** resolved
 
 **Blocked by:** [04-portal-user-sync-core](04-portal-user-sync-core.md)
 
@@ -23,7 +23,7 @@
 - [x] 超過門檻時，不帶參數或 N 不符都以非零狀態結束且不寫入；N 相符才套用。
 - [x] 023 的 source、import、store、recovery 程式檔已刪除，不保留檔案輸入作為替代來源。
 - [x] runbook 說明每日 04:00 匯入、如何查看 log、dry-run 與確認步驟、第一次上線超過門檻的處理、Portal 故障時的處理；不含 HEX 匯出、搬檔或回復步驟，也不寫真實員編、主機或帳密。
-- [ ] 相關的 lint、單元測試、build 與 e2e 通過，並附上實際結果與未驗證的限制；整合到 `feat/024-portal-hr-source` 並追加 commit 紀錄後，才可以改成 resolved。
+- [x] 相關的 lint、單元測試、build 與 e2e 通過，並附上實際結果與未驗證的限制；整合到 `feat/024-portal-hr-source` 並追加 commit 紀錄後，才可以改成 resolved。
 
 ## Comments & Implementation Results
 
@@ -62,3 +62,4 @@
   - Runbook 的每日 04:00、多 worker 只執行一次與停機後補跑，依賴 ticket 05（尚未合入）。
   - e2e 的子程序依賴 ts-node（devDependency）與 `--conditions=development`，與 package.json 既有的 typeorm／db 指令相同。
 
+整合 commit：`aafd681`（feat/024-portal-hr-source）。

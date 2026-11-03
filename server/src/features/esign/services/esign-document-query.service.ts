@@ -124,20 +124,17 @@ export class EsignDocumentQueryService {
         ? this.documents.findByDepartment(department.departmentCode, manager)
         : role === 'assigned'
           ? Promise.resolve([])
-          : this.documents.findCreatedByUser(userId, manager),
+          : this.documents.findListCreatedByUser(userId, manager),
       role === 'created' || role === 'dep'
         ? Promise.resolve([])
         : this.signers.findAssignedToUser(userId, manager),
     ]);
     const assigned = (
-      await Promise.all(
-        assignedSigners.map((signer) =>
-          this.documents.findById(signer.documentId, manager),
-        ),
+      await this.documents.findListByIds(
+        [...new Set(assignedSigners.map((signer) => signer.documentId))],
+        manager,
       )
-    )
-      .filter((document): document is EsignDocument => document !== null)
-      .filter((document) => document.status !== 'draft');
+    ).filter((document) => document.status !== 'draft');
     const byId = new Map(
       [...created, ...assigned].map((document) => [document.id, document]),
     );
@@ -146,28 +143,26 @@ export class EsignDocumentQueryService {
         right.updatedAt.getTime() - left.updatedAt.getTime() ||
         right.id - left.id,
     );
-    // 建立人：同一人只查一次
     const creatorIds = [...new Set(documents.map((d) => d.createdByUserId))];
-    const creators = new Map(
-      (
-        await Promise.all(
-          creatorIds.map((id) => this.users.findById(id, manager)),
-        )
-      )
-        .filter((user): user is User => user !== null)
-        .map((user) => [user.id, user]),
-    );
-    const items = await Promise.all(
-      documents.map(async (document) => {
-        const signers = await this.signers.findByDocument(document.id, manager);
-        return this.mapper.documentListItem(
-          document,
-          this.count(signers),
-          creators.get(document.createdByUserId),
-          now,
-          userId,
-        );
-      }),
+    const [creatorRows, countsByDocument] = await Promise.all([
+      this.users.findByIds(creatorIds, manager),
+      this.signers.countsByDocumentIds(
+        documents.map((d) => d.id),
+        manager,
+      ),
+    ]);
+    const creators = new Map(creatorRows.map((user) => [user.id, user]));
+    const items = documents.map((document) =>
+      this.mapper.documentListItem(
+        document,
+        countsByDocument.get(document.id) ?? {
+          pendingCount: 0,
+          signedCount: 0,
+        },
+        creators.get(document.createdByUserId),
+        now,
+        userId,
+      ),
     );
     return items.filter((document) => !status || document.status === status);
   }

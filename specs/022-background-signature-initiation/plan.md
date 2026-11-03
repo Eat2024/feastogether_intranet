@@ -149,3 +149,5 @@ Spec 023 的本機主檔與信箱能力是查核前置條件；實作前核對�
 ### committing 期間的修改拒絕
 
 文件／名單異動先讀取文件 id、creator、deletedAt、status 授權，再以非鎖定 EXISTS 判斷 active job；忙碌立即回固定 409，避免等待正式交易文件鎖後誤回「文件已發起」。這只是快速拒絕，取得文件鎖後仍保留原 current-read busy／lease／version 檢查，避免 TOCTOU。正式 worker 的 lease 呼叫略過快速拒絕，不能略過鎖內檢查。名單設定在 users X 前檢查，PDF 更新在 prepareNewPdf 前檢查；停止、補簽、催簽與註記亦涵蓋。前端無變更。
+
+受理與 retry 也先授權小投影：retry 先確認 parent 屬於文件且存在，再查 document+key EXISTS；任何既存 key（包含歷史終態工作）略過快速拒絕，仍由鎖內流程核 hash/parent 與回傳摘要。新 key／無 key 且 active 時立即固定 409。不得僅比 active.requestKey，否則歷史原 key 會被新工作錯誤擋下。

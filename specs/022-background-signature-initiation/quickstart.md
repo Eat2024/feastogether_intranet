@@ -144,3 +144,17 @@ worker 以每批 500 人預查及 CAS 更新本 attempt 進度，鎖內再次驗
 實作在正式交易開始前停止並排空在途 heartbeat，再取得新鮮租約；因此不會持 job 鎖等待自己的 heartbeat。正式交易等待過久導致租約失效時仍由鎖內驗證拒絕，不讓舊持有者提交。
 
 04 整合後回歸：保留 latest／小投影與所有異動 guard，只有測試清單衝突並已取聯集；server build 通過，02／03／04／05 四套 45／45 通過。
+
+## Redis 空庫重連驗證（追加 05）
+
+既有 worker 現在會在啟動與 Redis ready 後重建同一個 30 秒 maintenance scheduler、恢復 initiation global concurrency 1。設定失敗會以 1 秒起、上限 30 秒退避重試；期間新 delivery 不 claim DB，原 queued 工作由恢復後的 maintenance 補列。錯誤事件為 `esign.queue_restore_failed`，不含連線字串或工作輸入。
+
+破壞性故障測試僅在以下專用資源啟用；一般測試 DB 會 skip 此 suite。請確保 Redis DB9 專供本測試，測試會清空 DB9 並斷開 DB9 連線，但不重啟 Redis 容器、不影響其他 DB：
+
+```bash
+NODE_ENV=test DB_MYSQL_HOST=127.0.0.1 DB_MYSQL_PORT=13322 DB_MYSQL_USER=root DB_MYSQL_PASS= DB_MYSQL_DB=feastogether_intranet_test022_reconnect REDIS_HOST=127.0.0.1 REDIS_PORT=16322 REDIS_PASSWORD= REDIS_DB=9 ESIGN_STORAGE_ROOT=/tmp/esign-test022-reconnect pnpm -C server test:e2e --testPathPatterns=esign-initiation-reconnect
+```
+
+真 MySQL／Redis、合成員工與 fake mail 驗證：啟動 gate、metadata 清空後兩個 worker 同程序恢復、恢復配置 pending 時 delivery 不 claim、maintenance 補列完成兩份 DB queued 工作；恢復後新工作最大同時處理數 1。02–05 加 reconnect 回歸 5 suites／46 tests；unit 115 suites／1,180 tests，build 通過，lint 0 errors／272 既有 warnings。
+
+這個並行量結果針對配置恢復後的新工作。Redis 資料遺失前已在 DB 正式交易中的不同文件，不能靠消失的 active 記錄保證全域單工；每份文件仍以 DB lease/token 保證舊持有者不能重複提交。單純手動清 keys 而連線未斷不會產生 ready，屬此恢復機制範圍外。

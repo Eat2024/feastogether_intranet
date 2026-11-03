@@ -18,6 +18,16 @@ export class UserRepository {
       .getOne();
   }
 
+  /** 受理資格的 current read；共享鎖相容正式worker與外鍵引用，仍阻擋帳號異動。 */
+  findByIdForShare(id: number, manager: EntityManager): Promise<User | null> {
+    return manager
+      .createQueryBuilder(User, 'user')
+      .withDeleted()
+      .setLock('pessimistic_read')
+      .where('user.id = :id', { id })
+      .getOne();
+  }
+
   /** 包含軟刪除帳號，讓呼叫端統一判斷是否可指定為簽署人。 */
   findByIds(ids: number[], manager: EntityManager): Promise<User[]> {
     if (ids.length === 0) return Promise.resolve([]);
@@ -28,7 +38,7 @@ export class UserRepository {
   async findByIdsWithEmail(
     ids: number[],
     manager: EntityManager,
-    lock = false,
+    lock: boolean | 'shared' = false,
   ): Promise<User[]> {
     const ordered = [...new Set(ids)].sort((a, b) => a - b);
     const result: User[] = [];
@@ -41,7 +51,10 @@ export class UserRepository {
           ids: ordered.slice(offset, offset + 500),
         })
         .orderBy('user.id', 'ASC');
-      if (lock) query.setLock('pessimistic_write');
+      if (lock)
+        query.setLock(
+          lock === 'shared' ? 'pessimistic_read' : 'pessimistic_write',
+        );
       result.push(...(await query.getMany()));
     }
     return result;

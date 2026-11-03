@@ -66,7 +66,7 @@ specs/022-background-signature-initiation/
 
 使用發起專用 DTO 支援 `{type: employee, employeeNo}`；內部名單直接提交員編，不先呼叫 resolutions。外部沿用 name/email。舊 userId 形狀可解析，但所有請求均需冪等 key、均為背景結果，不代表相容舊前端。共用草稿 DTO 不擴張，避免破壞 draftSave。
 
-HTTP 做 bounded O(N) 的格式、重複身分、欄位位置基本範圍與期間形狀驗證（截止仍在未來等動態條件於確認不是重播後才檢查）；不查全體員工、不讀 PDF bytes、不生成正式快照。短交易先鎖建立人，再鎖文件，讀取原檔 metadata 與草稿版本，保存不可變工作輸入。回覆資料大小不隨人數成長。
+HTTP 做 bounded O(N) 的格式、重複身分、欄位位置基本範圍與期間形狀驗證（截止仍在未來等動態條件於確認不是重播後才檢查）；不查全體員工、不讀 PDF bytes、不生成正式快照。短交易先以共享鎖 current read 建立人，再獨佔鎖文件，讀取原檔 metadata 與草稿版本，保存不可變工作輸入。回覆資料大小不隨人數成長。
 
 提交以 `Idempotency-Key` 區別 HTTP trace 的 `x-request-id`。同 key 同 hash 查回原工作；不同內容 409。授權後、檢查 draft 之前先處理已存在 key，讓成功後回應遺失也能查回。不同 key 遇同文件進行中工作一律 409，附建立人可讀的現有工作識別，不靜默替換內容。重播只重驗目前授權、輸入形狀與 hash；截止時間仍在未來、latest parent、retryable 與輸入保留等動態條件只用於新受理。人工 retry 亦先查既存子工作，再驗是否可建立新子工作。
 
@@ -80,7 +80,7 @@ MySQL commit 成功才受理；commit 前失敗不回 202。DB 成功但 enqueue
 
 進入正式交易前，以有效 lease 的短 CAS 提交 stage=committing，使輪詢能讀到階段；不代表已有業務提交。正式交易仍重核 lease 與期限。
 
-正式交易維持使用者 ID 升冪 → 文件 → 工作的鎖序，核對最新資格、員編映射、工作 lease、deadline 與原檔／草稿版本。正式核心接受同一 EntityManager，完成欄位、每批 250 筆指派／通知、canonical 快照與 audit、文件 active、job succeeded，最後一次 commit。不得每 250 人提交。
+正式交易維持使用者 ID 升冪（共享鎖）→ 文件（獨佔鎖）→ 工作（獨佔鎖）的鎖序，核對最新資格、員編映射、工作 lease、deadline 與原檔／草稿版本。正式核心接受同一 EntityManager，完成欄位、每批 250 筆指派／通知、canonical 快照與 audit、文件 active、job succeeded，最後一次 commit。不得每 250 人提交。
 
 `buildFields()` 會刪除重建欄位，不可作為交易外的預驗證直接呼叫。首版可保留既有 PDF 驗證在正式交易內；若另抽出純讀預驗證，必須在鎖內重核 file ID/hash/version，不能只相信先前結果。worker 顯式傳入 creatorUserId 作 actor，不保存或模擬瀏覽器 session。
 
@@ -140,3 +140,8 @@ Spec 023 的本機主檔與信箱能力是查核前置條件；實作前核對�
 ### 草稿編輯版本補修
 
 2026-11-03 真 HTTP 紅燈確認：只換欄位／簽署人／註記不一定會更新 document.updated_at；ORM 即使 dirty save 也可能在同秒碰撞，讓 failed parent retry 覆蓋剛修改的名單。因此所有草稿編輯在文件鎖內以 DB 單調微秒 touch 完成版本更新，不新增版本欄位／表／環境變數。DocumentRepository.save 對既有 draft 保存原 raw 版本再 save/touch，公開 fields/note 自行 touch；新建及正式 worker activate 不走該分支。save 後回傳時間重讀 DB，原 job 仍以 raw 微秒版本比對。保守將同值儲存也視為新編輯版本。
+
+
+### 員工鎖模式補修
+
+正式發起只讀本機users資格／Email，不寫回主檔。worker以共享鎖固定全部使用者（含建立人），受理／retry也以建立人共享current read保持資格檢查原子性，與新增job的creator外鍵共享引用相容。仍阻擋停用、信箱或同步UPDATE至commit，保留users→document→job順序；其他原users寫入相關X鎖不變。這比單純移除受理X鎖完整，也避免一般非鎖定read的資格TOCTOU。

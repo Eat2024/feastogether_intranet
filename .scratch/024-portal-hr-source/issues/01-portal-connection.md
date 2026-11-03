@@ -17,7 +17,7 @@
 - [x] `.env.example` 列出五個 `PORTAL_MYSQL_*` 與所需的最小 SELECT 權限，不含任何實際值。
 - [x] 送出的 SQL 與合約逐字相同；沒有寫入語句，也不讀密碼、身分證字號、生日欄位（單元測試鎖定）。
 - [x] 連線池最多 3 條連線，連線與查詢逾時各 10 秒；Portal 不回應時 15 秒內拒絕。
-- [ ] 設定缺漏或 Portal 無法連線時，HTTP app 仍能啟動，查詢時才失敗，錯誤訊息不含設定值。
+- [x] 設定缺漏或 Portal 無法連線時，HTTP app 仍能啟動，查詢時才失敗，錯誤訊息不含設定值。
 - [x] 合成 Portal 測試資料庫只建在 `feastogether_intranet_test` 前綴下，測完自動刪除；4-byte 中文與前導零員編完整讀回，哨兵欄位的值不出現在任何查詢結果中。
 - [x] 相關的 lint、單元測試、build 與 e2e 通過，並附上實際結果與未驗證的限制；整合到 `feat/024-portal-hr-source` 並追加 commit 紀錄後，才可以改成 resolved。
 
@@ -72,3 +72,5 @@
 - 限制：期限以「每個 SQL 查詢」計。`listOrgChartSource` 依序跑兩個查詢；Portal 慢但有回應時最多約 20 秒，不回應時第一個查詢 10 秒就拒絕。`findStatusesByEmpids` 每批各自 10 秒。
 
 整合 commit：`3402324`（feat/024-portal-hr-source）。
+
+2026-11-03（ticket 08 核對）：勾選「設定缺漏或 Portal 無法連線時…錯誤訊息不含設定值」。本 ticket 的 `portal-directory` e2e 已驗證設定缺漏時 HTTP app 照常啟動、查詢才拒絕；錯誤訊息不含設定值則由各使用路徑驗證：ticket 02 `org-chart` e2e（缺 `PORTAL_MYSQL_DB`、部門表無法讀取、Portal 不回應，回應都不含主機、帳號、資料庫名稱或變數名稱）、ticket 03 `password-login` e2e（權限被收回與不回應時，回應不含主機、帳號、資料庫名稱）、ticket 04 `portal-user-sync` e2e（`ER_NO_SUCH_TABLE`、`ER_ACCESS_DENIED_ERROR` 與寫入失敗時，log、錯誤訊息與 stack 不含主機、帳號、資料庫名稱或員編）。`PortalDirectoryService` 本身仍原樣拋出 mysql2 錯誤，由呼叫端清理。

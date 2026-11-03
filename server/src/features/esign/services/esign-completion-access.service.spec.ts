@@ -75,6 +75,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
             }),
           ),
         } as never,
+        { active: jest.fn().mockResolvedValue(null) } as never,
       ),
       new PdfValidationService(),
       storage as never,

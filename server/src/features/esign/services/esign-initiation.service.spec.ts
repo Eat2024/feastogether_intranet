@@ -268,7 +268,12 @@ describe('EsignInitiationService', () => {
       ]),
       manager,
     );
-    expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(3, 7, manager);
+    expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(
+      3,
+      7,
+      manager,
+      undefined,
+    );
     expect(document).toMatchObject({
       createdByUserId: 7,
       createdByDepartmentCode: '00A',

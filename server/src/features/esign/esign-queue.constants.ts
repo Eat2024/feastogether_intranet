@@ -20,3 +20,7 @@ export const exportJobArguments = (exportJobId: number) =>
       deduplication: { id: `export-${exportJobId}` },
     },
   ] as const;
+
+/** 背景發起專用 queue 與工作名稱。 */
+export const ESIGN_DOCUMENT_INITIATION_QUEUE = 'esign-document-initiation';
+export const ESIGN_DOCUMENT_INITIATION_JOB = 'esign-document-initiation';

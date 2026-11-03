@@ -112,3 +112,7 @@ Network 確認按發起後沒有先打整份 resolutions，不呼叫 detail 等�
 - `pnpm -C server build` 通過；`lint:check` 0 errors／272 既有 warnings。無 client、migration 或環境設定變更。
 - Actor 邊界：文件 entity 只有 createdByUserId，沒有 updatedByUserId 欄位，故不新增 schema；核心的 signer 更新、notification notifiedByUserId 與 audit actorUserId 都明確來自 input.creatorUserId。後續 worker 必須傳入原建立人，不依賴 HTTP CLS。
 - 這一票只完成核心重構，尚未啟用背景受理或 busy guard；後續票驗收不能由本節推定通過。
+
+## Ticket 02 驗證紀錄
+
+2026-11-03，隔離 worktree impl/022-02：後端受理／busy guard／真 queue e2e 10/10，新 schema＋既有 migration 15/15、drift=[]、mysql.options 7/7；server unit 113 suites/1175 tests、build、lint 0 errors 通過。未更動 client；尚未執行完整容量、復原、保留與全套 e2e，後續票完成後再驗收。詳見本機 ticket 02 的實作紀錄。

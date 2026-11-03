@@ -97,6 +97,7 @@ describe('EsignReopeningService', () => {
         new EsignDocumentValidationService(),
         documents,
         {} as never,
+        { active: jest.fn().mockResolvedValue(null) } as never,
       ),
       new EsignDocumentValidationService(),
       expiry,
@@ -117,6 +118,7 @@ describe('EsignReopeningService', () => {
             return Promise.resolve([]);
           },
         } as never,
+        {} as never,
         {} as never,
         {} as never,
       ),

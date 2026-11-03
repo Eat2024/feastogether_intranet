@@ -1,3 +1,4 @@
+import type { InitiationLease } from '../repositories/initiation-job.repository';
 import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import type { EsignDocument } from '../entities/esign-document.entity';
@@ -70,6 +71,7 @@ export class EsignInitiationService {
   async initiateInTransaction(
     input: InitiateDocumentInput,
     manager: EntityManager,
+    lease?: InitiationLease,
   ) {
     this.validateSigningPeriod(input);
     const userIds = await this.prepareEmployeeIds(input, manager);
@@ -78,10 +80,15 @@ export class EsignInitiationService {
       input.creatorUserId,
       manager,
     );
+    for (const [userId, employeeNo] of lease?.expectedEmployees ?? []) {
+      if (lockedUsers.get(userId)?.empid !== employeeNo)
+        throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED);
+    }
     const document = await this.access.checkAndLockDraftDoc(
       input.documentId,
       input.creatorUserId,
       manager,
+      lease,
     );
     const preparedSigners = await this.signerService.prepareSigners(
       document,

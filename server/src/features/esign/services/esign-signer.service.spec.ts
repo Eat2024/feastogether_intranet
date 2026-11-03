@@ -81,6 +81,7 @@ describe('EsignSignerService', () => {
         new EsignDocumentValidationService(),
         documents as never,
         {} as never,
+        { active: jest.fn().mockResolvedValue(null) } as never,
       ),
       new DocumentRepository(),
     );
@@ -308,6 +309,7 @@ describe('草稿完整設定', () => {
         new EsignDocumentValidationService(),
         new DocumentRepository(),
         {} as never,
+        { active: jest.fn().mockResolvedValue(null) } as never,
       ),
       new DocumentRepository(),
     );

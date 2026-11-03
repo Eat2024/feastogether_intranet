@@ -70,12 +70,18 @@ function fixture(lockAsInternal = false) {
     } as never,
     documents,
     new SignerRepository(),
-    new EsignAccessPolicyService(validation, documents, {} as never),
+    new EsignAccessPolicyService(
+      validation,
+      documents,
+      {} as never,
+      { active: jest.fn().mockResolvedValue(null) } as never,
+    ),
     validation,
     new EsignAuditService(new AuditEventRepository()),
     new EsignJobProducerService(
       {} as never,
       { add: async () => undefined } as never,
+      {} as never,
       {} as never,
     ),
   );

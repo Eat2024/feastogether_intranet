@@ -1,3 +1,5 @@
+import { BackgroundSignatureInitiation1793750401000 } from '../migrations/1793750401000-BackgroundSignatureInitiation';
+import { EsignInitiationJob } from '#app/features/esign/entities/esign-initiation-job.entity';
 import { UserNotificationEmail1793750400000 } from '../migrations/1793750400000-UserNotificationEmail';
 import { DepartmentDocumentVisibility1793664000000 } from '../migrations/1793664000000-DepartmentDocumentVisibility';
 import { MailWhitelistEmailRule1793664001000 } from '../migrations/1793664001000-MailWhitelistEmailRule';
@@ -95,6 +97,7 @@ export function buildMysqlOptions(
       EsignNotificationBatch,
       EsignNotificationLog,
       EsignExportJob,
+      EsignInitiationJob,
       MailRecipientWhitelist,
     ],
     migrations: [
@@ -115,6 +118,7 @@ export function buildMysqlOptions(
       DepartmentDocumentVisibility1793664000000,
       MailWhitelistEmailRule1793664001000,
       UserNotificationEmail1793750400000,
+      BackgroundSignatureInitiation1793750401000,
     ],
 
     extra: {

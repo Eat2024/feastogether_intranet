@@ -58,6 +58,7 @@ export class EsignSignerService {
         manager,
       );
       this.access.checkEsignCreator(document, userId);
+      await this.access.assertNotInitiating(documentId, manager);
       const signer = await this.signers.findByPublicIdForUpdate(
         signerPublicId,
         manager,

@@ -55,3 +55,19 @@
 - 範圍外發現（未修改）：Spec 023 的 Status 行仍寫「來源切換及可重跑維護工具待實作」，這是 023 自己的狀態，與 024 無關。
 
 整合 commit：`e04bce3`（feat/024-portal-hr-source）。
+
+2026-11-03 Code review fixes（implementer，branch `feat/024-t09`，基於 integration tip `a8ab860`；commits `e85c7d4`、`91c1c8a`、`1c0a707`）：
+
+- 無法解碼的文字＝來源錯誤：`PortalDirectoryService` 讀回的任一字串含 U+FFFD 時拒絕（`PortalUndecodableTextError`，訊息不含資料內容）。部門樹回 502 不快取、登入回 `STAFF_LOOKUP_FAILED`、匯入以 `failed_source` 結束且不寫入，沿用呼叫端既有處理。單元測試涵蓋四個查詢方法；`org-chart`、`password-login`、`portal-user-sync` 各加一個 e2e（拿掉檢查時這三個 e2e 都會失敗）。規則寫進 `data-model.md`「無法解碼的文字」與 `contracts/portal-source.md`。
+- runbook：`--allow-deactivations <N>` 只在停用人數超過 500 時核對；dry-run 後人數降到 500 以下時直接套用。
+- 已知限制（只寫文件）：新進同仁第一次登入與 04:00 匯入同時發生時，該次匯入可能以 `failed_write`（`ER_DUP_ENTRY`）結束、整批 rollback，手動 `sync` 即可。已寫進 runbook「Portal 故障」與 quickstart「其他未驗證項目」。
+- 帳密登入與 OAuth 直接寫入 `staff.department_id`／`department_name`，不再重複 trim 判斷（`EligibleStaffService` 已把空白轉 null）；對應單元測試改為只傳 null。
+- `PORTAL_ACTIVE_STATUS_NAMES` 與 `blankToNull` 移到 `infrastructure/portal/portal.types.ts`，登入資格與匯入規則共用；SQL 的 `IN (0, 1)` 不變。
+- 小整理：`PortalUsersOptions` 改為 `Omit<PortalUserSyncOptions, 'trigger'>`；`PortalUserFields` 的 JSDoc 移回介面上；匯入服務把不帶關鍵字的 `findActiveCandidates` 結果命名為 `activeUsers`／`unlisted`；`PortalDirectoryService` 註解改為「查詢不寫 log，只有關閉連線池失敗時記錄錯誤代碼」。該 log 原本就和 MySQL／Redis lifecycle 一樣用 Nest `Logger(類別名)`，只記錯誤代碼（mysql2 訊息可能含主機或帳號），所以沒有改。
+- 驗證（`.env.test` 用 `feastogether_intranet_test_t09`、Redis DB 10）：
+  - `pnpm -C server lint:check`：0 errors，269 warnings（與基準相同）。
+  - `pnpm -C server test`：117 suites／1205 tests 全過（新增 4 個；帳密登入與 OAuth 的 `it.each` 各從 4 個 case 減為 1 個）。三次 commit 的 pre-commit hook 都通過。
+  - `pnpm -C server build`：通過。
+  - `pnpm -C server test:e2e -- org-chart password-login oauth-login webview-session portal-user-sync portal-directory portal-user-import`：8 suites／74 tests 全過。
+  - `pnpm -C server test:e2e:security`：14 suites／84 tests 全過。
+- 未驗證：U+FFFD 是直接存進合成 Portal，沒有重現真實 Portal 的錯誤位元組；MySQL 伺服器端轉換字元集時換成的 `?` 偵測不到。沒有跑完整 `test:e2e`。

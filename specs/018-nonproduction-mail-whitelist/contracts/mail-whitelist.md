@@ -41,6 +41,8 @@ Error class 必須可被 worker／OTP 明確辨識，不使用字串 message 判
 
 ## 可信收件人政策
 
+> 已由 [Spec 021](../../021-external-mail-whitelist/spec.md) 修訂：增加收件信箱規則，以正規化後的完整地址精確比對；收件人全數命中時不查 org_chart 與 getStaffEmails，其餘地址沿用下列解析並取聯集。
+
 - 規則讀取方式為單次呼叫的有效 `(type,value)` 集合；部門完整代碼／員編完整字串 OR 命中。
 - org_chart 只選精確白名單節點的直接員工，額外 employee 值獨立加入；不遞迴放行子節點。
 - getStaffEmails 每批最多 100，將候選員編的可信有效信箱與實際地址相交，直接回傳允許集合。地址與員編的映射必須來自可信 HR 回應，不能只相信 sender 傳來的員編聲稱。

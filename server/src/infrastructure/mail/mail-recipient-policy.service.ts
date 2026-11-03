@@ -4,11 +4,13 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { FeastogetherDepartmentService } from '#app/infrastructure/http-client/feastogether/services/feastogether-department.service';
 import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
 import { MailRecipientWhitelistRepository } from './mail-recipient-whitelist.repository';
+import type { MailRecipientWhitelistType } from './mail-recipient-whitelist.entity';
 import { MailWhitelistCheckFailedError } from './mail-recipient-policy.errors';
 
 interface RecipientWhitelistRules {
   employeeIds: ReadonlySet<string>;
   departmentIds: ReadonlySet<string>;
+  emails: ReadonlySet<string>;
 }
 
 @Injectable()
@@ -20,37 +22,40 @@ export class MailRecipientPolicyService {
     private readonly hr: FeastogetherHrService,
   ) {}
 
-  /** 每次寄送重新讀取，查詢結果只在本次呼叫共用。 */
+  /**
+   * 每次寄送重新讀取，查詢結果只在本次呼叫共用。
+   * 收件人全數命中信箱規則時不查人資來源。
+   */
   async allowedRecipients(emails: readonly string[]): Promise<Set<string>> {
     try {
       const rules = await this.loadActiveRules();
-      const employeeIds = await this.collectCandidateEmployeeIds(rules);
-      if (!employeeIds.size) return new Set();
-
-      const matchedRecipients = await this.matchRecipientEmails(
-        employeeIds,
-        emails,
+      const allowed = new Set(
+        emails.filter((email) => rules.emails.has(email)),
       );
-      return matchedRecipients;
+      const remaining = emails.filter((email) => !allowed.has(email));
+      if (!remaining.length) return allowed;
+
+      const employeeIds = await this.collectCandidateEmployeeIds(rules);
+      if (!employeeIds.size) return allowed;
+
+      const matched = await this.matchRecipientEmails(employeeIds, remaining);
+      return new Set([...allowed, ...matched]);
     } catch {
       throw new MailWhitelistCheckFailedError();
     }
   }
 
-  /** 將最新有效規則分為完整員編與精確部門代碼。 */
+  /** 將最新有效規則分為完整員編、精確部門代碼與完整收件信箱。 */
   private async loadActiveRules(): Promise<RecipientWhitelistRules> {
     const rules = await this.rules.findActiveRules(this.mysql.getManager());
+    const valuesOf = (type: MailRecipientWhitelistType) =>
+      new Set(
+        rules.filter((rule) => rule.type === type).map((rule) => rule.value),
+      );
     return {
-      employeeIds: new Set(
-        rules
-          .filter((rule) => rule.type === 'employee')
-          .map((rule) => rule.value),
-      ),
-      departmentIds: new Set(
-        rules
-          .filter((rule) => rule.type === 'department')
-          .map((rule) => rule.value),
-      ),
+      employeeIds: valuesOf('employee'),
+      departmentIds: valuesOf('department'),
+      emails: valuesOf('email'),
     };
   }
 

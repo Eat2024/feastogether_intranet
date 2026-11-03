@@ -4,7 +4,7 @@
 
 **Blocked by:** 01-email-rule-schema
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Source:** [Spec 021](../../../specs/021-external-mail-whitelist/spec.md)、[Plan](../../../specs/021-external-mail-whitelist/plan.md)、[Tasks](../../../specs/021-external-mail-whitelist/tasks.md)。
 

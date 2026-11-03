@@ -16,6 +16,8 @@ Entity `MailRecipientWhitelist` 放於 `server/src/infrastructure/mail/mail-reci
 | updated_at | updatedAt | datetime(6)，NOT NULL | 沿 AuditableEntity 修改時間，UTC |
 | deleted_at | deletedAt | datetime(6)，NULL | NULL 表有效，其餘為撤銷時間 |
 
+> 已由 [Spec 021](../021-external-mail-whitelist/data-model.md) 修訂：`type` 增加 `email`，`value` 放寬為 varchar(255) 並擴充 CHECK；不新增欄位。
+
 type／value 使用 utf8mb4_0900_bin 精確比較；不能 trim／轉大小寫後偷偷合併不同代碼，非法資料拒絕。表與欄位加繁體中文 comment。
 
 - 唯一索引 `uq_mail_recipient_whitelist_type_value`：`(type, value)`，涵蓋已撤銷資料。
@@ -33,6 +35,8 @@ type／value 使用 utf8mb4_0900_bin 精確比較；不能 trim／轉大小寫�
 | employee | 09005001 | 額外允許同仁 |
 
 不加入上層 1029000000，不遞迴自動加入子部門，不存 Email。四筆皆以字串作參數。
+
+> 已由 [Spec 021](../021-external-mail-whitelist/data-model.md) 修訂：可存 `email` 收件信箱規則，但初始規則仍不含任何信箱。
 
 ## 維護與種子
 

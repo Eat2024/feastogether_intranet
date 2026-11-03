@@ -257,6 +257,41 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
     });
   });
 
+  it('外部催簽命中信箱規則時人資來源故障仍 delivered 並寫入成功稽核', async () => {
+    await withFixture(async ({ batch, adapter, manager, upstream }) => {
+      await manager.save(
+        MailRecipientWhitelist,
+        manager.create(MailRecipientWhitelist, {
+          type: 'email',
+          value: 'external@example.test',
+          remark: '合成信箱規則',
+        }),
+      );
+      upstream.post.mockRejectedValue(new Error('合成來源故障'));
+      const work = await batch('reminder', ['external@example.test'], 'email');
+      await work.run();
+      expect(upstream.post).not.toHaveBeenCalled();
+      expect(adapter.deliveries).toEqual([
+        expect.objectContaining({
+          kind: 'reminder',
+          recipientEmail: 'external@example.test',
+        }),
+      ]);
+      expect((await work.logs())[0]).toMatchObject({
+        result: 'delivered',
+        errorCode: null,
+        attemptCount: 1,
+        processingStartedAt: null,
+        leaseToken: null,
+        nextAttemptAt: null,
+      });
+      expect(await work.counts()).toEqual({ delivered: 1 });
+      expect((await work.events()).map((event) => event.eventType)).toEqual([
+        'external_reminder.delivered',
+      ]);
+    });
+  });
+
   it.each([
     ['invitation', 'user'],
     ['reminder', 'user'],

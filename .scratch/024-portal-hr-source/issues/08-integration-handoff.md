@@ -71,3 +71,5 @@
   - `pnpm -C server test:e2e -- org-chart password-login oauth-login webview-session portal-user-sync portal-directory portal-user-import`：8 suites／74 tests 全過。
   - `pnpm -C server test:e2e:security`：14 suites／84 tests 全過。
 - 未驗證：U+FFFD 是直接存進合成 Portal，沒有重現真實 Portal 的錯誤位元組；MySQL 伺服器端轉換字元集時換成的 `?` 偵測不到。沒有跑完整 `test:e2e`。
+
+整合 commit：`6c23176`（feat/024-portal-hr-source）。

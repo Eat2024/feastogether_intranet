@@ -7,7 +7,7 @@
 
 **Blocked by:** [07 工作明細到期清理與可追溯摘要](07-retention.md)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — 全部 US；SC-001–009。
 
@@ -39,3 +39,7 @@
 - 正式 worker 與受理／retry 建立人資格採共享鎖，保留 users → document → job 與資格原子性；其他停用／Email／員編寫入仍採排他鎖並等正式提交。
 - 真 worker 持鎖 5 秒期間，另一文件受理由約 5,027ms 降至約 8–12ms；實作回歸 8 suites／79 e2e、build/lint 通過，merge hook 115 suites／1,180 tests、lint 0 errors／272 既有 warnings 通過。
 - 本次只整合此共享鎖 commit，不含後續同文件快速 busy 補修；08 整體驗收仍未完成，未修改 client。
+
+## 整合中追蹤
+
+受理／retry 快速 busy 與歷史 key 重播補修已整合；擴大回歸發現跨文件並行 accept 的 gap lock／INSERT request unique deadlock，仍待後續補修及重驗。狀態保持 claimed，不因局部 80 e2e 通過即結案。

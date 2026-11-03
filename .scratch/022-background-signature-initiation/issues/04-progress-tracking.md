@@ -74,3 +74,9 @@
 - 有權人的 fields／draftSave／settings／title／PDF／delete／note／stop／reopen／reminder 在正式 committing 文件鎖期間先取得固定 409 worker 執行中訊息，越權仍 404；原鎖內 busy guard 保留作競態防線。
 - 實作 79 e2e、build/lint 通過；整合 hook lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過。
 - 無 client 修改；accept／retry 重複發起 fast busy 與歷史 key 重播優先仍待下一補修，08 整體驗收未完成。
+
+## 受理／retry 快速 busy 補修整合紀錄
+
+- 僅指定 commit `b95c1cd392d508a8282cd693dd39994c7e5354a8` 無衝突合併至 `impl/022-integration`，merge commit `2a6421e23b1034fd681a848d406fdda51e391f9f`。新 key 重複發起／retry 快速拒絕與歷史 key 重播優先已整合。
+- 實作 80 e2e、build/lint 通過；整合 hook lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過，client 無修改。
+- 08 擴大回歸另發現共享資格鎖下，跨文件並行 accept 的不存在 key／active gap lock 與 INSERT request 唯一索引發生 deadlock；修正仍在下一補修進行中，本次不宣稱並行受理全部問題已解。08 維持 claimed。

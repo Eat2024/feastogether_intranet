@@ -116,3 +116,9 @@ Network 確認按發起後沒有先打整份 resolutions，不呼叫 detail 等�
 ## Ticket 02 驗證紀錄
 
 2026-11-03，隔離 worktree impl/022-02：後端受理／busy guard／真 queue e2e 10/10，新 schema＋既有 migration 15/15、drift=[]、mysql.options 7/7；server unit 113 suites/1175 tests、build、lint 0 errors 通過。未更動 client；尚未執行完整容量、復原、保留與全套 e2e，後續票完成後再驗收。詳見本機 ticket 02 的實作紀錄。
+
+## Ticket 03 實作驗證（2026-11-03）
+
+在 `impl/022-03`、基準 `bf36b658` 的隔離 `feastogether_intranet_test022_t03`／Redis DB3 執行：容量 13 項加受理 10 項共 23 項通過，涵蓋 6,001 人、混合／全外部、缺信箱與實際白名單跳過、正式交易前 committing、映射及原檔競態、停用建立人、跨批全回滾。RR 原檔快照加強案例另行通過。server build 通過，lint 0 errors／272 既有 warnings。
+
+worker 以每批 500 人預查及 CAS 更新本 attempt 進度，鎖內再次驗證全部資格；既有 250 筆寫入仍全交易提交。沒有改 client，前置解析與成功文案仍保留既有行為；本輪以無 key 舊 body 的 API 相容性驗收。heartbeat／maintenance 恢復與正式效能矩陣留待後續票，未在此提前標記通過。

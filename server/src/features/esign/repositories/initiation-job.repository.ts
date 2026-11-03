@@ -75,12 +75,16 @@ export class InitiationJobRepository {
         'updatedAt',
       )
       .where('document.id = :documentId', { documentId })
+      .setLock('pessimistic_read')
       .getRawOne<{ updatedAt: string }>();
-    const source = await manager.findOneBy(EsignFileObject, {
-      documentId,
-      filePurpose: 'source_pdf',
-      archiveStatus: 'active',
-    });
+    const source = await manager
+      .createQueryBuilder(EsignFileObject, 'source')
+      .where(
+        'source.documentId = :documentId AND source.filePurpose = :purpose AND source.archiveStatus = :archive',
+        { documentId, purpose: 'source_pdf', archive: 'active' },
+      )
+      .setLock('pessimistic_read')
+      .getOne();
     if (!document || !source) return null;
     return {
       updatedAt: document.updatedAt,
@@ -123,6 +127,30 @@ export class InitiationJobRepository {
     job.nextAttemptAt = null;
     await this.save(job, manager);
     return this.byId(id, manager, true, true);
+  }
+
+  /** 每個 attempt 的查核數；只有有效 lease 可提交供摘要讀取的階段。 */
+  async progress(
+    lease: InitiationLease,
+    stage: 'resolving' | 'validating' | 'committing',
+    processedCount: number,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    const result = await manager
+      .createQueryBuilder()
+      .update(EsignInitiationJob)
+      .set({ stage, processedCount, lastProgressAt: new Date() })
+      .where(
+        'id = :id AND status = :status AND lease_token = :token AND lease_expires_at > UTC_TIMESTAMP(6) AND deadline_at > UTC_TIMESTAMP(6) AND processed_count <= :count AND total_count >= :count',
+        {
+          id: lease.jobId,
+          status: 'processing',
+          token: lease.leaseToken,
+          count: processedCount,
+        },
+      )
+      .execute();
+    return result.affected === 1;
   }
 
   async fail(

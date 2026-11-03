@@ -134,14 +134,13 @@ export class EsignInitiationJobService {
     if (!claimed?.leaseToken || !claimed.inputJson) return;
     const lease: InitiationLease = { jobId, leaseToken: claimed.leaseToken };
     try {
-      const signers = await this.resolveSigners(claimed.inputJson);
-      lease.expectedEmployees = new Map(
-        claimed.inputJson.signers.flatMap((signer, index) =>
-          signer.type === 'employee'
-            ? [[Number(signers[index].userId), signer.employeeNo!] as const]
-            : [],
-        ),
+      const { signers, employees } = await this.resolveSigners(
+        claimed.inputJson,
+        lease,
       );
+      lease.expectedEmployees = employees;
+      // 此短 CAS 先提交，摘要才能在正式交易進行中看見階段；不代表成功。
+      await this.recordProgress(lease, 'committing', signers.length);
       const result = await this.mysql.transaction(async (manager) => {
         const result = await this.initiation.initiateInTransaction(
           {
@@ -193,33 +192,78 @@ export class EsignInitiationJobService {
 
   private async resolveSigners(
     input: InitiateDocumentDto,
-  ): Promise<SignerInputDto[]> {
-    const employeeNos = input.signers
-      .filter((s) => s.type === 'employee')
-      .map((s) => s.employeeNo!);
-    const ids = new Map<string, string>();
-    for (let offset = 0; offset < employeeNos.length; offset += 500) {
-      for (const user of await this.users.findByEmpids(
-        employeeNos.slice(offset, offset + 500),
-        this.mysql.getManager(),
-      )) {
-        if (user.isActive && !user.deletedAt)
-          ids.set(user.empid, String(user.id));
-      }
-    }
-    return input.signers.map((signer): SignerInputDto => {
-      if (signer.type === 'employee') {
-        const userId = ids.get(signer.employeeNo!);
-        if (!userId)
+    lease: InitiationLease,
+  ): Promise<{ signers: SignerInputDto[]; employees: Map<number, string> }> {
+    const signers: SignerInputDto[] = [];
+    const employees = new Map<number, string>();
+    const manager = this.mysql.getManager();
+    for (let offset = 0; offset < input.signers.length; offset += 500) {
+      // 每批開始與完成皆確認擁有權／期限，不能失租後繼續消化整份名單。
+      await this.recordProgress(lease, 'resolving', offset);
+      const batch = input.signers.slice(offset, offset + 500);
+      const userIds = batch
+        .filter((s) => s.type === 'user')
+        .map((s) => Number(s.userId));
+      const employeeNos = batch
+        .filter((s) => s.type === 'employee')
+        .map((s) => s.employeeNo!);
+      const byId = new Map(
+        (await this.users.findByIds(userIds, manager)).map((user) => [
+          Number(user.id),
+          user,
+        ]),
+      );
+      const byEmployee = new Map(
+        (await this.users.findByEmpids(employeeNos, manager)).map((user) => [
+          user.empid,
+          user,
+        ]),
+      );
+      for (const signer of batch) {
+        if (signer.type === 'email') {
+          signers.push({
+            type: 'email',
+            name: signer.name,
+            email: signer.email,
+          });
+          continue;
+        }
+        const user =
+          signer.type === 'employee'
+            ? byEmployee.get(signer.employeeNo!)
+            : byId.get(Number(signer.userId));
+        if (
+          !user ||
+          !user.isActive ||
+          user.deletedAt ||
+          !/^[A-Za-z0-9]{1,20}$/.test(user.empid)
+        )
           throw new AppException(
             ...AppErrors.ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE,
           );
-        return { type: 'user', userId };
+        employees.set(Number(user.id), user.empid);
+        signers.push({ type: 'user', userId: String(user.id) });
       }
-      return signer.type === 'user'
-        ? { type: 'user', userId: signer.userId }
-        : { type: 'email', name: signer.name, email: signer.email };
-    });
+      await this.recordProgress(lease, 'resolving', signers.length);
+    }
+    await this.recordProgress(lease, 'validating', signers.length);
+    return { signers, employees };
+  }
+
+  private async recordProgress(
+    lease: InitiationLease,
+    stage: 'resolving' | 'validating' | 'committing',
+    processedCount: number,
+  ): Promise<void> {
+    if (
+      !(await this.jobs.progress(
+        lease,
+        stage,
+        processedCount,
+        this.mysql.getManager(),
+      ))
+    )
+      throw new AppException(...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT);
   }
 
   private normalize(body: InitiateDocumentDto): InitiateDocumentDto {

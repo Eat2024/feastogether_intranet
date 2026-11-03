@@ -147,11 +147,13 @@
 
 - **Decision**：
   - 新增 queue `portal-user-sync`，只在 worker 註冊。檔案放在 `src/worker/users/`：module、scheduler、processor，由 `WorkerModule` import。
-  - scheduler 在 `onModuleInit` 呼叫：
+  - scheduler 在 `onModuleInit` 先以 `getJobScheduler('portal-user-sync:daily')` 讀已儲存的 `next`：
+    - 已到期（worker 停機錯過 04:00）：不 upsert，讓 worker 補跑那一次。
+    - 其他情況，包括排程還不存在：呼叫
 
-    ```ts
-    upsertJobScheduler('portal-user-sync:daily', { pattern: '0 4 * * *', tz: TAIPEI_TIME_ZONE_ID }, { name: PORTAL_USER_SYNC_JOB, data: {} })
-    ```
+      ```ts
+      upsertJobScheduler('portal-user-sync:daily', { pattern: '0 4 * * *', tz: TAIPEI_TIME_ZONE_ID }, { name: PORTAL_USER_SYNC_JOB, data: {} })
+      ```
   - processor 的 concurrency 為 1。job 選項照既有寫法：`attempts: 1`，`removeOnComplete` 與 `removeOnFail` 都是 1000。
 - **Rationale**：
   - 這沿用 `EsignMaintenanceScheduler` 的 `upsertJobScheduler` 寫法。

@@ -1,13 +1,13 @@
 # Feature Specification: Portal 員工資料匯入與本機發起查核
 
-> **2026-11-03 來源決策更新（Spec 024，Draft）**：[Spec 024](../024-portal-hr-source/spec.md) 規劃讓 intranet 直接連線 Portal，並取代本文件以下內容：
+> **2026-11-03 來源決策更新（Spec 024）**：[Spec 024](../024-portal-hr-source/spec.md) 讓 intranet 直接連線 Portal，取代本文件以下內容：
 >
-> - FR-012 與 US2 情境 6 的「選人部門樹維持饗賓人 API」，改由 Portal 提供。
+> - FR-012、US2 情境 6 與 SC-003 末句的「選人部門樹維持饗賓人 API」，改由 Portal 提供。
 > - research §5 與 local-directory 契約中的 HEX TSV 檔案輸入，以及「不新增 Portal runtime 連線／環境變數」，改為直接查詢 Portal。
-> - FR-006 與 Assumptions 中「不新增自動排程、人工觸發匯入」「本批不自動停用」，改為 worker 每天 04:00 自動從 Portal 匯入，並停用 Portal 標為非在職的帳號；手動匯入工具保留，用於臨時同步。
+> - FR-006 與 Assumptions 中「不新增自動排程、人工觸發匯入」「本批不自動停用」，改為 worker 每天 04:00（台北時間）自動從 Portal 匯入，worker 停機錯過時恢復後補跑一次。Portal 有該員編但沒有試用／正式資料的帳號會被停用，查不到的不動；單次停用超過 500 人時整批不寫入，由維運以手動匯入工具確認人數後套用。手動匯入工具保留，用於臨時同步。
 > - FR-004、FR-005、FR-014 與 US4 情境 5 的私有預覽檔、原值檔與回復程序移除，以 Portal 為唯一權威。
 > - US1 情境 4 與 FR-004 的「不合法或衝突資料使整批停止」，改為個別略過該員編、其餘照常匯入。
-> - Assumptions 中「登入仍向饗賓人確認身分及更新員工欄位」，登入的資格查核改查 Portal；帳密驗證仍經饗賓人。
+> - Assumptions 中「登入仍向饗賓人確認身分及更新員工欄位」，三個登入入口的員工資料改為以完整員編精確比對、即時查 Portal；帳密驗證仍經饗賓人。
 >
 > 簽署人解析、正式發起與寄信白名單仍依本文件讀本機主檔。
 

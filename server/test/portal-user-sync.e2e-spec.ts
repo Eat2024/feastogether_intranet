@@ -657,6 +657,38 @@ describe('Portal 員工主檔匯入（合成 Portal）', () => {
     }
   });
 
+  it('Portal 文字無法解碼（U+FFFD）時視為來源錯誤，整批不寫入；錯誤與 log 不含員編或內容', async () => {
+    await db.manager.save(User, {
+      empid: 'U000001',
+      name: '合成在職者',
+      isActive: true,
+    });
+    await portal.insertPeople([
+      person('U000001', { person_status: 2 }),
+      person('U000002'),
+      person('U000003', { department_name: '無法�解碼部' }),
+    ]);
+    const before = await snapshot();
+
+    const error = await sync
+      .run({ trigger: 'schedule', dryRun: false })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(PortalUserSyncError);
+    expect(error).toMatchObject({
+      stage: 'source',
+      errorType: 'PortalUndecodableTextError',
+    });
+    expect(await snapshot()).toEqual(before);
+    expect(logs[2].mock.calls.map(([entry]) => entry.metadata)).toMatchObject([
+      { outcome: 'failed_source', errorType: 'PortalUndecodableTextError' },
+    ]);
+    const exposed = `${loggedText()}\n${String(error)}\n${(error as Error).stack}`;
+    for (const value of ['U000001', 'U000002', 'U000003', '解碼部']) {
+      expect(exposed).not.toContain(value);
+    }
+  });
+
   it('寫入途中失敗整批回滾，錯誤與 log 不含員編', async () => {
     await db.manager.save(User, {
       empid: 'W000003',

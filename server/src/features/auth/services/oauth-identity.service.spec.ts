@@ -70,35 +70,32 @@ describe('OauthIdentityService', () => {
     );
   });
 
-  it.each([null, undefined, '', '  '])(
-    'HR 缺部門 %p 寫入 NULL 清除舊值',
-    async (code) => {
-      const { service, repo, eligibleStaff } = setup();
-      repo.findUserByEmpIdForUpdate.mockResolvedValue({
-        id: 9,
-        empid: '00123',
-        name: '舊姓名',
-        isActive: true,
-        deletedAt: null,
+  it('HR 缺部門（EligibleStaffService 給 null）寫入 NULL 清除舊值', async () => {
+    const { service, repo, eligibleStaff } = setup();
+    repo.findUserByEmpIdForUpdate.mockResolvedValue({
+      id: 9,
+      empid: '00123',
+      name: '舊姓名',
+      isActive: true,
+      deletedAt: null,
+      departmentId: 42,
+      departmentCode: 'OLD',
+      departmentName: '舊部門',
+    });
+    eligibleStaff.lookupEligibleStaff.mockResolvedValue({
+      department_id: null,
+      department_name: null,
+    });
+    await service.resolve(profile);
+    expect(repo.saveUser).toHaveBeenCalledWith(
+      expect.objectContaining({
         departmentId: 42,
-        departmentCode: 'OLD',
-        departmentName: '舊部門',
-      });
-      eligibleStaff.lookupEligibleStaff.mockResolvedValue({
-        department_id: code,
-        department_name: null,
-      });
-      await service.resolve(profile);
-      expect(repo.saveUser).toHaveBeenCalledWith(
-        expect.objectContaining({
-          departmentId: 42,
-          departmentCode: null,
-          departmentName: null,
-        }),
-        manager,
-      );
-    },
-  );
+        departmentCode: null,
+        departmentName: null,
+      }),
+      manager,
+    );
+  });
 
   it('重新登入更新可信部門，保留代碼大小寫與前導零', async () => {
     const { service, repo } = setup();

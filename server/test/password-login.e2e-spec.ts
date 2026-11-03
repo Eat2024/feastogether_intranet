@@ -388,6 +388,40 @@ describe('帳密登入 HTTP 整合', () => {
     expect(upstream.get).not.toHaveBeenCalled();
   });
 
+  it('Portal 姓名無法解碼（U+FFFD）時回 STAFF_LOOKUP_FAILED，不核發 session、不寫本機', async () => {
+    const enter = () =>
+      login('synthetic-password', 'http://localhost:3000', empId, freshIp());
+    expect((await enter()).statusCode).toBe(200);
+    const before = await db.manager.findOneByOrFail(User, { empid: empId });
+    const sessions = await db.query<Array<{ total: number }>>(
+      'SELECT COUNT(*) total FROM auth_sessions WHERE user_id=?',
+      [before.id],
+    );
+
+    await setStaff({ person_name: '帳密�員工' });
+    let failed: Awaited<ReturnType<typeof enter>>;
+    try {
+      failed = await enter();
+    } finally {
+      await setStaff({ person_name: '帳密測試員工' });
+    }
+
+    expect(failed.statusCode).toBe(502);
+    expect(failed.json()).toMatchObject({
+      error: { code: 'STAFF_LOOKUP_FAILED', message: '系統有錯，請詢問IT部門' },
+    });
+    expect(failed.headers['set-cookie']).toBeUndefined();
+    expect(await db.manager.findOneByOrFail(User, { id: before.id })).toEqual(
+      before,
+    );
+    expect(
+      await db.query(
+        'SELECT COUNT(*) total FROM auth_sessions WHERE user_id=?',
+        [before.id],
+      ),
+    ).toEqual(sessions);
+  });
+
   it('過多帳密嘗試回 429 且不再呼叫上游', async () => {
     for (let attempt = 0; attempt < 10; attempt++) await login('wrong');
     const calls = upstream.post.mock.calls.length;

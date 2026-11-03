@@ -1,5 +1,15 @@
 // Portal 查詢的資料列型別，欄位名稱與 Portal 資料表相同（見 specs/024-portal-hr-source/contracts/portal-source.md）。
-// person_status：0 試用、1 正式，其他值為非在職。
+
+/** 在職的 person_status 與名稱：0 試用、1 正式；不在表中的值都是非在職。查詢 SQL 依合約寫死 IN (0, 1)。 */
+export const PORTAL_ACTIVE_STATUS_NAMES: Readonly<Record<number, string>> = {
+  0: '試用',
+  1: '正式',
+};
+
+/** Portal 字串欄位是 NOT NULL DEFAULT ''：trim 後空白視為缺值。 */
+export function blankToNull(value: string): string | null {
+  return value.trim() || null;
+}
 
 /** 組織樹：未停用部門。根部門的 department_parent_guid 是空字串，不是 NULL。 */
 export interface PortalDepartmentRow {

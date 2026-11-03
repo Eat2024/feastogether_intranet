@@ -26,6 +26,10 @@
 | `startdate` | varchar(20) | 原樣輸出 |
 | `stopdate` | varchar(20)，可為 NULL | NULL 代表未停用；只讀取未停用的部門 |
 
+## 無法解碼的文字
+
+mysql2 遇到無法解碼的位元組時會換成 U+FFFD，不會報錯。任一查詢讀回的字串含 U+FFFD，整次查詢視為來源錯誤（spec Edge Cases「Portal 中文編碼」）：組織樹回 502、不寫快取；登入回 `STAFF_LOOKUP_FAILED`；匯入以 `failed_source` 結束、不寫入本機。
+
 ## 選人部門樹（回應契約不變）
 
 沿用 Spec 006／019：部門節點包含 `department_ch_id`、`department_name`、`department_parent_guid`、`startdate`、`stopdate: null`、`children`、`employees`；員工包含 `person_empid`、`person_name`、`title`。組樹規則見 research §4。

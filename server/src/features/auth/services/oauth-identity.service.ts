@@ -72,10 +72,8 @@ export class OauthIdentityService {
     }
     // 姓名缺值保留原值；可信部門缺值則寫入 NULL 清除舊授權。
     existing.name = profile.name ?? existing.name;
-    existing.departmentCode = staff.department_id?.trim()
-      ? staff.department_id
-      : null;
-    existing.departmentName = staff.department_name ?? null;
+    existing.departmentCode = staff.department_id;
+    existing.departmentName = staff.department_name;
     existing.lastLoginAt = new Date();
     return this.repo.saveUser(existing, manager);
   }
@@ -90,10 +88,8 @@ export class OauthIdentityService {
       {
         empid: empId,
         name: profile.name ?? empId,
-        departmentCode: staff.department_id?.trim()
-          ? staff.department_id
-          : null,
-        departmentName: staff.department_name ?? null,
+        departmentCode: staff.department_id,
+        departmentName: staff.department_name,
         lastLoginAt: new Date(),
       },
       manager,

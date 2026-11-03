@@ -38,11 +38,24 @@ const ACTIVE_EMPLOYEES_SQL = [
   'FROM sys_person WHERE person_status IN (0, 1)',
 ].join('\n');
 
+/** mysql2 把無法解碼的位元組換成 U+FFFD 而不報錯；spec 規定這種內容視為來源錯誤。 */
+const isUndecodable = (value: unknown): boolean =>
+  typeof value === 'string' && value.includes('\uFFFD');
+
+/** 訊息不帶資料內容；name 讓匯入 log 的錯誤類型可與其他來源錯誤區分。 */
+class PortalUndecodableTextError extends Error {
+  constructor() {
+    super('Portal 回傳的文字無法解碼');
+    this.name = 'PortalUndecodableTextError';
+  }
+}
+
 /**
  * Portal MySQL 唯讀查詢，只執行 specs/024-portal-hr-source/contracts/portal-source.md 列出的 SQL。
  *
  * 連線池在第一次查詢時才建立，Portal 故障或設定缺漏不影響啟動；mysql2 pool 也是用到時才連線，
- * Portal 恢復後自動重連。查詢錯誤原樣拋出，由呼叫端轉成自己的錯誤碼；本服務不做業務判斷、不寫 log。
+ * Portal 恢復後自動重連。查詢錯誤原樣拋出，讀到無法解碼的文字也拒絕，由呼叫端轉成自己的錯誤碼。
+ * 本服務不做業務判斷；查詢不寫 log，只有關閉連線池失敗時記錄錯誤代碼。
  * mysql2 的錯誤訊息可能含 Portal 主機或帳號，err.sql 含代入後的員編，呼叫端不可把原始錯誤寫進 log 或回應。
  */
 @Injectable()
@@ -115,6 +128,9 @@ export class PortalDirectoryService implements OnModuleDestroy {
         }),
         deadline,
       ]);
+      if (rows.some((row) => Object.values(row).some(isUndecodable))) {
+        throw new PortalUndecodableTextError();
+      }
       return rows as T[];
     } finally {
       clearTimeout(timer);

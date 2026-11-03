@@ -50,6 +50,8 @@ SELECT person_empid, person_status FROM sys_person WHERE person_empid IN (?, ...
 | `listActiveEmployees()` | 查詢 4a 的資料列 | 同上 |
 | `findStatusesByEmpids(empids)` | `{ person_empid, person_status }[]` | 同上 |
 
+- 任一資料列的字串含 U+FFFD（mysql2 對無法解碼位元組的替代字元）時，該次呼叫拒絕，錯誤名稱為 `PortalUndecodableTextError`，訊息不含資料內容（data-model「無法解碼的文字」）。
+
 這個服務不做業務判斷，也不寫 log 個資。
 
 ## HTTP（client 可見部分全部不變）

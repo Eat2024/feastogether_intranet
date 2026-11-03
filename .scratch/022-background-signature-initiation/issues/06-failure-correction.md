@@ -7,7 +7,7 @@
 
 **Blocked by:** [04 重整與重新登入後追蹤工作](04-progress-tracking.md)、[05 中斷後有限恢復且不重複發起](05-bounded-recovery.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — US3；FR-005、006、008、011、018；SC-004、005、007、009。
 
@@ -38,3 +38,9 @@
 
 - [x] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
 - [x] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+
+## 整合驗收紀錄
+
+- 實作 commit `eb4c8358dfb4c152d59ae800101c4aaba0708728` 已由 `impl/022-06` 無衝突合併至 `impl/022-integration`，merge commit `a1a20fd2af3e0f518e78310cb68430255edaed66`。
+- 合併 hook：lint 0 errors／272 既有 warnings、單元 113 suites／1,175 tests 通過；實作五套 e2e 53／53（retry 8／8，含跨批 issues）、server build 通過。
+- T025–T028 完成並整合，狀態改 resolved，07 可開始；無 client／schema 變更。

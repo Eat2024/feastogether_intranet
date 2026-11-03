@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** claimed
+**Status:** resolved
 
 **Source:** [Spec 021](../../../specs/021-external-mail-whitelist/spec.md)、[Plan](../../../specs/021-external-mail-whitelist/plan.md)、[Data Model](../../../specs/021-external-mail-whitelist/data-model.md)、[Tasks](../../../specs/021-external-mail-whitelist/tasks.md)。
 
@@ -16,7 +16,7 @@
 - [x] entity type 加 `'email'`、`value` length 255，與 migration 一致；`schema.sql` 由隔離 DB 重新產生，diff 只有白名單表。
 - [x] `018 maintenance.md` 補上信箱規則格式、`example.test` 範例與回滾前置步驟；不提交真實信箱。
 - [x] `test:schema` 全數通過，含新增正負向與回滾案例；不新增資料表、欄位、索引、seed 資料或環境變數。
-- [ ] 驗收通過後整合至功能整合分支，追加驗證與 commit 紀錄，再改為 resolved。
+- [x] 驗收通過後整合至功能整合分支，追加驗證與 commit 紀錄，再改為 resolved。
 
 ## Comments & Implementation Results
 
@@ -40,3 +40,7 @@
 2. 巢狀 `[:space:]`／`[:cntrl:]`：可用（空白、Tab、全形空白、BEL 皆被拒），不需明確字元集合備案。但 ICU 的 `$` 在結尾換行前也成立，`'a@example.test\n'` 會被收下，因此 regex 結尾改用 `\z`（SQL 字串寫作 `'\\z'`）。
 3. `server/test/schema-migration.e2e-spec.ts` 的部門 migration 案例原本直接 `undoLastMigration()`，新 migration 成為最新後會退錯版本；改為先 `revertAfter(ds, 'DepartmentDocumentVisibility1793664000000')`，沿用既有慣例。plan 檔案表已補列。
 4. 018 maintenance 回滾段落另附刪除信箱列的交易 SQL（先快照、核對 `ROW_COUNT()`），範例只用 `tester@example.test`。
+
+### 2026-11-03 整合
+
+- 主控檢視 migration 與 diff 後，以 fast-forward 整合至 `docs/spec-021-external-mail-whitelist`（`54e298b..a7dbc7e`），無衝突；Status 改為 resolved。

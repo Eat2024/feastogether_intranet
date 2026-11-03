@@ -57,7 +57,7 @@ failed → 明確人工 retry → 新 queued 列（原 failed 列不變）
 - claim 使用短交易，只鎖 job；成功後釋放鎖再預查。並行的相同 delivery 只有一個 lease 能取得權限。
 - 預查續租、進度、暫時失敗回佇列均以 id/status/lease_token CAS；失去 lease 的舊 worker 不得再寫入。
 - stage=committing 在正式交易前以有效 lease 的短 CAS 提交，讓輪詢看見階段；不能據此宣告成功。正式交易仍重驗 lease，只有業務與 succeeded 同時提交才算完成。
-- 正式交易鎖 users（ID 升冪）→ document → job。確認 active job 仍為自己、lease 未失效、版本／授權／期間有效；與文件 active、指派、快照、通知、audit 一起標 succeeded。工作成功前先標完成或提交後再標成功都禁止。
+- 正式交易鎖 users（ID 升冪，共享鎖）→ document（獨佔鎖）→ job（獨佔鎖）。確認 active job 仍為自己、lease 未失效、版本／授權／期間有效；與文件 active、指派、快照、通知、audit 一起標 succeeded。工作成功前先標完成或提交後再標成功都禁止。
 - 回收只處理可鎖定／已過期列；不可持 job 鎖再等待 document。正式交易持 job 鎖期間不啟動獨立同列 heartbeat，maintenance 不強搶。
 - 已 commit 但 worker 未確認 Redis：再次執行先讀 succeeded，返回，不重建通知。確認完成前 crash：DB 回滾後才能重新 claim。
 - `status=active` 卻沒有相符 succeeded 工作屬一致性異常：停下並回報維運，不憑 active 狀態把任意新請求當成功，也不再次發起。
@@ -88,3 +88,6 @@ failed → 明確人工 retry → 新 queued 列（原 failed 列不變）
 
 
 保留清理的 SELECT SKIP LOCKED 後，UPDATE 也必須只定位已鎖定PK。MySQL對批次 IN UPDATE 可能選掃描計畫而等待未選parent，因此每批100列交易內逐唯一PK窄更新，不能只依賴SELECT端略過鎖。
+
+
+受理／retry對建立人使用共享鎖current read，直到短交易commit保持帳號有效；正式worker對users也只需共享鎖。兩者與jobs creator FK的共享引用相容，既有另一份草稿可在大型文件正式發起持鎖期間受理。資格／信箱／同步更新需要X鎖，仍等待正式交易完成；若停用先取得X鎖，worker共享current read等待後看見停用並整份拒絕。未放寬正式授權，未更動其他users寫入流程鎖模式。

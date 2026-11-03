@@ -11,7 +11,7 @@ import type { User } from '#app/features/users/entities/user.entity';
 export class EsignEmployeeEmailService {
   constructor(private readonly users: UserRepository) {}
 
-  /** 先鎖定員工再鎖文件；回傳同一版身分與信箱供指派快照直接使用。 */
+  /** 先共享鎖定員工再鎖文件；固定資格／信箱，與其他文件受理的外鍵共享引用相容。 */
   async resolveForInitiation(
     userIds: string[],
     creatorUserId: number,
@@ -36,7 +36,7 @@ export class EsignEmployeeEmailService {
     );
     let rows: User[];
     try {
-      rows = await this.users.findByIdsWithEmail(ids, manager, true);
+      rows = await this.users.findByIdsWithEmail(ids, manager, 'shared');
     } catch {
       throw new AppException(
         ...AppErrors.ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE,

@@ -82,3 +82,12 @@
 ## R12：清理 UPDATE 也須只定位已取得的鎖
 
 真DB跨批保留測試重現pool4仍等待50秒；performance_schema證據顯示 `WHERE id IN (378..477)` 的清理UPDATE在PRIMARY key377等待，而377是被SKIP LOCKED略過且不在清單中的parent。決定在每批100列交易內逐個已鎖唯一PK更新；避免最佳化器選掃描計畫而重新碰到略過列。保留既有batch／skip_locked／時間與summary，不以延長timeout或加重試掩蓋。原測試同DB轉綠。
+
+
+## R13：唯讀員工資格採共享鎖，避免同建立人跨文件受理串行化
+
+- **證據**：正式worker已持users/document/job鎖，在PDF儲存讀取邊界停5秒，另一份既有草稿POST受理耗時5027ms。僅移除accept的X鎖仍會受job.creator FK共享引用等待worker X鎖影響。
+- **安全評估**：resolveForInitiation只讀users，Email正規化只在記憶體快照，正式寫入不涉及users。因此S鎖可固定資格／信箱並阻擋停用／同步UPDATE，無需X鎖。
+- **決定**：worker全部users及accept/retry建立人皆改S current read，保留users→document→job鎖序與短交易資格原子性。不使用無鎖普通read，不改其他原需X鎖的流程。
+- **驗證**：同正式5秒持鎖情境受理降至約12ms；用獨立DB連線發出停用／Email／同步UPDATE，performance_schema證實X請求等待worker S鎖。反向順序先停用則worker S等待後拒絕，沒有部分指派；retry與同key回放可併行，同文件queued仍409且越權404。
+- **另行缺口**：同文件修改在committing持document鎖時，原實作等待約5秒後回STATE_CONFLICT而非當下worker執行中。此項已記錄，另以最小快速授權busy讀取補修，仍保留鎖內guard。

@@ -2,7 +2,7 @@
 
 **最新範圍**：只實作後端 worker，排隊／執行中禁止修改文件及簽署人，前端相關驗收暫緩。詳見 [範圍決策](../../specs/022-background-signature-initiation/backend-only-scope.md)。
 
-已依 tasks 拆成 8 張本機票單。01–07 已驗收並整合，狀態 `resolved`；Redis reconnect 補修亦已整合。08 整體整合驗收與草稿版本完整性補修仍進行中，目前 frontier 為 08，整份規格尚未結案。07 retention 曾有一次未定位的 lock wait timeout，後續複驗通過，仍保留追蹤紀錄。整合分支為 `impl/022-integration`。
+已依 tasks 拆成 8 張本機票單。01–07 已驗收並整合，狀態 `resolved`；Redis reconnect、草稿版本、保留清理完整性及共享資格鎖補修亦已整合。同文件快速 busy 補修與 08 整體整合驗收仍進行中，目前 frontier 為 08，整份規格尚未結案。07 retention 的 timeout 已另取得可重現的 bulk UPDATE 跨鎖列證據並修正，歷史與紅綠驗證保留於票單。整合分支為 `impl/022-integration`。
 
 [規格](../../specs/022-background-signature-initiation/spec.md) · [計畫](../../specs/022-background-signature-initiation/plan.md) · [Tasks](../../specs/022-background-signature-initiation/tasks.md)
 

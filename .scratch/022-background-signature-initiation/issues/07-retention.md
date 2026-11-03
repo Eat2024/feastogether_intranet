@@ -51,3 +51,10 @@
 跨批測試在pool4重現Lock wait timeout。唯讀 performance_schema.data_lock_waits 捕獲：bulk UPDATE `id IN (378..477)` 實際等待 PRIMARY key377，377是已被SELECT SKIP LOCKED略過的parent，且不在IN清單內。故非增加pool或timeout可解決，而是UPDATE計畫掃描到未選列。
 
 改為同一100列短交易內，逐個已鎖定唯一PK執行窄UPDATE，更新階段也不碰未選工作；仍保留全部summary／微秒時間。原失敗retention7項在相同隔離DB、同樣資料統計下轉綠（約2秒；修前約53秒）。沒有新增重試／排程或放寬鎖規則。
+
+## 完整性補修整合紀錄
+
+- 補修分支 `impl/022-integrity` commit `37230701bf4ba5934bfa42dc541b99ca5058015d` 無衝突合併至 `impl/022-integration`，merge commit `a24d4099326e49b2e254c1b4e90e2c60582b147e`；票單保持 resolved。
+- 實作回歸 7 suites／72 e2e、server build 與 lint 通過；整合 hook 再驗 lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過。
+- 草稿單調微秒版本與 purge 逐唯一 PK 更新均已整合；原 timeout 歷史紀錄保留，新增資料庫鎖等待證據已定位本次重現為 bulk UPDATE 掃到 SKIP LOCKED 略過列，並有同條件紅綠驗證。
+- 沒有 client 或 schema 變更；08 完整驗收仍未結案。

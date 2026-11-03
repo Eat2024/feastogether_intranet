@@ -32,3 +32,9 @@
 
 - [x] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
 - [x] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+## 共享資格鎖補修整合紀錄
+
+- 指定補修 commit `2655231bfaca4cee88992600991971268a9fddc2` 已合併至 `impl/022-integration`，merge commit `f12b9f4fee6439eb578f8521c5c9bebd3ec3eeaf`；僅06票追加紀錄衝突，已保留兩邊證據，程式無衝突。
+- 正式 worker 與受理／retry 建立人資格採共享鎖，保留 users → document → job 與資格原子性；其他停用／Email／員編寫入仍採排他鎖並等正式提交。
+- 真 worker 持鎖 5 秒期間，另一文件受理由約 5,027ms 降至約 8–12ms；實作回歸 8 suites／79 e2e、build/lint 通過，merge hook 115 suites／1,180 tests、lint 0 errors／272 既有 warnings 通過。
+- 本次只整合此共享鎖 commit，不含後續同文件快速 busy 補修；08 整體驗收仍未完成，未修改 client。

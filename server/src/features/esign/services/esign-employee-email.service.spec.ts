@@ -30,7 +30,11 @@ describe('本機發起簽署員工資料', () => {
       9,
       manager,
     );
-    expect(findByIdsWithEmail).toHaveBeenCalledWith([1, 2, 9], manager, true);
+    expect(findByIdsWithEmail).toHaveBeenCalledWith(
+      [1, 2, 9],
+      manager,
+      'shared',
+    );
     expect([...result.keys()]).toEqual([1, 2, 9]);
     expect(result.get(1)).toMatchObject({
       empid: '001',
@@ -45,7 +49,7 @@ describe('本機發起簽署員工資料', () => {
     rows[2].empid = 'DEV-CREATOR';
     findByIdsWithEmail.mockResolvedValue([rows[2]]);
     expect((await service.resolveForInitiation([], 9, manager)).size).toBe(1);
-    expect(findByIdsWithEmail).toHaveBeenCalledWith([9], manager, true);
+    expect(findByIdsWithEmail).toHaveBeenCalledWith([9], manager, 'shared');
   });
 
   it.each([1, 100, 101, 6000, 6001])(

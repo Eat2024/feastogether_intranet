@@ -199,3 +199,8 @@ Reconnect 合併 06／07 後，build 與完整 7 suites／61 tests 複驗通過�
 `impl/022-integrity` 在專用 `feastogether_intranet_test022_integrity`／Redis DB11，HTTP重現fields／純名單／note／同秒dirty save版本未變，修後12項完整性驗收通過。所有成功草稿修改（同值儲存亦含）於文件鎖內單調推進DB微秒版本；save前raw版本可抵抗ORM整秒回退，save後回傳entity時間重讀DB。忙碌及無效修改不提交版本，worker不在buildFields中途touch，正式成功與非草稿note維持舊規則。
 
 保留清理另以performance_schema捕獲批次IN UPDATE等待不在清單內的已鎖parent；改每批100列交易內逐唯一PK更新後，同DB原timeout案例轉綠。完整7套背景發起回歸72／72、unit113 suites／1,175、build通過，lint0errors／272既有warnings。舊draft-settings內201→202驗收遷移由票08處理；沒有改前端、schema或新增env。
+
+
+## 員工共享鎖補修（2026-11-03）
+
+正式worker持users/document/job鎖5秒時，另一份既有草稿受理由約5027ms降至約12ms。worker及accept/retry使用users S current read，與job creator FK相容；停用／信箱／同步UPDATE仍被阻擋，先停用則worker拒絕正式發起。以專用test022_integrity／Redis11驗證，不更動長測DB10。此為受控持鎖情境，不替代08完整容量矩陣；同文件committing期間固定busy訊息另行補修。

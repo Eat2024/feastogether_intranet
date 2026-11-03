@@ -54,6 +54,7 @@ describe('Esign maintenance', () => {
       signers as never,
       finalization as never,
       { maintain: jest.fn() } as never,
+      { maintain: jest.fn() } as never,
     );
 
     await processor.process({ data: {} } as Job);
@@ -98,6 +99,7 @@ describe('Esign maintenance', () => {
       { findCompletionCandidates: jest.fn(async () => []) } as never,
       {} as never,
       { maintain: jest.fn() } as never,
+      { maintain: jest.fn() } as never,
     );
     await processor.process({ data: {} } as Job);
     expect(add.mock.calls.map((call) => call[1])).toEqual([
@@ -122,6 +124,7 @@ describe('Esign maintenance', () => {
       { add: jest.fn() } as never,
       {} as never,
       {} as never,
+      { maintain: jest.fn() } as never,
       { maintain: jest.fn() } as never,
     );
     await expect(processor.process({ data: {} } as Job)).rejects.toThrow(

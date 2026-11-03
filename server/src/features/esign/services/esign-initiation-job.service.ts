@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { randomUUID } from 'node:crypto';
 import { isUUID } from 'class-validator';
 import { AppErrors } from '#app/common/errors/app-errors';
@@ -29,6 +30,7 @@ export class EsignInitiationJobService {
     private readonly access: EsignAccessPolicyService,
     private readonly initiation: EsignInitiationService,
     private readonly producer: EsignJobProducerService,
+    private readonly logger: AppLoggerService,
   ) {}
 
   async accept(
@@ -99,8 +101,10 @@ export class EsignInitiationJobService {
         if (error instanceof AppException) throw error;
         throw new AppException(...AppErrors.ESIGN_INITIATION_TRANSIENT_FAILURE);
       });
-    if (!accepted.reused)
+    if (!accepted.reused) {
+      this.logJob(accepted.job, 'esign.initiation_accepted');
       await this.producer.enqueueInitiation(accepted.job.id);
+    }
     return { ...this.summary(accepted.job), reused: accepted.reused };
   }
 
@@ -128,11 +132,23 @@ export class EsignInitiationJobService {
 
   /** Queue 與測試都使用同一正式服務入口；不依 HTTP session 執行。 */
   async process(jobId: number): Promise<void> {
-    const claimed = await this.mysql.transaction((manager) =>
-      this.jobs.claim(jobId, manager),
-    );
+    const claimed = await this.mysql
+      .transaction((manager) => this.jobs.claim(jobId, manager))
+      .catch(() => {
+        this.logger.warn({
+          event: 'esign.initiation_claim_unavailable',
+          context: EsignInitiationJobService.name,
+          metadata: { jobId },
+        });
+        throw new Error('背景發起工作暫時無法取得');
+      });
     if (!claimed?.leaseToken || !claimed.inputJson) return;
     const lease: InitiationLease = { jobId, leaseToken: claimed.leaseToken };
+    const heartbeat = this.startHeartbeat(lease);
+    let notificationJobs:
+      | Parameters<EsignJobProducerService['enqueueInvitations']>
+      | undefined;
+    this.logJob(claimed, 'esign.initiation_started');
     try {
       const { signers, employees } = await this.resolveSigners(
         claimed.inputJson,
@@ -141,6 +157,13 @@ export class EsignInitiationJobService {
       lease.expectedEmployees = employees;
       // 此短 CAS 先提交，摘要才能在正式交易進行中看見階段；不代表成功。
       await this.recordProgress(lease, 'committing', signers.length);
+      // 先清空在途續租，再進正式交易；絕不持有 job 鎖等待同列 heartbeat。
+      await heartbeat.stop();
+      heartbeat.assertHealthy();
+      if (!(await this.jobs.renew(lease, this.mysql.getManager())))
+        throw new AppException(
+          ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+        );
       const result = await this.mysql.transaction(async (manager) => {
         const result = await this.initiation.initiateInTransaction(
           {
@@ -174,20 +197,202 @@ export class EsignInitiationJobService {
         current.leaseExpiresAt = null;
         current.errorCode = null;
         await this.jobs.save(current, manager);
+        if (current.deadlineAt <= new Date())
+          throw new AppException(
+            ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+          );
         return result;
       });
-      await this.producer.enqueueInvitations(...result.notificationJobs);
+      notificationJobs = result.notificationJobs;
+      this.logJob(
+        {
+          ...claimed,
+          status: 'succeeded',
+          stage: 'completed',
+          errorCode: null,
+        },
+        'esign.initiation_succeeded',
+      );
     } catch (error) {
-      const code = error instanceof AppException ? error.code : null;
-      const failure = code?.startsWith('ESIGN_INITIATION_')
-        ? code
-        : code?.includes('EMPLOYEE')
-          ? 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE'
-          : error instanceof AppException
-            ? 'ESIGN_INITIATION_INPUT_INVALID'
-            : 'ESIGN_INITIATION_INTERNAL_ERROR';
-      await this.jobs.fail(lease, failure, this.mysql.getManager());
+      await heartbeat.stop();
+      const failure = this.classifyFailure(error, claimed.createdByUserId);
+      try {
+        const settled = await this.mysql.transaction((manager) =>
+          this.jobs.fail(lease, failure.code, failure.transient, manager),
+        );
+        if (settled)
+          this.logJob(
+            settled,
+            settled.status === 'queued'
+              ? 'esign.initiation_retry_waiting'
+              : 'esign.initiation_failed',
+          );
+      } catch {
+        this.logger.warn({
+          event: 'esign.initiation_recovery_pending',
+          context: EsignInitiationJobService.name,
+          metadata: {
+            jobId: claimed.publicId,
+            documentId: String(claimed.documentId),
+            attempt: claimed.attemptCount,
+            errorCode: failure.code,
+          },
+        });
+        throw new Error('背景發起工作狀態暫時無法保存');
+      }
+    } finally {
+      await heartbeat.stop();
     }
+    // 業務已提交；通知入列故障只能交給既有通知 outbox，不再進失敗處理。
+    if (notificationJobs) {
+      try {
+        await this.producer.enqueueInvitations(...notificationJobs);
+      } catch {
+        this.logger.warn({
+          event: 'esign.initiation_notifications_pending',
+          context: EsignInitiationJobService.name,
+          metadata: {
+            jobId: claimed.publicId,
+            documentId: String(claimed.documentId),
+          },
+        });
+      }
+    }
+  }
+
+  /** 獨立於批次完成的續租；只允許一個在途更新，所有錯誤交還主流程。 */
+  private startHeartbeat(lease: InitiationLease) {
+    let ongoing: Promise<void> | null = null;
+    let failure: Error | undefined;
+    let lastRenewedAt = Date.now();
+    const timer = setInterval(() => {
+      if (ongoing || failure) return;
+      ongoing = (async () => {
+        try {
+          const renew = Date.now() - lastRenewedAt >= 30000;
+          const owned = await this.jobs.heartbeat(
+            lease,
+            renew,
+            this.mysql.getManager(),
+          );
+          if (!owned)
+            throw new AppException(
+              ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+            );
+          if (renew) lastRenewedAt = Date.now();
+        } catch (error) {
+          failure =
+            error instanceof Error
+              ? error
+              : new Error('背景查核連線暫時無法更新');
+        } finally {
+          ongoing = null;
+        }
+      })();
+    }, 5000);
+    timer.unref();
+    return {
+      stop: async () => {
+        clearInterval(timer);
+        await ongoing;
+      },
+      assertHealthy: () => {
+        if (failure) throw failure;
+      },
+    };
+  }
+
+  /** 沿既有維護喚醒收斂 lease／deadline，再於交易外可靠補列。 */
+  async maintain(now = new Date()): Promise<void> {
+    let afterId = 0;
+    while (true) {
+      const rows = await this.mysql.transaction((manager) =>
+        this.jobs.recover(now, afterId, manager),
+      );
+      if (!rows.length) return;
+      for (const row of rows) {
+        if (
+          row.status === 'queued' &&
+          (!row.nextAttemptAt || row.nextAttemptAt <= now)
+        )
+          await this.producer.enqueueInitiation(row.id);
+        else this.logJob(row, 'esign.initiation_reconciled');
+      }
+      afterId = rows[rows.length - 1].id;
+    }
+  }
+
+  private logJob(job: EsignInitiationJob, event: string): void {
+    this.logger.info({
+      event,
+      context: EsignInitiationJobService.name,
+      metadata: {
+        jobId: job.publicId,
+        documentId: String(job.documentId),
+        status: job.status,
+        stage: job.stage,
+        attempt: job.attemptCount,
+        errorCode: job.errorCode ?? null,
+      },
+    });
+  }
+
+  private classifyFailure(
+    error: unknown,
+    creatorUserId: number,
+  ): { code: string; transient: boolean } {
+    if (error instanceof AppException) {
+      if (
+        error.code === 'ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE' ||
+        error.code === 'ESIGN_INITIATION_TRANSIENT_FAILURE'
+      )
+        return { code: 'ESIGN_INITIATION_TRANSIENT_FAILURE', transient: true };
+      if (error.code.startsWith('ESIGN_INITIATION_'))
+        return { code: error.code, transient: false };
+      const response = error.getResponse();
+      if (typeof response === 'object' && 'details' in response) {
+        const details: unknown = response.details;
+        if (
+          details &&
+          typeof details === 'object' &&
+          'userIds' in details &&
+          Array.isArray(details.userIds) &&
+          details.userIds.includes(String(creatorUserId))
+        )
+          return {
+            code: 'ESIGN_INITIATION_CREATOR_UNAVAILABLE',
+            transient: false,
+          };
+      }
+      return {
+        code: error.code.includes('EMPLOYEE')
+          ? 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE'
+          : 'ESIGN_INITIATION_INPUT_INVALID',
+        transient: false,
+      };
+    }
+    const cause =
+      error && typeof error === 'object' && 'driverError' in error
+        ? error.driverError
+        : error;
+    const code =
+      cause && typeof cause === 'object' && 'code' in cause ? cause.code : null;
+    if (
+      typeof code === 'string' &&
+      [
+        'ECONNRESET',
+        'ECONNREFUSED',
+        'ETIMEDOUT',
+        'EPIPE',
+        'PROTOCOL_CONNECTION_LOST',
+        'ER_LOCK_DEADLOCK',
+        'ER_LOCK_WAIT_TIMEOUT',
+        'ER_CON_COUNT_ERROR',
+        'ER_SERVER_SHUTDOWN',
+      ].includes(code)
+    )
+      return { code: 'ESIGN_INITIATION_TRANSIENT_FAILURE', transient: true };
+    return { code: 'ESIGN_INITIATION_INTERNAL_ERROR', transient: false };
   }
 
   private async resolveSigners(

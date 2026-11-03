@@ -7,7 +7,7 @@
 
 **Blocked by:** [03 完整大量與混合名單背景發起](03-complete-roster.md)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — US3；FR-005、007、010–013、016、017；SC-004–006、008。
 

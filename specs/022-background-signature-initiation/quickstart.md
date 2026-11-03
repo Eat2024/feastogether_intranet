@@ -1,0 +1,103 @@
+# 022 實作後驗證指南
+
+> **最新範圍優先**：本輪只改後端 worker 與文件／簽署人異動保護；前端工作暫緩。原本必填 Idempotency-Key 改選填以相容既有 client。具體覆寫與已知限制見 [後端範圍決策](backend-only-scope.md)。
+
+本文件描述未來實作完成後的驗收；目前只有設計，不能把下列情境標為已通過。使用合成資料與 fake mail，不在 UAT／正式資料庫跑 e2e，不寄真實郵件。
+
+## 前置與指令
+
+- 安裝依賴：`pnpm install`。
+- 準備獨立 MySQL／Redis；server `.env.test` 的 DB 名必須以 `feastogether_intranet_test` 開頭，使用現有測試守門。不列印或提交帳密／名冊。
+- 在測試 DB 套用既有與新工作表 migration；migration 必須先於啟動新 HTTP／worker。確認 queue 只有測試 worker 消費。
+- 實作時把新的背景受理／恢復／容量測試加入 `server/test/jest-e2e.json`。測試建立員工、PDF、名單與郵件替身並自行清理，不使用真實員編。
+
+實作完成後執行既有指令：
+
+```bash
+pnpm -C server lint:check
+pnpm -C server test --runInBand
+pnpm -C server test:e2e
+pnpm build
+pnpm lint
+```
+
+前端沒有 test script；操作驗收使用既有開發環境 `pnpm dev`（包含 HTTP、worker、client）與瀏覽器 Network。若隔離測試環境不能跑完整 suite，記錄明確子集、未執行案例與原因，不能宣稱整套通過。
+
+## A. 所有人數受理與完整性
+
+| 情境 | 預期 |
+| --- | --- |
+| 0 人 | 400，無工作／指派／通知 |
+| 1、100、101、5,001 人 | 全部 POST 202；不依人數進同步分支 |
+| 6,001 人 | 不被舊 helper 的 6,000 總數守門拒絕；分批查核與寫入、完整人數 |
+| 混合內外部／全外部 | 同樣背景；外部原規則保留 |
+| 選人樹重複展開 | 正確去重；非法重複輸入明確拒絕，不少發部分人 |
+
+Network 確認按發起後沒有先打整份 resolutions，不呼叫 detail 等待才能顯示受理。每組 1／100／101／5,001 至少 20 次，記錄 accepted latency P50/P95、背景解析／交易／排隊耗時及記憶體。P95≤3秒是目標，不以本機單次數字代替 UAT 驗收。
+
+正式成功後比較完整指派數、正式快照順序、唯一 document.initiated、初邀批次與通知紀錄。進度 completed 不代表全數郵件送達。
+
+## B. 進度、關頁與輸入恢復
+
+1. 暫停測試消費者，提交有效名單，應顯示 queued，仍可刷新／重登入查 latest，不產生第二個工作。
+2. 恢復 worker，查核階段 processedCount≤totalCount；每次重新 attempt 明確顯示重新查核，數字不跨 attempt 累加。
+3. 關閉發起頁，worker 仍完成；重新登入查到同工作結果。
+4. 正式交易階段顯示「正在發起」，不可在未提交時顯示成功。
+5. 失敗後重整，按需 GET input 還原全部名單與欄位；上游組織樹移除某員工仍保留可修正項目。
+6. 進度輪詢僅摘要，回應大小／查詢數不隨 5,001 人線性成長；issues 按 100 筆分頁，沒有跨使用者資料。
+7. 3 秒 polling，終態停止；斷網只顯示暫時無法更新，401／403／404 停止。已更新狀態在正常連線下10秒內可見。
+
+## C. 冪等、並行與草稿保護
+
+- 相同 key 同輸入重播：200 reused=true；queued／failed／succeeded 都回同工作，不新增指派或重送初邀。
+- 原請求成功後、簽署期限過後及終態明細清理後，原 key 同內容仍回原摘要；人工 retry 重送也找到同一子工作，不被 parent 已非 latest 擋住。
+- 相同 key 改內容：409；不同 key 同文件並發：只接受一個，另一個 409。
+- 人工 retry 使用新 key／新 job；舊 failed key 重播不啟動新嘗試；舊 job 被新提交取代後不可復活。
+- queued／processing 期間依序嘗試改標題／PDF／欄位／draft-settings／draftSave／signer note／刪除，所有適用寫入皆 409。直接呼叫 API 也不得繞過。
+- 競態測試編輯與受理同時取得文件鎖，結果只能是編輯先完成後受理新版本，或受理先完成後拒絕編輯。
+
+## D. 故障注入與原子性
+
+| 注入位置 | 預期 |
+| --- | --- |
+| MySQL 受理 commit 前 | 無部分受理，client 保留輸入 |
+| commit 成功但 HTTP 回覆遺失 | 同 key 或 latest 找回，不能雙發 |
+| DB 已存但 Redis 入列失敗 | 工作仍受理；Redis恢復後既有maintenance補列 |
+| 解析中 worker 終止 | lease到期後重試；重新核對資格與attempt進度 |
+| 正式交易中終止 | 全部業務寫入回滾，租約恢復後重試 |
+| commit 成功、queue acknowledge 前終止 | job已succeeded，重送直接結束，不第二次發起 |
+| 舊worker租約失效後恢復 | CAS失敗，不能覆蓋新worker狀態 |
+| 暫時DB故障持續 | 最多3次claim，30／120秒backoff，終態失敗 |
+| 已超120分鐘或簽署截止 | 不再發起；有明確timeout／deadline分類 |
+| 全面DB中斷 | 不假造即時終態；恢復後核對commit與期限 |
+
+長時間正式交易時不能用獨立 heartbeat 等待自己持有的 job 鎖；測試 maintenance 不把仍可提交的工作先標失敗。故障恢復不能靠刪除工作、員工或指派後重跑。
+
+## E. 身分、期限與資料
+
+- 建立人／員工在受理後被停用、刪除、員編改動：正式提交重新查核，整份不成立。
+- 本機無員工：failed＋可定位issues，不即時向Portal補建，不靜默略過。
+- 沒有Email：仍可指派；初邀通知標既有RECIPIENT_UNAVAILABLE。
+- 白名單阻擋／SMTP錯誤：job仍succeeded，通知顯示各自結果。
+- 受理後原檔metadata／bytes不符、共用欄位非法、截止時間已過：整份失敗且保留原草稿，無部分通知。
+- 非建立人（含同部門人）查latest／job／input／issues／retry皆拒絕；list不洩漏工作內容。
+- 檢查application／access／queue logs：無完整名單、email、cookie、token、PDF；保留job/document/request correlation、stage及分類錯誤。
+
+## F. 混合負載與期限
+
+在空的隔離 queue 先送5,001人工作，再送5人工作；兩者受理仍符合目標，小工作顯示queued。大型成功或有限失敗後，小工作60秒內取得執行權，記錄總等待；不承諾插隊或立即完成。
+
+另執行SC-006受控延遲（空佇列且 signEndAt 設於受理後超過 120 分鐘）：5,001人各首次查核延遲1秒，背景受理不等待，120分鐘內完成。heartbeat獨立於每500人一批的完成，避免單批延遲超過5分鐘就失租約。測試不把延遲加入正式程式；耗時驗收需獨立排程執行並保留彙總結果。
+
+## G. 保留、列表與既有測試遷移
+
+- 終態30天後清理input／issues／version JSON，input與issues回410、summary與原key重播仍可讀；非終態不可清掉。
+- 以22份含大型job input的文件及256KiB排序緩衝測列表，確認摘要查詢不帶JSON、沒有N+1，也不重現PR #47的filesort錯誤。
+- 更新既有core-esign-flow、internal-email／portal／group、reminder、rejection、draft-settings、delivery-security及benchmark中的發起假設：先assert202，驅動測試worker／等待終態，再進行後續簽署。受理前錯誤仍4xx，背景資格錯誤改驗job failed。
+- 可以建立測試專用「受理並等待工作」helper；不能在production加入同步fallback。
+
+## H. 發布演練
+
+在受控環境先 migration，再於發起入口維護窗口協調 worker／server／client 更新；舊頁缺key顯示重新整理提示。清點queued／processing與工作成功後的通知狀態。
+
+回退前停止新受理並處理非終態工作；不能直接部署沒有草稿busy guard的舊server。保留工作表；down遇非空表必須拒絕。所有結果以 [契約](contracts/background-initiation.md) 與 [資料模型](data-model.md) 為準。

@@ -28,3 +28,7 @@
 ## 最新基準與預審修正
 
 最新 dev baseline 固定為 `ef0fdca6da66afe8495b589390ddaf647c9dcdbf`。兩軸預審發現的 busy existingJobId 與初始化重複已修正並整合；這不等於正式 review 完成。08 仍 claimed，Portal fixture 遷移、新 base 完整回歸與真實長測仍待完成。
+
+## Portal fixture 與快照修正整合
+
+Portal fixture 遷移及公開 mutation 交易外 busy 預檢已整合，消除預檢先建立 RR 舊快照的重複催簽原因。08 仍 claimed，需重驗新 base 完整回歸；午夜 fixture、平行 direct worker 問題與真實長測／正式 review 尚未完成。

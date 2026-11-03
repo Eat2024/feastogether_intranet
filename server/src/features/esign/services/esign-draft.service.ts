@@ -352,6 +352,11 @@ export class EsignDraftService {
   }
 
   async delete(documentId: number, userId: number): Promise<void> {
+    await this.access.assertCreatorNotInitiating(
+      documentId,
+      userId,
+      this.mysql.getManager(),
+    );
     await this.mysql.transaction(async (manager) => {
       await this.access.checkAndLockDraftDoc(documentId, userId, manager);
       await this.documents.softDeleteDraft(documentId, new Date(), manager);

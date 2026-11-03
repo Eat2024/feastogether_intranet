@@ -155,3 +155,5 @@ Spec 023 的本機主檔與信箱能力是查核前置條件；實作前核對�
 ### 受理短交易的隔離範圍
 
 僅 accept/retry 經 `MysqlService.transaction(callback, 'READ COMMITTED')` 避免兩份文件查無 request key／active job 的 gap deadlock。callback 原呼叫簽名與預設行為保留，正式 worker 不指定 RC。所有資格、文件、工作仍使用原共享／獨佔 current read；同文件以 document X 串行及 unique 約束防重播／重複 active。TypeORM 使用 transaction-local 設定，不改 SESSION/GLOBAL 隔離。
+
+所有文件／名單異動的非鎖 busy 預檢必須在開交易前完成；不可在 RR 交易內、取得 document X 前普通讀取文件／工作，否則會使鎖後歷史查詢沿用舊快照。共用 `checkAndLockDraftDoc` 僅鎖內 current-read 保護，公開入口負責交易外預檢；不在交易內另借連線，pool2 亦可併行。

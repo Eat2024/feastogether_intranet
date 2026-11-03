@@ -120,8 +120,6 @@ export class EsignAccessPolicyService {
     manager: EntityManager,
     lease?: InitiationLease,
   ): Promise<EsignDocument> {
-    if (!lease)
-      await this.assertCreatorNotInitiating(documentId, userId, manager);
     const document = await this.documentRepository.findByIdForUpdate(
       documentId,
       manager,
@@ -131,7 +129,7 @@ export class EsignAccessPolicyService {
     return document;
   }
 
-  /** 先授權再讀忙碌狀態，避免等待 worker 文件鎖後才回錯誤狀態。 */
+  /** 交易外先授權再快拒忙碌；不可在 RR 交易內先建立普通讀快照。 */
   async assertCreatorNotInitiating(
     documentId: number,
     userId: number,

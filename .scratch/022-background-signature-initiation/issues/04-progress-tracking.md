@@ -94,3 +94,18 @@
 - busy 409 現在於授權後以小投影回傳 details.existingJobId，保留鎖內競態檢查；initial／retry 的共通工作初始化收斂到狹窄共用函式，沒有新增通用抽象或讀取大型 JSON。
 - 新 base：locks 11／11、server build、lint 0 errors／275 warnings、119 suites／1,213 unit 通過；舊 base 的 83 e2e 證據不冒稱新 base 全回歸。整合 hook 再驗相同 lint/unit 通過。
 - 票 04 保持 resolved；08 仍 claimed，Portal fixture 遷移、完整回歸、真實長測及正式 review 待完成。client 無修改。
+
+### 2026-11-04 催簽並發 RR 快照補修
+
+- 08 真回歸 email/user 催簽並發均 `[202,202]`，本 worktree 獨立DB再現 2/2 紅燈。成因為 busy 預檢在 document X 前建立 RR snapshot，鎖後 history 普通讀看不到前交易提交。
+- 預檢全部移出公開 mutation 交易；fields/update/delete/note/settings/draftSave/stop/reopen/reminder 已盤點。共用草稿 guard 只保留鎖內授權/current busy 檢查，正式 worker 不變，不於交易內另借連線。
+- email/user 並發恢復 `[202,409]`，跨 endpoint fields/initial 競態仍正確 busy；既有固定訊息、existingJobId、越權防洩漏保留。
+- 以獨立 Redis14 的回歸採證：11 suites / 123 e2e 通過；unit 119 suites / 1213 tests、build、lint 0 errors／272既有 warnings 通過。Redis11曾與08矩陣重疊的結果不作最終採證。
+- Redis14 另以 pool2 重跑 locks＋reminders：2 suites / 30 tests 通過，無額外連線耗盡；採此輪取代 Redis11 重疊 run。
+
+## Portal fixture 與 RR 快照補修整合紀錄
+
+- 指定 commit `0a0b516d74754e436050e3fdfd1e50a9bd897ce9` 無衝突合併至 `impl/022-integration`，merge commit `9e00169d5ea974d27e6ad9b3467c1e73eb90e3a4`，含 Portal fixture 遷移及兩軸預審修正。
+- 所有公開 mutation 的 busy 預檢移至交易外，避免先建立 RR 舊快照而重複催簽；保留交易內 current guard，worker 正式流程不變。真實紅燈 202／202 變綠 202／409，fields／initiate 交錯保護通過。
+- 實作隔離 Redis14：123 e2e；pool2：30 e2e；server build 通過。整合 hook：lint 0 errors／272 warnings、119 suites／1,213 unit 通過。
+- 08 的同源 internal-group reminder 回歸需用本版重驗；午夜 fixture 與平行 direct worker 問題仍在診斷。08 claimed、正式 review 未完成；client 無修改。

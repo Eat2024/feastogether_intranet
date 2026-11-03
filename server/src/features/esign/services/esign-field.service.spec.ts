@@ -29,6 +29,7 @@ describe('EsignFieldService', () => {
       findDocumentFile: jest.fn(async () => ({ id: 31, documentId: 3 })),
     };
     const access = {
+      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
       checkAndLockDraftDoc: jest.fn(async () => ({
         id: 3,
         status: 'draft',
@@ -38,6 +39,7 @@ describe('EsignFieldService', () => {
     const validation = { assertSourceIntegrity: jest.fn() };
     const service = new EsignFieldService(
       {
+        getManager: () => manager,
         transaction: (callback: (value: typeof manager) => unknown) =>
           callback(manager),
       } as never,

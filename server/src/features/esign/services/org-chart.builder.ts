@@ -13,7 +13,7 @@ export interface OrgChart {
 }
 
 /**
- * 依 Portal 未停用部門與正式員工組出選人部門樹，規則照 fgapi OrgChartBuilder（饗賓人 hr/org_chart）。
+ * 依 Portal 未停用部門與正式員工組出選人部門樹，規則照 fgapi OrgChartBuilder（原饗賓人組織樹的來源）。
  * 部門與員工維持輸入順序（排序在 SQL 完成）。部門代碼空白或重複、形成循環、深度超過 100 層時拋錯，整批不可用。
  */
 export function buildOrgChart(

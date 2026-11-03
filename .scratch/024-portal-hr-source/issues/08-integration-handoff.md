@@ -23,3 +23,5 @@
 ## Comments & Implementation Results
 
 2026-11-03：只建立 ticket，尚未實作。ready-for-agent 不代表可以忽略 Blocked by；前置 ticket 都 resolved 後才能開始。實作結果追加在這裡。
+
+2026-11-03：ticket 07 發現根目錄 README.md 仍寫帳密登入沿用 `/api/v1/hr/staff_lookup` 資格檢查；08 一併核對 README 與其他文件是否還提到這三條饗賓人路徑或 HEX 匯入。

@@ -1,10 +1,4 @@
-import { AppErrors } from '#app/common/errors/app-errors';
-import { AppException } from '#app/common/errors/app.exception';
-import { StaffLookupDto } from '#app/features/auth/dto/staff-lookup.dto';
-import { parseStaffEmails } from '../types/staff-emails.parser';
 import { Injectable } from '@nestjs/common';
-import { plainToInstance } from 'class-transformer';
-import { validate } from 'class-validator';
 import { FeastogetherClient } from '../feastogether.client';
 import { mapFeastogetherUpstreamError } from '../feastogether-error.util';
 import {
@@ -23,75 +17,12 @@ const PATHS = {
 } as const;
 
 /**
- * 饗賓 hr/* 端點，員編查詢僅用 API Key，其餘需 Bearer。token 由呼叫端顯式帶入
+ * 饗賓 hr/* 端點，皆需 Bearer。token 由呼叫端顯式帶入
  * （CLS 自動注入待有 controller 消費再接）。
  */
 @Injectable()
 export class FeastogetherHrService {
   constructor(private readonly client: FeastogetherClient) {}
-
-  /** 依完整員編核對信箱，來源錯誤不得視為員工 session 失效。 */
-  async getStaffEmails(
-    empids: readonly string[],
-  ): Promise<Map<string, string | null>> {
-    try {
-      if (
-        empids.length < 1 ||
-        empids.length > 100 ||
-        empids.some(
-          (id) => typeof id !== 'string' || !/^[A-Za-z0-9]{1,20}$/.test(id),
-        )
-      ) {
-        throw new Error('員編查詢格式錯誤');
-      }
-      const payload = await this.client.post<unknown>(
-        '/api/v1/hr/staff_emails',
-        { person_empids: [...new Set(empids)] },
-        { timeoutMs: 10_000 },
-      );
-      return parseStaffEmails(payload, empids);
-    } catch {
-      throw new AppException(
-        ...AppErrors.ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE,
-      );
-    }
-  }
-
-  /** 依員編片段查詢員工。 */
-  async lookupStaff(empId: string): Promise<StaffLookupDto[]> {
-    try {
-      return await this.client.get<StaffLookupDto[]>(
-        withQuery('/api/v1/hr/staff_lookup', { person_empid: empId }),
-      );
-    } catch {
-      throw staffLookupError();
-    }
-  }
-
-  /** 只接受唯一、完整員編精確相符且欄位格式合法的試用／正式員工。 */
-  async lookupEligibleStaff(empId: string): Promise<StaffLookupDto> {
-    const results = await this.lookupStaff(empId);
-    if (!Array.isArray(results)) throw staffRejectedError();
-
-    const valid: StaffLookupDto[] = [];
-    for (const result of results as unknown[]) {
-      if (!result || typeof result !== 'object' || Array.isArray(result)) {
-        throw staffRejectedError();
-      }
-      const dto = plainToInstance(StaffLookupDto, result, {
-        excludeExtraneousValues: false,
-      });
-      const errors = await validate(dto, {
-        whitelist: true,
-        forbidNonWhitelisted: false,
-        forbidUnknownValues: true,
-      });
-      if (errors.length > 0) throw staffRejectedError();
-      if (dto.person_empid === empId) valid.push(dto);
-    }
-    if (valid.length !== 1) throw staffRejectedError();
-    return valid[0];
-  }
 
   /** 准考證（依日期區間）。 */
   getExamTicket(
@@ -138,13 +69,4 @@ export class FeastogetherHrService {
 function withQuery(path: string, query: Record<string, string>): string {
   const qs = new URLSearchParams(query).toString();
   return qs ? `${path}?${qs}` : path;
-}
-
-/** 員工查詢／匯入失敗的固定對外訊息。 */
-export function staffLookupError(): AppException {
-  return new AppException(...AppErrors.STAFF_LOOKUP_FAILED);
-}
-
-function staffRejectedError(): AppException {
-  return new AppException(...AppErrors.AUTH_EXCHANGE_FAILED);
 }

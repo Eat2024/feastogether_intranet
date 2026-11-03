@@ -43,3 +43,9 @@
 ## 整合中追蹤
 
 受理／retry 快速 busy 與歷史 key 重播補修已整合；擴大回歸發現跨文件並行 accept 的 gap lock／INSERT request unique deadlock，仍待後續補修及重驗。狀態保持 claimed，不因局部 80 e2e 通過即結案。
+
+## 跨文件受理 gap lock 補修整合紀錄
+
+- 指定 commit `a2ae05095e0bcd287b3ed4be29e563eea9cf9271` 無衝突合併至 `impl/022-integration`，merge commit `edcfbe4b70367e7fab50445f60d333fb84369798`。只將 accept／retry 短交易設為 READ COMMITTED，正式 worker 交易及 session／global 隔離設定不變。
+- 實作 82 e2e、build/lint 通過；整合 hook lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過。跨文件不存在 key／active 查詢造成的 gap lock deadlock 已修正，仍需 08 擴大回歸驗收。
+- 僅操作獨立 integration worktree，沒有切換／修改使用者原 checkout 或部署；client 無變更，08 保持 claimed。

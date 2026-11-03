@@ -1,4 +1,5 @@
 import { DepartmentDocumentVisibility1793664000000 } from '../migrations/1793664000000-DepartmentDocumentVisibility';
+import { MailWhitelistEmailRule1793664001000 } from '../migrations/1793664001000-MailWhitelistEmailRule';
 import { MailRecipientWhitelist } from '#app/infrastructure/mail/mail-recipient-whitelist.entity';
 import { MailRecipientWhitelist1793577600000 } from '../migrations/1793577600000-MailRecipientWhitelist';
 import { LocalZipExports1792454403000 } from '../migrations/1792454403000-LocalZipExports';
@@ -111,6 +112,7 @@ export function buildMysqlOptions(
       ExportHistory1792454406000,
       MailRecipientWhitelist1793577600000,
       DepartmentDocumentVisibility1793664000000,
+      MailWhitelistEmailRule1793664001000,
     ],
 
     extra: {

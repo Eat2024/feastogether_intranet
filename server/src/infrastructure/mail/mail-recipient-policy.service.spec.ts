@@ -28,6 +28,16 @@ function setup() {
   return { service, rules, departments, upstream };
 }
 
+/** 組織樹、員工信箱與逐人資格皆未查詢。 */
+function expectNoHrLookup({
+  departments,
+  upstream,
+}: Pick<ReturnType<typeof setup>, 'departments' | 'upstream'>) {
+  expect(departments.getOrgChart).not.toHaveBeenCalled();
+  expect(upstream.post).not.toHaveBeenCalled();
+  expect(upstream.get).not.toHaveBeenCalled();
+}
+
 describe('寄信收件人政策', () => {
   it('額外員編只需可信信箱，資格來源不可用仍允許，不查組織樹或逐人資格', async () => {
     const { service, departments, upstream } = setup();
@@ -41,6 +51,76 @@ describe('寄信收件人政策', () => {
       { person_empids: ['09005001'] },
       { timeoutMs: 10_000 },
     );
+  });
+
+  it('信箱規則只放行完整相同地址，不查組織樹或員工信箱', async () => {
+    const { service, rules, departments, upstream } = setup();
+    rules.findActiveRules.mockResolvedValue([
+      { type: 'email', value: 'tester@example.test' },
+    ]);
+    await expect(
+      service.allowedRecipients([
+        'tester@example.test',
+        'other@example.test',
+        'tester+uat@example.test',
+        'tester@sub.example.test',
+        'tester1@example.test',
+      ]),
+    ).resolves.toEqual(new Set(['tester@example.test']));
+    expectNoHrLookup({ departments, upstream });
+  });
+
+  it('收件人全數命中信箱規則時不查人資來源，來源故障仍允許', async () => {
+    const { service, rules, departments, upstream } = setup();
+    rules.findActiveRules.mockResolvedValue([
+      { type: 'email', value: 'tester@example.test' },
+      { type: 'department', value: 'D01' },
+      { type: 'employee', value: '09005001' },
+    ]);
+    departments.getOrgChart.mockRejectedValue(new Error('HR秘密'));
+    upstream.post.mockRejectedValue(new Error('HR秘密'));
+    await expect(
+      service.allowedRecipients(['tester@example.test']),
+    ).resolves.toEqual(new Set(['tester@example.test']));
+    expectNoHrLookup({ departments, upstream });
+  });
+
+  it('信箱與員編規則並存時，未命中信箱規則者沿用人資解析並取聯集', async () => {
+    const { service, rules, upstream } = setup();
+    rules.findActiveRules.mockResolvedValue([
+      { type: 'email', value: 'tester@example.test' },
+      { type: 'employee', value: '09005001' },
+    ]);
+    await expect(
+      service.allowedRecipients([
+        'tester@example.test',
+        'allowed@example.test',
+        'other@example.test',
+      ]),
+    ).resolves.toEqual(
+      new Set(['tester@example.test', 'allowed@example.test']),
+    );
+    expect(upstream.post).toHaveBeenCalledTimes(1);
+    expect(upstream.post).toHaveBeenCalledWith(
+      '/api/v1/hr/staff_emails',
+      { person_empids: ['09005001'] },
+      { timeoutMs: 10_000 },
+    );
+  });
+
+  it('仍有未命中信箱規則的收件人且人資故障時整次檢查失敗', async () => {
+    const { service, rules, upstream } = setup();
+    rules.findActiveRules.mockResolvedValue([
+      { type: 'email', value: 'tester@example.test' },
+      { type: 'employee', value: '09005001' },
+    ]);
+    upstream.post.mockRejectedValue(new Error('HR秘密'));
+    await expect(
+      service.allowedRecipients([
+        'tester@example.test',
+        'allowed@example.test',
+      ]),
+    ).rejects.toBeInstanceOf(MailWhitelistCheckFailedError);
   });
 
   it.each([{ rows: [] }, { rows: [{ person_empid: '09005001', email: '' }] }])(

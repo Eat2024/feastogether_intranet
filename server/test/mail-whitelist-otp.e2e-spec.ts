@@ -11,7 +11,10 @@ import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { GuardedInvitationMailSender } from '#app/infrastructure/mail/guarded-invitation-mail-sender.service';
 import { INVITATION_MAIL_SENDER } from '#app/infrastructure/mail/invitation-mail-sender.port';
-import { MailRecipientWhitelist } from '#app/infrastructure/mail/mail-recipient-whitelist.entity';
+import {
+  MailRecipientWhitelist,
+  type MailRecipientWhitelistType,
+} from '#app/infrastructure/mail/mail-recipient-whitelist.entity';
 import {
   createSecurityE2eApp,
   closeSecurityE2eApp,
@@ -62,10 +65,15 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
   beforeEach(async () => {
     transport.mockClear();
     sourceFailed = false;
-    await ctx.app
-      .get(MysqlService)
-      .getManager()
-      .delete(MailRecipientWhitelist, { type: 'employee', value: empid });
+    const manager = ctx.app.get(MysqlService).getManager();
+    await manager.delete(MailRecipientWhitelist, {
+      type: 'employee',
+      value: empid,
+    });
+    await manager.delete(MailRecipientWhitelist, {
+      type: 'email',
+      value: email,
+    });
   });
   afterEach(() => {
     expect(hr.get).not.toHaveBeenCalled();
@@ -104,14 +112,14 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     );
     return { token: token.token, signer };
   }
-  async function allow() {
+  async function allow(
+    type: MailRecipientWhitelistType = 'employee',
+    value = empid,
+  ) {
     const manager = ctx.app.get(MysqlService).getManager();
     await manager.save(
       MailRecipientWhitelist,
-      manager.create(MailRecipientWhitelist, {
-        type: 'employee',
-        value: empid,
-      }),
+      manager.create(MailRecipientWhitelist, { type, value }),
     );
   }
   const otp = (token: string, ip = randomClientIp()) =>
@@ -180,6 +188,16 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     sourceFailed = false;
     await otp(token).expect(200);
     expect(await audits(signer)).toBe(1);
+  });
+  it('信箱規則命中時人資來源故障仍寄出並可驗證，不查人資來源', async () => {
+    const { token, signer } = await fixture();
+    await allow('email', email);
+    sourceFailed = true;
+    await otp(token).expect(200);
+    const [mail] = transport.mock.calls[0];
+    expect(mail.recipientEmail).toBe(email);
+    expect(await audits(signer)).toBe(1);
+    await verify(token, mail.code).expect(303);
   });
   it('真正傳輸失敗仍回 503，未儲存新碼，重試成功後保留冷卻限制', async () => {
     const { token, signer } = await fixture();

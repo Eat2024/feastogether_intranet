@@ -118,8 +118,8 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 ### Tests for User Story 2
 
-- [ ] T014 [P] [US2] 搬移員工查詢 DTO，驗證規則不變：把 `server/src/infrastructure/http-client/feastogether/types/staff-lookup.dto.ts` 與 `staff-lookup.dto.spec.ts` 搬到 `server/src/features/auth/dto/`，並更新所有 import。
-- [ ] T015 [P] [US2] 新增 `server/src/features/auth/services/eligible-staff.service.spec.ts`，驗證 `lookupEligibleStaff(empId)`：
+- [x] T014 [P] [US2] 搬移員工查詢 DTO，驗證規則不變：把 `server/src/infrastructure/http-client/feastogether/types/staff-lookup.dto.ts` 與 `staff-lookup.dto.spec.ts` 搬到 `server/src/features/auth/dto/`，並更新所有 import。
+- [x] T015 [P] [US2] 新增 `server/src/features/auth/services/eligible-staff.service.spec.ts`，驗證 `lookupEligibleStaff(empId)`：
   - 用 `findEmployeesByEmpid` 查詢，再以 `===` 精確比對員編；大小寫不同或尾端有空白的資料不算相符。
   - 狀態 0 對應「試用」、1 對應「正式」，回傳現行的 `StaffLookupDto` 形狀。
   - 以下情況都拋 `AUTH_EXCHANGE_FAILED`：精確相符 0 筆或多筆、狀態不是 0／1、欄位不符合 DTO 規則（姓名空白、員編或部門代碼含非法字元、長度超過限制）。
@@ -127,18 +127,18 @@ description: "Spec 024 實作任務：Portal 直連取代饗賓人人資查詢"
 
 ### Implementation for User Story 2
 
-- [ ] T016 [US2] 新增 `server/src/features/auth/services/eligible-staff.service.ts`，照 [research §5](research.md) 實作，並在 `server/src/features/auth/auth.module.ts` 註冊、import `PortalModule`。`FeastogetherModule` 保留，帳密登入仍要用 `FeastogetherAuthService`。依賴 T014、T015。
-- [ ] T017 [US2] 修改 `server/src/features/auth/services/auth.service.ts` 與 `server/src/features/auth/services/oauth-identity.service.ts`，以及兩者的 `.spec.ts`：
+- [x] T016 [US2] 新增 `server/src/features/auth/services/eligible-staff.service.ts`，照 [research §5](research.md) 實作，並在 `server/src/features/auth/auth.module.ts` 註冊、import `PortalModule`。`FeastogetherModule` 保留，帳密登入仍要用 `FeastogetherAuthService`。依賴 T014、T015。
+- [x] T017 [US2] 修改 `server/src/features/auth/services/auth.service.ts` 與 `server/src/features/auth/services/oauth-identity.service.ts`，以及兩者的 `.spec.ts`：
   - 把 `FeastogetherHrService` 換成 `EligibleStaffService`。
   - 帳密登入仍先經 `FeastogetherAuthService.authenticate` 驗證密碼，驗證順序與錯誤對應不變。
   - 寫入本機欄位的方式不變，見 [data-model](data-model.md)「登入時的員工資料」。
   - 依賴 T016。
-- [ ] T018 [US2] 改寫 `server/test/password-login.e2e-spec.ts`、`server/test/oauth-login.e2e-spec.ts`、`server/test/webview-session.e2e-spec.ts` 與 `server/test/security-webview-session.e2e-spec.ts`，員工資料改由 T002 的合成 Portal 提供（帳密驗證仍用既有的 `FeastogetherClient` 替身）。覆蓋：
+- [x] T018 [US2] 改寫 `server/test/password-login.e2e-spec.ts`、`server/test/oauth-login.e2e-spec.ts`、`server/test/webview-session.e2e-spec.ts` 與 `server/test/security-webview-session.e2e-spec.ts`，員工資料改由 T002 的合成 Portal 提供（帳密驗證仍用既有的 `FeastogetherClient` 替身）。覆蓋：
   - spec US2 情境 1–6。
   - 員編只差大小寫或尾端空白。
   - Portal 不回應時，15 秒內回傳 `STAFF_LOOKUP_FAILED`，不改查饗賓人，也不用本機舊資料放行。
   - 饗賓人 `hr/staff_lookup` 的呼叫數為 0。
-- [ ] T019 [P] [US2] 機械式更新其他 e2e 的登入替身：
+- [x] T019 [P] [US2] 機械式更新其他 e2e 的登入替身：
   - 涉及的檔案：
     - `server/test/core-esign-flow.e2e-spec.ts`、`core-esign-flow-queue.e2e-spec.ts`、`core-esign-flow-scale.e2e-spec.ts`
     - `esign-document-delivery-security.e2e-spec.ts`、`esign-draft-settings.e2e-spec.ts`、`esign-export.e2e-spec.ts`、`esign-rejection.e2e-spec.ts`、`esign-reminders.e2e-spec.ts`、`esign-signer-management.e2e-spec.ts`

@@ -80,6 +80,7 @@ describe('buildMysqlOptions', () => {
       'MailRecipientWhitelist1793577600000',
       'DepartmentDocumentVisibility1793664000000',
       'MailWhitelistEmailRule1793664001000',
+      'UserNotificationEmail1793750400000',
     ]);
   });
 

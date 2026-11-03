@@ -465,6 +465,7 @@ CREATE TABLE `users` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '員工流水號',
   `empid` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '公司員工編號',
   `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '員工姓名',
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Portal 匯入的員工通知信箱',
   `person_status` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '上游人員狀態',
   `is_active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否可登入',
   `department_id` bigint DEFAULT NULL COMMENT '所屬部門 ID',

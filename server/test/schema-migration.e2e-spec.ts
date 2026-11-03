@@ -1,3 +1,4 @@
+import { User } from '#app/features/users/entities/user.entity';
 import { DataSource } from 'typeorm';
 import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.options';
 import { withSchemaTestDatabase } from '#app/infrastructure/database/test/schema-test-database';
@@ -27,6 +28,52 @@ const optionsFor = (database: string) =>
 
 describe('e-sign schema migrations', () => {
   jest.setTimeout(60_000);
+
+  it('員工信箱 migration 保留既有資料，隱藏一般查詢且可 up/down/up', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = await new DataSource(optionsFor(database)).initialize();
+      try {
+        await ds.runMigrations();
+        await revertAfter(ds, 'MailWhitelistEmailRule1793664001000');
+        await seedExportDocument(ds);
+        const original: unknown = await ds.query(
+          'SELECT * FROM users WHERE id=1',
+        );
+        await ds.runMigrations();
+        expect(await ds.query('SELECT email FROM users WHERE id=1')).toEqual([
+          { email: null },
+        ]);
+        await ds.query(
+          'UPDATE users SET email=?, updated_at=updated_at WHERE id=1',
+          ['synthetic@example.invalid'],
+        );
+        const user = await ds.manager.findOneByOrFail(User, { id: 1 });
+        expect(user.email).toBeUndefined();
+        // 登入等一般保存不應把未選取的信箱清空。
+        await ds.manager.save(user);
+        const withEmail = await ds.manager
+          .createQueryBuilder(User, 'user')
+          .addSelect('user.email')
+          .where('user.id = :id', { id: 1 })
+          .getOneOrFail();
+        expect(withEmail.email).toBe('synthetic@example.invalid');
+        await ds.undoLastMigration();
+        expect(await hasColumn(ds, database, 'users', 'email')).toBe(false);
+        expect(await ds.query('SELECT * FROM users WHERE id=1')).toEqual(
+          original,
+        );
+        await ds.runMigrations();
+        expect(await ds.query('SELECT email FROM users WHERE id=1')).toEqual([
+          { email: null },
+        ]);
+        expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual(
+          [],
+        );
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
 
   it('部門 migration 的 NULL 舊資料、精確代碼與 up/down/up 不改簽署證據', async () => {
     await withSchemaTestDatabase(async ({ database }) => {

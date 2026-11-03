@@ -1,3 +1,4 @@
+import { UserNotificationEmail1793750400000 } from '../migrations/1793750400000-UserNotificationEmail';
 import { DepartmentDocumentVisibility1793664000000 } from '../migrations/1793664000000-DepartmentDocumentVisibility';
 import { MailWhitelistEmailRule1793664001000 } from '../migrations/1793664001000-MailWhitelistEmailRule';
 import { MailRecipientWhitelist } from '#app/infrastructure/mail/mail-recipient-whitelist.entity';
@@ -113,6 +114,7 @@ export function buildMysqlOptions(
       MailRecipientWhitelist1793577600000,
       DepartmentDocumentVisibility1793664000000,
       MailWhitelistEmailRule1793664001000,
+      UserNotificationEmail1793750400000,
     ],
 
     extra: {

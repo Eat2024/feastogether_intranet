@@ -5,6 +5,18 @@ import { User } from './user.entity';
 describe('user schema metadata', () => {
   const storage = getMetadataArgsStorage();
 
+  it('通知信箱允許缺值，且不隨一般員工查詢讀取', () => {
+    const column = storage.columns.find(
+      (item) => item.target === User && item.propertyName === 'email',
+    );
+    expect(column?.options).toMatchObject({
+      type: 'varchar',
+      length: 255,
+      nullable: true,
+      select: false,
+    });
+  });
+
   it('可信部門代碼保留 NULL 舊值與精確字串比較，不取代本機部門外鍵', () => {
     const column = storage.columns.find(
       (item) => item.target === User && item.propertyName === 'departmentCode',

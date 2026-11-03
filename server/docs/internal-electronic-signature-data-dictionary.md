@@ -48,6 +48,7 @@
 | `id`              | BIGINT       |   是 | PK                              | 員工在本系統內的不可變流水號。                                          |
 | `empid`           | VARCHAR(32)  |   是 | UNIQUE                          | 公司員工編號，供 HR／SSO 對應；不可用姓名或 Email 取代。                |
 | `name`            | VARCHAR(100) |   是 |                                 | 員工姓名，由受信任 HR／SSO 來源同步。                                   |
+| `email` | VARCHAR(255) | 否 | NULL、非唯一 | Portal 匯入的員工通知信箱；一般員工查詢預設不讀取。本次只新增欄位，尚未匯入或切換發起／白名單信箱來源，不改寫歷史文件快照。 |
 | `person_status`   | VARCHAR(50)  |   否 | INDEX                           | 上游人員狀態原始語意，例如試用、正式、離職。                            |
 | `is_active`       | TINYINT(1)   |   是 | INDEX，預設 1                   | 是否允許登入本系統；建立及驗證 session 時必須為 1。Spec 2 不包含上游狀態變更後的主動撤銷。 |
 | `department_id`   | BIGINT       |   否 | FK → `hr_departments.id`、INDEX | 所屬部門。                                                              |

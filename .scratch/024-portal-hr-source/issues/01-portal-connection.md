@@ -59,3 +59,15 @@
   - 15 秒上限只在每個 process 同時不超過 3 個查詢時成立。mysql2 pool 沒有 acquire timeout，連線失敗時一次只放行一個排隊者。實測 Portal 不回應、7 個並發查詢：3 個 10 秒、3 個 20 秒、1 個 30 秒才拒絕。是否需要整體期限，由 orchestrator 決定。
   - mysql2 的錯誤訊息可能含 Portal 主機或帳號，server 錯誤的 `err.sql` 含代入後的員編。後續 tickets 不可把原始錯誤或 error 物件寫進 log 或回應。
 
+2026-11-03（orchestrator 決定後補做，commit `b575371`）：
+- 每次 SQL 查詢加 10 秒整體期限（計時器 race，涵蓋排隊等連線）。
+- `PORTAL_MYSQL_PASS` 可為空，已改 contract 與 research §1／§3。
+- Portal 不可用時 `pool.end()` 會拒絕，`onModuleDestroy` 改為只記錯誤代碼、不阻擋關閉。
+- 驗證：
+  - `pnpm -C server test -- src/infrastructure/portal`：12/12。
+  - `pnpm -C server test`：114 suites／1184 tests 全過（pre-commit hook）。
+  - `pnpm -C server lint:check`：0 errors。
+  - `pnpm -C server build`：通過。
+  - `DB_MYSQL_DB=feastogether_intranet_test_t01 DB_MYSQL_PASS= pnpm -C server test:e2e -- portal-directory`：3/3，含 7 個並發查詢對不回應 server 全部在 15 秒內拒絕（約 10 秒）。
+- 限制：期限以「每個 SQL 查詢」計。`listOrgChartSource` 依序跑兩個查詢；Portal 慢但有回應時最多約 20 秒，不回應時第一個查詢 10 秒就拒絕。`findStatusesByEmpids` 每批各自 10 秒。
+

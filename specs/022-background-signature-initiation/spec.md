@@ -2,11 +2,11 @@
 
 > **最新範圍優先**：本輪只改後端 worker 與文件／簽署人異動保護；前端工作暫緩。原本必填 Idempotency-Key 改選填以相容既有 client。具體覆寫與已知限制見 [後端範圍決策](backend-only-scope.md)。
 
-**Feature Branch**: `feat/022-background-signature-initiation`
+**Feature Branch**: `impl/022-integration`（各票獨立 worktree；整合驗收 `impl/022-08`）
 
 **Created**: 2026-11-03
 
-**Status**: 規格、Phase 1 設計與 tasks／本機 tickets 拆解完成 — 尚未實作、功能驗證或部署
+**Status**: T001–T030 後端已實作並整合；T031–T034 完整回歸與實時間長測進行中。未部署，client 暫緩。實測證據見 [validation.md](validation.md)。
 
 **Input**: 使用者於 UAT 選取約 5,000 位簽署人，發起前的名單解析耗時過久，畫面顯示發起失敗；要求「如果簽署人超過 100 人就開 worker 執行，慢慢消化，別讓前端等」，並明確指示先開 spec。2026-11-03 後續確認：「全部都走 worker」，取代原 100 人門檻，並要求繼續 022 規劃。
 

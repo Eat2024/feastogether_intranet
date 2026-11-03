@@ -181,6 +181,18 @@ NODE_ENV=test DB_MYSQL_HOST=127.0.0.1 DB_MYSQL_PORT=13322 DB_MYSQL_USER=root DB_
 
 Reconnect 合併 06／07 後，build 與完整 7 suites／61 tests 複驗通過。首次整合回歸有一次 07 批次清理 lock wait timeout；單例、07 全套及再次七套回歸均通過，原因尚未重現定位，保留於 ticket 05 追加驗證紀錄，不能以複驗通過抹去首次結果。
 
+## 08 整合驗收與本機發布／回退演練
+
+工作分支 `impl/022-08`，整合至 `impl/022-integration`；完整證據與重現指令見 [validation.md](validation.md)。本輪不修改client、不部署UAT、不寄真信；MySQL8.4.11／Redis7.4.11皆為隔離本機。
+
+80次POST受理矩陣（1／100／101／5001各20次）P95為14.09／15.03／12.80／98.19ms；真queue的5001→5混排，大型成功後9ms小型開始。這是受理時間，不包含既有前端解析。SC-006真實5001秒延遲長測仍在執行，未把fake-clock或局部進度當成通過。
+
+發布順序演練：`test:schema`在空的合成schema執行全部正式migrations，並驗實際表／索引／CHECK及drift。共5 suites／30 tests通過。實際發布時先migration，再協調切換worker與server；client本輪不部署。受理完成只代表queued，應以工作GET摘要確認成功，再查文件詳情。
+
+回退順序演練：`esign-initiation-schema`的非空表案例呼叫`undoLastMigration`遭拒且原列保留；僅清除測試自身合成列後，空表down/up重建成功。實際回退先停止新受理、結清全部queued/processing，保留工作表及終態摘要，勿直接回舊同步server或刪正式資料。此為本機DDL與API演練，不宣稱已測UAT發布／停機流程。
+
+既有client smoke採API契約與靜態呼叫核對：呼叫端await發起後不讀返回detail，無key請求仍202受理；published導頁文案及前置員編解析暫不改。未跑瀏覽器互動，不宣稱已有worker進度／錯誤還原UI。
+
 
 ## 草稿版本與保留清理補修驗證（2026-11-03）
 

@@ -2,7 +2,7 @@
 
 > **最新範圍優先**：本輪只改後端 worker 與文件／簽署人異動保護；前端工作暫緩。原本必填 Idempotency-Key 改選填以相容既有 client。具體覆寫與已知限制見 [後端範圍決策](../backend-only-scope.md)。
 
-狀態：待實作設計。Base path `/api`。實作時以 Nest Swagger DTO／annotations 產生 OpenAPI，並驗證本文案例；不宣稱端點已存在。
+狀態：後端已實作，整合驗收中，未部署。Base path `/api`。Nest Swagger DTO／annotations 描述與實際相同的成功 envelope；證據見 [validation.md](../validation.md)。
 
 ## 共通規則
 
@@ -14,7 +14,7 @@
 
 ## 1. POST /esign/documents/{documentId}/initiations
 
-每次有效提交皆背景化。必須帶 `Idempotency-Key: <UUID>`；不得透過人數、mode、userId 格式或前端 count 要求同步。沒有 key 回 400 與繁中「請重新整理頁面後再提交」，不建立工作。
+每次有效提交皆背景化。`Idempotency-Key: <UUID>` 選填，有值必須合法 UUID；無 key 由 server 產生識別以相容既有 client。無 key 的不同請求不保證重播同一工作，仍受一文件最多一個非終態工作限制。不得透過人數、mode、userId 格式或前端 count 要求同步。
 
 ### 輸入
 
@@ -146,4 +146,4 @@ queued／processing 期間，PATCH 文件、DELETE 草稿、draftSave、draft-se
 
 ## 相容與發布
 
-這是發起 API 的明確契約變更：不再回 201／EsignDocumentDetail，且新增必填 key。legacy userId 只代表輸入形狀可接受。更新 client API 型別為工作摘要，禁止沿用 mutation onSuccess=published。前後端與 worker 需協調發布；舊開啟頁面須重新整理。不得新增 production 同步捷徑來讓舊測試繼續通過。
+發起 API 不再回 201／EsignDocumentDetail；key 選填，legacy userId 與舊 body 仍可受理。本輪不改 client：呼叫端不讀返回 detail，因此可接受 202，但其舊型別、前置解析與 published 成功導頁仍為已知限制。只協調 server／worker 發布，client 不部署。不得新增 production 同步捷徑讓舊測試繼續通過。

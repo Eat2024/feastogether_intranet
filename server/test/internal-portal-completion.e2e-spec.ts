@@ -1,8 +1,10 @@
+import { completeInitiation } from './helpers/await-initiation';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { INestApplicationContext } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { DocumentFinalizationProcessor } from '#app/worker/esign/document-finalization.processor';
 import {
+  ESIGN_DOCUMENT_INITIATION_QUEUE,
   ESIGN_DOCUMENT_FINALIZATION_QUEUE,
   ESIGN_EXTERNAL_INVITATION_QUEUE,
   ESIGN_MAINTENANCE_QUEUE,
@@ -56,7 +58,8 @@ describe('Spec016 員工拒簽與本人副本', () => {
       builder.overrideProvider(HttpService).useValue(http),
     );
     for (const name of [
-      ESIGN_DOCUMENT_FINALIZATION_QUEUE,
+      ESIGN_DOCUMENT_INITIATION_QUEUE,
+  ESIGN_DOCUMENT_FINALIZATION_QUEUE,
       ESIGN_EXTERNAL_INVITATION_QUEUE,
       ESIGN_MAINTENANCE_QUEUE,
     ]) {
@@ -111,7 +114,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
       signers: Array<{ publicId: string }>;
       fields: Array<{ id: string }>;
     }>(
-      await request(ctx.server)
+      await completeInitiation(ctx, request(ctx.server)
         .post(`/api/esign/documents/${created.id}/initiations`)
         .set('Cookie', cookies[0])
         .set('Origin', origin)
@@ -135,7 +138,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
           watermark: false,
           allowReject: true,
         })
-        .expect(201),
+        .expect(202), cookies[0]),
     );
     const signers = await Promise.all(
       document.signers.map((signer) =>

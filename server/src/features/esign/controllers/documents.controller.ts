@@ -1,3 +1,4 @@
+import { InitiationJobResponseDto } from '../dto/initiation-response.dto';
 import { EsignHistoryItemDto } from '../dto/esign-common.dto';
 import { SignerNoteDto } from '../dto/signer-note.dto';
 import { DraftSaveDto, DraftSettingsDto } from '../dto/draft-settings.dto';
@@ -5,6 +6,7 @@ import { ReopenDocumentDto, type ReopeningInput } from '../dto/reopening.dto';
 import { EsignReopeningService } from '../services/esign-reopening.service';
 import {
   ApiBody,
+  ApiHeader,
   ApiOperation,
   ApiResponse,
   ApiOkResponse,
@@ -223,6 +225,12 @@ export class DocumentsController {
 
   // 可靠受理，正式發起只由 worker 執行。
   @UseGuards(OriginGuard)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    schema: { type: 'string', format: 'uuid' },
+    description: '選填 UUID；相同 key 與內容重播原工作',
+  })
   @ApiOperation({
     summary: '受理背景文件發起',
     description:
@@ -230,12 +238,12 @@ export class DocumentsController {
   })
   @ApiResponse({
     status: 202,
-    type: InitiationJobDto,
+    type: InitiationJobResponseDto,
     description: '已受理，不代表正式發起完成',
   })
   @ApiResponse({
     status: 200,
-    type: InitiationJobDto,
+    type: InitiationJobResponseDto,
     description: '合法重播原工作',
   })
   @ApiResponse({

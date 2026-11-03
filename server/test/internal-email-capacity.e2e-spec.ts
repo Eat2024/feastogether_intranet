@@ -1,3 +1,8 @@
+import {
+  completeInitiation,
+  deleteInitiationJobs,
+  exhaustInitiationRetries,
+} from './helpers/await-initiation';
 import { EsignFieldService } from '#app/features/esign/services/esign-field.service';
 import { MailRecipientPolicyService } from '#app/infrastructure/mail/mail-recipient-policy.service';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
@@ -248,6 +253,7 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
           'DELETE FROM esign_signers WHERE document_id=?',
           [documentId],
         );
+        await deleteInitiationJobs(transaction, documentId);
         await transaction.query('DELETE FROM esign_documents WHERE id=?', [
           documentId,
         ]);
@@ -370,12 +376,16 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
       const find = usersRepo.findByIdsWithEmail.bind(usersRepo);
       const fault = jest
         .spyOn(usersRepo, 'findByIdsWithEmail')
-        .mockImplementationOnce(async (...args) => {
+        .mockImplementation(async (...args) => {
           await find(...args);
           throw new Error('合成資料庫來源故障');
         });
       await measure(`initiation-${mode}`, 5001, async () => {
-        await initiate().expect(502);
+        await exhaustInitiationRetries(
+          ctx,
+          await initiate().expect(202),
+          cookie,
+        );
         const detail = apiData<{ status: string; signers: unknown[] }>(
           await request(ctx.server)
             .get(`/api/esign/documents/${documentId}`)
@@ -508,7 +518,7 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
       const initiationQueryStart = measuredQueryCount();
       const response = await (async () => {
         try {
-          return await initiate().expect(201);
+          return await completeInitiation(ctx, initiate().expect(202), cookie);
         } finally {
           emailResolutionSpy.mockRestore();
           signerSaveSpy.mockRestore();

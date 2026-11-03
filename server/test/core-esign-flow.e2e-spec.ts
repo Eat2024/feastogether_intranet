@@ -1,3 +1,8 @@
+import {
+  completeInitiation,
+  deleteInitiationJobs,
+  driveInitiation,
+} from './helpers/await-initiation';
 import { EsignInitiationService } from '#app/features/esign/services/esign-initiation.service';
 import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import { todayInTaipei } from '#app/common/date-time.helper';
@@ -207,6 +212,7 @@ describe('核心電子簽 US1', () => {
       await db.query('DELETE FROM esign_signers WHERE document_id = ?', [
         documentId,
       ]);
+      await deleteInitiationJobs(db, documentId);
       await db.query('DELETE FROM esign_documents WHERE id = ?', [documentId]);
       await Promise.all(
         files.map((file) =>
@@ -292,9 +298,7 @@ describe('核心電子簽 US1', () => {
       signEndAt: input.signEndAt,
     }).expect(400);
     await initiate(input, outsiderCookie).expect(404);
-    await initiate({ ...input, fields: [{ ...field, type: 'date' }] }).expect(
-      400,
-    );
+    expect(await driveInitiation(ctx, await initiate({ ...input, fields: [{ ...field, type: 'date' }] }).expect(202), creatorCookie)).toMatchObject({ status: 'failed' });
     expect(await detail()).toEqual(empty);
     // 先存一份草稿設定，後續發起失敗不得刪掉這份設定。
     apiData<Array<{ publicId: string }>>(
@@ -358,19 +362,33 @@ describe('核心電子簽 US1', () => {
     expect(await detail()).toEqual(before);
     for (const invalid of [
       { ...input, fields: [{ ...field, signerIndex: 1 }] },
-      { ...input, fields: [{ ...field, page: 2 }] },
-      { ...input, fields: [{ ...field, type: 'date' }] },
       { ...input, signers: [input.signers[0], input.signers[0]] },
       { ...input, watermark: 'true' },
     ]) {
       await initiate(invalid).expect(400);
       expect(await detail()).toEqual(before);
     }
+    expect(
+      await driveInitiation(
+        ctx,
+        await initiate({ ...input, fields: [{ ...field, page: 2 }] }).expect(
+          202,
+        ),
+        creatorCookie,
+      ),
+    ).toMatchObject({ status: 'failed' });
+    expect(await detail()).toEqual(before);
     const insertLogs = jest
       .spyOn(ctx.app.get(NotificationRepository), 'insertLogs')
       .mockRejectedValueOnce(new Error('測試通知寫入失敗'));
     try {
-      await initiate(input).expect(500);
+      expect(
+        await driveInitiation(
+          ctx,
+          await initiate(input).expect(202),
+          creatorCookie,
+        ),
+      ).toMatchObject({ status: 'failed' });
     } finally {
       insertLogs.mockRestore();
     }
@@ -381,7 +399,11 @@ describe('核心電子簽 US1', () => {
     );
     expect(Number(batches[0].count)).toBe(0);
     const results = await Promise.all([initiate(input), initiate(input)]);
-    expect(results.map((result) => result.status).sort()).toEqual([201, 409]);
+    expect(results.map((result) => result.status).sort()).toEqual([202, 409]);
+    const accepted = results.find((result) => result.status === 202)!;
+    expect((await driveInitiation(ctx, accepted, creatorCookie)).status).toBe(
+      'succeeded',
+    );
     const active = await detail();
     expect(active.status).toBe('active');
     expect(active.signers).toHaveLength(1);
@@ -404,12 +426,16 @@ describe('核心電子簽 US1', () => {
     );
     documentIds.push(Number(fresh.id));
     const freshResult = apiData<DocumentDetail>(
-      await request(ctx.server)
-        .post(`/api/esign/documents/${fresh.id}/initiations`)
-        .set('Cookie', creatorCookie)
-        .set('Origin', 'http://localhost:3000')
-        .send({ ...input, watermark: true, allowReject: true })
-        .expect(201),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${fresh.id}/initiations`)
+          .set('Cookie', creatorCookie)
+          .set('Origin', 'http://localhost:3000')
+          .send({ ...input, watermark: true, allowReject: true })
+          .expect(202),
+        creatorCookie,
+      ),
     );
     expect(freshResult.status).toBe('active');
     expect(freshResult.signers).toHaveLength(1);
@@ -473,35 +499,39 @@ describe('核心電子簽 US1', () => {
 
     const activeId = await create('已發起不可刪除');
     documentIds.push(activeId);
-    await request(ctx.server)
-      .post(`/api/esign/documents/${activeId}/initiations`)
-      .set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000')
-      .send({
-        signers: [
-          {
-            type: 'email',
-            name: '刪除測試',
-            email: 'delete-test@example.test',
-          },
-        ],
-        fields: [
-          {
-            type: 'signature',
-            page: 1,
-            xPercent: 10,
-            yPercent: 10,
-            widthPercent: 25,
-            heightPercent: 10,
-            sortOrder: 0,
-          },
-        ],
-        signStartAt: new Date(Date.now() - 60_000).toISOString(),
-        signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
-        watermark: false,
-        allowReject: false,
-      })
-      .expect(201);
+    await completeInitiation(
+      ctx,
+      request(ctx.server)
+        .post(`/api/esign/documents/${activeId}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: [
+            {
+              type: 'email',
+              name: '刪除測試',
+              email: 'delete-test@example.test',
+            },
+          ],
+          fields: [
+            {
+              type: 'signature',
+              page: 1,
+              xPercent: 10,
+              yPercent: 10,
+              widthPercent: 25,
+              heightPercent: 10,
+              sortOrder: 0,
+            },
+          ],
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+          watermark: false,
+          allowReject: false,
+        })
+        .expect(202),
+      creatorCookie,
+    );
     await remove(activeId).expect(409);
   });
 
@@ -668,7 +698,11 @@ describe('核心電子簽 US1', () => {
           watermark: false,
           allowReject: false,
         });
-    await initiate(placements).expect(201);
+    await completeInitiation(
+      ctx,
+      initiate(placements).expect(202),
+      creatorCookie,
+    );
     const active = await detail();
     expect(active.status).toBe('active');
     expect(active).toMatchObject({
@@ -906,33 +940,37 @@ describe('核心電子簽 US1', () => {
       })
       .expect(200);
 
-    const initiatedResponse = await request(ctx.server)
-      .post(`/api/esign/documents/${documentId}/initiations`)
-      .set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000')
-      .send({
-        signers: [
-          {
-            type: 'email',
-            name: '外部簽署人',
-            email: 'Candidate@Example.test',
-          },
-        ],
-        fields: Array.from({ length: 1 }, (_, index) => ({
-          type: 'signature',
-          page: 1,
-          xPercent: 10,
-          yPercent: 10 + index * 20,
-          widthPercent: 25,
-          heightPercent: 10,
-          sortOrder: index,
-        })),
-        signStartAt: new Date(Date.now() - 60_000).toISOString(),
-        signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
-        watermark: true,
-        allowReject: false,
-      })
-      .expect(201);
+    const initiatedResponse = await completeInitiation(
+      ctx,
+      request(ctx.server)
+        .post(`/api/esign/documents/${documentId}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: [
+            {
+              type: 'email',
+              name: '外部簽署人',
+              email: 'Candidate@Example.test',
+            },
+          ],
+          fields: Array.from({ length: 1 }, (_, index) => ({
+            type: 'signature',
+            page: 1,
+            xPercent: 10,
+            yPercent: 10 + index * 20,
+            widthPercent: 25,
+            heightPercent: 10,
+            sortOrder: index,
+          })),
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+          watermark: true,
+          allowReject: false,
+        })
+        .expect(202),
+      creatorCookie,
+    );
     expect(apiData<DocumentDetail>(initiatedResponse).status).toBe('active');
     signers[0].publicId =
       apiData<DocumentDetail>(initiatedResponse).signers[0].publicId;
@@ -1495,30 +1533,34 @@ describe('核心電子簽 US1', () => {
         })),
       })
       .expect(200);
-    await request(ctx.server)
-      .post(`/api/esign/documents/${stoppedDocumentId}/initiations`)
-      .set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000')
-      .send({
-        signers: [
-          { type: 'email', name: '已簽人', email: 'signed@example.test' },
-          { type: 'email', name: '待簽人', email: 'pending@example.test' },
-        ],
-        fields: Array.from({ length: 2 }, (_, index) => ({
-          type: 'signature',
-          page: 1,
-          xPercent: 10,
-          yPercent: 10 + index * 20,
-          widthPercent: 25,
-          heightPercent: 10,
-          sortOrder: index,
-        })),
-        signStartAt: new Date(Date.now() - 60_000).toISOString(),
-        signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
-        watermark: false,
-        allowReject: false,
-      })
-      .expect(201);
+    await completeInitiation(
+      ctx,
+      request(ctx.server)
+        .post(`/api/esign/documents/${stoppedDocumentId}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: [
+            { type: 'email', name: '已簽人', email: 'signed@example.test' },
+            { type: 'email', name: '待簽人', email: 'pending@example.test' },
+          ],
+          fields: Array.from({ length: 2 }, (_, index) => ({
+            type: 'signature',
+            page: 1,
+            xPercent: 10,
+            yPercent: 10 + index * 20,
+            widthPercent: 25,
+            heightPercent: 10,
+            sortOrder: index,
+          })),
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+          watermark: false,
+          allowReject: false,
+        })
+        .expect(202),
+      creatorCookie,
+    );
 
     const credentials = await db.query<
       Array<{ public_id: string; invitation_token_ciphertext: string }>
@@ -1751,31 +1793,35 @@ describe('核心電子簽 US1', () => {
     );
     documentIds.push(Number(id));
     const start = new Date(Date.now() + 3_600_000);
-    await request(ctx.server)
-      .post(`/api/esign/documents/${id}/initiations`)
-      .set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000')
-      .send({
-        signers: [
-          { type: 'email', name: '未來簽署人', email: 'future@example.test' },
-        ],
-        fields: [
-          {
-            type: 'signature',
-            page: 1,
-            xPercent: 10,
-            yPercent: 10,
-            widthPercent: 25,
-            heightPercent: 10,
-            sortOrder: 0,
-          },
-        ],
-        signStartAt: start.toISOString(),
-        signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
-        watermark: false,
-        allowReject: false,
-      })
-      .expect(201);
+    await completeInitiation(
+      ctx,
+      request(ctx.server)
+        .post(`/api/esign/documents/${id}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: [
+            { type: 'email', name: '未來簽署人', email: 'future@example.test' },
+          ],
+          fields: [
+            {
+              type: 'signature',
+              page: 1,
+              xPercent: 10,
+              yPercent: 10,
+              widthPercent: 25,
+              heightPercent: 10,
+              sortOrder: 0,
+            },
+          ],
+          signStartAt: start.toISOString(),
+          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+          watermark: false,
+          allowReject: false,
+        })
+        .expect(202),
+      creatorCookie,
+    );
     const [credential] = await db.query<
       Array<{ invitation_token_ciphertext: string }>
     >(
@@ -2306,36 +2352,40 @@ describe('核心電子簽 US1', () => {
     );
     const end = new Date(Date.now() + 60_000);
     const active = apiData<DocumentDetail>(
-      await request(ctx.server)
-        .post(`/api/esign/documents/${id}/initiations`)
-        .set('Cookie', creatorCookie)
-        .set('Origin', 'http://localhost:3000')
-        .send({
-          signers: [
-            { type: 'user', userId: String(signedUser.id) },
-            {
-              type: 'user',
-              userId: String(pendingUser.id),
-            },
-            { type: 'email', name: '外部待簽', email: 'expiry@example.test' },
-          ],
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 25,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: new Date(Date.now() - 60_000).toISOString(),
-          signEndAt: end.toISOString(),
-          watermark: false,
-          allowReject: false,
-        })
-        .expect(201),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${id}/initiations`)
+          .set('Cookie', creatorCookie)
+          .set('Origin', 'http://localhost:3000')
+          .send({
+            signers: [
+              { type: 'user', userId: String(signedUser.id) },
+              {
+                type: 'user',
+                userId: String(pendingUser.id),
+              },
+              { type: 'email', name: '外部待簽', email: 'expiry@example.test' },
+            ],
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 25,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: new Date(Date.now() - 60_000).toISOString(),
+            signEndAt: end.toISOString(),
+            watermark: false,
+            allowReject: false,
+          })
+          .expect(202),
+        creatorCookie,
+      ),
     );
     const signedAccess = await openInternalEmployeeSession(
       ctx,
@@ -2768,27 +2818,31 @@ describe('核心電子簽 US1', () => {
         ],
       })
       .expect(200);
-    const initiated = await request(ctx.server)
-      .post(`/api/esign/documents/${documentId}/initiations`)
-      .set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000')
-      .send({
-        signers: [{ type: 'user', userId: String(users[0].id) }],
-        fields: Array.from({ length: 1 }, (_, index) => ({
-          type: 'signature',
-          page: 1,
-          xPercent: 10,
-          yPercent: 10 + index * 20,
-          widthPercent: 25,
-          heightPercent: 10,
-          sortOrder: index,
-        })),
-        signStartAt: new Date(Date.now() - 60_000).toISOString(),
-        signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
-        watermark: false,
-        allowReject: false,
-      })
-      .expect(201);
+    const initiated = await completeInitiation(
+      ctx,
+      request(ctx.server)
+        .post(`/api/esign/documents/${documentId}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: [{ type: 'user', userId: String(users[0].id) }],
+          fields: Array.from({ length: 1 }, (_, index) => ({
+            type: 'signature',
+            page: 1,
+            xPercent: 10,
+            yPercent: 10 + index * 20,
+            widthPercent: 25,
+            heightPercent: 10,
+            sortOrder: index,
+          })),
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+          watermark: false,
+          allowReject: false,
+        })
+        .expect(202),
+      creatorCookie,
+    );
     assigned[0].publicId =
       apiData<DocumentDetail>(initiated).signers[0].publicId;
 
@@ -2976,22 +3030,26 @@ describe('核心電子簽 US1', () => {
       sortOrder: i,
     }));
     const active = apiData<DocumentDetail>(
-      await request(ctx.server)
-        .post('/api/esign/documents/' + id + '/initiations')
-        .set('Cookie', creatorCookie)
-        .set('Origin', 'http://localhost:3000')
-        .send({
-          signers: userIds.map((userId) => ({
-            type: 'user',
-            userId: String(userId),
-          })),
-          fields,
-          signStartAt: new Date(Date.now() - 60_000).toISOString(),
-          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
-          watermark: false,
-          allowReject: false,
-        })
-        .expect(201),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post('/api/esign/documents/' + id + '/initiations')
+          .set('Cookie', creatorCookie)
+          .set('Origin', 'http://localhost:3000')
+          .send({
+            signers: userIds.map((userId) => ({
+              type: 'user',
+              userId: String(userId),
+            })),
+            fields,
+            signStartAt: new Date(Date.now() - 60_000).toISOString(),
+            signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+            watermark: false,
+            allowReject: false,
+          })
+          .expect(202),
+        creatorCookie,
+      ),
     );
     const owners = await db.query<Array<{ id: number; public_id: string }>>(
       'SELECT id, public_id FROM esign_signers WHERE document_id = ? ORDER BY sort_order',
@@ -3271,29 +3329,37 @@ describe('核心電子簽 US1', () => {
     );
     const documentId = Number(created.id);
     documentIds.push(documentId);
-    await request(ctx.server)
-      .post(`/api/esign/documents/${documentId}/initiations`)
-      .set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000')
-      .send({
-        signers: emails.map((email) => ({ type: 'email', name: title, email })),
-        fields: [
-          {
-            type: 'signature',
-            page: 1,
-            xPercent: 10,
-            yPercent: 10,
-            widthPercent: 25,
-            heightPercent: 10,
-            sortOrder: 0,
-          },
-        ],
-        signStartAt: new Date(Date.now() - 60_000).toISOString(),
-        signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
-        watermark: false,
-        allowReject: false,
-      })
-      .expect(201);
+    await completeInitiation(
+      ctx,
+      request(ctx.server)
+        .post(`/api/esign/documents/${documentId}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: emails.map((email) => ({
+            type: 'email',
+            name: title,
+            email,
+          })),
+          fields: [
+            {
+              type: 'signature',
+              page: 1,
+              xPercent: 10,
+              yPercent: 10,
+              widthPercent: 25,
+              heightPercent: 10,
+              sortOrder: 0,
+            },
+          ],
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+          watermark: false,
+          allowReject: false,
+        })
+        .expect(202),
+      creatorCookie,
+    );
     const credentials = await db.query<
       Array<{ invitation_token_ciphertext: string }>
     >(
@@ -3498,32 +3564,36 @@ describe('核心電子簽 US1', () => {
     );
     const end = new Date(Date.now() + 60_000);
     apiData<DocumentDetail>(
-      await request(ctx.server)
-        .post(`/api/esign/documents/${id}/initiations`)
-        .set('Cookie', creatorCookie)
-        .set('Origin', 'http://localhost:3000')
-        .send({
-          signers: [
-            { type: 'user', userId: String(user.id) },
-            { type: 'email', name: '外部待簽', email: 'reopen@example.test' },
-          ],
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 25,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: new Date(Date.now() - 60_000).toISOString(),
-          signEndAt: end.toISOString(),
-          watermark: false,
-          allowReject: false,
-        })
-        .expect(201),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${id}/initiations`)
+          .set('Cookie', creatorCookie)
+          .set('Origin', 'http://localhost:3000')
+          .send({
+            signers: [
+              { type: 'user', userId: String(user.id) },
+              { type: 'email', name: '外部待簽', email: 'reopen@example.test' },
+            ],
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 25,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: new Date(Date.now() - 60_000).toISOString(),
+            signEndAt: end.toISOString(),
+            watermark: false,
+            allowReject: false,
+          })
+          .expect(202),
+        creatorCookie,
+      ),
     );
     const send = (body: object, cookie = creatorCookie) =>
       request(ctx.server)

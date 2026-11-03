@@ -2,13 +2,13 @@
 
 > **最新範圍優先**：本輪只改後端 worker 與文件／簽署人異動保護；前端工作暫緩。原本必填 Idempotency-Key 改選填以相容既有 client。具體覆寫與已知限制見 [後端範圍決策](backend-only-scope.md)。
 
-**Branch**: `feat/022-background-signature-initiation` | **Date**: 2026-11-03 | **Spec**: [spec.md](spec.md)
+**Branch**: `impl/022-integration` | **Date**: 2026-11-03 | **Spec**: [spec.md](spec.md)
 
-**狀態**：Phase 0／1 設計與 tasks／本機 tickets 拆解完成，未實作或部署。使用者已確認所有人數都走 worker；本計畫取代 100 人門檻。
+**狀態**：T001–T030 後端已實作整合；T031–T034 在 `impl/022-08` 完整回歸與實時間長測中，未部署。使用者已確認所有人數都走 worker；本計畫取代 100 人門檻。
 
 ## Summary
 
-所有發起採短交易可靠受理，回 202 與工作摘要；worker 負責本機員編解析、查核及正式發起。MySQL 工作列是可靠來源，Redis 只運送工作 ID。正式發起資料與工作成功同一交易提交，通知繼續走既有寄信 worker。前端不再先串行解析整份名單，也不在受理／輪詢時載入完整文件詳情。
+所有發起採短交易可靠受理，回 202 與工作摘要；worker 負責本機員編解析、查核及正式發起。MySQL 工作列是可靠來源，Redis 只運送工作 ID。正式發起資料與工作成功同一交易提交，通知繼續走既有寄信 worker。本輪不修改前端；既有前置解析與成功導頁仍保留。後端受理／工作查詢不載入完整文件詳情。
 
 ## Technical Context
 
@@ -17,7 +17,7 @@
 - **Storage**：MySQL 8.4 新增 `esign_initiation_jobs` 一表；沿用 Redis queue 與私有檔案儲存，不存 PDF bytes 或簽名圖到工作表。
 - **Testing**：Jest、隔離 MySQL／Redis e2e、合成名單、受控瀏覽器驗收。client 沒有 test script，不宣稱既有 UI 自動測試。
 - **Target Platform / Project Type**：現有 Linux Docker HTTP 與 worker；兩 package web application，不新增 workspace。
-- **Performance Goals**：1／100／101／5,001 人各 20 次受理 P95 ≤3 秒；已更新進度 10 秒內可見；大型與小型混合排隊依 SC-008 驗收。不是已量測結果。
+- **Performance Goals**：1／100／101／5,001 人各 20 次受理 P95 ≤3 秒；已更新進度 10 秒內可見；大型與小型混合排隊依 SC-008 驗收。本機量測與未驗範圍見 [validation.md](validation.md)。
 - **Scale/Scope**：0 人拒絕、1／100／101／5,001／6,001 人完整背景化；內外部混合與全外部。原 6,000 人查核限制須改為受控批次，不當作文件上限。
 - **Constraints**：一文件最多一個非終態工作；不改文件狀態 enum、登入／Portal 匯入／寄信白名單；不新增 env、獨立排程、取消功能或通用工作中心。
 

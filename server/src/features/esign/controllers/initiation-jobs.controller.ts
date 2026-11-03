@@ -1,3 +1,9 @@
+import {
+  InitiationJobResponseDto,
+  LatestInitiationJobResponseDto,
+  InitiationIssuesResponseDto,
+  InitiationInputResponseDto,
+} from '../dto/initiation-response.dto';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import type { FastifyReply } from 'fastify';
 import {
@@ -17,8 +23,6 @@ import {
 import {
   ApiCookieAuth,
   ApiHeader,
-  ApiExtraModels,
-  getSchemaPath,
   ApiOkResponse,
   ApiOperation,
   ApiResponse,
@@ -27,13 +31,10 @@ import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorat
 import {
   InitiationJobDto,
   InitiationIssuesQueryDto,
-  InitiationIssuesDto,
 } from '../dto/initiation-job.dto';
-import { InitiateDocumentDto } from '../dto/initiation.dto';
 import { EsignInitiationJobService } from '../services/esign-initiation-job.service';
 
 @ApiCookieAuth('sessionCookie')
-@ApiExtraModels(InitiationJobDto)
 @Controller('esign/documents/:documentId/initiation-jobs')
 export class InitiationJobsController {
   constructor(private readonly jobs: EsignInitiationJobService) {}
@@ -52,10 +53,13 @@ export class InitiationJobsController {
   @ApiOperation({ summary: '建立人以新請求識別重試原確認輸入' })
   @ApiResponse({
     status: 202,
-    type: InitiationJobDto,
+    type: InitiationJobResponseDto,
     description: '新工作可靠受理',
   })
-  @ApiOkResponse({ type: InitiationJobDto, description: '同 key 重播原子工作' })
+  @ApiOkResponse({
+    type: InitiationJobResponseDto,
+    description: '同 key 重播原子工作',
+  })
   async retry(
     @Param('documentId', ParseIntPipe) documentId: number,
     @Param('jobId', ParseUUIDPipe) jobId: string,
@@ -79,10 +83,7 @@ export class InitiationJobsController {
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({ summary: '建立人查詢最近一次背景發起工作，尚無工作回 null' })
   @ApiOkResponse({
-    schema: {
-      nullable: true,
-      allOf: [{ $ref: getSchemaPath(InitiationJobDto) }],
-    },
+    type: LatestInitiationJobResponseDto,
   })
   @ApiResponse({ status: 401, description: '尚未登入' })
   @ApiResponse({ status: 404, description: '文件不存在或不是建立人' })
@@ -96,7 +97,7 @@ export class InitiationJobsController {
   @Get(':jobId/issues')
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({ summary: '建立人分頁查詢失敗人員問題' })
-  @ApiOkResponse({ type: InitiationIssuesDto })
+  @ApiOkResponse({ type: InitiationIssuesResponseDto })
   @ApiResponse({ status: 409, description: '工作尚未失敗' })
   @ApiResponse({ status: 410, description: '問題明細已清理' })
   issues(
@@ -111,7 +112,7 @@ export class InitiationJobsController {
   @Get(':jobId/input')
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({ summary: '建立人還原背景發起的確認輸入' })
-  @ApiOkResponse({ type: InitiateDocumentDto })
+  @ApiOkResponse({ type: InitiationInputResponseDto })
   @ApiResponse({ status: 410, description: '原確認輸入已清理' })
   input(
     @Param('documentId', ParseIntPipe) documentId: number,
@@ -124,7 +125,7 @@ export class InitiationJobsController {
   @Get(':jobId')
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({ summary: '建立人查詢背景發起工作摘要' })
-  @ApiOkResponse({ type: InitiationJobDto })
+  @ApiOkResponse({ type: InitiationJobResponseDto })
   @ApiResponse({ status: 401, description: '尚未登入' })
   @ApiResponse({ status: 404, description: '工作不存在或不是建立人' })
   get(

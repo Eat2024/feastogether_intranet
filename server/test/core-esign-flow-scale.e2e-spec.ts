@@ -1,3 +1,7 @@
+import {
+  deleteInitiationJobs,
+  driveInitiation,
+} from './helpers/await-initiation';
 import { createHash, createPrivateKey, randomUUID, sign } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -161,6 +165,7 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       await db.query('DELETE FROM esign_signers WHERE document_id=?', [
         documentId,
       ]);
+      await deleteInitiationJobs(db, documentId);
       await db.query('DELETE FROM esign_documents WHERE id=?', [documentId]);
       for (const file of files)
         await storage.delete({
@@ -228,12 +233,16 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       .send({ signers: input(SAVED_COUNT).signers })
       .expect(200);
     const startSaved = performance.now();
-    await request(ctx.server)
+    const acceptedSaved = await request(ctx.server)
       .post('/api/esign/documents/' + idSaved + '/initiations')
       .set('Cookie', cookie)
       .set('Origin', 'http://localhost:3000')
       .send(input(SAVED_COUNT))
-      .expect(201);
+      .expect(202);
+    metrics.acceptanceSavedMs = performance.now() - startSaved;
+    expect((await driveInitiation(ctx, acceptedSaved, cookie)).status).toBe(
+      'succeeded',
+    );
     metrics.initiationSavedMs = performance.now() - startSaved;
     const [countSaved] = await db.query<Array<{ total: number }>>(
       'SELECT COUNT(*) total FROM esign_signers WHERE document_id=?',
@@ -250,12 +259,16 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
     expect(candidates).toHaveLength(SAVED_COUNT);
     const documentId = await create();
     const initiationStart = performance.now();
-    await request(ctx.server)
+    const accepted = await request(ctx.server)
       .post('/api/esign/documents/' + documentId + '/initiations')
       .set('Cookie', cookie)
       .set('Origin', 'http://localhost:3000')
       .send(input(SIGNER_COUNT))
-      .expect(201);
+      .expect(202);
+    metrics.acceptanceMs = performance.now() - initiationStart;
+    expect((await driveInitiation(ctx, accepted, cookie)).status).toBe(
+      'succeeded',
+    );
     metrics.initiationMs = performance.now() - initiationStart;
     const signers = await db.query<
       Array<{

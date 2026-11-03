@@ -93,3 +93,5 @@ failed → 明確人工 retry → 新 queued 列（原 failed 列不變）
 受理／retry對建立人使用共享鎖current read，直到短交易commit保持帳號有效；正式worker對users也只需共享鎖。兩者與jobs creator FK的共享引用相容，既有另一份草稿可在大型文件正式發起持鎖期間受理。資格／信箱／同步更新需要X鎖，仍等待正式交易完成；若停用先取得X鎖，worker共享current read等待後看見停用並整份拒絕。未放寬正式授權，未更動其他users寫入流程鎖模式。
 
 快速 busy 預檢不改持久模型：文件授權只選 id/creator/deletedAt/status，工作以 EXISTS 判定 active 或 document+key。既存歷史 key 優先進入鎖內重播，retry 的 parent 存在／文件關聯先確認；所有寫入仍按 users S → document X → job X current read 再驗證。
+
+受理／retry 短交易採 READ COMMITTED，防不同文件缺列 key/active 的 gap 鎖互等；資料模型、unique、document X 串行與 key/current-read 規則均不變。正式 worker 與其他交易維持原預設隔離，既有 API 不新增環境設定。

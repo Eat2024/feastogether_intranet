@@ -24,6 +24,7 @@
 
 ### 2026-11-03 實作結果（`implement/spec021-01`）
 
+- 實作 commit：`1aa4f65`（`implement/spec021-01`），pre-commit hook（root lint、server 單元測試）通過。
 - 基準：整合分支 `docs/spec-021-external-mail-whitelist` tip `54e298b`；隔離 MySQL 8.4.11（`127.0.0.1:13321`、`feastogether_intranet_test*`），未操作 UAT。
 - T001 基線：變更前 `pnpm -C server test:schema` 4 suites／24 tests 通過。
 - TDD 紅燈：`mail-whitelist-schema.e2e-spec.ts` 合法 `email` 寫入被 `chk_mail_recipient_whitelist_type` 拒絕；回滾案例因找不到 `MailWhitelistEmailRule1793664001000` 失敗；`mysql.options.spec.ts` migration 清單缺新名稱失敗。

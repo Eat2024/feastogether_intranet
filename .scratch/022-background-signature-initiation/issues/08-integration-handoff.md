@@ -17,7 +17,7 @@
 
 ## 驗收條件
 
-- [ ] 所有受影響 201／detail 發起測試改為 202→驅動 worker→等待終態後簽署；無 production 同步 fallback，新路由 Swagger／授權覆蓋一致。
+- [x] 所有受影響 201／detail 發起測試改為 202→驅動 worker→等待終態後簽署；無 production 同步 fallback，新路由 Swagger／授權覆蓋一致。
 - [ ] 1／100／101／5,001 各至少 20 次受理 P95≤3秒，記錄排隊、查核、正式交易與記憶體；6,001 完整指派。
 - [ ] 隔離空佇列先 5,001 再 5 人：大型終態後小工作 60 秒內取得執行權；另跑每人首次延遲 1 秒的 SC-006，signEndAt 超過受理後 120 分鐘，有限界線內完成。
 - **原 UI 驗收暫緩／後端部分仍適用：** 只用合成資料、fake mail 及隔離 MySQL／Redis；完整跑 server lint、unit、schema、e2e 與 root build／lint，以及三故事前端驗收。未執行情境列限制，不能填通過。
@@ -30,5 +30,5 @@
 
 ## 本輪後端補充驗收
 
-- [ ] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
-- [ ] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+- [x] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
+- [x] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。

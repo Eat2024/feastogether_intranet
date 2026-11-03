@@ -43,7 +43,7 @@ SC-008 真 Bull Worker、queue global concurrency=1：先提交5001人，再提�
 
 UTC 2026-11-03T15:14:35.183Z 開始；期限120分鐘，簽署截止設為24小時後。測試在每批首次 `UserRepository.findByIds` 查核注入 `batch人數 × 1000ms` 真實 timer，每位選中者只加一次，正式鎖內信箱重核不再加第二輪延遲。真Bull Worker進入正式service，heartbeat獨立續租；沒有使用 fake clock。
 
-進度 `/tmp/022-long-benchmark-progress.json` 每30秒記錄 UTC/實際elapsed/processed/total/lastHeartbeat/status/stage/attempt，不含名單；結束另寫 `/tmp/022-long-benchmark-result.json`。啟動時正式程式基準為 `fadfc3f8`；後續Redis重連補修不在此已載入程序內，不把此長測宣稱為重連測試。初始錯誤 seam（鎖內重核延遲）已停止並捨棄，不計成功結果。
+進度 `/tmp/022-long-benchmark-progress.json` 每30秒記錄 UTC/實際elapsed/processed/total/lastHeartbeat/status/stage/attempt，不含名單；結束另寫 `/tmp/022-long-benchmark-result.json`。啟動時正式程式基準為 `fadfc3f8`；後續Redis重連補修不在此已載入程序內，不把此長測宣稱為重連測試。初始錯誤 seam（鎖內重核延遲）已停止並捨棄，不計成功結果。正確這輪包含約30秒的初始排隊等待，總實際時間不扣除此等待。
 
 ## 回歸與測試遷移
 
@@ -53,11 +53,12 @@ UTC 2026-11-03T15:14:35.183Z 開始；期限120分鐘，簽署截止設為24小�
 - PDF worker fixture同時pause新initiation queue，避免另一app instances搶工作而繞過既有spies。
 - retry資格競態原52秒失敗：外部鎖持有者佔app pool2之一，worker交易佔另一條，HTTP輪詢等不到連線。改測試外部持鎖者使用獨立DataSource，正式pool維持2，原鎖內資格與HTTP取樣斷言保留，8/8於1.7秒通過。未改正式pool規格。
 - schema約束清單增加8個新工作表CHECK；仍比對完整精確清單。
+- Swagger原新端點只描述裸DTO；先新增失敗斷言，再補純metadata Response DTO，所有成功回應含 `{success,data,timestamp}`，latest 的 data 可為null。api-coverage41/41通過，Controller執行回傳不變。
 - `pnpm -C server test --runInBand`：整合Redis重連補修後115 suites／1180 tests通過（commit hook實跑）。
 - `pnpm -C server lint:check`：0 errors／272既有warnings；root `pnpm lint`與`pnpm build`通過。最終完整性補修整合後將再驗必要範圍。
 - `test:schema`：5 suites／30 tests通過，包含新工作表約束、非空down拒絕／空表down-up及drift。
 - `test:e2e:security`：14 suites／84 tests通過。
-- 完整e2e第二輪：45 suites通過／1失敗／1跳過，470 tests通過／1失敗／1跳過；唯一失敗為上述外部鎖fixture，修正後該suite8/8通過。最終完整suite待最新整合後補跑，不把這輪記為全綠。
+- 完整e2e第三輪（integrity整合基準a24d409，merge f7eefd0）：47 suites／483 tests通過，reconnect專用環境跳過1項。前輪唯一pool自我餓死案例已修，這輪完整通過。後續鎖競態補修將再跑受影響範圍。
 - Redis重新連線suite只在專用DB9執行，一般DB8按既有保護跳過；本票沒有重新操作DB9。
 - benchmark/helper與既有export benchmark以TypeScript semantic program檢查通過；Spec009整套大型ZIP容量腳本未重跑，本輪只遷移其HTTP發起fixture。
 

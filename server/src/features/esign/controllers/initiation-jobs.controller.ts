@@ -1,6 +1,14 @@
+import { OriginGuard } from '#app/framework/guards/origin.guard';
+import type { FastifyReply } from 'fastify';
 import {
   Controller,
+  Post,
+  Body,
+  Headers,
+  Res,
+  UseGuards,
   Get,
+  Query,
   Header,
   Param,
   ParseIntPipe,
@@ -8,6 +16,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiCookieAuth,
+  ApiHeader,
   ApiExtraModels,
   getSchemaPath,
   ApiOkResponse,
@@ -15,7 +24,12 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
-import { InitiationJobDto } from '../dto/initiation-job.dto';
+import {
+  InitiationJobDto,
+  InitiationIssuesQueryDto,
+  InitiationIssuesDto,
+} from '../dto/initiation-job.dto';
+import { InitiateDocumentDto } from '../dto/initiation.dto';
 import { EsignInitiationJobService } from '../services/esign-initiation-job.service';
 
 @ApiCookieAuth('sessionCookie')
@@ -23,6 +37,43 @@ import { EsignInitiationJobService } from '../services/esign-initiation-job.serv
 @Controller('esign/documents/:documentId/initiation-jobs')
 export class InitiationJobsController {
   constructor(private readonly jobs: EsignInitiationJobService) {}
+
+  @Post(':jobId/retries')
+  @UseGuards(OriginGuard)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description: '新 UUID；相同 key 重播原子工作',
+  })
+  @ApiResponse({ status: 400, description: '缺少合法 key 或 body 不為空' })
+  @ApiResponse({ status: 404, description: '工作不存在或不是有效建立人' })
+  @ApiResponse({ status: 409, description: '忙碌、重播衝突或不符合新重試條件' })
+  @ApiResponse({ status: 410, description: '原確認輸入已清理' })
+  @ApiOperation({ summary: '建立人以新請求識別重試原確認輸入' })
+  @ApiResponse({
+    status: 202,
+    type: InitiationJobDto,
+    description: '新工作可靠受理',
+  })
+  @ApiOkResponse({ type: InitiationJobDto, description: '同 key 重播原子工作' })
+  async retry(
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+    @CurrentUserId() userId: number,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<InitiationJobDto> {
+    const result = await this.jobs.retry(documentId, jobId, userId, key, body);
+    reply
+      .code(result.reused ? 200 : 202)
+      .header(
+        'Location',
+        `/api/esign/documents/${documentId}/initiation-jobs/${result.jobId}`,
+      )
+      .header('Cache-Control', 'private, no-store');
+    return result;
+  }
 
   @Get('latest')
   @Header('Cache-Control', 'private, no-store')
@@ -40,6 +91,34 @@ export class InitiationJobsController {
     @CurrentUserId() userId: number,
   ): Promise<InitiationJobDto | null> {
     return this.jobs.latest(documentId, userId);
+  }
+
+  @Get(':jobId/issues')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({ summary: '建立人分頁查詢失敗人員問題' })
+  @ApiOkResponse({ type: InitiationIssuesDto })
+  @ApiResponse({ status: 409, description: '工作尚未失敗' })
+  @ApiResponse({ status: 410, description: '問題明細已清理' })
+  issues(
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+    @CurrentUserId() userId: number,
+    @Query() query: InitiationIssuesQueryDto,
+  ) {
+    return this.jobs.issues(documentId, jobId, userId, query);
+  }
+
+  @Get(':jobId/input')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({ summary: '建立人還原背景發起的確認輸入' })
+  @ApiOkResponse({ type: InitiateDocumentDto })
+  @ApiResponse({ status: 410, description: '原確認輸入已清理' })
+  input(
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+    @CurrentUserId() userId: number,
+  ) {
+    return this.jobs.input(documentId, jobId, userId);
   }
 
   @Get(':jobId')

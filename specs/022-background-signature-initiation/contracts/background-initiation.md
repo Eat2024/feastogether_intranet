@@ -119,7 +119,7 @@ client 每 3 秒輪詢，終態停止；401／403／404 停止並提示。網路
 
 重播先於新工作資格驗證：先依 document+key 查既存子工作並核對 parent/hash，再返回該子工作。即使子工作已成功、parent 已非 latest 或 parent 明細已清理，合法重播仍回 200；沒有既存 key 才驗以下新受理條件。
 
-有其他進行中工作、舊 job 已被新提交取代、非可重試狀態或版本已改回 409；input 已清理回 410。需要改人員／欄位／期限時使用新的 initiation 請求，不讓 retries 接受覆寫 body。
+有其他進行中工作回 409 `ESIGN_INITIATION_IN_PROGRESS`；舊 job 已被新提交取代、非可重試狀態或非草稿回 409 `ESIGN_INITIATION_RETRY_NOT_ALLOWED`；版本已改回 409 `ESIGN_INITIATION_DOCUMENT_CHANGED`；input 已清理回 410。需要改人員／欄位／期限時使用新的 initiation 請求，不讓 retries 接受覆寫 body。
 
 ## 7. 文件列表與既有草稿 API
 

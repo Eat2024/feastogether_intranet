@@ -82,7 +82,9 @@ export class EsignInitiationService {
     );
     for (const [userId, employeeNo] of lease?.expectedEmployees ?? []) {
       if (lockedUsers.get(userId)?.empid !== employeeNo)
-        throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED);
+        throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED, {
+          userIds: [String(userId)],
+        });
     }
     const document = await this.access.checkAndLockDraftDoc(
       input.documentId,
@@ -103,7 +105,9 @@ export class EsignInitiationService {
         ? lockedUsers.get(Number(signer.userId))
         : undefined;
       if (!fixed || fixed.empid !== signer.empidSnapshot)
-        throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED);
+        throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED, {
+          userIds: [String(signer.userId)],
+        });
       signer.email = fixed.email ?? null;
     }
     const { fields, sourceMetadata } = await this.fieldService.buildFields(

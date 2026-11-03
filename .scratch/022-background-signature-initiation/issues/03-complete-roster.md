@@ -7,7 +7,7 @@
 
 **Blocked by:** [02 單人背景發起完整流程](02-background-initiation.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — US1；FR-001、003、007、010、013–015；SC-001、002、005、007。
 
@@ -49,3 +49,9 @@
 - 專用 MySQL localhost:13322，DB `feastogether_intranet_test022_t03`；Redis localhost:16322 DB3，避免不同票的 DB 流水號碰撞同 queue ID。只有合成資料／fake mail，容量 fixture 清除自身文件、指派、audit、通知、工作、queue 工作及檔案。
 - 未修改前端：既有無 key userId/email body 可受理，但前置 resolutions 與 flash=published 的已知限制仍存在；本票不宣稱已提供進度畫面或取消前置解析。
 - 受理 P95 20 次量測、混合排隊與延遲復原等整體驗收留票 08，不以本票一次執行時間冒稱完成效能門檻。
+
+## 整合驗收紀錄
+
+- 實作 commit `3470a6f21bd114591048e262a5eec6f3579f5395` 已由 `impl/022-03` 無衝突合併至 `impl/022-integration`，merge commit `952a53addd202f74d94aac99959a3839a4136860`。
+- 合併 hook：lint 0 errors／272 既有 warnings，單元 113 suites／1,175 tests 通過。實作驗證：容量與受理 23／23、RR 快照競態 1／1、server build 通過。
+- T012–T015 驗收且整合完成，狀態改 resolved；client 無修改。

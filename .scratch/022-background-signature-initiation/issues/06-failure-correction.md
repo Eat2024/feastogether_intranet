@@ -5,7 +5,7 @@
 
 **What to build:** 建立人重登入後仍能找回失敗名單、查看問題並修正；暫時故障可重試原輸入，回應遺失不產生第二個子工作。
 
-**Blocked by:** [05 中斷後有限恢復且不重複發起](05-bounded-recovery.md)
+**Blocked by:** [04 重整與重新登入後追蹤工作](04-progress-tracking.md)、[05 中斷後有限恢復且不重複發起](05-bounded-recovery.md)
 
 **Status:** ready-for-agent
 

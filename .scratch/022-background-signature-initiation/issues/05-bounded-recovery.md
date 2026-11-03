@@ -5,7 +5,7 @@
 
 **What to build:** 已受理工作在 Redis 入列失敗或 worker 重啟後可繼續；建立人看到重試或明確失敗，文件不會被部分或重複發起。
 
-**Blocked by:** [04 重整與重新登入後追蹤工作](04-progress-tracking.md)
+**Blocked by:** [03 完整大量與混合名單背景發起](03-complete-roster.md)
 
 **Status:** ready-for-agent
 
@@ -32,3 +32,7 @@
 
 - [ ] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
 - [ ] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+
+## 依賴修訂（後端範圍）
+
+本票只需 03 的背景核心及分批查核，04 的查詢擴充不是恢復機制前置；可與 04 在獨立 worktree、隔離 Redis DB 平行實作。共用 service 的變更須在整合時解決衝突並重驗。

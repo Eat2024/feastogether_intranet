@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { OrgDepartmentDto } from '#app/infrastructure/http-client/feastogether/types/org-chart.dto';
+import { OrgDepartmentDto } from './org-chart.dto';
 import { SignerCandidateResolutionsDto } from './resolve-signer-candidates.dto';
 
 /** 僅描述 interceptor 產生的外層；Controller 不自行包裝。 */

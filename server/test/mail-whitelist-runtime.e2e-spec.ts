@@ -29,19 +29,13 @@ describe.each([
       const empid = `WIRE${randomBytes(4).toString('hex')}`;
       const allowedEmail = `${empid.toLowerCase()}@example.test`;
       const blockedEmail = 'unregistered@example.test';
+      // 寄信白名單只讀本機資料：任何饗賓人呼叫（含 hr/*）都直接失敗，結尾另確認呼叫數為 0。
       const upstream = {
         get: jest.fn((path: string) => {
-          if (path === '/api/v1/hr/org_chart') return Promise.resolve([]);
-          throw new Error('未安排的合成 HR 查詢');
+          throw new Error(`寄信白名單不得呼叫饗賓人 ${path}`);
         }),
-        post: jest.fn((path: string, body: { person_empids: string[] }) => {
-          if (path !== '/api/v1/hr/staff_emails')
-            throw new Error('未安排的合成 HR 查詢');
-          return Promise.resolve(
-            body.person_empids
-              .filter((id) => id === empid)
-              .map((person_empid) => ({ person_empid, email: allowedEmail })),
-          );
+        post: jest.fn((path: string) => {
+          throw new Error(`寄信白名單不得呼叫饗賓人 ${path}`);
         }),
       };
       // Nodemailer 真正建立 envelope，傳輸層只在記憶體回報結果，不開 socket。
@@ -124,12 +118,6 @@ describe.each([
               'findActiveRules',
             )
             .mockRejectedValue(new Error('合成 DB 故障'));
-          upstream.get.mockImplementation(() => {
-            throw new Error('合成 HR 故障');
-          });
-          upstream.post.mockImplementation(() => {
-            throw new Error('合成 HR 故障');
-          });
         }
         const invitation = {
           recipientEmail: allowedEmail,

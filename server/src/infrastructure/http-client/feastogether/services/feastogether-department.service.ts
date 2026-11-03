@@ -1,6 +1,9 @@
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
-import { parseOrgChart, OrgDepartmentDto } from '../types/org-chart.dto';
+import {
+  parseOrgChart,
+  OrgDepartmentDto,
+} from '#app/features/esign/dto/org-chart.dto';
 import { Injectable } from '@nestjs/common';
 import { FeastogetherClient } from '../feastogether.client';
 import { mapFeastogetherUpstreamError } from '../feastogether-error.util';

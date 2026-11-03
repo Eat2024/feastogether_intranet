@@ -105,7 +105,7 @@ export class EsignInitiationJobService {
           manager,
         );
         return { job, reused: false };
-      })
+      }, 'READ COMMITTED')
       .catch((error: unknown) => {
         if (error instanceof AppException) throw error;
         throw new AppException(...AppErrors.ESIGN_INITIATION_TRANSIENT_FAILURE);
@@ -234,7 +234,7 @@ export class EsignInitiationJobService {
           manager,
         );
         return { job, reused: false };
-      })
+      }, 'READ COMMITTED')
       .catch((error: unknown) => {
         if (error instanceof AppException) throw error;
         throw new AppException(...AppErrors.ESIGN_INITIATION_TRANSIENT_FAILURE);

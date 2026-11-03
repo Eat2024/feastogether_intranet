@@ -128,6 +128,119 @@ describe('022 員工共享鎖與跨文件受理', () => {
     });
     return { promise, resolve };
   }
+  it.each(['initial', 'retry'] as const)(
+    '同建立人兩份文件同時%s不因缺列gap死鎖回503',
+    async (operation) => {
+      const first = await newDoc();
+      const second = await newDoc();
+      const parents: EsignInitiationJob[] = [];
+      if (operation === 'retry') {
+        for (const doc of [first, second]) {
+          const parent = await submit(doc);
+          await mysql.getManager().update(EsignInitiationJob, parent.id, {
+            status: 'failed',
+            stage: 'failed',
+            completedAt: new Date(),
+            errorCode: 'ESIGN_INITIATION_TRANSIENT_FAILURE',
+            retryable: true,
+          });
+          parents.push(parent);
+        }
+      }
+      const db = mysql.getDataSource();
+      type Isolation = { sessionIsolation: string; globalIsolation: string };
+      const isolationSql =
+        'SELECT @@SESSION.transaction_isolation AS sessionIsolation, @@GLOBAL.transaction_isolation AS globalIsolation';
+      const before = await mysql.query<Isolation[]>(isolationSql);
+      const afterCommits: Isolation[][] = [];
+      const isolationStatements: string[] = [];
+      const createRunner = db.createQueryRunner.bind(
+        db,
+      ) as typeof db.createQueryRunner;
+      const ready = deferred();
+      let inserts = 0;
+      const databaseErrors: string[] = [];
+      const runners: Array<ReturnType<typeof createRunner>> = [];
+      const barrier = jest
+        .spyOn(db, 'createQueryRunner')
+        .mockImplementation((...args) => {
+          const runner = createRunner(...args);
+          runners.push(runner);
+          const query = runner.query.bind(runner) as typeof runner.query;
+          jest
+            .spyOn(runner, 'query')
+            .mockImplementation(async (...queryArgs) => {
+              if (queryArgs[0].startsWith('SET TRANSACTION ISOLATION LEVEL'))
+                isolationStatements.push(queryArgs[0]);
+              if (
+                queryArgs[0].startsWith('INSERT INTO `esign_initiation_jobs`')
+              ) {
+                inserts++;
+                if (inserts === 2) ready.resolve();
+                await ready.promise;
+              }
+              try {
+                const result: unknown = await query(...queryArgs);
+                if (queryArgs[0] === 'COMMIT')
+                  afterCommits.push(await query<Isolation[]>(isolationSql));
+                return result;
+              } catch (error: unknown) {
+                if (error && typeof error === 'object' && 'code' in error)
+                  databaseErrors.push(String(error.code));
+                throw error;
+              }
+            });
+          return runner;
+        });
+      try {
+        const responses = await Promise.all(
+          [first, second].map((doc, index) =>
+            request(ctx.server)
+              .post(
+                operation === 'initial'
+                  ? `/api/esign/documents/${doc}/initiations`
+                  : `/api/esign/documents/${doc}/initiation-jobs/${parents[index].publicId}/retries`,
+              )
+              .set('Cookie', cookie)
+              .set('Origin', origin)
+              .set('Idempotency-Key', randomUUID())
+              .send(operation === 'initial' ? body() : {}),
+          ),
+        );
+        // 即使紅燈也記錄成功建立的工作，供本測試清理 queue。
+        for (const doc of [first, second]) {
+          const rows = await mysql
+            .getManager()
+            .findBy(EsignInitiationJob, { documentId: Number(doc) });
+          rows.forEach((row) => ownedJobs.add(row.id));
+        }
+        await writeFile(
+          '/tmp/022-accept-gap-evidence.json',
+          JSON.stringify({
+            statuses: responses.map((r) => r.status),
+            databaseErrors,
+          }),
+        );
+        expect(responses.map((r) => r.status)).toEqual([202, 202]);
+        expect(isolationStatements).toEqual(
+          Array(2).fill('SET TRANSACTION ISOLATION LEVEL READ COMMITTED'),
+        );
+        expect(afterCommits).toHaveLength(2);
+        afterCommits.forEach((settings) => expect(settings).toEqual(before));
+        await mysql.transaction(async (manager) => {
+          expect(await manager.query<Isolation[]>(isolationSql)).toEqual(
+            before,
+          );
+        });
+        expect(isolationStatements).toHaveLength(2);
+      } finally {
+        ready.resolve();
+        barrier.mockRestore();
+        runners.forEach((runner) => jest.spyOn(runner, 'query').mockRestore());
+      }
+    },
+  );
+
   it('正式worker持users/document/job鎖5秒時，同建立人另一份文件仍在3秒內受理', async () => {
     const doc = await newDoc();
     const second = await newDoc();

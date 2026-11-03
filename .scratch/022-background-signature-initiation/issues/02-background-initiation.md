@@ -68,3 +68,10 @@
 - 正式 worker 與受理／retry 建立人資格採共享鎖，保留 users → document → job 與資格原子性；其他停用／Email／員編寫入仍採排他鎖並等正式提交。
 - 真 worker 持鎖 5 秒期間，另一文件受理由約 5,027ms 降至約 8–12ms；實作回歸 8 suites／79 e2e、build/lint 通過，merge hook 115 suites／1,180 tests、lint 0 errors／272 既有 warnings 通過。
 - 本次只整合此共享鎖 commit，不含後續同文件快速 busy 補修；08 整體驗收仍未完成，未修改 client。
+
+### 2026-11-04 跨文件並行受理 gap deadlock 補修
+
+- 08 回歸發現同建立人不同文件 Promise.all 受理 `[202,503]`；SHOW ENGINE 顯示 request unique index gap X／insert intention 互等。專用 HTTP/DB INSERT barrier 重現 raw `ER_LOCK_DEADLOCK`。
+- 僅 accept/retry 短交易指定 RC，保留 document 鎖、key/active unique、current read 及所有正式 worker 交易。MysqlService 可選 isolation 參數不改既有 callback/default。
+- initial/retry 各兩文件並行都 `[202,202]`；真連線 commit 後 SESSION/GLOBAL 隔離維持不變，後續預設交易不發指定隔離 SQL。詳細原因與官方來源見 research R15。
+- 驗證：8 suites / 82 e2e、115 suites / 1180 unit、build 通過；新增專用鎖測試 lint 無警告。未修改 08 測試檔或其長測 DB。

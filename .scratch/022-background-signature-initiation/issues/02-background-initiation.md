@@ -61,3 +61,10 @@
 - 實作 commit `af8b6210c6a5bc129860d29517752c374d852b70` 已由 `impl/022-02` 無衝突合併至 `impl/022-integration`，merge commit `17afd13e9b13cd78a091ad81d4b482c95f84fc76`。
 - 合併 hook：server/client lint 通過（0 errors、272 既有 warnings），單元 113 suites／1,175 tests 通過。實作證據為 HTTP／真 queue acceptance 10／10、schema／migration 15／15、build 通過。
 - T004–T011 驗收及整合完成，狀態改 resolved；client 無修改。03–08 後續界線仍保留，不宣稱整份規格或舊 201 e2e 已完成。
+
+## 共享資格鎖補修整合紀錄
+
+- 指定補修 commit `2655231bfaca4cee88992600991971268a9fddc2` 已合併至 `impl/022-integration`，merge commit `f12b9f4fee6439eb578f8521c5c9bebd3ec3eeaf`；僅06票追加紀錄衝突，已保留兩邊證據，程式無衝突。
+- 正式 worker 與受理／retry 建立人資格採共享鎖，保留 users → document → job 與資格原子性；其他停用／Email／員編寫入仍採排他鎖並等正式提交。
+- 真 worker 持鎖 5 秒期間，另一文件受理由約 5,027ms 降至約 8–12ms；實作回歸 8 suites／79 e2e、build/lint 通過，merge hook 115 suites／1,180 tests、lint 0 errors／272 既有 warnings 通過。
+- 本次只整合此共享鎖 commit，不含後續同文件快速 busy 補修；08 整體驗收仍未完成，未修改 client。

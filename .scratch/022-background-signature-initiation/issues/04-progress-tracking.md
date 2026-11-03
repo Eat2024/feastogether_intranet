@@ -67,3 +67,10 @@
 - 新 key／無 key 的重複發起，以及新 key retry，committing 時立即固定 worker 409。先驗有效建立人／文件，retry 再驗 parent 存在及關聯，避免 busy 洩漏或蓋過 404。
 - document+key EXISTS 命中時保留原鎖內重播：測試 active 同 key 等 commit 回原 succeeded；歷史 initial/retry key 即使已有新 active 工作仍回原 failed 摘要；錯 hash/parent 仍 REQUEST_CONFLICT，錯 parent 404。
 - 最終專用鎖測試增為 8 項；不增加 JSON 讀取、表、環境變數或前端修改。
+
+## 正式交易期間快速 busy 補修整合紀錄
+
+- 僅指定 commit `3f3f7f913c71a35358a3c256d89fed6558034141` 無衝突合併至 `impl/022-integration`，merge commit `34d3077974efd51e0791707c5652f16a57318033`；未取用 locks worktree 後續未提交變更，票 04 保持 resolved。
+- 有權人的 fields／draftSave／settings／title／PDF／delete／note／stop／reopen／reminder 在正式 committing 文件鎖期間先取得固定 409 worker 執行中訊息，越權仍 404；原鎖內 busy guard 保留作競態防線。
+- 實作 79 e2e、build/lint 通過；整合 hook lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過。
+- 無 client 修改；accept／retry 重複發起 fast busy 與歷史 key 重播優先仍待下一補修，08 整體驗收未完成。

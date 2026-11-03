@@ -16,8 +16,7 @@ import { EsignTokenService } from '#app/features/esign/services/esign-token.serv
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.options';
 import { withSchemaTestDatabase } from '#app/infrastructure/database/test/schema-test-database';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
-import { FeastogetherDepartmentService } from '#app/infrastructure/http-client/feastogether/services/feastogether-department.service';
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { GuardedInvitationMailSender } from '#app/infrastructure/mail/guarded-invitation-mail-sender.service';
 import { MailRecipientPolicyService } from '#app/infrastructure/mail/mail-recipient-policy.service';
@@ -53,26 +52,34 @@ async function fixture(ds: DataSource) {
   const tokens = new EsignTokenService(config);
   const notifications = new NotificationRepository();
   const auditRepository = new AuditEventRepository();
-  // 信箱只來自明確合成人資資料，不從寄送輸入或文件快照自動允許。
-  const staff = [
-    { person_empid: 'WL0301', email: 'allowed@example.test' },
-    { person_empid: 'WL0302', email: 'blocked@example.test' },
-  ];
+  const employeeRepository = new UserRepository();
+  const readEmails = jest.spyOn(employeeRepository, 'findMailWhitelistEmails');
   const upstream = {
-    post: jest.fn((_path: string, body: { person_empids: string[] }) =>
-      Promise.resolve(
-        staff.filter((item) => body.person_empids.includes(item.person_empid)),
-      ),
-    ),
+    post: jest.fn(() => {
+      throw new Error('不得查 HR');
+    }),
     get: jest.fn(() => {
-      throw new Error('員編白名單的 worker 不得逐人查詢資格');
+      throw new Error('不得查 HR');
     }),
   };
+  await manager.insert(User, [
+    {
+      empid: 'WL0301',
+      name: '合成白名單員工',
+      isActive: true,
+      email: 'allowed@example.test',
+    },
+    {
+      empid: 'WL0302',
+      name: '合成白名單員工',
+      isActive: true,
+      email: 'blocked@example.test',
+    },
+  ]);
   const policy = new MailRecipientPolicyService(
     mysql,
     new MailRecipientWhitelistRepository(),
-    new FeastogetherDepartmentService(upstream as never),
-    new FeastogetherHrService(upstream as never),
+    employeeRepository,
   );
   const adapter = new FakeInvitationMailSender();
   const sender = new GuardedInvitationMailSender(config, policy, adapter);
@@ -185,6 +192,7 @@ async function fixture(ds: DataSource) {
     notifications,
     batch,
     policy,
+    readEmails,
   };
 }
 
@@ -208,6 +216,103 @@ async function withFixture(run: (context: Fixture) => Promise<void>) {
 describe('白名單群發與催簽完整 worker 路徑', () => {
   jest.setTimeout(60_000);
   afterEach(() => jest.restoreAllMocks());
+
+  it('501個員編以兩次批次讀取信箱，跨批共用地址去重', async () => {
+    await withFixture(async ({ manager }) => {
+      const empids = Array.from(
+        { length: 501 },
+        (_, i) => `BATCH${String(i).padStart(4, '0')}`,
+      );
+      await manager.insert(
+        User,
+        empids.map((empid) => ({
+          empid,
+          name: '合成批次員工',
+          email: 'shared@example.test',
+          isActive: true,
+        })),
+      );
+      const read = jest.spyOn(manager, 'createQueryBuilder');
+      const result = await new UserRepository().findMailWhitelistEmails(
+        empids,
+        [],
+        manager,
+      );
+      expect(result).toEqual(['shared@example.test']);
+      expect(read).toHaveBeenCalledTimes(2);
+      read.mockRestore();
+    });
+  });
+
+  it('本機直接部門與員編精確比對，排除停用／軟刪／空信箱且主檔更新不改舊目標', async () => {
+    await withFixture(async ({ manager, policy, rule }) => {
+      rule.deletedAt = new Date();
+      await manager.save(rule);
+      await manager.insert(User, [
+        {
+          empid: 'Case001',
+          name: '合成員工',
+          departmentCode: 'D01',
+          email: 'direct@example.test',
+        },
+        {
+          empid: 'Case002',
+          name: '合成員工',
+          departmentCode: 'D0101',
+          email: 'child@example.test',
+        },
+        {
+          empid: 'Case003',
+          name: '合成員工',
+          departmentCode: 'd01',
+          email: 'case@example.test',
+        },
+        {
+          empid: 'Case004',
+          name: '合成員工',
+          departmentCode: 'D01',
+          email: 'disabled@example.test',
+          isActive: false,
+        },
+        {
+          empid: 'Case005',
+          name: '合成員工',
+          departmentCode: 'D01',
+          email: 'deleted@example.test',
+          deletedAt: new Date(),
+        },
+        {
+          empid: 'Case006',
+          name: '合成員工',
+          departmentCode: 'D01',
+          email: null,
+        },
+      ]);
+      await saveRule(manager, 'department', 'D01');
+      await saveRule(manager, 'employee', 'case002');
+      const requested = [
+        'direct@example.test',
+        'child@example.test',
+        'case@example.test',
+        'disabled@example.test',
+        'deleted@example.test',
+      ];
+      await expect(policy.allowedRecipients(requested)).resolves.toEqual(
+        new Set(['direct@example.test']),
+      );
+      await manager.update(
+        User,
+        { empid: 'Case001' },
+        { email: 'new@example.test' },
+      );
+      await expect(policy.allowedRecipients(requested)).resolves.toEqual(
+        new Set(),
+      );
+      await expect(
+        policy.allowedRecipients(['new@example.test']),
+      ).resolves.toEqual(new Set(['new@example.test']));
+    });
+  });
 
   it('混合且重複地址只投遞允許信箱，逐人結果與批次總數收斂', async () => {
     await withFixture(async ({ batch, adapter }) => {
@@ -303,11 +408,9 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
     '%s/%s 檢查失敗最多三次，保留30/60秒退避且 recovery 不復活耗盡工作',
     async (kind, signerType) => {
       await withFixture(
-        async ({ batch, adapter, upstream, notifications, manager }) => {
+        async ({ batch, adapter, readEmails, notifications, manager }) => {
           const work = await batch(kind, ['allowed@example.test'], signerType);
-          upstream.post.mockRejectedValue(
-            new Error('合成上游秘密，不可寫入紀錄'),
-          );
+          readEmails.mockRejectedValue(new Error('合成上游秘密，不可寫入紀錄'));
           for (const [index, delay] of [30_000, 60_000, null].entries()) {
             const before = Date.now();
             await work.run();
@@ -337,9 +440,9 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
               expect(log.reminderTokenCiphertext).toBeNull();
             }
           }
-          upstream.post.mockClear();
+          readEmails.mockClear();
           await work.run();
-          expect(upstream.post).not.toHaveBeenCalled();
+          expect(readEmails).not.toHaveBeenCalled();
           expect(adapter.deliveries).toEqual([]);
           expect(adapter.internalGroupDeliveries).toEqual([]);
           expect(await work.events()).toEqual([]);
@@ -540,13 +643,20 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
     '%s 來源故障後每次重試重查規則，撤銷使下一次成為終止跳過',
     async (signerType) => {
       await withFixture(
-        async ({ batch, rule, upstream, manager, notifications, adapter }) => {
+        async ({
+          batch,
+          rule,
+          readEmails,
+          manager,
+          notifications,
+          adapter,
+        }) => {
           const work = await batch(
             'reminder',
             ['allowed@example.test'],
             signerType,
           );
-          upstream.post.mockRejectedValueOnce(new Error('合成來源故障'));
+          readEmails.mockRejectedValueOnce(new Error('合成來源故障'));
           await work.run();
           const [retry] = await work.logs();
           expect(retry.errorCode).toBe('MAIL_WHITELIST_CHECK_FAILED');

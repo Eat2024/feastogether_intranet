@@ -1,3 +1,4 @@
+import { User } from '#app/features/users/entities/user.entity';
 import { EsignInitiationService } from './esign-initiation.service';
 
 describe('EsignInitiationService', () => {
@@ -62,13 +63,15 @@ describe('EsignInitiationService', () => {
     };
     const signerRepository = {
       findByDocumentForUpdate: jest.fn(async () => signers),
-      saveMany: jest.fn(async (value: object[]) => value),
+      saveMany: jest.fn(),
+      deleteDraftSigners: jest.fn(),
+      insertMany: jest.fn(async (value: object[]) => value),
     };
     const notifications = {
       createBatch: jest.fn((value: object) => value),
       saveBatch: jest.fn(async (value: object) => ({ id: 41, ...value })),
       createLog: jest.fn((value: object) => value),
-      saveLogs: jest.fn(async (values: object[]) =>
+      insertLogs: jest.fn(async (values: object[]) =>
         values.map((value, index) => ({ id: 51 + index, ...value })),
       ),
     };
@@ -98,10 +101,10 @@ describe('EsignInitiationService', () => {
         ciphertext: 'v1.encrypted',
       })),
     };
-    const audit = { append: jest.fn() };
+    const audit = { append: jest.fn(), appendMany: jest.fn() };
     const jobs = { enqueueInvitations: jest.fn() };
     const signerService = {
-      updateSigners: jest.fn(() => Promise.resolve(signers)),
+      prepareSigners: jest.fn(() => Promise.resolve(signers)),
     };
     const fieldService = {
       buildFields: jest.fn(async () => ({
@@ -109,6 +112,24 @@ describe('EsignInitiationService', () => {
         source,
         sourceMetadata: await pdf.validatePersistedPdf(),
       })),
+    };
+    const employeeEmails = {
+      resolveForInitiation: jest.fn(() =>
+        Promise.resolve(
+          new Map([
+            [
+              8,
+              Object.assign(new User(), {
+                id: 8,
+                empid: 'E008',
+                email: 'employee@example.test',
+                name: '員工',
+                isActive: true,
+              }),
+            ],
+          ]),
+        ),
+      ),
     };
     const service = new EsignInitiationService(
       mysql as never,
@@ -122,15 +143,12 @@ describe('EsignInitiationService', () => {
       jobs as never,
       signerService as never,
       fieldService as never,
-      {
-        resolveUsers: jest.fn(async () => [{ userId: 8, empid: 'E008' }]),
-        lookupEmails: jest.fn(async () => [
-          { userId: 8, empid: 'E008', email: 'employee@example.test' },
-        ]),
-      } as never,
+      employeeEmails as never,
     );
     return {
       service,
+      signerRepository,
+      employeeEmails,
       signerService,
       fieldService,
       document,
@@ -145,6 +163,7 @@ describe('EsignInitiationService', () => {
   it('鎖定草稿後固定 canonical payload 並只建立一次外部邀請 outbox', async () => {
     const {
       service,
+      signerRepository,
       document,
       access,
       notifications,
@@ -152,6 +171,7 @@ describe('EsignInitiationService', () => {
       audit,
       signerService,
       fieldService,
+      employeeEmails,
     } = setup();
     await service.initiate({
       documentId: 3,
@@ -176,11 +196,20 @@ describe('EsignInitiationService', () => {
       allowReject: true,
     });
 
-    expect(signerService.updateSigners).toHaveBeenCalledWith(
+    expect(employeeEmails.resolveForInitiation).toHaveBeenCalledWith(
+      [],
+      7,
+      manager,
+    );
+    expect(
+      employeeEmails.resolveForInitiation.mock.invocationCallOrder[0],
+    ).toBeLessThan(access.checkAndLockDraftDoc.mock.invocationCallOrder[0]);
+    expect(signerService.prepareSigners).toHaveBeenCalledWith(
       document,
       7,
       expect.any(Array),
       manager,
+      expect.any(Map),
     );
     expect(fieldService.buildFields).toHaveBeenCalledWith(
       document,
@@ -211,26 +240,33 @@ describe('EsignInitiationService', () => {
       'sensitive',
     );
     expect(notifications.saveBatch).toHaveBeenCalledTimes(1);
-    expect(notifications.saveLogs).toHaveBeenCalledTimes(1);
+    expect(notifications.insertLogs).toHaveBeenCalledTimes(1);
     expect(jobs.enqueueInvitations).toHaveBeenCalledWith([51]);
-    expect(audit.append).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        documentId: 3,
-        signerId: 11,
-        actorUserId: 7,
-        eventType: 'signer.assigned',
-        metadata: { status: 'pending' },
-      }),
+    expect(signerRepository.insertMany).toHaveBeenCalledTimes(1);
+    expect(signerRepository.saveMany).not.toHaveBeenCalled();
+    expect(signerRepository.insertMany).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          invitationTokenSha256: 'c'.repeat(64),
+          invitationTokenCiphertext: 'v1.encrypted',
+          invitationExpiresAt: end,
+        }),
+      ],
       manager,
     );
-    expect(audit.append).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        documentId: 3,
-        actorUserId: 7,
-        eventType: 'document.initiated',
-      }),
+    expect(audit.append).not.toHaveBeenCalled();
+    expect(audit.appendMany).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          documentId: 3,
+          signerId: 11,
+          eventType: 'signer.assigned',
+        }),
+        expect.objectContaining({
+          documentId: 3,
+          eventType: 'document.initiated',
+        }),
+      ],
       manager,
     );
   });
@@ -342,7 +378,7 @@ describe('EsignInitiationService', () => {
     expect(notifications.saveBatch).toHaveBeenCalledTimes(1);
     expect(jobs.enqueueInvitations).toHaveBeenCalledWith([], [41]);
     expect(tokens.createInvitationToken).not.toHaveBeenCalled();
-    expect(notifications.saveLogs.mock.calls[0][0]).toEqual([
+    expect(notifications.insertLogs.mock.calls[0][0]).toEqual([
       expect.objectContaining({ invitationGenerationSha256: null }),
     ]);
   });

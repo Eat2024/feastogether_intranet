@@ -15,7 +15,6 @@ describe('簽署人組織樹快取', () => {
     const service = new EsignSignerCandidateService(
       users as never,
       mysql as never,
-      hr as never,
       departments as never,
       redis as never,
       { baseUrl: source } as never,
@@ -56,7 +55,6 @@ describe('簽署人組織樹快取', () => {
       const other = new EsignSignerCandidateService(
         {} as never,
         { getManager: jest.fn() } as never,
-        {} as never,
         departments as never,
         redis as never,
         { baseUrl: 'https://other.invalid' } as never,

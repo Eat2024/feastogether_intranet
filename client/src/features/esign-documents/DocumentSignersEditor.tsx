@@ -109,7 +109,7 @@ async function resolveUserIds(
   const missing = users.filter((s) => !userIdByEmployeeNo.has(s.employeeNo));
   if (missing.length) {
     throw new Error(
-      `以下同仁無法指定為簽署人（不是試用或正式員工，或人事資料查無此人）：${missing
+      `以下同仁無法指定為簽署人（請確認帳號狀態，或聯絡維運同步員工資料）：${missing
         .map((s) => s.label)
         .join("、")}`,
     );

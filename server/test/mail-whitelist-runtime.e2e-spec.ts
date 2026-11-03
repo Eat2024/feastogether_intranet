@@ -1,3 +1,4 @@
+import { User } from '#app/features/users/entities/user.entity';
 import { randomBytes } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -102,6 +103,12 @@ describe.each([
         const sender = module.get<InvitationMailSender>(INVITATION_MAIL_SENDER);
         expect(sender).toBeInstanceOf(GuardedInvitationMailSender);
         expect(() => module.get(FakeInvitationMailSender)).toThrow();
+        await manager.insert(User, {
+          empid,
+          name: '合成白名單員工',
+          email: allowedEmail,
+          isActive: true,
+        });
         const rule = await manager.save(
           MailRecipientWhitelist,
           manager.create(MailRecipientWhitelist, {
@@ -213,12 +220,14 @@ describe.each([
         }
         // 員編規則不需組織樹，也不得逐人查詢資格；所有寄送種類均適用。
         expect(upstream.get).not.toHaveBeenCalled();
+        expect(upstream.post).not.toHaveBeenCalled();
       } finally {
         readRules?.mockRestore();
         await manager.delete(MailRecipientWhitelist, {
           type: 'employee',
           value: empid,
         });
+        await manager.delete(User, { empid });
         await module.close();
         transportFactory.mockRestore();
         fakeSend.mockRestore();

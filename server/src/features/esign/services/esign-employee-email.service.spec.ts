@@ -1,91 +1,77 @@
-import { of, Observable } from 'rxjs';
-import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import { EntityManager } from 'typeorm';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
-import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
+import { User } from '#app/features/users/entities/user.entity';
 import { EsignEmployeeEmailService } from './esign-employee-email.service';
 
 function fixture() {
-  const manager = { find: jest.fn() };
-  manager.find.mockResolvedValue([
-    { id: 1, empid: '001', isActive: true, deletedAt: null },
-    { id: 2, empid: '002', isActive: true, deletedAt: null },
-  ]);
-  const http = { post: jest.fn() };
-  http.post.mockReturnValue(
-    of({
-      data: {
-        success: true,
-        data: [
-          { person_empid: '002', email: 'shared@example.test' },
-          { person_empid: '001', email: 'shared@example.test' },
-        ],
-      },
+  const manager = {} as EntityManager;
+  const rows = [1, 2, 9].map((id) =>
+    Object.assign(new User(), {
+      id,
+      empid: `00${id}`,
+      name: '合成員工',
+      isActive: true,
+      deletedAt: null,
+      email: ' Shared@Example.test ',
     }),
   );
-  const client = new FeastogetherClient(
-    http as never,
-    { baseUrl: 'https://source.example.test', apiKey: 'synthetic' } as never,
-    { warn: jest.fn() } as never,
-  );
-  const service = new EsignEmployeeEmailService(
-    new MysqlService({ manager } as never),
-    new UserRepository(),
-
-    new FeastogetherHrService(client),
-  );
-  return { service, manager, http };
+  const findByIdsWithEmail = jest.fn(() => Promise.resolve(rows));
+  const service = new EsignEmployeeEmailService({
+    findByIdsWithEmail,
+  } as unknown as UserRepository);
+  return { service, manager, rows, findByIdsWithEmail };
 }
 
-describe('發起簽署員工信箱解析', () => {
+describe('本機發起簽署員工資料', () => {
+  it('鎖定去重排序的發起者與員工，完整身分與正規化信箱由同一讀取取得', async () => {
+    const { service, manager, findByIdsWithEmail } = fixture();
+    const result = await service.resolveForInitiation(
+      ['2', '1', '2'],
+      9,
+      manager,
+    );
+    expect(findByIdsWithEmail).toHaveBeenCalledWith([1, 2, 9], manager, true);
+    expect([...result.keys()]).toEqual([1, 2, 9]);
+    expect(result.get(1)).toMatchObject({
+      empid: '001',
+      name: '合成員工',
+      email: 'shared@example.test',
+    });
+  });
+
+  it('純外部名單仍鎖定並驗證發起者', async () => {
+    const { service, manager, findByIdsWithEmail, rows } = fixture();
+    // 發起者未列為內部簽署人時，不新增員編格式限制。
+    rows[2].empid = 'DEV-CREATOR';
+    findByIdsWithEmail.mockResolvedValue([rows[2]]);
+    expect((await service.resolveForInitiation([], 9, manager)).size).toBe(1);
+    expect(findByIdsWithEmail).toHaveBeenCalledWith([9], manager, true);
+  });
+
   it.each([1, 100, 101, 6000])(
-    '完整核對 %i 位員工，每批不超過 100 且最多 4 批在途',
+    '接受 %i 位員工；批次與鎖順序交由 repository 控制',
     async (count) => {
-      const { service, http } = fixture();
-      let active = 0;
-      let peak = 0;
-      const batchSizes: number[] = [];
-      http.post.mockImplementation(
-        (_url: string, body: { person_empids: string[] }) =>
-          new Observable((subscriber) => {
-            active++;
-            peak = Math.max(peak, active);
-            batchSizes.push(body.person_empids.length);
-            queueMicrotask(() => {
-              active--;
-              subscriber.next({
-                data: {
-                  success: true,
-                  data: body.person_empids.toReversed().map((id) => ({
-                    person_empid: id,
-                    email: `${id}@example.test`,
-                  })),
-                },
-              });
-              subscriber.complete();
-            });
-          }),
+      const { service, manager, findByIdsWithEmail } = fixture();
+      const rows = Array.from({ length: count }, (_, i) =>
+        Object.assign(new User(), {
+          id: i + 1,
+          empid: `E${i + 1}`,
+          name: '合成員工',
+          isActive: true,
+          email: null,
+        }),
       );
-      const identities = Array.from({ length: count }, (_, i) => ({
-        userId: i + 1,
-        empid: `E${i + 1}`,
-      }));
-      const result = await service.lookupEmails(identities);
-      expect(result).toHaveLength(count);
-      expect(result[0]).toEqual({
-        userId: 1,
-        empid: 'E1',
-        email: 'e1@example.test',
-      });
-      expect(result.at(-1)).toEqual({
-        userId: count,
-        empid: `E${count}`,
-        email: `e${count}@example.test`,
-      });
-      expect(new Set(result.map((r) => r.userId)).size).toBe(count);
-      expect(batchSizes).toHaveLength(Math.ceil(count / 100));
-      expect(Math.max(...batchSizes)).toBeLessThanOrEqual(100);
-      expect(peak).toBeLessThanOrEqual(4);
+      findByIdsWithEmail.mockResolvedValue(rows);
+      expect(
+        (
+          await service.resolveForInitiation(
+            rows.map((u) => String(u.id)),
+            1,
+            manager,
+          )
+        ).size,
+      ).toBe(count);
+      expect(findByIdsWithEmail).toHaveBeenCalledTimes(1);
     },
   );
 
@@ -93,101 +79,56 @@ describe('發起簽署員工信箱解析', () => {
     { isActive: false },
     { deletedAt: new Date() },
     { empid: 'invalid-id' },
-  ])('停用、刪除或員編不合法不查來源 %#', async (changed) => {
-    const { service, manager, http } = fixture();
-    manager.find.mockResolvedValue([
-      { id: 1, empid: '001', isActive: true, ...changed },
-    ]);
-    await expect(service.resolveUsers(['1'])).rejects.toMatchObject({
-      status: 422,
-      response: { details: { userIds: ['1'] } },
-    });
-    expect(http.post).not.toHaveBeenCalled();
-  });
-  it('無效帳號拒絕解析，不查信箱來源', async () => {
-    const { service, http } = fixture();
-    await expect(service.resolveUsers(['3'])).rejects.toMatchObject({
-      status: 422,
-      response: { details: { userIds: ['3'] } },
-    });
-    expect(http.post).not.toHaveBeenCalled();
-  });
-  it.each([
-    { ids: [] },
-    { ids: ['01'] },
-    { ids: ['9007199254740992'] },
-    { ids: Array<string>(6001).fill('1') },
-  ])('拒絕空名單、非法或不安全ID與超量名單 %#', async ({ ids }) => {
-    const { service, http } = fixture();
-    await expect(service.resolveUsers(ids)).rejects.toMatchObject({
-      status: 422,
-    });
-    expect(http.post).not.toHaveBeenCalled();
-  });
-  it('缺漏及非法地址回 null 而非來源失敗', async () => {
-    const { service, http } = fixture();
-    http.post.mockReturnValue(
-      of({
-        data: {
-          success: true,
-          data: [{ person_empid: '002', email: 'invalid' }],
-        },
-      }),
-    );
+  ])('停用、刪除或員編不合法拒絕發起 %#', async (changed) => {
+    const { service, manager, rows } = fixture();
+    Object.assign(rows[0], changed);
     await expect(
-      service.lookupEmails(await service.resolveUsers(['1', '2'])),
-    ).resolves.toEqual([
-      { userId: 1, empid: '001', email: null },
-      { userId: 2, empid: '002', email: null },
-    ]);
+      service.resolveForInitiation(['1'], 9, manager),
+    ).rejects.toMatchObject({ status: 422 });
   });
-  it('每批最多 100，最多 4 批併發；失敗後不再派送且等待已派請求收束', async () => {
-    const { service, http } = fixture();
-    const requests: Array<{
-      ids: string[];
-      finish: () => void;
-      fail: () => void;
-    }> = [];
-    http.post.mockImplementation(
-      (_url: string, body: { person_empids: string[] }) =>
-        new Observable((subscriber) => {
-          requests.push({
-            ids: body.person_empids,
-            finish: () => {
-              subscriber.next({ data: { success: true, data: [] } });
-              subscriber.complete();
-            },
-            fail: () => subscriber.error(new Error('合成來源失敗')),
-          });
-        }),
-    );
-    const identities = Array.from({ length: 501 }, (_, i) => ({
-      userId: i + 1,
-      empid: `E${i + 1}`,
-    }));
-    let settled = false;
-    const pending = service.lookupEmails(identities);
-    const rejected = expect(pending).rejects.toMatchObject({ status: 502 });
-    void pending.catch(() => {
-      settled = true;
-    });
-    await Promise.resolve();
-    expect(requests).toHaveLength(4);
-    expect(requests.map((r) => r.ids.length)).toEqual([100, 100, 100, 100]);
-    requests[0].fail();
-    for (let i = 0; i < 10; i++) await Promise.resolve();
-    expect(settled).toBe(false);
-    requests.slice(1).forEach((r) => r.finish());
-    await rejected;
-    expect(requests).toHaveLength(4);
-  });
-  it('解析保留去重後原順序，同信箱仍保留各員工', async () => {
-    const { service } = fixture();
+
+  it('缺少簽署人或發起者不能當作缺信箱', async () => {
+    const { service, manager } = fixture();
     await expect(
-      service.lookupEmails(await service.resolveUsers(['2', '1', '2'])),
-    ).resolves.toEqual([
-      { userId: 2, empid: '002', email: 'shared@example.test' },
-      { userId: 1, empid: '001', email: 'shared@example.test' },
+      service.resolveForInitiation(['3'], 9, manager),
+    ).rejects.toMatchObject({ status: 422 });
+    await expect(
+      service.resolveForInitiation(['1'], 8, manager),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it.each([['01'], ['9007199254740992'], Array<string>(6001).fill('1')])(
+    '格式或上限錯誤不查DB %#',
+    async (...ids) => {
+      const { service, manager, findByIdsWithEmail } = fixture();
+      await expect(
+        service.resolveForInitiation(ids, 9, manager),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(findByIdsWithEmail).not.toHaveBeenCalled();
+    },
+  );
+
+  it('空白、NULL、非法地址不取消員工資格，同信箱也不合併員工', async () => {
+    const { service, manager, rows } = fixture();
+    rows[0].email = null;
+    rows[1].email = 'bad-email';
+    rows[2].email = '  ';
+    const result = await service.resolveForInitiation(['1', '2'], 9, manager);
+    expect([...result.values()].map((u) => u.email)).toEqual([
+      null,
+      null,
+      null,
     ]);
+  });
+
+  it('DB故障回來源失敗，不退回null信箱集合', async () => {
+    const { service, manager, findByIdsWithEmail } = fixture();
+    findByIdsWithEmail.mockRejectedValue(new Error('合成DB故障'));
+    await expect(
+      service.resolveForInitiation(['1'], 9, manager),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: 'ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE',
+    });
   });
 });

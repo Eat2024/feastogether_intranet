@@ -89,6 +89,7 @@ describe('拒簽 HTTP 與結案', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
+    await seedSyntheticStaffEmails(ctx.app, ['E2E00903']);
     const rows = await db.query<Array<{ id: string }>>(
       "SELECT id FROM users WHERE empid = 'E2E00903'",
     );
@@ -513,4 +514,7 @@ describe('拒簽 HTTP 與結案', () => {
       .expect(200);
   });
 });
-import { syntheticStaffEmails } from './synthetic-staff-emails.helper';
+import {
+  syntheticStaffEmails,
+  seedSyntheticStaffEmails,
+} from './synthetic-staff-emails.helper';

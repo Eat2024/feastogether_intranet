@@ -1,3 +1,4 @@
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { randomBytes, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { User } from '#app/features/users/entities/user.entity';
@@ -26,6 +27,7 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
   let ctx: SecurityE2eContext;
   let creator: User;
   let sourceFailed = false;
+  let readEmails: jest.SpyInstance;
   const empid = `OTP${randomBytes(4).toString('hex')}`;
   const email = `${empid.toLowerCase()}@example.test`;
   const transport = jest.spyOn(FakeInvitationMailSender.prototype, 'sendOtp');
@@ -33,16 +35,9 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     get: jest.fn(() => {
       throw new Error('OTP 白名單不得逐人查詢資格');
     }),
-    post: (path: string, body: { person_empids: string[] }) => {
-      if (sourceFailed) throw new Error('synthetic-upstream-secret');
-      if (path === '/api/v1/hr/staff_emails')
-        return Promise.resolve(
-          body.person_empids
-            .filter((id) => id === empid)
-            .map((person_empid) => ({ person_empid, email })),
-        );
-      throw new Error('未安排的合成上游查詢');
-    },
+    post: jest.fn(() => {
+      throw new Error('不得呼叫 HR');
+    }),
   };
   beforeAll(async () => {
     ctx = await createSecurityE2eApp(
@@ -50,6 +45,21 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
       null,
     );
     const manager = ctx.app.get(MysqlService).getManager();
+    await manager.insert(User, {
+      empid,
+      name: '合成白名單員工',
+      email,
+      isActive: true,
+    });
+    const users = ctx.app.get<UserRepository>(UserRepository);
+    const originalRepository = new UserRepository();
+    readEmails = jest
+      .spyOn(users, 'findMailWhitelistEmails')
+      .mockImplementation((...args) => {
+        if (sourceFailed)
+          return Promise.reject(new Error('synthetic-db-secret'));
+        return originalRepository.findMailWhitelistEmails(...args);
+      });
     creator = await manager.save(
       User,
       manager.create(User, {
@@ -77,10 +87,24 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
   });
   afterEach(() => {
     expect(hr.get).not.toHaveBeenCalled();
+    expect(hr.post).not.toHaveBeenCalled();
   });
   afterAll(async () => {
     transport.mockRestore();
-    if (ctx) await closeSecurityE2eApp(ctx);
+    readEmails?.mockRestore();
+    if (ctx) {
+      const manager = ctx.app.get(MysqlService).getManager();
+      await manager.delete(MailRecipientWhitelist, {
+        type: 'employee',
+        value: empid,
+      });
+      await manager.delete(MailRecipientWhitelist, {
+        type: 'email',
+        value: email,
+      });
+      await manager.delete(User, { empid });
+      await closeSecurityE2eApp(ctx);
+    }
   });
   async function fixture() {
     const manager = ctx.app.get(MysqlService).getManager();
@@ -165,7 +189,7 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
         .get(MysqlService)
         .getManager()
         .count(User, { where: { empid } }),
-    ).toBe(0);
+    ).toBe(1);
     await otp(token).expect(200);
     const [mail] = transport.mock.calls[0];
     expect(mail.recipientEmail).toBe(email);
@@ -177,7 +201,7 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     await allow();
     sourceFailed = true;
     const failed = await otp(token).expect(503);
-    expect(failed.text).not.toContain('synthetic-upstream-secret');
+    expect(failed.text).not.toContain('synthetic-db-secret');
     expect(transport).not.toHaveBeenCalled();
     expect(await audits(signer)).toBe(0);
     const redis = ctx.app.get(RedisService);
@@ -189,7 +213,7 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     await otp(token).expect(200);
     expect(await audits(signer)).toBe(1);
   });
-  it('信箱規則命中時人資來源故障仍寄出並可驗證，不查人資來源', async () => {
+  it('信箱規則命中時本機員工查詢故障仍寄出並可驗證', async () => {
     const { token, signer } = await fixture();
     await allow('email', email);
     sourceFailed = true;

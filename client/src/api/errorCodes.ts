@@ -3,6 +3,9 @@
  * getErrorMessage 優先使用後端回傳的 message，後端沒有給 message 時才使用這裡的對照。
  */
 export const ERROR_CODE_MAP: Record<string, string> = {
+  ESIGN_EMPLOYEE_DIRECTORY_UNAVAILABLE: '本機員工資料暫時無法使用，請稍後再試',
+  ESIGN_EMPLOYEE_EMAIL_SOURCE_UNAVAILABLE: '本機員工信箱資料暫時無法使用，請稍後再試',
+
   // --- Auth ---
   UNAUTHORIZED: '登入已過期，請從入口網重新進入電子簽',
   INVALID_CREDENTIALS: '員工編號或密碼錯誤，或登入已失效',

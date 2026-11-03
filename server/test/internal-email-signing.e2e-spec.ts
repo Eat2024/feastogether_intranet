@@ -58,6 +58,7 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
       [0, 1, 2].map((index) =>
         manager.create(User, {
           empid: `S${prefix}${index}`,
+          email: 'shared@example.test',
           name: `合成人員${index}`,
           isActive: true,
           departmentCode: `TEST017-${index}`,

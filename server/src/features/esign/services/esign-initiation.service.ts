@@ -19,10 +19,7 @@ import { EsignSignerService } from './esign-signer.service';
 import { EsignFieldService } from './esign-field.service';
 import type { SignerInputDto } from '../dto/signer.dto';
 import type { FieldPlacementDto } from '../dto/field.dto';
-import {
-  EsignEmployeeEmailService,
-  type EmployeeEmailResult,
-} from './esign-employee-email.service';
+import { EsignEmployeeEmailService } from './esign-employee-email.service';
 
 export interface InitiateDocumentInput {
   signers: SignerInputDto[];
@@ -62,52 +59,33 @@ export class EsignInitiationService {
 
   async initiate(input: InitiateDocumentInput) {
     this.validateSigningPeriod(input);
-    const emails = await this.prepareEmployeeEmails(input);
+    const userIds = await this.prepareEmployeeIds(input);
     const result = await this.mysql.transaction(async (manager) => {
+      const lockedUsers = await this.employeeEmails.resolveForInitiation(
+        userIds,
+        input.creatorUserId,
+        manager,
+      );
       const document = await this.access.checkAndLockDraftDoc(
         input.documentId,
         input.creatorUserId,
         manager,
       );
-      if (emails.length) {
-        try {
-          const current = await this.employeeEmails.resolveUsers(
-            emails.map((item) => String(item.userId)),
-            manager,
-          );
-          const original = new Map(
-            emails.map((item) => [item.userId, item.empid]),
-          );
-          if (current.some((item) => original.get(item.userId) !== item.empid))
-            throw new AppException(
-              ...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED,
-            );
-        } catch (error) {
-          if (
-            error instanceof AppException &&
-            error.code === 'ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE'
-          )
-            throw new AppException(
-              ...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED,
-            );
-          throw error;
-        }
-      }
-      const signers = await this.signerService.updateSigners(
+      const preparedSigners = await this.signerService.prepareSigners(
         document,
         input.creatorUserId,
         input.signers,
         manager,
+        lockedUsers,
       );
-      const emailByUser = new Map(emails.map((item) => [item.userId, item]));
-      for (const signer of signers) {
+      for (const signer of preparedSigners) {
         if (signer.signerType !== 'user') continue;
         const fixed = signer.userId
-          ? emailByUser.get(signer.userId)
+          ? lockedUsers.get(Number(signer.userId))
           : undefined;
         if (!fixed || fixed.empid !== signer.empidSnapshot)
           throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_CHANGED);
-        signer.email = fixed.email;
+        signer.email = fixed.email ?? null;
       }
       const { fields, sourceMetadata } = await this.fieldService.buildFields(
         document,
@@ -117,10 +95,13 @@ export class EsignInitiationService {
       );
       this.validateSigningAssignments(
         document,
-        signers,
+        preparedSigners,
         fields,
         sourceMetadata.pageCount,
       );
+      this.prepareInvitationTokens(input, preparedSigners);
+      await this.signers.deleteDraftSigners(document.id, manager);
+      const signers = await this.signers.insertMany(preparedSigners, manager);
       const snapshot = this.buildSigningSnapshot(
         input,
         document,
@@ -129,11 +110,6 @@ export class EsignInitiationService {
         sourceMetadata,
       );
       const initiatedAt = new Date();
-      const invitationSigners = await this.createInvitationTokens(
-        input,
-        signers,
-        manager,
-      );
       await this.activateDocument(
         input,
         document,
@@ -144,7 +120,7 @@ export class EsignInitiationService {
       const notificationJobs = await this.createInvitationNotifications(
         input,
         document.id,
-        invitationSigners,
+        signers,
         initiatedAt,
         manager,
       );
@@ -164,21 +140,20 @@ export class EsignInitiationService {
     return result.document;
   }
 
-  private async prepareEmployeeEmails(
+  private async prepareEmployeeIds(
     input: InitiateDocumentInput,
-  ): Promise<EmployeeEmailResult[]> {
+  ): Promise<string[]> {
     const document = await this.documents.findById(
       input.documentId,
       this.mysql.getManager(),
     );
     this.access.checkEsignDraftCreator(document, input.creatorUserId);
+    if (!Array.isArray(input.signers) || !input.signers.length)
+      throw new AppException(...AppErrors.ESIGN_SIGNER_REQUIRED);
     const userIds = input.signers
       .filter((signer) => signer.type === 'user')
       .map((signer) => signer.userId!);
-    if (!userIds.length) return [];
-    const identities = await this.employeeEmails.resolveUsers(userIds);
-    const emails = await this.employeeEmails.lookupEmails(identities);
-    return emails;
+    return userIds;
   }
 
   private validateSigningPeriod(input: InitiateDocumentInput): void {
@@ -272,13 +247,11 @@ export class EsignInitiationService {
     return { payload, payloadSha256, consentVersion: activeConsent.version };
   }
 
-  private async createInvitationTokens(
+  private prepareInvitationTokens(
     input: InitiateDocumentInput,
     signers: EsignSigner[],
-    manager: EntityManager,
-  ): Promise<EsignSigner[]> {
-    const invitationSigners = signers;
-    for (const signer of invitationSigners) {
+  ): void {
+    for (const signer of signers) {
       if (signer.signerType === 'user') {
         signer.invitationTokenSha256 = null;
         signer.invitationTokenCiphertext = null;
@@ -292,10 +265,6 @@ export class EsignInitiationService {
       signer.invitationExpiresAt = input.signEndAt;
       signer.updatedByUserId = input.creatorUserId;
     }
-    if (invitationSigners.length > 0) {
-      await this.signers.saveMany(invitationSigners, manager);
-    }
-    return invitationSigners;
   }
 
   private async activateDocument(
@@ -338,7 +307,7 @@ export class EsignInitiationService {
         ),
         manager,
       );
-      const logs = await this.notifications.saveLogs(
+      const logs = await this.notifications.insertLogs(
         invitationSigners.map((signer) => {
           const unavailable = signer.signerType === 'user' && !signer.email;
           return this.notifications.createLog(
@@ -393,27 +362,24 @@ export class EsignInitiationService {
     initiatedAt: Date,
     manager: EntityManager,
   ): Promise<void> {
-    for (const signer of signers) {
-      await this.audit.append(
-        {
+    await this.audit.appendMany(
+      [
+        ...signers.map((signer) => ({
           documentId: document.id,
           signerId: signer.id,
           actorUserId: input.creatorUserId,
           eventType: 'signer.assigned',
           occurredAt: initiatedAt,
           metadata: { status: 'pending' },
+        })),
+        {
+          documentId: document.id,
+          actorUserId: input.creatorUserId,
+          eventType: 'document.initiated',
+          occurredAt: initiatedAt,
+          metadata: { status: 'active', consentVersion },
         },
-        manager,
-      );
-    }
-    await this.audit.append(
-      {
-        documentId: document.id,
-        actorUserId: input.creatorUserId,
-        eventType: 'document.initiated',
-        occurredAt: initiatedAt,
-        metadata: { status: 'active', consentVersion: consentVersion },
-      },
+      ],
       manager,
     );
   }

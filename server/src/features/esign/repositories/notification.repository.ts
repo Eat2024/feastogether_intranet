@@ -1,6 +1,7 @@
 import { EsignSigner } from '../entities/esign-signer.entity';
 import { Injectable } from '@nestjs/common';
 import { type DeepPartial, type EntityManager, In } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignNotificationBatch } from '../entities/esign-notification-batch.entity';
 import { EsignNotificationLog } from '../entities/esign-notification-log.entity';
@@ -107,6 +108,43 @@ export class NotificationRepository {
 
   saveLogs(logs: EsignNotificationLog[], manager: EntityManager) {
     return manager.save(logs);
+  }
+
+  /** 僅初建；由呼叫端交易保證跨批原子性，回查唯一鍵而不推算流水號。 */
+  async insertLogs(
+    logs: EsignNotificationLog[],
+    manager: EntityManager,
+  ): Promise<EsignNotificationLog[]> {
+    if (logs.some((log) => log.id !== undefined))
+      throw new Error('通知批次初建不接受既有流水號');
+    const persisted: EsignNotificationLog[] = [];
+    const key = (log: EsignNotificationLog) =>
+      JSON.stringify([String(log.batchId), String(log.signerId), log.channel]);
+    for (let offset = 0; offset < logs.length; offset += 250) {
+      const batch = logs.slice(offset, offset + 250);
+      // 保留 listeners/subscribers；停用 TypeORM 對 MySQL 生成欄位的額外回填 SELECT。
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into(EsignNotificationLog)
+        .values(batch as QueryDeepPartialEntity<EsignNotificationLog>[])
+        .updateEntity(false)
+        .execute();
+      const rows = await manager.find(EsignNotificationLog, {
+        where: batch.map(({ batchId, signerId, channel }) => ({
+          batchId,
+          signerId,
+          channel,
+        })),
+      });
+      const byKey = new Map(rows.map((row) => [key(row), row]));
+      for (const log of batch) {
+        const saved = byKey.get(key(log));
+        if (!saved) throw new Error('通知批次初建回查不完整');
+        persisted.push(saved);
+      }
+    }
+    return persisted;
   }
 
   findLogById(id: number, manager: EntityManager) {

@@ -97,6 +97,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       [0, 1, 2].map((i) =>
         manager.create(User, {
           empid: `C${prefix}${i}`,
+          email: 'copy@example.test',
           name: `合成副本員工${i}`,
           isActive: true,
           departmentCode: `TEST017-${i}`,

@@ -105,6 +105,7 @@ describe('內外部催簽 API', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
+    await seedSyntheticStaffEmails(ctx.app, ['E2E00905']);
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
@@ -901,4 +902,7 @@ describe('內外部催簽 API', () => {
     );
   });
 });
-import { syntheticStaffEmails } from './synthetic-staff-emails.helper';
+import {
+  syntheticStaffEmails,
+  seedSyntheticStaffEmails,
+} from './synthetic-staff-emails.helper';

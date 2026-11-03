@@ -1,7 +1,10 @@
+import { AuditEventRepository } from '#app/features/esign/repositories/audit-event.repository';
+import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import type { SendInternalGroupMailInput } from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { HttpService } from '@nestjs/axios';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { of, from, throwError } from 'rxjs';
+import { In } from 'typeorm';
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { AuthService } from '#app/features/auth/services/auth.service';
@@ -104,6 +107,7 @@ describe('Spec016 內部發起與邀請', () => {
         manager.create(User, {
           empid: `I${prefix}${index}`,
           name: `合成員工${index}`,
+          email: 'shared@example.test',
           isActive: true,
           departmentCode: `TEST017-${index}`,
         }),
@@ -112,18 +116,18 @@ describe('Spec016 內部發起與邀請', () => {
     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
   });
   beforeEach(async () => {
-    http.post
-      .mockReset()
-      .mockImplementation((_url: string, body: { person_empids: string[] }) =>
-        of({
-          data: {
-            success: true,
-            data: body.person_empids.map((person_empid) => ({
-              person_empid,
-              email: 'shared@example.test',
-            })),
-          },
-        }),
+    http.post.mockReset().mockImplementation(() => {
+      throw new Error('本機發起流程不得呼叫人資來源');
+    });
+    await ctx.app
+      .get(MysqlService)
+      .getManager()
+      .update(
+        User,
+        {
+          id: In(users.map((u) => u.id)),
+        },
+        { email: 'shared@example.test', isActive: true },
       );
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -414,6 +418,97 @@ describe('Spec016 內部發起與邀請', () => {
       Array(3).fill({ email: 'shared@example.test', delivery: 'pending' }),
     );
   });
+  it('批次稽核部分寫入後失敗，完整回滾既有草稿名單欄位與通知且不入列', async () => {
+    await request(ctx.server)
+      .patch(`/api/esign/documents/${documentId}/draft-settings`)
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .send({ signers: [{ type: 'user', userId: String(users[1].id) }] })
+      .expect(200);
+    await request(ctx.server)
+      .put(`/api/esign/documents/${documentId}/fields`)
+      .set('Cookie', cookie)
+      .set('Origin', origin)
+      .send({
+        fields: [
+          {
+            type: 'signature',
+            page: 1,
+            xPercent: 30,
+            yPercent: 30,
+            widthPercent: 15,
+            heightPercent: 15,
+            sortOrder: 0,
+          },
+        ],
+      })
+      .expect(200);
+    const manager = ctx.app.get(MysqlService).getManager();
+    const snapshot = async () => ({
+      document: await manager.query<unknown[]>(
+        'SELECT * FROM esign_documents WHERE id=?',
+        [documentId],
+      ),
+      signers: await manager.query<unknown[]>(
+        'SELECT * FROM esign_signers WHERE document_id=? ORDER BY id',
+        [documentId],
+      ),
+      fields: await manager.query<unknown[]>(
+        'SELECT * FROM esign_document_fields WHERE document_id=? ORDER BY id',
+        [documentId],
+      ),
+      batches: await manager.query<unknown[]>(
+        'SELECT * FROM esign_notification_batches WHERE document_id=? ORDER BY id',
+        [documentId],
+      ),
+      logs: await manager.query<unknown[]>(
+        'SELECT l.* FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? ORDER BY l.id',
+        [documentId],
+      ),
+      audits: await manager.query<unknown[]>(
+        'SELECT * FROM esign_audit_events WHERE document_id=? ORDER BY id',
+        [documentId],
+      ),
+    });
+    const before = await snapshot();
+    expect(before.signers).toHaveLength(1);
+    expect(before.fields).toHaveLength(1);
+    expect(before.batches).toEqual([]);
+    expect(before.logs).toEqual([]);
+    let insertedInsideTransaction = false;
+    const fault = jest
+      .spyOn(ctx.app.get(AuditEventRepository), 'insertMany')
+      .mockImplementationOnce(async (events, transaction) => {
+        expect(events.length).toBeGreaterThan(1);
+        await new AuditEventRepository().insertMany(
+          events.slice(0, 1),
+          transaction,
+        );
+        const rows = await transaction.query<Array<{ count: number }>>(
+          'SELECT COUNT(*) count FROM esign_audit_events WHERE document_id=? AND event_type=?',
+          [documentId, 'signer.assigned'],
+        );
+        insertedInsideTransaction = Number(rows[0].count) === 1;
+        throw new Error('合成批次稽核後段寫入失敗');
+      });
+    const enqueue = jest.spyOn(
+      ctx.app.get(EsignJobProducerService),
+      'enqueueInvitations',
+    );
+    try {
+      await initiate().expect(500);
+      expect(insertedInsideTransaction).toBe(true);
+      expect(fault).toHaveBeenCalledTimes(1);
+      expect(enqueue).not.toHaveBeenCalled();
+      expect((await detail()).status).toBe('draft');
+      // 完整快照包含原始 id/public_id、欄位與 updated_at，不能只比筆數。
+      expect(await snapshot()).toEqual(before);
+    } finally {
+      fault.mockRestore();
+      enqueue.mockRestore();
+    }
+  });
+
   it('草稿允許缺地址，但內部手填地址必須拒絕', async () => {
     const path = `/api/esign/documents/${documentId}/draft-settings`;
     await request(ctx.server)
@@ -437,37 +532,37 @@ describe('Spec016 內部發起與邀請', () => {
         ],
       })
       .expect(400);
+    await initiate([
+      {
+        type: 'user',
+        userId: String(users[1].id),
+        email: 'forged@example.test',
+      },
+    ]).expect(400);
     expect(await detail()).toEqual(before);
   });
-  it('來源查詢期間帳號停用回 409 且整份草稿不變', async () => {
+  it('交易鎖定前帳號已停用回 422 且整份草稿不變', async () => {
     const before = await detail();
-    http.post.mockImplementation(
-      (_url: string, body: { person_empids: string[] }) =>
-        from(
-          (async () => {
-            await ctx.app
-              .get(MysqlService)
-              .getManager()
-              .update(User, users[1].id, { isActive: false });
-            return {
-              data: {
-                success: true,
-                data: body.person_empids.map((person_empid) => ({
-                  person_empid,
-                  email: 'shared@example.test',
-                })),
-              },
-            };
-          })(),
-        ),
-    );
+    const repository = ctx.app.get(UserRepository);
+    const original = new UserRepository();
+    const read = jest
+      .spyOn(repository, 'findByIdsWithEmail')
+      .mockImplementationOnce(async (ids, manager, lock) => {
+        await ctx.app
+          .get(MysqlService)
+          .getManager()
+          .update(User, users[1].id, { isActive: false });
+        return original.findByIdsWithEmail(ids, manager, lock);
+      });
     try {
-      const failed = await initiate().expect(409);
+      const failed = await initiate().expect(422);
       expect(failed.body).toMatchObject({
-        error: { code: 'ESIGN_EMPLOYEE_IDENTITY_CHANGED' },
+        error: { code: 'ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE' },
       });
       expect(await detail()).toEqual(before);
+      expect(http.post).not.toHaveBeenCalled();
     } finally {
+      read.mockRestore();
       await ctx.app
         .get(MysqlService)
         .getManager()
@@ -641,7 +736,7 @@ describe('Spec016 內部發起與邀請', () => {
     },
   );
   it.each(['missing', 'source'])(
-    '101 人分成100＋1批：缺地址可發起、來源失敗回滾（%s）',
+    '101 人使用本機主檔：缺地址可發起、DB失敗回滾（%s）',
     async (mode) => {
       const manager = ctx.app.get(MysqlService).getManager();
       const prefix = randomBytes(5).toString('hex');
@@ -651,6 +746,7 @@ describe('Spec016 內部發起與邀請', () => {
           manager.create(User, {
             empid: `B${prefix}${index}`,
             name: `批次合成${index}`,
+            email: index === 100 ? null : 'batch@example.test',
             isActive: true,
             departmentCode: `TEST017-${index}`,
           }),
@@ -661,34 +757,13 @@ describe('Spec016 內部發起與邀請', () => {
         userId: String(u.id),
       }));
       const before = await detail();
-      http.post.mockImplementation(
-        (_url: string, body: { person_empids: string[] }) =>
-          of({
-            data: {
-              success: true,
-              data: body.person_empids
-                .filter((id) => id !== selected[100].empid)
-                .map((person_empid) => ({
-                  person_empid,
-                  email: 'batch@example.test',
-                })),
-            },
-          }),
-      );
       if (mode === 'missing') {
         await initiate(input).expect(201);
         expect((await detail()).signers[100]).toMatchObject({
           email: null,
           invitationDelivery: 'skipped',
         });
-        expect(
-          http.post.mock.calls
-            .map(
-              (call) =>
-                (call[1] as { person_empids: string[] }).person_empids.length,
-            )
-            .sort((a, b) => a - b),
-        ).toEqual([1, 100]);
+        expect(http.post).not.toHaveBeenCalled();
         const mailer = new FakeInvitationMailSender();
         const worker = new ExternalInvitationProcessor(
           ctx.app.get(MysqlService),
@@ -713,10 +788,14 @@ describe('Spec016 內部發起與邀請', () => {
         return;
       }
       expect(await detail()).toEqual(before);
-      http.post
-        .mockReset()
-        .mockReturnValue(throwError(() => new Error('合成來源不可用')));
-      await initiate(input).expect(502);
+      const read = jest
+        .spyOn(ctx.app.get(UserRepository), 'findByIdsWithEmail')
+        .mockRejectedValueOnce(new Error('合成DB故障'));
+      try {
+        await initiate(input).expect(502);
+      } finally {
+        read.mockRestore();
+      }
       expect(await detail()).toEqual(before);
       const [totals] = await manager.query<
         Array<{ notifications: string; audits: string }>
@@ -728,52 +807,141 @@ describe('Spec016 內部發起與邀請', () => {
       expect(Number(totals.audits)).toBe(0);
     },
   );
-  it('來源查詢不持文件鎖、重新查信箱後固定於 v2 payload，不更改員工身分', async () => {
-    http.post.mockImplementation(
-      (_url: string, body: { person_empids: string[] }) =>
-        from(
-          (async () => {
-            await request(ctx.server)
-              .patch(`/api/esign/documents/${documentId}/draft-settings`)
-              .set('Cookie', cookie)
-              .set('Origin', origin)
-              .send({ watermark: true })
-              .timeout(2000)
-              .expect(200);
-            return {
-              data: {
-                success: true,
-                data: body.person_empids.map((person_empid) => ({
-                  person_empid,
-                  email: 'fresh@example.test',
-                })),
-              },
-            };
-          })(),
-        ),
-    );
-    await initiate().expect(201);
-    const [row] = await ctx.app
-      .get(MysqlService)
-      .getManager()
-      .query<
-        Array<{ signing_payload_json: string | object }>
-      >('SELECT signing_payload_json FROM esign_documents WHERE id=?', [documentId]);
-    const snapshot =
-      typeof row.signing_payload_json === 'string'
-        ? (JSON.parse(row.signing_payload_json) as object)
-        : row.signing_payload_json;
-    expect(snapshot).toMatchObject({
-      schemaVersion: 2,
-      signers: users.map((u) => ({
-        type: 'user',
-        userId: String(u.id),
-        employeeNo: u.empid,
-        email: 'fresh@example.test',
-      })),
+  it('同一交易固定員工身分與email；並行更新受鎖阻擋且提交後不改歷史快照', async () => {
+    const mysql = ctx.app.get(MysqlService);
+    const repository = ctx.app.get(UserRepository);
+    const original = new UserRepository();
+    const other = mysql.getDataSource().createQueryRunner();
+    await other.connect();
+    await other.query('SET SESSION innodb_lock_wait_timeout=1');
+    const read = jest
+      .spyOn(repository, 'findByIdsWithEmail')
+      .mockImplementationOnce(async (ids, manager, lock) => {
+        // 先建立 RR 舊快照，再由另一連線更新；鎖定讀取必須取目前版本。
+        await manager.findOneByOrFail(User, { id: users[1].id });
+        await other.manager.update(User, users[1].id, {
+          name: '發起時姓名',
+          departmentName: '發起時部門',
+          titleName: '發起時職稱',
+          email: 'fresh@example.test',
+        });
+        const rows = await original.findByIdsWithEmail(ids, manager, lock);
+        await expect(
+          other.query(
+            'UPDATE users SET email=?, name=?, is_active=0 WHERE id=?',
+            ['changed@example.test', '稍後姓名', users[1].id],
+          ),
+        ).rejects.toMatchObject({ code: 'ER_LOCK_WAIT_TIMEOUT' });
+        return rows;
+      });
+    try {
+      await initiate().expect(201);
+      expect(http.post).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+      await other.query('SET SESSION innodb_lock_wait_timeout=DEFAULT');
+      await other.release();
+    }
+    const [before] = await mysql.getManager().query<
+      Array<{
+        payload: string;
+        email: string;
+        name: string;
+        department: string;
+        title: string;
+      }>
+    >('SELECT d.signing_payload_json payload,s.email,s.name_snapshot name,s.department_snapshot department,s.title_snapshot title FROM esign_documents d JOIN esign_signers s ON s.document_id=d.id WHERE d.id=? AND s.user_id=?', [documentId, users[1].id]);
+    expect(before).toMatchObject({
+      email: 'fresh@example.test',
+      name: '發起時姓名',
+      department: '發起時部門',
+      title: '發起時職稱',
     });
+    await mysql.getManager().update(User, users[1].id, {
+      email: 'changed@example.test',
+      name: '稍後姓名',
+    });
+    const ordinary = await repository.findById(
+      Number(users[1].id),
+      mysql.getManager(),
+    );
+    expect(ordinary?.email).toBeUndefined();
+    await repository.save(
+      Object.assign(ordinary!, { lastLoginAt: new Date() }),
+      mysql.getManager(),
+    );
+    expect(
+      (
+        await repository.findByIdsWithEmail(
+          [Number(users[1].id)],
+          mysql.getManager(),
+        )
+      )[0].email,
+    ).toBe('changed@example.test');
+    const [after] = await mysql.getManager().query<
+      Array<{
+        payload: string;
+        email: string;
+        name: string;
+        department: string;
+        title: string;
+      }>
+    >('SELECT d.signing_payload_json payload,s.email,s.name_snapshot name,s.department_snapshot department,s.title_snapshot title FROM esign_documents d JOIN esign_signers s ON s.document_id=d.id WHERE d.id=? AND s.user_id=?', [documentId, users[1].id]);
+    expect(after).toEqual(before);
+    const deliveries = new FakeInvitationMailSender();
+    const worker = new ExternalInvitationProcessor(
+      mysql,
+      ctx.app.get(NotificationRepository),
+      ctx.app.get(SignerRepository),
+      ctx.app.get(EsignTokenService),
+      ctx.app.get(EsignAuditService),
+      mailFixture(ctx).guard(deliveries),
+    );
+    await deliver(worker, (await notificationLogs())[0].id);
+    expect(
+      deliveries.internalGroupDeliveries[0].recipientEmails.sort(),
+    ).toEqual(['fresh@example.test', 'shared@example.test']);
     await initiate().expect(409);
-    expect((await detail()).status).toBe('active');
+  });
+  it('兩份文件同時發起且共用員工時，固定鎖順序不留下部分結果', async () => {
+    const firstId = documentId;
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const secondId = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .field('title', '並行合成文件')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'parallel.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    ).id;
+    const first = initiate();
+    documentId = secondId;
+    const second = initiate(
+      [...users].reverse().map((u) => ({ type: 'user', userId: String(u.id) })),
+    );
+    try {
+      await Promise.all([first.expect(201), second.expect(201)]);
+      const rows = await ctx.app
+        .get(MysqlService)
+        .getManager()
+        .query<
+          Array<{ status: string; signers: string }>
+        >('SELECT d.status, (SELECT COUNT(*) FROM esign_signers s WHERE s.document_id=d.id) signers FROM esign_documents d WHERE d.id IN (?,?)', [firstId, secondId]);
+      expect(rows).toHaveLength(2);
+      expect(
+        rows.every(
+          (row) => row.status === 'active' && Number(row.signers) === 2,
+        ),
+      ).toBe(true);
+      expect(http.post).not.toHaveBeenCalled();
+    } finally {
+      documentId = firstId;
+    }
   });
   it('零內部名單不查 HR，非建立人不查 HR', async () => {
     const other = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[1].id)).token}`;
@@ -816,7 +984,10 @@ describe('Spec016 內部發起與邀請', () => {
     ).toEqual(['unknown', 'unknown']);
   });
   it('無Email全員仍可發起，指派與快照固定null、通知skipped且不寄信', async () => {
-    http.post.mockReturnValue(of({ data: { success: true, data: [] } }));
+    await ctx.app
+      .get(MysqlService)
+      .getManager()
+      .update(User, { id: In(users.map((u) => u.id)) }, { email: null });
     const initiated = apiData<{ signStartAt: string; signEndAt: string }>(
       await initiate(undefined, 60000).expect(201),
     );

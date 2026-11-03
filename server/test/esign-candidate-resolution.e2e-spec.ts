@@ -1,3 +1,4 @@
+import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { randomUUID } from 'node:crypto';
 import { AuthService } from '#app/features/auth/services/auth.service';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
@@ -44,6 +45,7 @@ describe('員工解析 HTTP', () => {
     );
   });
   beforeEach(() => source.get.mockReset());
+  afterEach(() => jest.restoreAllMocks());
   afterAll(async () => {
     if (ctx) {
       if (employeeNos.length)
@@ -78,16 +80,13 @@ describe('員工解析 HTTP', () => {
 
   it('POST 解析完整員編並依首次順序去重，結果不含信箱', async () => {
     const empid = employeeNo();
-    source.get.mockResolvedValue([
-      {
-        person_empid: empid,
-        person_name: '合成員工',
-        person_status: 1,
-        person_status_name: '正式',
-        department_name: '合成部門',
-        title: null,
-      },
-    ]);
+    await ctx.app.get(MysqlService).getManager().save(User, {
+      empid,
+      name: '合成員工',
+      departmentName: '合成部門',
+      isActive: true,
+      email: 'hidden@example.test',
+    });
     const response = await ctx.app.inject({
       method: 'POST',
       url: `${route}/resolutions`,
@@ -134,8 +133,10 @@ describe('員工解析 HTTP', () => {
     ]);
   });
 
-  it('來源錯誤轉為穩定 502，不洩漏來源內容或當作登入錯誤', async () => {
-    source.get.mockRejectedValue(new Error('synthetic-private-source-body'));
+  it('本機查詢錯誤轉為穩定 502，不洩漏資料庫內容或當作登入錯誤', async () => {
+    jest
+      .spyOn(ctx.app.get(UserRepository), 'findByEmpids')
+      .mockRejectedValueOnce(new Error('synthetic-private-source-body'));
     const response = await ctx.app.inject({
       method: 'POST',
       url: `${route}/resolutions`,
@@ -149,7 +150,7 @@ describe('員工解析 HTTP', () => {
     expect(response.body).not.toContain('synthetic-private');
   });
 
-  it('已停用、軟刪除、本機長員編與前導零依本機身分解析，只有範圍內缺帳號者查來源', async () => {
+  it('已停用、軟刪除、本機長員編與前導零依本機身分解析，所有缺帳號者皆不查來源', async () => {
     const manager = ctx.app.get(MysqlService).getManager();
     const disabled = employeeNo();
     const deleted = employeeNo();
@@ -191,19 +192,15 @@ describe('員工解析 HTTP', () => {
       { employeeNo: 'short', status: 'unavailable' },
       { employeeNo: '1234', status: 'unavailable' },
     ]);
-    expect(source.get).toHaveBeenCalledTimes(1);
+    expect(source.get).not.toHaveBeenCalled();
   });
 
   it('並發解析同員編只回同一帳號，GET 也只看到一人', async () => {
     const empid = employeeNo();
-    source.get.mockResolvedValue([
-      {
-        person_empid: empid,
-        person_name: '合成並發員工',
-        person_status: 0,
-        person_status_name: '試用',
-      },
-    ]);
+    await ctx.app
+      .get(MysqlService)
+      .getManager()
+      .save(User, { empid, name: '合成並發員工', isActive: true });
     const results = await Promise.all(
       Array.from({ length: 5 }, () =>
         ctx.app.inject({
@@ -338,41 +335,34 @@ describe('員工解析 HTTP', () => {
     expect(source.get).not.toHaveBeenCalled();
   });
 
-  it('後續來源失敗不回部分結果，先前已合法建帳者可在重試復用', async () => {
-    const first = employeeNo();
-    const second = employeeNo();
-    source.get
-      .mockResolvedValueOnce([
-        {
-          person_empid: first,
-          person_name: '合成先建帳員工',
-          person_status: 1,
-          person_status_name: '正式',
-        },
-      ])
-      .mockRejectedValueOnce(new Error('synthetic-unavailable'));
-    const failed = await ctx.app.inject({
+  it('缺帳號不建帳，精確員編大小寫不匹配仍 unavailable', async () => {
+    const empid = `Ab${employeeNo()}`;
+    employeeNos.push(empid);
+    await ctx.app.get(MysqlService).getManager().save(User, {
+      empid,
+      name: '合成員工',
+      isActive: true,
+    });
+    const missing = employeeNo();
+    const response = await ctx.app.inject({
       method: 'POST',
       url: `${route}/resolutions`,
       headers,
-      payload: { employeeNos: [first, second] },
+      payload: { employeeNos: [empid, empid.toLowerCase(), missing] },
     });
-    expect(failed.statusCode).toBe(502);
-    expect(failed.json<unknown>()).not.toHaveProperty('data');
-    source.get.mockReset().mockResolvedValue([]);
-    const retry = await ctx.app.inject({
-      method: 'POST',
-      url: `${route}/resolutions`,
-      headers,
-      payload: { employeeNos: [first, second] },
-    });
-    expect(retry.statusCode).toBe(200);
+    expect(response.statusCode).toBe(200);
     expect(
-      retry
+      response
         .json<{ data: { items: { status: string }[] } }>()
-        .data.items.map((item) => item.status),
-    ).toEqual(['resolved', 'unavailable']);
-    expect(source.get).toHaveBeenCalledTimes(1);
+        .data.items.map((i) => i.status),
+    ).toEqual(['resolved', 'unavailable', 'unavailable']);
+    expect(
+      await ctx.app
+        .get(MysqlService)
+        .getManager()
+        .findOneBy(User, { empid: missing }),
+    ).toBeNull();
+    expect(source.get).not.toHaveBeenCalled();
   });
 
   it('Swagger 描述解析成功 envelope 與穩定錯誤', () => {

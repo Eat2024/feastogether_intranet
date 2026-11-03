@@ -51,6 +51,7 @@ export class EsignReminderService {
         manager,
       );
       this.access.checkEsignCreator(document, userId);
+      await this.access.assertNotInitiating(documentId, manager);
       const previous = await this.notifications.findBatchRequest(
         documentId,
         userId,

@@ -40,6 +40,7 @@ export class EsignReopeningService {
         manager,
       );
       this.policy.checkEsignCreator(document, userId);
+      await this.policy.assertNotInitiating(documentId, manager);
       const logs = await this.notifications.findByDocumentForUpdate(
         documentId,
         manager,

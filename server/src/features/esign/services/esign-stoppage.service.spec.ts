@@ -40,7 +40,10 @@ describe('EsignStoppageService', () => {
       findByDocumentForUpdate: jest.fn(async () => signers),
       saveMany: jest.fn(async (value: object[]) => value),
     };
-    const access = { checkEsignCreator: jest.fn() };
+    const access = {
+      checkEsignCreator: jest.fn(),
+      assertNotInitiating: jest.fn().mockResolvedValue(undefined),
+    };
     const validation = {
       assertActiveForStop: jest.fn((value: { status: string }) => {
         if (!['active', 'expired', 'finalizing'].includes(value.status))

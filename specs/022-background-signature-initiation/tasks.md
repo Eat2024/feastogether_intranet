@@ -40,20 +40,20 @@
 
 獨立驗收：queued／processing／終態時關頁及重登入皆能查回同工作；其他部門讀者看不到工作資料；以固定 fixture 狀態驗證 UI，不依賴故障重試實作。
 
-- [ ] T016 [US2] 擴充 `server/src/features/esign/controllers/initiation-jobs.controller.ts` 與 `server/src/features/esign/services/esign-initiation-job.service.ts` 的 GET latest（無工作 null）／job 摘要：只讀、非建立人與不存在統一 404、未登入 401、no-store；暴露 attempt／deadline／nextAttempt／issueCount，不暴露 lease 或 JSON。
-- [ ] T017 [US2] 在 `server/test/esign-initiation-query.e2e-spec.ts` 驗證原文件列表行為不變、queued／processing 仍 draft、worker 成功才 active；不新增列表 initiationSummary，不選取工作 JSON 參與列表排序。
-- [ ] T018 [US2] 在 `server/test/esign-initiation-query.e2e-spec.ts` 驗證 job/latest 輕量摘要的授權、終態與失聯回應語意；僅 API 驗收，不新增 client hooks 或輪詢。
-- [ ] T019 [US2] 在 `server/test/esign-initiation-acceptance.e2e-spec.ts` 完整驗證 queued／processing 對文件資料與簽署人增刪替換、註記、期間、設定、PDF、刪除皆回 409 與固定 worker 執行中訊息；驗證競態、failed 解鎖與 succeeded 既有規則。
-- [ ] T020 [US2] 新增 `server/test/esign-initiation-query.e2e-spec.ts` 並登記 `server/test/jest-e2e.json`，驗證摘要授權／只讀／無 JSON／無 N+1、22 份大 input 在 256KiB sort buffer 下列表成功；於 `specs/022-background-signature-initiation/quickstart.md` 記錄重整、關頁、失聯與 10 秒可見驗收。
+- [x] T016 [US2] 擴充 `server/src/features/esign/controllers/initiation-jobs.controller.ts` 與 `server/src/features/esign/services/esign-initiation-job.service.ts` 的 GET latest（無工作 null）／job 摘要：只讀、非建立人與不存在統一 404、未登入 401、no-store；暴露 attempt／deadline／nextAttempt／issueCount，不暴露 lease 或 JSON。
+- [x] T017 [US2] 在 `server/test/esign-initiation-query.e2e-spec.ts` 驗證原文件列表行為不變、queued／processing 仍 draft、worker 成功才 active；不新增列表 initiationSummary，不選取工作 JSON 參與列表排序。
+- [x] T018 [US2] 在 `server/test/esign-initiation-query.e2e-spec.ts` 驗證 job/latest 輕量摘要的授權、終態與失聯回應語意；僅 API 驗收，不新增 client hooks 或輪詢。
+- [x] T019 [US2] 在 `server/test/esign-initiation-acceptance.e2e-spec.ts` 完整驗證 queued／processing 對文件資料與簽署人增刪替換、註記、期間、設定、PDF、刪除皆回 409 與固定 worker 執行中訊息；驗證競態、failed 解鎖與 succeeded 既有規則。
+- [x] T020 [US2] 新增 `server/test/esign-initiation-query.e2e-spec.ts` 並登記 `server/test/jest-e2e.json`，驗證摘要授權／只讀／無 JSON／無 N+1、22 份大 input 在 256KiB sort buffer 下列表成功；於 `specs/022-background-signature-initiation/quickstart.md` 記錄重整、關頁、失聯與 10 秒可見驗收。
 
 ## Phase 5：US3 — 失敗修正與安全恢復（P1）
 
 獨立驗收：故障注入後工作有限恢復，不重複發起；failed 可取回確認輸入，修正或人工 retry；成功、過期及清理後原 key 均可安全重播。
 
-- [ ] T021 [P] [US3] 新增 `server/test/esign-initiation-recovery.e2e-spec.ts` 並登記 `server/test/jest-e2e.json`，涵蓋 claim／解析／正式交易／commit 後 ack 前中斷、舊 lease、DB 成功 Redis 失敗、3 次耗盡與 deadline；測試不能靠刪資料重跑。
-- [ ] T022 [US3] 擴充 `server/src/worker/esign/document-initiation.processor.ts` 與 `server/src/features/esign/repositories/initiation-job.repository.ts`：最多 3 claim、30／120 秒 backoff、5 分鐘 lease／30 秒獨立 heartbeat、每批與 5 秒進度節流；deadline=min(accepted+120min,signEndAt)，交易持 job 鎖後停獨立 heartbeat，鎖內與 commit 前查期限；所有寫入 CAS，失租停止，不以 Promise.race 遺留提交。
-- [ ] T023 [US3] 擴充 `server/src/worker/esign/esign-maintenance.processor.ts` 與 `server/src/features/esign/services/esign-job-producer.service.ts`，於既有 30 秒週期補列／回收可鎖定過期 lease，遵守 nextAttemptAt／deadline、跳過正式交易持鎖列；設計 delivery ID／終態移除使 DB retry 不被 Redis 舊 failed/completed job 去重永久擋住，delivery attempts=1。
-- [ ] T024 [US3] 在 `server/src/features/esign/services/esign-initiation-job.service.ts` 與 `server/src/worker/esign/document-initiation.processor.ts` 落實穩定錯誤分類、恢復一致性檢查與結構化 job/document/request 關聯；全面 DB 中斷不假造終態，成功後通知失敗不回寫 failed，不記錄完整名單或任意 DB message。
+- [x] T021 [P] [US3] 新增 `server/test/esign-initiation-recovery.e2e-spec.ts` 並登記 `server/test/jest-e2e.json`，涵蓋 claim／解析／正式交易／commit 後 ack 前中斷、舊 lease、DB 成功 Redis 失敗、3 次耗盡與 deadline；測試不能靠刪資料重跑。
+- [x] T022 [US3] 擴充 `server/src/worker/esign/document-initiation.processor.ts` 與 `server/src/features/esign/repositories/initiation-job.repository.ts`：最多 3 claim、30／120 秒 backoff、5 分鐘 lease／30 秒獨立 heartbeat、每批與 5 秒進度節流；deadline=min(accepted+120min,signEndAt)，交易持 job 鎖後停獨立 heartbeat，鎖內與 commit 前查期限；所有寫入 CAS，失租停止，不以 Promise.race 遺留提交。
+- [x] T023 [US3] 擴充 `server/src/worker/esign/esign-maintenance.processor.ts` 與 `server/src/features/esign/services/esign-job-producer.service.ts`，於既有 30 秒週期補列／回收可鎖定過期 lease，遵守 nextAttemptAt／deadline、跳過正式交易持鎖列；設計 delivery ID／終態移除使 DB retry 不被 Redis 舊 failed/completed job 去重永久擋住，delivery attempts=1。
+- [x] T024 [US3] 在 `server/src/features/esign/services/esign-initiation-job.service.ts` 與 `server/src/worker/esign/document-initiation.processor.ts` 落實穩定錯誤分類、恢復一致性檢查與結構化 job/document/request 關聯；全面 DB 中斷不假造終態，成功後通知失敗不回寫 failed，不記錄完整名單或任意 DB message。
 - [ ] T025 [US3] 在 `server/src/features/esign/controllers/initiation-jobs.controller.ts`、`server/src/features/esign/dto/initiation-job.dto.ts` 與 service 實作建立人限定 input／issues：input 還原原確認設定，issues 只在 failed 可讀，offset≥0、limit 1–100 預設 100，外部只回 inputIndex；非終態 409、清理後 410。
 - [ ] T026 [US3] 於 `server/src/features/esign/services/esign-initiation-job.service.ts` 及 `server/src/features/esign/controllers/initiation-jobs.controller.ts` 實作 retries：新 key／新 job／parent hash，先查重播再驗最新 failed、retryable、input 保留、版本、授權與期限；同 key 回原 child，改內容走新 initiation，不允許覆寫 retry body。
 - [ ] T027 [US3] 在 `server/test/esign-initiation-retry.e2e-spec.ts` 驗證原確認名單及問題 API、重試後 busy 保護重新生效、異動 API 沿用既有錯誤 envelope；不修改 client 或新增失敗修正畫面。

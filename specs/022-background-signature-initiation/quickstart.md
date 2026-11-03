@@ -122,3 +122,25 @@ Network 確認按發起後沒有先打整份 resolutions，不呼叫 detail 等�
 在 `impl/022-03`、基準 `bf36b658` 的隔離 `feastogether_intranet_test022_t03`／Redis DB3 執行：容量 13 項加受理 10 項共 23 項通過，涵蓋 6,001 人、混合／全外部、缺信箱與實際白名單跳過、正式交易前 committing、映射及原檔競態、停用建立人、跨批全回滾。RR 原檔快照加強案例另行通過。server build 通過，lint 0 errors／272 既有 warnings。
 
 worker 以每批 500 人預查及 CAS 更新本 attempt 進度，鎖內再次驗證全部資格；既有 250 筆寫入仍全交易提交。沒有改 client，前置解析與成功文案仍保留既有行為；本輪以無 key 舊 body 的 API 相容性驗收。heartbeat／maintenance 恢復與正式效能矩陣留待後續票，未在此提前標記通過。
+
+## Ticket 04 實作驗證（2026-11-03）
+
+- `impl/022-04` 基於 `1b1211b5`；T016–T020 完成後端範圍。
+- `pnpm -C server test:e2e --testPathPatterns='esign-initiation-(query|acceptance|capacity)'`：3 suites／32 tests 通過。
+- `pnpm -C server test --runInBand`：113 suites／1,175 tests；`pnpm -C server build` 通過；`pnpm -C server lint:check`：0 errors／272 既有 warnings。
+- 紅燈先證實 latest 路由、直接 creator 異動入口忙碌訊息、GET／重播大型 JSON 投影三項缺口，再實作轉綠。
+- 真資料庫驗證 22 份大型工作輸入在 256KiB sort buffer 下列表成功、SQL 數不隨文件增加；列表 API 不增工作欄位。摘要不載入 input/issues/version 或文件 signing payload。
+- queued／processing 的全異動入口及非建立人隔離通過；worker 成功前列表仍 draft，成功後 active，failed 才解除 busy。
+- 使用專用測試資料庫、Redis DB4 及合成私有檔案；未修改 client，UI 輪詢與畫面進度驗收按 backend-only scope 暫緩。
+
+- 補充查詢斷線案例：DB connection 邊界注入失敗，API 沿用 503；恢復後原工作仍 queued、attempt=0、errorCode=null，不把讀取失敗變成背景失敗。
+
+## 05 有限恢復驗證紀錄（2026-11-03）
+
+分支 `impl/022-05`，隔離 MySQL `feastogether_intranet_test022_t05`／Redis DB5，合成名單與 fake mail。recovery 13／13；02／03／05 回歸 36／36；unit 113 suites／1,175 tests；server build 通過，lint 0 errors／272 既有 warnings。
+
+涵蓋退避／耗盡、過期租約與舊 token、可靠補列、正式交易持鎖略過、全部寫入後回滾、commit 前期限、DB 無法保存失敗狀態後恢復，以及成功後通知失敗不回退。單批跨 5 分鐘及 120 分鐘期限以受控時鐘搭配真 DB 驗證，不是 5,001 秒實時間效能結果。
+
+實作在正式交易開始前停止並排空在途 heartbeat，再取得新鮮租約；因此不會持 job 鎖等待自己的 heartbeat。正式交易等待過久導致租約失效時仍由鎖內驗證拒絕，不讓舊持有者提交。
+
+04 整合後回歸：保留 latest／小投影與所有異動 guard，只有測試清單衝突並已取聯集；server build 通過，02／03／04／05 四套 45／45 通過。

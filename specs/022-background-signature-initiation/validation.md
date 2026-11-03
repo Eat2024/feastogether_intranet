@@ -130,4 +130,4 @@ DB_MYSQL_DB=feastogether_intranet_test022_t08bench REDIS_DB=13 ESIGN_STORAGE_ROO
 pnpm build
 ```
 
-T031–T034的後端實作與隔離驗收已完成，票08維持claimed，待合併至整合分支及正式code review後由整合者結案。client／瀏覽器互動／UAT部署／真實寄信及新版基準重跑85分鐘仍未執行，不把舊基準長測或API smoke冒稱涵蓋這些項目。
+T031–T034的後端實作與隔離驗收已完成，票08已整合並resolved；正式兩軸code review已完成，Standards／Spec各0項未解finding，詳見[審查報告](review.md)。client／瀏覽器互動／UAT部署／真實寄信及新版基準重跑85分鐘仍未執行，不把舊基準長測或API smoke冒稱涵蓋這些項目。

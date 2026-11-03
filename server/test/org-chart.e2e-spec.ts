@@ -499,6 +499,10 @@ describe('組織樹 API（合成 Portal）', () => {
   it.each<[string, SyntheticDepartment[]]>([
     ['部門代碼為空', [{ department_ch_id: '', department_name: '無代碼部' }]],
     [
+      '部門名稱無法解碼（U+FFFD）',
+      [{ department_ch_id: '0830', department_name: '無法�解碼部' }],
+    ],
+    [
       '部門代碼重複',
       [{ department_ch_id: '0200', department_name: '重複營運部' }],
     ],

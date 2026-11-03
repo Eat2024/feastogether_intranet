@@ -159,6 +159,31 @@ describe('PortalDirectoryService', () => {
     }
   });
 
+  // mysql2 把無法解碼的位元組換成 U+FFFD，不會報錯；讀到時整次查詢視為來源錯誤（spec Edge Cases）。
+  it.each<[string, (service: PortalDirectoryService) => Promise<unknown>]>([
+    ['組織樹', (service) => service.listOrgChartSource()],
+    ['登入', (service) => service.findEmployeesByEmpid('A001')],
+    ['在職名單', (service) => service.listActiveEmployees()],
+    ['狀態', (service) => service.findStatusesByEmpids(['A001'])],
+  ])(
+    '%s查詢讀到無法解碼的文字（U+FFFD）時拒絕，訊息不含資料內容',
+    async (_name, call) => {
+      const row = {
+        person_empid: 'A001',
+        person_name: '王�明',
+        person_status: 1,
+        stopdate: null,
+      };
+      query.mockResolvedValue([[row], []]);
+
+      const rejection = call(createService());
+
+      await expect(rejection).rejects.toThrow('無法解碼');
+      await expect(rejection).rejects.not.toThrow('A001');
+      await expect(rejection).rejects.not.toThrow('王');
+    },
+  );
+
   it('設定缺漏時建構不拋錯也不連線，第一次查詢才拒絕且訊息不含設定值', async () => {
     const partialEnv = {
       PORTAL_MYSQL_HOST: 'portal.synthetic.invalid',

@@ -305,7 +305,9 @@ describe('022 完整名單背景發起容量與原子性', () => {
     await ctx.app.get(EsignInitiationJobService).process(job.id);
     expect(await summary(documentId, job.publicId)).toMatchObject({
       status: 'failed',
-      processedCount: 500,
+      // 已查核包含失敗項目；022 issues 會收集完整問題後才結束。
+      processedCount: 501,
+      issueCount: 1,
       errorCode: 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE',
     });
     expect(await detail(documentId)).toMatchObject({

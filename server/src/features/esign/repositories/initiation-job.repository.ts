@@ -4,6 +4,7 @@ import { type DeepPartial, type EntityManager } from 'typeorm';
 import {
   EsignInitiationJob,
   type InitiationDocumentVersion,
+  type InitiationIssue,
 } from '../entities/esign-initiation-job.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignFileObject } from '../entities/esign-file-object.entity';
@@ -31,15 +32,30 @@ export class InitiationJobRepository {
     return query.getOne();
   }
 
-  find(documentId: number, publicId: string, manager: EntityManager) {
-    return manager.findOneBy(EsignInitiationJob, { documentId, publicId });
+  find(
+    documentId: number,
+    publicId: string,
+    manager: EntityManager,
+    detail?: 'inputJson' | 'issuesJson',
+    lock = false,
+  ) {
+    const query = manager
+      .createQueryBuilder(EsignInitiationJob, 'job')
+      .where('job.documentId = :documentId AND job.publicId = :publicId', {
+        documentId,
+        publicId,
+      });
+    if (detail) query.addSelect(`job.${detail}`);
+    if (lock) query.setLock('pessimistic_write');
+    return query.getOne();
   }
 
   /** 最新以資料庫流水號判斷；摘要查詢不載入大型輸入與問題 JSON。 */
-  latest(documentId: number, manager: EntityManager) {
+  latest(documentId: number, manager: EntityManager, lock = false) {
     return manager.findOne(EsignInitiationJob, {
       where: { documentId },
       order: { id: 'DESC' },
+      ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
 
@@ -229,6 +245,7 @@ export class InitiationJobRepository {
     errorCode: string,
     transient: boolean,
     manager: EntityManager,
+    issues: InitiationIssue[] = [],
   ): Promise<EsignInitiationJob | null> {
     const job = await this.byId(lease.jobId, manager, true);
     const now = new Date();
@@ -241,6 +258,8 @@ export class InitiationJobRepository {
     )
       return null;
     this.failureState(job, now, errorCode, transient);
+    job.issuesJson = job.completedAt ? issues : [];
+    job.issueCount = job.issuesJson.length;
     return this.save(job, manager);
   }
 

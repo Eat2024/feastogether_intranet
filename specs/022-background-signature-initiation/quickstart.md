@@ -144,3 +144,14 @@ worker 以每批 500 人預查及 CAS 更新本 attempt 進度，鎖內再次驗
 實作在正式交易開始前停止並排空在途 heartbeat，再取得新鮮租約；因此不會持 job 鎖等待自己的 heartbeat。正式交易等待過久導致租約失效時仍由鎖內驗證拒絕，不讓舊持有者提交。
 
 04 整合後回歸：保留 latest／小投影與所有異動 guard，只有測試清單衝突並已取聯集；server build 通過，02／03／04／05 四套 45／45 通過。
+
+
+## 06 失敗還原與人工重試（2026-11-03）
+
+建立人重新登入後先 GET `.../initiation-jobs/latest` 取得 jobId，再按需 GET `.../{jobId}/input` 還原當次確認輸入。來源組織樹已無該員工仍回原員編；外部原填 name/email 只提供給建立人。GET `.../{jobId}/issues?offset=0&limit=100` 只在 failed 可讀，下一頁依 nextOffset；外部問題只回 inputIndex，不回信箱。
+
+若最新 failed 的 retryable=true 且輸入／版本／簽署期限仍有效，以新的 UUID Idempotency-Key、空 body POST `.../{jobId}/retries`。新工作202，同 key重播200，Location 指向子工作。回應遺失時保留同 key重送；child成功、parent非latest或明細已清理都能重播原 child。欲改名單／欄位／期間應 POST新的 initiations，不能覆寫 retry body。
+
+錯誤分流：非failed issues→409 ESIGN_INITIATION_ISSUES_NOT_READY；已清理明細→410 ESIGN_INITIATION_INPUT_EXPIRED；過期或內容變更→409 對應 DEADLINE_PASSED／DOCUMENT_CHANGED；非最新／不可重試→409 ESIGN_INITIATION_RETRY_NOT_ALLOWED；新工作進行中異動→固定409 worker執行中訊息。無session401、非建立人404。前端未改，以上為API能力與驗收，不宣稱已有還原或分頁畫面。
+
+`impl/022-06` 使用專用DB `feastogether_intranet_test022_t06`／Redis DB6。retry8項及02–05回歸共53／53通過；含實際員工查核問題、外部索引、鎖內停用競態、版本鎖、回應遺失與清理後重播。unit113 suites／1,175 tests，build通過，lint0errors／272既有warnings。自動30天清理由票07實作。

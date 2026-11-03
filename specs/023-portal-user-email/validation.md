@@ -49,3 +49,17 @@
 - 5,001 人前後各三輪：六輪全部通過，詳見 [performance.md](performance.md)；沒有真實 HR 網路／SMTP，不能推算 UAT 加速倍數。
 - 程式整合 commit：`32f72a7`；基礎與規劃 commit：`e14b26a`。
 - Schema 未變更，因此不新增 migration 或執行不相關的 schema 變更流程；本次真實 DB 整合測試仍由既有 migration 建立 schema。
+
+## 後續授權：發起批次寫入優化
+
+- 使用者於上述實作完成後授權優化三處發起寫入；對應 ticket07／T027。
+- 新增簽署人與通知初建專用 bulk insert 方法；保留既有 saveMany/saveLogs 更新與草稿 caller，不新增 schema、環境變數或背景工作。
+- 內部固定信箱與外部邀請資訊在簽署人首次 insert 前準備完整，回查真實 ID 後才建立簽署快照；沒有推算 AUTO_INCREMENT。
+- 批次稽核只鎖同文件一次、current-read 鏈尾一次，再按輸入順序計算 hash 鏈分批寫入。原有單筆 append 保持。
+- 真實 DB 驗證跨批、非連續 ID、完整 defaults／actor／subscriber、hash 接續與 RR 舊快照；HTTP 在首筆 audit 寫入後故意失敗，確認文件、原 signer ID/publicId、欄位、通知及稽核完整回滾，且不入列。
+- 唯讀整合 review 核對 token、快照 ID、缺信箱 skipped、外部世代、同交易及 commit 後 enqueue，未發現實質 regression。
+- 三輪 5,001 人量測通過；SQL 50,073→135，HTTP 中位數15.088→1.195秒。細項與限制見 [batch-write-performance.md](batch-write-performance.md)。
+- server 單元113 suites／1172 tests、lint（0 errors）及build通過；本輪僅 server 與文件變更，client 未變更。
+- 完整e2e首輪38套通過／1套失敗；唯一失敗是通知故障注入仍mock舊saveLogs而沒有觸發。只更新測試注入到insertLogs後，該套25項全數通過；最終驗證涵蓋39 suites／404 tests，未放寬失敗回滾期待。
+- Security e2e14 suites／84 tests通過。整合 commit：`b5b0aee`；commit hook root lint及server單元測試亦通過。
+- 未部署／未寄出真實郵件；worker寄送耗時未優化，與前端發起HTTP時間分開記錄。

@@ -92,4 +92,8 @@ T001 → T002 → T003；US1依賴foundation，US2／US3可用合成主檔獨立
 
 ## Task Counts
 
-共26項：Setup 1、Foundation 2、US1 4、US2 7、US3 4、US4 4、Polish 4。
+原規格共26項：Setup 1、Foundation 2、US1 4、US2 7、US3 4、US4 4、Polish 4；後續使用者授權新增 T027，合計27項。
+
+## 後續授權：批次寫入優化
+
+- [x] T027 完成 ticket07：合併發起簽署人保存、通知與稽核批次新增，保留 transaction/subscriber/hash chain，測試5,001人SQL下降並記錄容量回歸。

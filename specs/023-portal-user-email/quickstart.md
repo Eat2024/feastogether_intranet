@@ -1,6 +1,6 @@
 # 驗證與上版交接
 
-本文件列出驗收方式；實際執行結果見 [validation.md](validation.md)，容量比較見 [performance.md](performance.md)。使用合成資料，測試 DB 名稱必須以 feastogether_intranet_test 開頭，禁止套用 UAT 憑證執行測試。
+本文件列出驗收方式；實際執行結果見 [validation.md](validation.md)，資料來源切換容量比較見 [performance.md](performance.md)，後續批次寫入比較見 [batch-write-performance.md](batch-write-performance.md)。使用合成資料，測試 DB 名稱必須以 feastogether_intranet_test 開頭，禁止套用 UAT 憑證執行測試。
 
 ## 前置
 

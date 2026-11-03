@@ -314,6 +314,8 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
   it('同日受理阻擋重複催簽，台北跨日後可再群寄，同requestId仍只一批', async () => {
     const clock = new Date();
     clock.setUTCHours(15, 59, 50, 0);
+    // 使用下一個午夜邊界，避免 fake Date 落在真 DB deadline 時鐘之前。
+    if (clock.getTime() < Date.now()) clock.setUTCDate(clock.getUTCDate() + 1);
     at(clock);
     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     const { documentId } = await initiate(2);
@@ -508,6 +510,8 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
   it('跨午夜重試只寄本批暫時拒收地址，不再寄已受理者', async () => {
     const clock = new Date();
     clock.setUTCHours(15, 59, 50, 0);
+    // 使用下一個午夜邊界，避免 fake Date 落在真 DB deadline 時鐘之前。
+    if (clock.getTime() < Date.now()) clock.setUTCDate(clock.getUTCDate() + 1);
     at(clock);
     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     const { documentId } = await initiate(2);

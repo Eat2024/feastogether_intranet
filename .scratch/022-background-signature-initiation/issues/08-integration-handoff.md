@@ -18,8 +18,8 @@
 ## 驗收條件
 
 - [x] 所有受影響 201／detail 發起測試改為 202→驅動 worker→等待終態後簽署；無 production 同步 fallback，新路由 Swagger／授權覆蓋一致。
-- [ ] 1／100／101／5,001 各至少 20 次受理 P95≤3秒，記錄排隊、查核、正式交易與記憶體；6,001 完整指派。
-- [ ] 隔離空佇列先 5,001 再 5 人：大型終態後小工作 60 秒內取得執行權；另跑每人首次延遲 1 秒的 SC-006，signEndAt 超過受理後 120 分鐘，有限界線內完成。
+- [x] 1／100／101／5,001 各至少 20 次受理 P95≤3秒，記錄排隊、查核、正式交易與記憶體；6,001 完整指派。
+- [x] 隔離空佇列先 5,001 再 5 人：大型終態後小工作 60 秒內取得執行權；另跑每人首次延遲 1 秒的 SC-006，signEndAt 超過受理後 120 分鐘，有限界線內完成。
 - **原 UI 驗收暫緩／後端部分仍適用：** 只用合成資料、fake mail 及隔離 MySQL／Redis；完整跑 server lint、unit、schema、e2e 與 root build／lint，以及三故事前端驗收。未執行情境列限制，不能填通過。
 - **原 UI 驗收暫緩／後端部分仍適用：** 記錄 migration 先行、worker/server/client 協調發布、舊頁刷新與回退演練；未結清非終態不得直接換回舊 server，非空表 down 拒絕。
 - [ ] 本票完成需驗收且整合至功能分支；不自行操作 UAT、寄真信、建立遠端 PR 或執行部署。
@@ -55,3 +55,9 @@
 - 已交付證據：完整 e2e 47 suites／483 passed＋1 skipped、最後受影響回歸 16 suites／204 passed、schema 5 suites／30、security 14 suites／84、unit 115 suites／1,180，lint／build 通過。merge hook 再驗 lint 0 errors／272 既有 warnings、115 suites／1,180 unit 通過。
 - T031、T034 已驗完成；T032／T033 仍未勾選，真實長時間測試與正式 code review 尚未完成。票 08 保持 claimed。
 - client 差異為空，只操作獨立 integration worktree，未部署。
+
+## 最終實作驗收交付（2026-11-04）
+
+T031–T034已完成。程式基準`2f0657d`（最新dev／024fixture／reviewfix／snapshot補修）完整e2e50 suites／531 tests通過、專用reconnect另1／1通過，unit119／1213、schema5／30、security14／84、root build/lint通過。新版80次矩陣與6001完整性已驗；SC006舊基準真實5123.645秒成功、attempt1／5001指派，睡眠造成Bull失鎖後重新領取終態no-op並completed，完整異常與限制皆保留於validation。正常fullsuite另遇主機睡眠超時，以僅綁子程序的caffeinate重跑全綠，未放寬斷言。
+
+未改client、未跑瀏覽器或UAT發布／寄真信。狀態保持claimed，最後一項「驗收且整合」由merger合併後勾選及resolve；正式code review由父代理收尾。

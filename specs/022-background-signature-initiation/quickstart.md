@@ -185,7 +185,7 @@ Reconnect 合併 06／07 後，build 與完整 7 suites／61 tests 複驗通過�
 
 工作分支 `impl/022-08`，整合至 `impl/022-integration`；完整證據與重現指令見 [validation.md](validation.md)。本輪不修改client、不部署UAT、不寄真信；MySQL8.4.11／Redis7.4.11皆為隔離本機。
 
-80次POST受理矩陣（1／100／101／5001各20次）P95為14.09／15.03／12.80／98.19ms；真queue的5001→5混排，大型成功後9ms小型開始。這是受理時間，不包含既有前端解析。SC-006真實5001秒延遲長測仍在執行，未把fake-clock或局部進度當成通過。
+80次POST受理矩陣（1／100／101／5001各20次）P95為14.09／15.03／12.80／98.19ms；真queue的5001→5混排，大型成功後9ms小型開始。這是受理時間，不包含既有前端解析。SC-006已在舊基準`fadfc3f8`完成：真實5123.645秒（85.39分鐘）、5001人、attempt1、正式指派5001、Jest exit0。途中本機睡眠造成Bull lock遺失；原process提交後，再領同job遇DB終態no-op並queue completed，沒有重複指派。完整異常與舊基準限制見validation，不宣稱是新版Portal／重連修正的同一輪長測。
 
 發布順序演練：`test:schema`在空的合成schema執行全部正式migrations，並驗實際表／索引／CHECK及drift。共5 suites／30 tests通過。實際發布時先migration，再協調切換worker與server；client本輪不部署。受理完成只代表queued，應以工作GET摘要確認成功，再查文件詳情。
 
@@ -204,3 +204,7 @@ Reconnect 合併 06／07 後，build 與完整 7 suites／61 tests 複驗通過�
 ## 員工共享鎖補修（2026-11-03）
 
 正式worker持users/document/job鎖5秒時，另一份既有草稿受理由約5027ms降至約12ms。worker及accept/retry使用users S current read，與job creator FK相容；停用／信箱／同步UPDATE仍被阻擋，先停用則worker拒絕正式發起。以專用test022_integrity／Redis11驗證，不更動長測DB10。此為受控持鎖情境，不替代08完整容量矩陣；同文件committing期間固定busy訊息另行補修。
+
+## 最新 dev 最終回歸（2026-11-04）
+
+包含Spec024與busy預檢snapshot補修的 `2f0657d`：完整e2e50 suites／531 tests通過，專用reconnect另DB9 1／1通過；unit119 suites／1213、schema5／30、security14／84、root build與lint通過（0errors／272既有warnings）。前輪主機睡眠造成的超時保留於validation；最終以caffeinate僅綁測試子程序生命週期重跑全綠。新版隔離80次矩陣P95為12.40／12.58／18.15／99.45ms，5001→5混排大型成功後18ms小型開始。T031–T034完成，票08保持claimed待最終合併與正式review；沒有部署或瀏覽器驗收。

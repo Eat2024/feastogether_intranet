@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -76,6 +77,31 @@ async function startContext(portalConfig?: PortalConfig) {
   const context = await builder.compile();
   await context.init();
   return context;
+}
+
+/**
+ * 以子程序執行手動 CLI 原始碼（ts-node），與 UAT 一樣自行建立 Nest context；主 DB 指向本檔的 schema 測試庫。
+ * log 等級開到 info，log 與 CLI 輸出都在 stdout，才能檢查 log 中有沒有被略過的員編。
+ */
+function runCli(args: string[], env: NodeJS.ProcessEnv = {}) {
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--conditions=development',
+      '-r',
+      'ts-node/register',
+      'src/maintenance/portal-users.ts',
+      ...args,
+    ],
+    {
+      cwd: join(__dirname, '..'),
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: { ...process.env, DB_MYSQL_DB: database, LOG_LEVEL: 'info', ...env },
+    },
+  );
+  if (result.error) throw result.error;
+  return result;
 }
 
 const sleep = (ms: number) =>
@@ -468,6 +494,87 @@ describe('Portal 員工主檔匯入（合成 Portal）', () => {
       outcome: 'applied',
     });
     expect(await db.manager.countBy(User, { isActive: true })).toBe(1);
+  });
+
+  it('CLI sync --dry-run 不寫入；stdout 列出摘要、被略過的員編與原因、要停用的人數，log 不含被略過的員編', async () => {
+    await db.manager.save(User, {
+      empid: 'M000003',
+      name: '合成離職者',
+      isActive: true,
+    });
+    await portal.insertPeople([
+      person('M000001'),
+      person('M000002', { person_name: '' }),
+      person('M000003', { person_status: 2 }),
+    ]);
+    const before = await snapshot();
+
+    const { status, stdout } = runCli(['sync', '--dry-run']);
+
+    expect(status).toBe(0);
+    expect(await snapshot()).toEqual(before);
+    const lines = stdout.split('\n');
+    const summary = lines.find((line) => line.startsWith('摘要：'));
+    expect(JSON.parse(summary!.slice('摘要：'.length))).toMatchObject({
+      trigger: 'manual',
+      created: 1,
+      deactivated: 1,
+      skipped: { missing_name: 1 },
+      outcome: 'dry_run',
+    });
+    expect(lines).toContain('略過：M000002（missing_name）');
+    expect(lines).toContain('要停用：1 人');
+    // log 與 CLI 輸出同在 stdout：log 確實有輸出，但被略過的員編只出現在 CLI 的那一行。
+    expect(stdout).toContain('portal_users.sync_completed');
+    expect(lines.filter((line) => line.includes('M000002'))).toEqual([
+      '略過：M000002（missing_name）',
+    ]);
+  });
+
+  it('CLI 停用人數超過門檻時，不帶 --allow-deactivations 或 N 不符都以非零狀態結束且不寫入；N 相符才套用', async () => {
+    const departing = Array.from(
+      { length: 501 },
+      (_, i) => `Q${String(i).padStart(6, '0')}`,
+    );
+    await db.manager.insert(
+      User,
+      departing.map((empid) => ({ empid, name: '合成離職者', isActive: true })),
+    );
+    await portal.insertPeople(
+      departing.map((empid) => person(empid, { person_status: 2 })),
+    );
+    const before = await snapshot();
+
+    for (const args of [['sync'], ['sync', '--allow-deactivations', '500']]) {
+      const blocked = runCli(args);
+      expect(blocked.status).toBe(1);
+      expect(blocked.stderr).toContain('--allow-deactivations 501');
+      expect(await snapshot()).toEqual(before);
+    }
+
+    const confirmed = runCli(['sync', '--allow-deactivations', '501']);
+    expect(confirmed.status).toBe(0);
+    expect(await db.manager.countBy(User, { isActive: true })).toBe(0);
+  });
+
+  it('CLI 參數不合法或 Portal 讀取失敗時以非零狀態結束，本機不寫入', async () => {
+    await portal.insertPeople([person('E000001')]);
+    const before = await snapshot();
+
+    for (const args of [
+      ['sync', '--input', '/imports/portal_users.hex.tsv'],
+      ['rollback', '--preview', '/imports/rollback-001.json'],
+    ]) {
+      const rejected = runCli(args);
+      expect(rejected.status).toBe(1);
+      expect(rejected.stderr).toContain('sync --dry-run');
+    }
+    const failed = runCli(['sync'], {
+      PORTAL_MYSQL_DB: `${process.env.PORTAL_MYSQL_DB}_missing`,
+    });
+    expect(failed.status).toBe(1);
+    expect(failed.stdout).toContain('portal_users.sync_failed');
+    expect(await snapshot()).toEqual(before);
   });
 
   it('Portal 故障或權限不足時只拋出分類錯誤，本機 0 變更；log 與錯誤不含 Portal 主機、帳號、資料庫或員編', async () => {

@@ -4,10 +4,12 @@ import { validate } from 'class-validator';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { PortalDirectoryService } from '#app/infrastructure/portal/portal-directory.service';
-import type { PortalStaffRow } from '#app/infrastructure/portal/portal.types';
+import {
+  PORTAL_ACTIVE_STATUS_NAMES,
+  blankToNull,
+  type PortalStaffRow,
+} from '#app/infrastructure/portal/portal.types';
 import { StaffLookupDto } from '../dto/staff-lookup.dto';
-
-const STATUS_NAMES: Record<number, string> = { 0: '試用', 1: '正式' };
 
 /** 登入時向 Portal 即時查員工資料，只放行可登入的試用／正式員工。 */
 @Injectable()
@@ -24,7 +26,9 @@ export class EligibleStaffService {
       throw new AppException(...AppErrors.STAFF_LOOKUP_FAILED);
     }
     const eligible = rows.filter(
-      (row) => row.person_empid === empId && row.person_status in STATUS_NAMES,
+      (row) =>
+        row.person_empid === empId &&
+        row.person_status in PORTAL_ACTIVE_STATUS_NAMES,
     );
     if (eligible.length !== 1) throw rejected();
     const [row] = eligible;
@@ -36,15 +40,11 @@ export class EligibleStaffService {
       department_name: blankToNull(row.department_name),
       title: blankToNull(row.title),
       person_status: row.person_status,
-      person_status_name: STATUS_NAMES[row.person_status],
+      person_status_name: PORTAL_ACTIVE_STATUS_NAMES[row.person_status],
     });
     if ((await validate(staff)).length > 0) throw rejected();
     return staff;
   }
-}
-
-function blankToNull(value: string): string | null {
-  return value.trim() || null;
 }
 
 function rejected(): AppException {

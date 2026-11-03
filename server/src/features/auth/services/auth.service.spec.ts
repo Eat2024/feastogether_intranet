@@ -132,36 +132,33 @@ describe('AuthService WebView SSO', () => {
     },
   );
 
-  it.each([null, undefined, '', '  '])(
-    '缺部門 %p 清除既有代碼與名稱，不沿用舊授權',
-    async (code) => {
-      const { service, eligibleStaff, users, user } = setup();
-      users.findByEmpidForUpdate.mockResolvedValue({
-        ...user,
+  it('缺部門（EligibleStaffService 給 null）清除既有代碼與名稱，不沿用舊授權', async () => {
+    const { service, eligibleStaff, users, user } = setup();
+    users.findByEmpidForUpdate.mockResolvedValue({
+      ...user,
+      departmentId: 42,
+      departmentCode: 'OLD',
+      departmentName: '舊部門',
+    });
+    eligibleStaff.lookupEligibleStaff.mockResolvedValue({
+      person_empid: '00123',
+      person_name: '合成員工',
+      person_status: 1,
+      person_status_name: '正式',
+      department_id: null,
+      department_name: null,
+      title: null,
+    });
+    await service.login('00123', 'synthetic-password');
+    expect(users.save).toHaveBeenCalledWith(
+      expect.objectContaining({
         departmentId: 42,
-        departmentCode: 'OLD',
-        departmentName: '舊部門',
-      });
-      eligibleStaff.lookupEligibleStaff.mockResolvedValue({
-        person_empid: '00123',
-        person_name: '合成員工',
-        person_status: 1,
-        person_status_name: '正式',
-        department_id: code,
-        department_name: null,
-        title: null,
-      });
-      await service.login('00123', 'synthetic-password');
-      expect(users.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          departmentId: 42,
-          departmentCode: null,
-          departmentName: null,
-        }),
-        manager,
-      );
-    },
-  );
+        departmentCode: null,
+        departmentName: null,
+      }),
+      manager,
+    );
+  });
 
   it('登入同步不寫入未選取的 email，登入回應也不揭露信箱', async () => {
     const { service, users, user } = setup();

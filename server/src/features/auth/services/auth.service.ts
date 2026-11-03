@@ -356,11 +356,9 @@ export class AuthService {
     }
     user.name = staff.person_name;
     user.personStatus = staff.person_status_name;
-    // 缺部門必須寫入 NULL，避免 TypeORM 略過 undefined 而保留舊授權。
-    user.departmentCode = staff.department_id?.trim()
-      ? staff.department_id
-      : null;
-    user.departmentName = staff.department_name ?? null;
+    // 缺部門時 EligibleStaffService 給 null，寫入 NULL 清除舊授權。
+    user.departmentCode = staff.department_id;
+    user.departmentName = staff.department_name;
     user.titleName = staff.title ?? undefined;
     user.lastLoginAt = now;
     return this.users.save(user, manager);

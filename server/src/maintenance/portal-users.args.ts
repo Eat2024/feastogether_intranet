@@ -1,7 +1,6 @@
-export interface PortalUsersOptions {
-  dryRun: boolean;
-  confirmedDeactivations?: number;
-}
+import type { PortalUserSyncOptions } from '#app/features/users/services/portal-user-sync.service';
+
+export type PortalUsersOptions = Omit<PortalUserSyncOptions, 'trigger'>;
 
 export const PORTAL_USERS_USAGE =
   '用法：node dist/maintenance/portal-users.js sync --dry-run | sync [--allow-deactivations <N>]';

@@ -1,11 +1,12 @@
 import { isEmail } from 'class-validator';
-import type {
-  PortalActiveEmployeeRow,
-  PortalStatusRow,
+import {
+  PORTAL_ACTIVE_STATUS_NAMES,
+  blankToNull,
+  type PortalActiveEmployeeRow,
+  type PortalStatusRow,
 } from '#app/infrastructure/portal/portal.types';
 import type { User } from './entities/user.entity';
 
-/** 匯入寫入本機 users 的欄位（data-model「本機 users：匯入寫入的欄位」）。 */
 /**
  * 單次匯入最多停用的人數（research §6）：約為歷史單日離職高峰的三倍。
  * 超過時每日匯入整批不寫入；手動 CLI 須明確確認本次停用人數。
@@ -35,6 +36,7 @@ export interface PortalUserSyncSummary {
   outcome: PortalUserSyncOutcome;
 }
 
+/** 匯入寫入本機 users 的欄位（data-model「本機 users：匯入寫入的欄位」）。 */
 export interface PortalUserFields {
   empid: string;
   name: string;
@@ -74,19 +76,17 @@ const MAX_LENGTH = {
   titleName: 100,
 } as const;
 
-const optional = (value: string): string | null => value.trim() || null;
-
 function toFields(
   row: PortalActiveEmployeeRow,
 ): PortalUserFields | PortalUserSkipReason {
   const fields: PortalUserFields = {
     empid: row.person_empid,
     name: row.person_name.trim(),
-    departmentCode: optional(row.department_id),
-    departmentName: optional(row.department_name),
-    email: optional(row.email)?.toLowerCase() ?? null,
-    personStatus: row.person_status === 0 ? '試用' : '正式',
-    titleName: optional(row.title),
+    departmentCode: blankToNull(row.department_id),
+    departmentName: blankToNull(row.department_name),
+    email: blankToNull(row.email)?.toLowerCase() ?? null,
+    personStatus: PORTAL_ACTIVE_STATUS_NAMES[row.person_status],
+    titleName: blankToNull(row.title),
   };
   if (!fields.name) return 'missing_name';
   for (const [key, max] of Object.entries(MAX_LENGTH)) {
@@ -146,7 +146,7 @@ export function findDepartedEmpids(
   const active = new Set<string>();
   const departed = new Set<string>();
   for (const { person_empid, person_status } of statuses) {
-    if (person_status === 0 || person_status === 1) active.add(person_empid);
+    if (person_status in PORTAL_ACTIVE_STATUS_NAMES) active.add(person_empid);
     else departed.add(person_empid);
   }
   return new Set([...departed].filter((empid) => !active.has(empid)));

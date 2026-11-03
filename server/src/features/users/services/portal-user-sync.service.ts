@@ -86,18 +86,18 @@ export class PortalUserSyncService {
       const source = normalizePortalEmployees(rows);
 
       // 本機在職、但不在 Portal 在職名單（含被略過的員編）中的人，才向 Portal 查狀態。
+      // findActiveCandidates 不帶關鍵字時回傳所有在職、未軟刪除的本機帳號。
       const listed = new Set(rows.map((row) => row.person_empid));
-      const candidates = (
-        await this.users.findActiveCandidates(
-          undefined,
-          this.mysql.getManager(),
-        )
-      ).filter((user) => !listed.has(user.empid));
+      const activeUsers = await this.users.findActiveCandidates(
+        undefined,
+        this.mysql.getManager(),
+      );
+      const unlisted = activeUsers.filter((user) => !listed.has(user.empid));
       const statuses = await fromPortal(
-        this.portal.findStatusesByEmpids(candidates.map((user) => user.empid)),
+        this.portal.findStatusesByEmpids(unlisted.map((user) => user.empid)),
       );
       const departedEmpids = findDepartedEmpids(statuses);
-      const departed = candidates.filter((user) =>
+      const departed = unlisted.filter((user) =>
         departedEmpids.has(user.empid),
       );
 

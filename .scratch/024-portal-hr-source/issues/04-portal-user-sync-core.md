@@ -30,7 +30,7 @@
 
 2026-11-03：只建立 ticket，尚未實作。ready-for-agent 不代表可以忽略 Blocked by；前置 ticket 都 resolved 後才能開始。實作結果追加在這裡。
 
-2026-11-03（implementer，branch `feat/024-t04`，commit `b4227dc`；已合入 integration tip `e8d9269`，merge commit `42803e7`）：T020–T023 完成。
+2026-11-03（implementer，branch `feat/024-t04`，commit `b4227dc`；先後合入 integration tip `e8d9269`（merge `42803e7`）與 `d886b19`（含 ticket 07，merge `fba0c4d`））：T020–T023 完成。
 
 - 新增：
   - `server/src/features/users/portal-user-sync.rules.ts`（+ spec）：純函式。
@@ -78,6 +78,7 @@
   - `pnpm -C server build`：通過。
   - `pnpm -C server test:e2e -- portal-user-sync portal-user-import`：12/12（sync 8、import repository 4）。
   - `pnpm -C server test:e2e` 全套：40/40 suites、431/431 tests。
+  - 合入 `d886b19` 後重跑：pre-merge hook（lint 0 errors；unit 115 suites／1200 tests，ticket 07 刪了部分 spec）、`pnpm -C server build`、`test:e2e -- portal-user-sync portal-user-import` 12/12。全套 e2e 是在 `e8d9269` 合入後跑的，ticket 07 合入後沒有重跑全套。
   - 突變檢查：分別拿掉 `FOR UPDATE`、拿掉門檻檢查、在 `sync_failed` log 加入原始錯誤訊息。每一種都會讓對應的 e2e 失敗，確認測試確實能抓到這些行為。
 - e2e 涵蓋：
   - 5,001 人（4-byte 中文、全形符號、前導零）：

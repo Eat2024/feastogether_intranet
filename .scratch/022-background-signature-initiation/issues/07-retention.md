@@ -7,7 +7,7 @@
 
 **Blocked by:** [06 失敗名單恢復與安全人工重試](06-failure-correction.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — US3；FR-005、009、016、018；SC-009。
 
@@ -38,3 +38,9 @@
 
 - [x] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
 - [x] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+
+## 整合驗收紀錄
+
+- 實作 commit `d3c48743a2f0b3252467d13e6420e397f3bbd009` 已由 `impl/022-07` 無衝突合併至 `impl/022-integration`，merge commit `3256b8aca377d1a353610b7ebcac1a8fa143f231`。
+- 合併 hook：lint 0 errors／272 既有 warnings、單元 113 suites／1,175 tests 通過；實作 retention 7／7、六套 initiation e2e 60／60、server build 通過。
+- T029–T030 完成並整合，狀態改 resolved，08 可開始；無 client／schema／新 scheduler 變更。Redis reconnect 補修與整體整合驗收仍在後續範圍，沒有將整份規格結案。

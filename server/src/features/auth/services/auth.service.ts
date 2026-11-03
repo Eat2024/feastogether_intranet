@@ -20,8 +20,7 @@ import { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { FeastogetherAuthService } from '#app/infrastructure/http-client/feastogether/services/feastogether-auth.service';
-import { FeastogetherHrService } from '#app/infrastructure/http-client/feastogether/services/feastogether-hr.service';
-import type { StaffLookupDto } from '#app/infrastructure/http-client/feastogether/types/staff-lookup.dto';
+import type { StaffLookupDto } from '../dto/staff-lookup.dto';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import {
   WEBVIEW_JWT_CLOCK_TOLERANCE_SECONDS,
@@ -31,6 +30,7 @@ import {
   WEBVIEW_SESSION_TTL_SECONDS,
 } from '../auth.constants';
 import { WebviewLaunchView } from '../dto/webview-launch.dto';
+import { EligibleStaffService } from './eligible-staff.service';
 
 interface LaunchClaims {
   iss: string;
@@ -72,7 +72,7 @@ export class AuthService {
     private readonly sessions: AuthSessionRepository,
     private readonly users: UserRepository,
     private readonly mysql: MysqlService,
-    private readonly hr: FeastogetherHrService,
+    private readonly eligibleStaff: EligibleStaffService,
     private readonly logger: AppLoggerService,
     private readonly passwordAuth: FeastogetherAuthService,
   ) {
@@ -89,7 +89,7 @@ export class AuthService {
     password: string,
   ): Promise<{ token: string; session: AuthSession }> {
     await this.passwordAuth.authenticate(empId, password);
-    const staff = await this.hr.lookupEligibleStaff(empId);
+    const staff = await this.eligibleStaff.lookupEligibleStaff(empId);
     const saveUser = () =>
       this.mysql.transaction((manager) =>
         this.findOrCreateUser(empId, staff, new Date(), manager),
@@ -129,7 +129,7 @@ export class AuthService {
     }
 
     try {
-      const staff = await this.hr.lookupEligibleStaff(sub);
+      const staff = await this.eligibleStaff.lookupEligibleStaff(sub);
       const issued = await this.resolveUserAndIssueCode(
         Number(session.id),
         sub,

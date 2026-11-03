@@ -73,3 +73,9 @@
 - 限制：不宣稱 metadata 遺失前已進入 DB 交易的不同文件仍嚴格全域單工；遺失 Redis active 記錄的極端窗口由每份文件的 DB lease/token 防止雙發。未斷線的手動刪 keys/FLUSHDB 不會觸發 ready，本修正不涵蓋該操作。未改 client、migration、env、task 勾選或 ticket 狀態。
 
 追加修正整合 06／07 後：只解決 quickstart 與 e2e regex 聯集衝突，build 通過；完整 7 suites／61 tests 複驗通過。首次整合回歸的 07「超過一批終態＋鎖 parent 略過」曾出現一次 MySQL lock wait timeout；該例單跑、07 全跑及再次七套回歸均通過，後續等待監測未取得重現證據，未修改 07 程式或宣稱已定位原因。此偶發結果保留供最終 review／08 驗收追蹤。
+
+## Redis reconnect 補修整合紀錄
+
+- 補修分支 `impl/022-reconnect` commit `3284cbd76012e727de2e9cc93d83328d638e2cc8` 無衝突合併至 `impl/022-integration`，merge commit `29c2f12f519d05cc91059b170666a6d6efb4afe1`；票 05 保持 resolved。
+- merge hook：lint 0 errors／272 既有 warnings、115 suites／1,180 tests 通過；補修分支整合回歸 7 suites／61 e2e 與 build 通過。
+- 原 07 retention 偶發 lock wait timeout 的原因仍未定位，後續複驗通過不等於根因已修復；保留上方紀錄供 08 與 review 追蹤。另有草稿版本完整性補修與 08 整體驗收仍待完成，不整體結案。

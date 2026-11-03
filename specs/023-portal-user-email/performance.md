@@ -46,7 +46,7 @@
 ## 可重現資料
 
 - 完整 log：`/tmp/spec023-benchmark-before-{1,2,3}.log`、`/tmp/spec023-benchmark-after-{1,2,3}.log`。
-- 結構化彙總：`/tmp/spec023-benchmark-results.json`；彙總程式：`/tmp/spec023-benchmark-summary.py`。baseline 測試差異保留於 `/tmp/spec023-benchmark-baseline-instrumentation.patch`。
+- 結構化彙總：`/tmp/spec023-benchmark-results.json`；彙總程式：`/tmp/spec023-benchmark-summary.py`。baseline 測試差異已保存於 [baseline-5c79e52.patch](benchmarks/baseline-5c79e52.patch)，原暫時 worktree 可移除。
 - 測試：`server/test/internal-email-capacity.e2e-spec.ts`，指令 `pnpm -C server test:e2e --runTestsByPath test/internal-email-capacity.e2e-spec.ts -t '5001|6000'`。使用現有 DB／Redis 環境設定指向隔離測試資源；不得指向 UAT 或 production。
 - baseline 的改動限測試量測 instrumentation、6,000→5,001 的 fixture／尾批斷言；產品程式未修改。早期尾批索引仍指向第 6,000 人的失敗／中止 log 不列入結果。
 

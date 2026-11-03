@@ -1,0 +1,236 @@
+diff --git a/server/test/internal-email-capacity.e2e-spec.ts b/server/test/internal-email-capacity.e2e-spec.ts
+index 876b64e..eaaa713 100644
+--- a/server/test/internal-email-capacity.e2e-spec.ts
++++ b/server/test/internal-email-capacity.e2e-spec.ts
+@@ -1,3 +1,4 @@
++import { MailRecipientPolicyService } from '#app/infrastructure/mail/mail-recipient-policy.service';
+ import { EsignEmployeeEmailService } from '#app/features/esign/services/esign-employee-email.service';
+ import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
+ import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
+@@ -68,17 +69,48 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+     resetSource();
+     const started = performance.now();
+     const memory = process.memoryUsage();
+-    await run();
++    const queries = jest.spyOn(
++      ctx.app.get(MysqlService).getDataSource().logger,
++      'logQuery',
++    );
++    const originalPolicy = MailRecipientPolicyService.prototype.allowedRecipients;
++    let policyMs = 0;
++    let policyQueries = 0;
++    let policyCalls = 0;
++    const policySpy = jest
++      .spyOn(MailRecipientPolicyService.prototype, 'allowedRecipients')
++      .mockImplementation(async function (this: MailRecipientPolicyService, recipients) {
++        const policyStarted = performance.now();
++        const beforeQueries = queries.mock.calls.length;
++        try {
++          return await originalPolicy.call(this, recipients);
++        } finally {
++          policyMs += performance.now() - policyStarted;
++          policyQueries += queries.mock.calls.length - beforeQueries;
++          policyCalls++;
++        }
++      });
++    try {
++      await run();
++    } finally {
++      policySpy.mockRestore();
++    }
++    const queryCount = queries.mock.calls.length;
++    queries.mockRestore();
+     const after = process.memoryUsage();
+     // 僅彙總數據，不輸出員編、信箱、cookie 或邀請秘密；記憶體差含 GC，並非峰值。
+     console.info(
+-      'SPEC016_CAPACITY',
++      'SPEC023_CAPACITY',
+       JSON.stringify({
+         operation,
+         count,
+         elapsedMs: Math.round(performance.now() - started),
+         rssDeltaMiB: Math.round((after.rss - memory.rss) / 1048576),
+         heapDeltaMiB: Math.round((after.heapUsed - memory.heapUsed) / 1048576),
++        dbQueries: queryCount,
++        policyMs: Math.round(policyMs),
++        policyQueries,
++        policyCalls,
+         batches: batches.length,
+         peak,
+       }),
+@@ -91,10 +123,10 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+     const manager = ctx.app.get(MysqlService).getManager();
+     const prefix = `C${randomBytes(4).toString('hex')}`;
+     const employeeNos = Array.from(
+-      { length: 6000 },
++      { length: 5001 },
+       (_, i) => `${prefix}${String(i).padStart(4, '0')}`,
+     );
+-    for (let offset = 0; offset < 6000; offset += 500)
++    for (let offset = 0; offset < 5001; offset += 500)
+       await manager.insert(
+         User,
+         employeeNos
+@@ -111,7 +143,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+       where: { empid: In(employeeNos) },
+       order: { empid: 'ASC' },
+     });
+-    expect(users).toHaveLength(6000);
++    expect(users).toHaveLength(5001);
+     mailFixture(ctx).allowEmails(users.map((user) => email(user.empid)));
+     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
+     const pdf = await PDFDocument.create();
+@@ -144,14 +176,14 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+           peak = Math.max(peak, active);
+           setImmediate(() => {
+             active -= 1;
+-            const last = body.person_empids.includes(users[5999].empid);
++            const last = body.person_empids.includes(users[5000].empid);
+             if (last && failure === 'source') {
+               subscriber.error({
+                 isAxiosError: true,
+                 name: 'AxiosError',
+                 response: {
+                   status: 503,
+-                  data: { email: email(users[5999].empid) },
++                  data: { email: email(users[5000].empid) },
+                 },
+               });
+               return;
+@@ -163,7 +195,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+                   .reverse()
+                   .filter(
+                     (id) =>
+-                      !(failure === 'missing' && id === users[5999].empid),
++                      !(failure === 'missing' && id === users[5000].empid),
+                   )
+                   .map((person_empid) => ({
+                     person_empid,
+@@ -225,7 +257,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+         )
+           await job.remove();
+       }
+-      // 必須同時移除本次持久通知，否則後續 worker 的 maintenance 會重新補入 6000 筆。
++      // 必須同時移除本次持久通知，否則後續 worker 的 maintenance 會重新補入 5001 筆。
+       const files = await manager.query<
+         Array<{ object_key: string; object_version: string | null }>
+       >(
+@@ -302,7 +334,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+     ).toBeUndefined();
+   });
+ 
+-  it.each([1, 100, 101, 6000])(
++  it.each([1, 100, 101, 5001])(
+     '%i 人已存在帳號解析與信箱核對保序，不誤配且批次有界',
+     async (count) => {
+       const selected = users.slice(0, count);
+@@ -371,10 +403,10 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+       allowReject: true,
+     });
+   it.each(['source'] as const)(
+-    '6000 人末批%s失敗整份仍為草稿，無指派／通知／發起稽核',
++    '5001 人末批%s失敗整份仍為草稿，無指派／通知／發起稽核',
+     async (mode) => {
+       failure = mode;
+-      await measure(`initiation-${mode}`, 6000, async () => {
++      await measure(`initiation-${mode}`, 5001, async () => {
+         await initiate().expect(502);
+         const detail = apiData<{ status: string; signers: unknown[] }>(
+           await request(ctx.server)
+@@ -392,7 +424,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+           >("SELECT (SELECT COUNT(*) FROM esign_notification_batches WHERE document_id=?) batches,(SELECT COUNT(*) FROM esign_audit_events WHERE document_id=? AND event_type='document.initiated') initiated", [documentId, documentId]);
+         expect(Number(counts.batches)).toBe(0);
+         expect(Number(counts.initiated)).toBe(0);
+-        expect(batches).toHaveLength(60);
++        expect(batches).toHaveLength(51);
+         expect(peak).toBeLessThanOrEqual(4);
+       });
+       failure = 'none';
+@@ -400,18 +432,26 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+     60000,
+   );
+ 
+-  it('6000 人完整發起固定信箱、快照與逐人通知，真正入列且日誌不含個資', async () => {
+-    await measure('initiation-success', 6000, async () => {
++  it('5001 人完整發起固定信箱、快照與逐人通知，真正入列且日誌不含個資', async () => {
++    await measure('initiation-success', 5001, async () => {
++      const initiationStarted = performance.now();
++      const queryLog = jest.mocked(ctx.app.get(MysqlService).getDataSource().logger.logQuery);
++      const initiationQueryStart = queryLog.mock.calls.length;
+       const result = apiData<{
+         status: string;
+         signers: Array<{ type: string; email: string }>;
+       }>(await initiate().expect(201));
++      console.info('SPEC023_PHASE', JSON.stringify({
++        operation: 'initiation-http',
++        elapsedMs: Math.round(performance.now() - initiationStarted),
++        dbQueries: queryLog.mock.calls.length - initiationQueryStart,
++      }));
+       expect(result.status).toBe('active');
+-      expect(result.signers).toHaveLength(6000);
++      expect(result.signers).toHaveLength(5001);
+       expect(result.signers.map((s) => [s.type, s.email])).toEqual(
+         users.map((u) => ['user', email(u.empid).toLowerCase()]),
+       );
+-      expect(batches).toEqual(Array(60).fill(100));
++      expect(batches).toEqual([...Array(50).fill(100), 1]);
+       expect(peak).toBe(4);
+       const manager = ctx.app.get(MysqlService).getManager();
+       const logs = await manager.query<
+@@ -425,7 +465,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+         'SELECT l.id,l.batch_id batchId,l.invitation_generation_sha256 generation,s.invitation_token_sha256 digest FROM esign_notification_logs l JOIN esign_signers s ON s.id=l.signer_id WHERE s.document_id=?',
+         [documentId],
+       );
+-      expect(logs).toHaveLength(6000);
++      expect(logs).toHaveLength(5001);
+       expect(
+         logs.every((l) => l.generation === null && l.digest === null),
+       ).toBe(true);
+@@ -449,13 +489,20 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+         ctx.app.get(EsignAuditService),
+         mailFixture(ctx).guard(mailer),
+       );
++      const workerStarted = performance.now();
++      const workerQueryStart = queryLog.mock.calls.length;
+       await worker.process({ data: { notificationBatchId: batchId } } as Job<{
+         notificationBatchId: number;
+       }>);
+-      expect(mailer.internalGroupDeliveries).toHaveLength(120);
++      console.info('SPEC023_PHASE', JSON.stringify({
++        operation: 'notification-worker',
++        elapsedMs: Math.round(performance.now() - workerStarted),
++        dbQueries: queryLog.mock.calls.length - workerQueryStart,
++      }));
++      expect(mailer.internalGroupDeliveries).toHaveLength(101);
+       expect(
+         mailer.internalGroupDeliveries.every(
+-          (group) => group.recipientEmails.length === 50,
++          (group) => group.recipientEmails.length <= 50,
+         ),
+       ).toBe(true);
+       expect(
+@@ -464,13 +511,13 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+             (group) => group.recipientEmails,
+           ),
+         ).size,
+-      ).toBe(6000);
++      ).toBe(5001);
+       expect(mailer.deliveries).toEqual([]);
+       const [delivered] = await manager.query<Array<{ total: string }>>(
+         "SELECT COUNT(*) total FROM esign_notification_logs WHERE batch_id=? AND result='delivered'",
+         [batchId],
+       );
+-      expect(Number(delivered.total)).toBe(6000);
++      expect(Number(delivered.total)).toBe(5001);
+       const [document] = await manager.query<
+         Array<{ signing_payload_json: string | { signers: unknown[] } }>
+       >('SELECT signing_payload_json FROM esign_documents WHERE id=?', [
+@@ -482,7 +529,7 @@ describe('Spec016 全公司 Email 容量（真實 HTTP/MySQL/Redis、合成來
+               signers: unknown[];
+             })
+           : document.signing_payload_json;
+-      expect(payload.signers).toHaveLength(6000);
++      expect(payload.signers).toHaveLength(5001);
+       const audit = await manager.query<unknown[]>(
+         'SELECT metadata_json FROM esign_audit_events WHERE document_id=?',
+         [documentId],

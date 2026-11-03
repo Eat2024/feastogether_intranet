@@ -7,7 +7,7 @@
 
 **Blocked by:** [03 完整大量與混合名單背景發起](03-complete-roster.md)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — US2；FR-008–010、016；SC-003、007。
 
@@ -17,17 +17,35 @@
 
 ## 驗收條件
 
-- [ ] latest 無工作回 null；job 與 latest 是只讀摘要，未登入 401，非建立人與不存在統一 404，回應 no-store。
-- [ ] 列表只對建立人提供摘要，其他部門讀者為 null；批次查詢小欄位，無 JSON filesort／N+1。
+- [x] latest 無工作回 null；job 與 latest 是只讀摘要，未登入 401，非建立人與不存在統一 404，回應 no-store。
+- **原列表摘要驗收被後端範圍取代（保留原文）：** 列表只對建立人提供摘要，其他部門讀者為 null；批次查詢小欄位，無 JSON filesort／N+1。
+- [x] 原列表欄位保持不變，不新增 initiationSummary；22 份大型 job input、256KiB sort buffer 下查詢成功，查詢數恆定且不讀工作 JSON。
 - **原 UI 驗收暫緩／後端部分仍適用：** 前端 3 秒輪詢，終態與 401／403／404 停止，網路或 503 顯示暫不可更新；attempt 重新查核不累加或偽造百分比。
 - **原 UI 驗收暫緩／後端部分仍適用：** 排隊、處理、成功與失敗 fixture 下重整／重登入都回到同工作，正常連線已更新進度 10 秒內可見。
 - **原 UI 驗收暫緩／後端部分仍適用：** 22 份大 input／256KiB 排序緩衝驗證成功，輪詢回應大小不隨名單線性成長；busy UI 與服務端限制一致。
 
 ## 實作與驗證紀錄
 
-尚未開始。
+2026-11-03，分支 `impl/022-04`，基準 `1b1211b5`；待 merger 整合，狀態保持 claimed。
+
+- 完成 latest（無工作 null、以 ID 取最新）與 get 共用目前有效建立人授權、no-store、小摘要；部門讀者可讀原文件但不能讀工作。
+- 授權與受理／成功重播採小欄位文件投影，不載入正式 signing payload；正式發起核心仍使用完整模型。
+- 停簽、補簽及通知批次原先雖因 draft 拒絕，訊息不是 worker 忙碌；已於授權後、業務檢核前補共用 busy guard。queued／processing 全入口矩陣涵蓋 PDF／標題／期間／選項／替換名單／note／欄位／草稿儲存／刪除；非建立人仍 404。
+- 前端、schema、環境變數及排程皆未修改。
+
+### 驗證
+
+- 紅→綠：latest 原本被 UUID route 解析而 400；新增固定路由後 200/null。
+- 紅→綠：停簽原回 ESIGN_STATE_CONFLICT；補 guard 後 queued／processing 皆固定 ESIGN_INITIATION_IN_PROGRESS。
+- 紅→綠：GET 摘要與成功後重播原本讀 signing_payload_json；小投影後 SQL 不再包含大型文件／工作 JSON。
+- 查詢 8 例＋受理 11 例＋容量 13 例：32／32 通過，包含 22 份各 5,001 人大型輸入、256KiB sort buffer、固定 SQL 數、重登入查回、只讀與授權、failed 解鎖及 succeeded 舊規則。
+- server unit：113 suites／1,175 tests；build 通過；lint 0 errors／272 既有 warnings，新檔案無 warnings。
+- 隔離 MySQL `feastogether_intranet_test022_t04`、Redis 16322/DB4、獨立私有檔案目錄；只用合成資料、fake mail。
+- 不宣稱已實作／驗收前端輪詢、10 秒畫面可見或前端輸入還原；它們已由最新 backend-only scope 暫緩。
 
 ## 本輪後端補充驗收
 
-- [ ] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
-- [ ] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+- [x] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
+- [x] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+
+- 補充查詢斷線案例：DB connection 邊界注入失敗，API 沿用 503；恢復後原工作仍 queued、attempt=0、errorCode=null，不把讀取失敗變成背景失敗。

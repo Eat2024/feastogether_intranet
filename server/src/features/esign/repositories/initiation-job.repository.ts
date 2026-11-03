@@ -35,6 +35,14 @@ export class InitiationJobRepository {
     return manager.findOneBy(EsignInitiationJob, { documentId, publicId });
   }
 
+  /** 最新以資料庫流水號判斷；摘要查詢不載入大型輸入與問題 JSON。 */
+  latest(documentId: number, manager: EntityManager) {
+    return manager.findOne(EsignInitiationJob, {
+      where: { documentId },
+      order: { id: 'DESC' },
+    });
+  }
+
   byKey(documentId: number, requestKey: string, manager: EntityManager) {
     // 呼叫端先取得文件鎖，這裡必須 current read，不能讀 RR 舊快照。
     return manager

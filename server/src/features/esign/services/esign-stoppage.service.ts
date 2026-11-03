@@ -39,6 +39,7 @@ export class EsignStoppageService {
         manager,
       );
       this.access.checkEsignCreator(document, creatorUserId);
+      await this.access.assertNotInitiating(documentId, manager);
       this.validation.assertActiveForStop(document);
       const signers = await this.signers.findByDocumentForUpdate(
         documentId,

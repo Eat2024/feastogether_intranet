@@ -1,3 +1,4 @@
+import { InitiationJobRepository } from '#app/features/esign/repositories/initiation-job.repository';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
 import { EsignAccessPolicyService } from '#app/features/esign/services/esign-access-policy.service';
 import { EsignInitiationService } from '#app/features/esign/services/esign-initiation.service';
@@ -165,50 +166,116 @@ describe('022 背景發起受理', () => {
     );
   });
 
-  it('所有草稿與簽署人寫入均被 busy 保護，note 不能繞過', async () => {
-    const doc = await newDoc();
-    const saved = apiData<{ signers: Array<{ publicId: string }> }>(
-      await request(ctx.server)
-        .patch(`/api/esign/documents/${doc}/draft-settings`)
-        .set('Cookie', cookie)
-        .set('Origin', origin)
-        .send({ signers: [{ type: 'user', userId: ownerId }] })
-        .expect(200),
-    );
-    await submit(doc, input()).expect(202);
-    const checks = [
-      () => request(ctx.server).delete(`/api/esign/documents/${doc}`),
-      () =>
-        request(ctx.server)
+  it.each(['queued', 'processing'])(
+    '%s 所有文件與簽署人寫入均回 busy，直接鎖文件的入口也不能繞過',
+    async (status) => {
+      const doc = await newDoc();
+      const saved = apiData<{ signers: Array<{ publicId: string }> }>(
+        await request(ctx.server)
           .patch(`/api/esign/documents/${doc}/draft-settings`)
-          .send({ watermark: false }),
-      () =>
-        request(ctx.server)
-          .put(`/api/esign/documents/${doc}/draftSave`)
-          .send({ signers: [{ type: 'user', userId: ownerId }] }),
-      () =>
-        request(ctx.server)
-          .put(`/api/esign/documents/${doc}/fields`)
-          .send({ fields: input().fields }),
-      () =>
-        request(ctx.server)
-          .patch(
-            `/api/esign/documents/${doc}/signers/${saved.signers[0].publicId}/note`,
-          )
-          .send({ note: '不可修改' }),
-    ];
-    for (const make of checks) {
-      const result = await make()
-        .set('Cookie', cookie)
-        .set('Origin', origin)
-        .expect(409);
-      expect(apiError(result)).toMatchObject({
-        code: 'ESIGN_INITIATION_IN_PROGRESS',
-        message:
-          '文件正在背景發起中（worker 執行中），暫時無法修改文件或簽署人，請稍後再試。',
-      });
-    }
-  });
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .send({ signers: [{ type: 'user', userId: ownerId }] })
+          .expect(200),
+      );
+      const accepted = apiData<JobView>(await submit(doc, input()).expect(202));
+      if (status === 'processing') {
+        const job = await db.manager.findOneByOrFail(EsignInitiationJob, {
+          publicId: accepted.jobId,
+        });
+        await db.transaction((manager) =>
+          ctx.app.get(InitiationJobRepository).claim(job.id, manager),
+        );
+      }
+      const replacement = await PDFDocument.create();
+      replacement.addPage();
+      const replacementBytes = Buffer.from(await replacement.save());
+      const checks = [
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}`)
+            .attach('file', replacementBytes, {
+              filename: 'replacement.pdf',
+              contentType: 'application/pdf',
+            }),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}`)
+            .field('title', '不得改標題'),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/stoppages`)
+            .send({ reason: '合成停止原因' }),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/reopenings`)
+            .send({
+              expectedSignEndAt: input().signEndAt,
+              signEndAt: new Date(Date.now() + 172800000).toISOString(),
+              reason: '合成補簽原因',
+            }),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/notification-batches`)
+            .send({ selection: 'all_pending', requestId: randomUUID() }),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}/draft-settings`)
+            .send({
+              signStartAt: input().signStartAt,
+              signEndAt: input().signEndAt,
+              allowReject: true,
+            }),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}/draft-settings`)
+            .send({
+              signers: [
+                {
+                  type: 'email',
+                  name: '替換名單',
+                  email: 'replace@example.invalid',
+                },
+              ],
+            }),
+        () => request(ctx.server).delete(`/api/esign/documents/${doc}`),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}/draft-settings`)
+            .send({ watermark: false }),
+        () =>
+          request(ctx.server)
+            .put(`/api/esign/documents/${doc}/draftSave`)
+            .send({ signers: [{ type: 'user', userId: ownerId }] }),
+        () =>
+          request(ctx.server)
+            .put(`/api/esign/documents/${doc}/fields`)
+            .send({ fields: input().fields }),
+        () =>
+          request(ctx.server)
+            .patch(
+              `/api/esign/documents/${doc}/signers/${saved.signers[0].publicId}/note`,
+            )
+            .send({ note: '不可修改' }),
+      ];
+      for (const make of checks) {
+        const result = await make()
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .expect(409);
+        expect(apiError(result)).toMatchObject({
+          code: 'ESIGN_INITIATION_IN_PROGRESS',
+          message:
+            '文件正在背景發起中（worker 執行中），暫時無法修改文件或簽署人，請稍後再試。',
+        });
+        const denied = await make()
+          .set('Cookie', other)
+          .set('Origin', origin)
+          .expect(404);
+        expect(apiError(denied).code).not.toBe('ESIGN_INITIATION_IN_PROGRESS');
+      }
+    },
+  );
 
   it('RR 舊快照不會讓受理後的草稿異動繞過保護', async () => {
     const doc = await newDoc();

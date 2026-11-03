@@ -7,7 +7,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** claimed
+**Status:** resolved
 
 **Spec:** [022 規格](../../../specs/022-background-signature-initiation/spec.md) — FR-007、008、014、015；後續 US1–US3 共用。
 
@@ -36,3 +36,9 @@
 
 - [ ] 不修改 client；既有無 key 發起可受理，API 仍正確區分受理與完成。
 - [ ] 本票涉及異動時，queued／processing 拒絕文件或簽署人修改並回固定 409 worker 執行中訊息；其他權限與終態規則不放寬。
+
+## 整合驗收紀錄
+
+- 已將 `impl/022-01` 實作 commit `ea034502a25d36b1a8c6f1a55529901f88413abf` 合併至 `impl/022-integration`，merge commit `107656323974d713ff7f794421e77cf60ee654c0`，無衝突。
+- 合併 hook：server/client lint 通過（server 0 errors、272 既有 warnings）；單元 113 suites／1,175 tests 通過。實作票的隔離 core e2e 25／25 與 build 已通過。
+- T001–T003 完成並已整合，狀態改 resolved。上方共通 202／busy guard 補充條件屬後續票範圍，未虛標完成；client 無變更。

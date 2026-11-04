@@ -589,11 +589,7 @@ describe('022 失敗恢復與人工重試', () => {
           [documentId],
         );
         for (const job of jobs) await tx.delete(EsignInitiationJob, job.id);
-        for (const table of [
-          'esign_audit_events',
-          'esign_file_objects',
-          'esign_document_fields',
-        ])
+        for (const table of ['esign_file_objects', 'esign_document_fields'])
           await tx.query(`DELETE FROM ${table} WHERE document_id=?`, [
             documentId,
           ]);

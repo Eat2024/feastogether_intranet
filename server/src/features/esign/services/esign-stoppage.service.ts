@@ -5,7 +5,6 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { DocumentRepository } from '../repositories/document.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { EsignAuditService } from './esign-audit.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 
 @Injectable()
@@ -16,7 +15,6 @@ export class EsignStoppageService {
     private readonly signers: SignerRepository,
     private readonly access: EsignAccessPolicyService,
     private readonly validation: EsignDocumentValidationService,
-    private readonly audit: EsignAuditService,
   ) {}
 
   stopByCreator(documentId: number, creatorUserId: number, reason: string) {
@@ -62,16 +60,6 @@ export class EsignStoppageService {
       document.stoppedAt = now;
       document.stopReason = reason;
       await this.documents.save(document, manager);
-      await this.audit.append(
-        {
-          documentId,
-          actorUserId: creatorUserId,
-          eventType: 'document.stopped_by_creator',
-          occurredAt: now,
-          metadata: { status: 'stopped', reason },
-        },
-        manager,
-      );
       return true;
     });
   }

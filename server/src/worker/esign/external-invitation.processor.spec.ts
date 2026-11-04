@@ -65,7 +65,6 @@ describe('ExternalInvitationProcessor', () => {
         ? jest.fn(() => Promise.reject(new Error('provider unavailable')))
         : jest.fn(() => Promise.resolve()),
     };
-    const audit = { append: jest.fn(() => Promise.resolve()) };
     const mysql = {
       transaction: jest.fn(
         <T>(callback: (transactionManager: never) => Promise<T>) =>
@@ -77,10 +76,9 @@ describe('ExternalInvitationProcessor', () => {
       notifications as never,
       signers as never,
       { decrypt: jest.fn(() => 'opaque-invitation-token') } as never,
-      audit as never,
       options?.mailer ?? mailer,
     );
-    return { processor, document, log, signer, notifications, mailer, audit };
+    return { processor, document, log, signer, notifications, mailer };
   }
 
   const job = { data: { notificationLogId: 19 } } as Job<{
@@ -122,7 +120,7 @@ describe('ExternalInvitationProcessor', () => {
   );
 
   it('以 CAS claim 寄送，成功後 delivered、清密文並只追加去敏感 audit', async () => {
-    const { processor, document, log, signer, mailer, audit } = setup();
+    const { processor, document, log, signer, mailer } = setup();
     await processor.process(job);
     expect(mailer.send).toHaveBeenCalledWith({
       recipientEmail: 'candidate@example.test',
@@ -135,21 +133,10 @@ describe('ExternalInvitationProcessor', () => {
     expect(log.attemptCount).toBe(1);
     expect(log.completedAt).toEqual(expect.any(Date));
     expect(signer.invitationTokenCiphertext).toBeNull();
-    expect(audit.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        documentId: 7,
-        signerId: 11,
-        eventType: 'external_invitation.delivered',
-      }),
-      manager,
-    );
-    expect(JSON.stringify(audit.append.mock.calls)).not.toMatch(
-      /candidate@example|opaque-invitation-token|encrypted-token/,
-    );
   });
 
   it('白名單阻擋為 skipped，清除暫存憑證而不寫成功，重複工作不補寄', async () => {
-    const { processor, mailer, log, signer, audit } = setup();
+    const { processor, mailer, log, signer } = setup();
     mailer.send.mockRejectedValue(new MailRecipientBlockedError());
     await processor.process(job);
     expect(log).toMatchObject({
@@ -161,7 +148,6 @@ describe('ExternalInvitationProcessor', () => {
     });
     expect(signer.invitationTokenCiphertext).toBeNull();
     expect(signer.status).toBe('pending');
-    expect(audit.append).not.toHaveBeenCalled();
     await processor.process(job);
     expect(mailer.send).toHaveBeenCalledTimes(1);
   });
@@ -169,7 +155,7 @@ describe('ExternalInvitationProcessor', () => {
   it('白名單檢查故障最多三次含首次，30/60秒退避且第四次舊工作不再寄送', async () => {
     jest.useFakeTimers();
     try {
-      const { processor, mailer, log, signer, audit } = setup();
+      const { processor, mailer, log, signer } = setup();
       mailer.send.mockRejectedValue(new MailWhitelistCheckFailedError());
       const now = Date.now();
       await processor.process(job);
@@ -192,7 +178,6 @@ describe('ExternalInvitationProcessor', () => {
       await processor.process(job);
       expect(mailer.send).toHaveBeenCalledTimes(3);
       expect(signer.invitationTokenCiphertext).toBeNull();
-      expect(audit.append).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }
@@ -218,7 +203,7 @@ describe('ExternalInvitationProcessor', () => {
   });
 
   it('provider accept 後若 processing fence 已改變，舊 worker 不得提交 delivered', async () => {
-    const { processor, log, signer, notifications, audit } = setup();
+    const { processor, log, signer, notifications } = setup();
     notifications.findLogByIdForUpdate.mockImplementation(() => {
       log.processingStartedAt = new Date(
         (log.processingStartedAt?.getTime() ?? Date.now()) + 1,
@@ -228,11 +213,10 @@ describe('ExternalInvitationProcessor', () => {
     await processor.process(job);
     expect(log.result).toBe('processing');
     expect(signer.invitationTokenCiphertext).toBe('encrypted-token');
-    expect(audit.append).not.toHaveBeenCalled();
   });
 
   it('provider accept 後若簽署或停止使 credential 失效，不得提交 delivered audit', async () => {
-    const { processor, log, signer, mailer, audit } = setup();
+    const { processor, log, signer, mailer } = setup();
     mailer.send.mockImplementation(() => {
       signer.status = 'signed';
       signer.invitationTokenCiphertext = null;
@@ -244,10 +228,9 @@ describe('ExternalInvitationProcessor', () => {
     expect(log.result).toBe('failed');
     expect(log.errorCode).toBe('INVITATION_NO_LONGER_ACTIVE');
     expect(log.nextAttemptAt).toBeNull();
-    expect(audit.append).not.toHaveBeenCalled();
   });
   it('寄送期間文件停止時不提交 delivered，且清除排程欄位為 SQL NULL', async () => {
-    const { processor, document, log, mailer, audit } = setup();
+    const { processor, document, log, mailer } = setup();
     mailer.send.mockImplementation(() => {
       document.status = 'stopped';
       return Promise.resolve();
@@ -256,7 +239,6 @@ describe('ExternalInvitationProcessor', () => {
     expect(log.result).toBe('failed');
     expect(log.processingStartedAt).toBeNull();
     expect(log.nextAttemptAt).toBeNull();
-    expect(audit.append).not.toHaveBeenCalled();
   });
 
   describe('Gmail SMTP 帳密錯誤', () => {

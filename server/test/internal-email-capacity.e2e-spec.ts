@@ -11,7 +11,6 @@ import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitati
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { HttpService } from '@nestjs/axios';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -233,11 +232,7 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
         [documentId],
       );
       await manager.transaction(async (transaction) => {
-        for (const table of [
-          'esign_audit_events',
-          'esign_file_objects',
-          'esign_document_fields',
-        ])
+        for (const table of ['esign_file_objects', 'esign_document_fields'])
           await transaction.query(`DELETE FROM ${table} WHERE document_id=?`, [
             documentId,
           ]);
@@ -399,7 +394,7 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
           .getManager()
           .query<
             Array<{ batches: string; initiated: string }>
-          >("SELECT (SELECT COUNT(*) FROM esign_notification_batches WHERE document_id=?) batches,(SELECT COUNT(*) FROM esign_audit_events WHERE document_id=? AND event_type='document.initiated') initiated", [documentId, documentId]);
+          >("SELECT (SELECT COUNT(*) FROM esign_notification_batches WHERE document_id=?) batches,(SELECT COUNT(*) FROM esign_documents WHERE id=? AND status='active') initiated", [documentId, documentId]);
         expect(Number(counts.batches)).toBe(0);
         expect(Number(counts.initiated)).toBe(0);
         expect(http.post).not.toHaveBeenCalled();
@@ -487,20 +482,6 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
           ),
         );
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      const auditAppendOriginal = EsignAuditService.prototype.appendMany;
-      const auditAppendSpy = jest
-        .spyOn(ctx.app.get(EsignAuditService), 'appendMany')
-        .mockImplementation((...args) =>
-          track(
-            'audit-append',
-            () =>
-              auditAppendOriginal.call(
-                ctx.app.get(EsignAuditService),
-                ...args,
-              ) as ReturnType<typeof auditAppendOriginal>,
-          ),
-        );
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       const fieldsBuildOriginal = EsignFieldService.prototype.buildFields;
       const fieldsBuildSpy = jest
         .spyOn(ctx.app.get(EsignFieldService), 'buildFields')
@@ -523,7 +504,6 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
           emailResolutionSpy.mockRestore();
           signerSaveSpy.mockRestore();
           notificationSaveSpy.mockRestore();
-          auditAppendSpy.mockRestore();
           fieldsBuildSpy.mockRestore();
         }
       })();
@@ -615,7 +595,6 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
         ctx.app.get(NotificationRepository),
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
-        ctx.app.get(EsignAuditService),
         mailFixture(ctx).guard(mailer),
       );
       const workerStarted = performance.now();
@@ -662,15 +641,10 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
             })
           : document.signing_payload_json;
       expect(payload.signers).toHaveLength(5001);
-      const audit = await manager.query<unknown[]>(
-        'SELECT metadata_json FROM esign_audit_events WHERE document_id=?',
-        [documentId],
-      );
       const logged = JSON.stringify([
         accessLog.mock.calls,
         warn.mock.calls,
         error.mock.calls,
-        audit,
       ]);
       for (const secret of [
         users[0].empid,

@@ -1,6 +1,6 @@
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { once } from 'node:events';
-import { canonicalSha256 } from '#app/features/esign/services/esign-audit.service';
+import { canonicalSha256 } from '#app/features/esign/helpers/signing-evidence';
 import { createHash, randomUUID } from 'node:crypto';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';

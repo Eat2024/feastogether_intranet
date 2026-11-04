@@ -474,7 +474,6 @@ describe('022 發起實時間效能驗收', () => {
       await manager.transaction(async (tx) => {
         for (const table of [
           'esign_initiation_jobs',
-          'esign_audit_events',
           'esign_file_objects',
           'esign_document_fields',
         ])

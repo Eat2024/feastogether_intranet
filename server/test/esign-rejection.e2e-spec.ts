@@ -1,4 +1,7 @@
-import { completeInitiation, deleteInitiationJobs } from './helpers/await-initiation';
+import {
+  completeInitiation,
+  deleteInitiationJobs,
+} from './helpers/await-initiation';
 import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ESIGN_DOCUMENT_FINALIZATION_QUEUE } from '#app/features/esign/esign-queue.constants';
@@ -89,7 +92,16 @@ describe('拒簽 HTTP 與結案', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
-    await Promise.all(['E2E00903'].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
+    await Promise.all(
+      ['E2E00903'].map((employeeNo) =>
+        ctx.app
+          .get<DataSource>(MYSQL_MAIN)
+          .query('UPDATE users SET email=? WHERE empid=?', [
+            `${employeeNo.toLowerCase()}@example.test`,
+            employeeNo,
+          ]),
+      ),
+    );
     const rows = await db.query<Array<{ id: string }>>(
       "SELECT id FROM users WHERE empid = 'E2E00903'",
     );
@@ -104,9 +116,6 @@ describe('拒簽 HTTP 與結案', () => {
           'SELECT f.object_key,f.object_version FROM esign_file_objects f LEFT JOIN esign_signature_records r ON r.id=f.signature_record_id LEFT JOIN esign_signers s ON s.id=r.signer_id WHERE f.document_id=? OR s.document_id=?',
           [id, id],
         );
-        await db.query('DELETE FROM esign_audit_events WHERE document_id=?', [
-          id,
-        ]);
         await db.query(
           'DELETE FROM esign_verification_records WHERE document_id=?',
           [id],
@@ -160,29 +169,33 @@ describe('拒簽 HTTP 與結案', () => {
     );
     documentIds.push(created.id);
     const result = apiData<Detail>(
-      await completeInitiation(ctx, request(ctx.server)
-        .post(`/api/esign/documents/${created.id}/initiations`)
-        .set('Cookie', cookie)
-        .set('Origin', 'http://localhost:3000')
-        .send({
-          signers,
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 25,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: new Date(Date.now() - 60000).toISOString(),
-          signEndAt: new Date(Date.now() + 86400000).toISOString(),
-          watermark: false,
-          allowReject,
-        })
-        .expect(202), cookie),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${created.id}/initiations`)
+          .set('Cookie', cookie)
+          .set('Origin', 'http://localhost:3000')
+          .send({
+            signers,
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 25,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: new Date(Date.now() - 60000).toISOString(),
+            signEndAt: new Date(Date.now() + 86400000).toISOString(),
+            watermark: false,
+            allowReject,
+          })
+          .expect(202),
+        cookie,
+      ),
     );
     for (const [index, signer] of result.signers.entries()) {
       if (!('userId' in signers[index])) continue;
@@ -515,4 +528,3 @@ describe('拒簽 HTTP 與結案', () => {
       .expect(200);
   });
 });
-

@@ -9,7 +9,6 @@ import { DocumentInitiationProcessor } from './document-initiation.processor';
 import { DocumentExportProcessor } from './document-export.processor';
 import { Module } from '@nestjs/common';
 import { EsignQueueModule } from '#app/features/esign/esign-queue.module';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { CompletedPdfService } from '#app/features/esign/services/completed-pdf.service';
 import { EsignDocumentValidationService } from '#app/features/esign/services/esign-document-validation.service';
@@ -47,7 +46,7 @@ import { DocumentFinalizationProcessor } from './document-finalization.processor
 
     DocumentExportProcessor,
     EsignTokenService,
-    EsignAuditService,
+
     EsignDocumentValidationService,
     EsignAccessPolicyService,
     EsignStoppageService,

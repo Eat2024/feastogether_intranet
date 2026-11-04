@@ -5,7 +5,6 @@ import { PDFDocument } from 'pdf-lib';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { apiData } from './api-response.helper';
 import { openInternalEmployeeSession } from './external-session.helper';
 import {
@@ -37,7 +36,6 @@ describe('Spec009 管理備註與歷程 API', () => {
   let other: string;
   let id: string;
   let ownerId: string;
-  let historyDocumentId: string;
   const origin = 'http://localhost:3000';
   const patch = (body: object, auth = cookie) =>
     request(ctx.server)
@@ -157,12 +155,6 @@ describe('Spec009 管理備註與歷程 API', () => {
         'SELECT * FROM esign_documents WHERE id=?',
         [id],
       );
-      const history = apiData<unknown[]>(
-        await request(ctx.server)
-          .get(`/api/esign/documents/${id}/history`)
-          .set('Cookie', cookie)
-          .expect(200),
-      );
       const pdf = await request(ctx.server)
         .get(`/api/esign/documents/${id}/source-file`)
         .set('Cookie', cookie)
@@ -177,14 +169,6 @@ describe('Spec009 管理備註與歷程 API', () => {
       expect(
         await db.query('SELECT * FROM esign_documents WHERE id=?', [id]),
       ).toEqual(before);
-      expect(
-        apiData<unknown[]>(
-          await request(ctx.server)
-            .get(`/api/esign/documents/${id}/history`)
-            .set('Cookie', cookie)
-            .expect(200),
-        ),
-      ).toEqual(history);
       expect(
         (
           await request(ctx.server)
@@ -212,37 +196,40 @@ describe('Spec009 管理備註與歷程 API', () => {
         })
         .expect(201),
     ).id;
-    historyDocumentId = newId;
     const users = await db.query<Array<{ id: number }>>(
       "SELECT id FROM users WHERE empid='NOTE00902'",
     );
     const detail = apiData<DraftView>(
-      await completeInitiation(ctx, request(ctx.server)
-        .post(`/api/esign/documents/${newId}/initiations`)
-        .set('Cookie', cookie)
-        .set('Origin', origin)
-        .send({
-          signers: [
-            { type: 'user', userId: String(users[0].id) },
-            { type: 'user', userId: ownerId },
-          ],
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 20,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: '2026-01-01T00:00:00Z',
-          signEndAt: '2099-01-01T00:00:00Z',
-          watermark: false,
-          allowReject: true,
-        })
-        .expect(202), cookie),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${newId}/initiations`)
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .send({
+            signers: [
+              { type: 'user', userId: String(users[0].id) },
+              { type: 'user', userId: ownerId },
+            ],
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 20,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: '2026-01-01T00:00:00Z',
+            signEndAt: '2099-01-01T00:00:00Z',
+            watermark: false,
+            allowReject: true,
+          })
+          .expect(202),
+        cookie,
+      ),
     );
     const signer = detail.signers[0];
     await request(ctx.server)
@@ -300,117 +287,6 @@ describe('Spec009 管理備註與歷程 API', () => {
       rejectedAt: result.rejectedAt,
       rejectReason: '不接受',
     });
-    const history = apiData<
-      Array<{ type: string; actor: unknown; reason: string }>
-    >(
-      await request(ctx.server)
-        .get(`/api/esign/documents/${newId}/history`)
-        .set('Cookie', cookie)
-        .expect(200),
-    );
-    expect(history.find((e) => e.type === 'signer.rejected')).toMatchObject({
-      reason: '不接受',
-      actor: {
-        kind: 'signer',
-        name: '草稿測試員工',
-        signerPublicId: signer.publicId,
-      },
-    });
-    expect(history.find((e) => e.type === 'signer.assigned')).toMatchObject({
-      actor: { kind: 'employee', name: '草稿測試員工' },
-    });
-  });
-
-  it('歷程提供中文標籤，補簽操作者一致且不擴大本人資訊，讀取不改稽核證據', async () => {
-    // 建立舊版補簽及未知事件的合成歷程，驗證唯讀 API 的顯示投影。
-    const audit = ctx.app.get(EsignAuditService);
-    await db.transaction(async (manager) => {
-      await audit.append(
-        {
-          documentId: Number(historyDocumentId),
-          actorUserId: Number(ownerId),
-          eventType: 'document.reopened',
-          occurredAt: new Date(),
-          metadata: {
-            previousSignEndAt: '2098-01-01T00:00:00.000Z',
-            signEndAt: '2099-01-01T00:00:00.000Z',
-            reason: '建立人專用補簽原因',
-          },
-        },
-        manager,
-      );
-      await audit.append(
-        {
-          documentId: Number(historyDocumentId),
-          eventType: 'legacy.unknown',
-          occurredAt: new Date(),
-        },
-        manager,
-      );
-    });
-    const before = await db.query<Record<string, unknown>[]>(
-      'SELECT * FROM esign_audit_events WHERE document_id=? ORDER BY id',
-      [historyDocumentId],
-    );
-    const getHistory = async (auth: string) =>
-      apiData<Array<Record<string, unknown>>>(
-        await request(ctx.server)
-          .get(`/api/esign/documents/${historyDocumentId}/history`)
-          .set('Cookie', auth)
-          .expect(200),
-      );
-    const ownerHistory = await getHistory(cookie);
-    expect(ownerHistory.every((event) => typeof event.label === 'string')).toBe(
-      true,
-    );
-    expect(
-      ownerHistory.find((event) => event.type === 'signer.rejected'),
-    ).toMatchObject({
-      label: '簽署人拒絕簽署',
-    });
-    expect(
-      ownerHistory.find((event) => event.type === 'document.reopened'),
-    ).toMatchObject({
-      label: '建立人設定補簽，重新開放未簽署者簽署',
-      actor: { kind: 'employee', name: '草稿測試員工' },
-      reason: '建立人專用補簽原因',
-      previousSignEndAt: '2098-01-01T00:00:00.000Z',
-    });
-    expect(
-      ownerHistory.find((event) => event.type === 'legacy.unknown'),
-    ).toMatchObject({
-      label: '其他簽署歷程事件',
-      actor: { kind: 'system', name: '系統' },
-    });
-    const signerHistory = await getHistory(other);
-    const reopened = signerHistory.find(
-      (event) => event.type === 'document.reopened',
-    );
-    expect(reopened).toEqual({
-      type: 'document.reopened',
-      label: '建立人設定補簽，重新開放未簽署者簽署',
-      occurredAt: expect.any(String),
-      actor: { kind: 'employee', name: '建立人' },
-      reason: null,
-      signEndAt: '2099-01-01T00:00:00.000Z',
-    });
-    expect(signerHistory.some((event) => event.type === 'legacy.unknown')).toBe(
-      false,
-    );
-    const strangerCookie = await login('NOTE00903');
-    await request(ctx.server)
-      .get(`/api/esign/documents/${historyDocumentId}/history`)
-      .set('Cookie', strangerCookie)
-      .expect(404);
-    await request(ctx.server)
-      .get(`/api/esign/documents/${historyDocumentId}/history`)
-      .expect(401);
-    expect(
-      await db.query(
-        'SELECT * FROM esign_audit_events WHERE document_id=? ORDER BY id',
-        [historyDocumentId],
-      ),
-    ).toEqual(before);
   });
 
   async function login(empid: string): Promise<string> {
@@ -429,7 +305,16 @@ describe('Spec009 管理備註與歷程 API', () => {
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');
-    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
+    await Promise.all(
+      [empid].map((employeeNo) =>
+        ctx.app
+          .get<DataSource>(MYSQL_MAIN)
+          .query('UPDATE users SET email=? WHERE empid=?', [
+            `${employeeNo.toLowerCase()}@example.test`,
+            employeeNo,
+          ]),
+      ),
+    );
     return value;
   }
 });
@@ -460,4 +345,3 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-

@@ -277,7 +277,6 @@ describe('組織樹 API（合成 Portal）', () => {
       'esign_documents',
       'esign_signers',
       'esign_signature_records',
-      'esign_audit_events',
     ];
     const counts = () =>
       Promise.all(
@@ -393,10 +392,10 @@ describe('組織樹 API（合成 Portal）', () => {
         1800,
       );
     const response = await ctx.app.inject({
-      method: 'GET',
-      url: route,
-      headers,
-    });
+        method: 'GET',
+        url: route,
+        headers,
+      });
     expect(response.statusCode).toBe(200);
     expect(response.json<{ data: unknown }>().data).toEqual(expectedTree);
     expect(sourceCalls()).toBe(1);
@@ -531,9 +530,9 @@ describe('組織樹 API（合成 Portal）', () => {
       });
       expect(response.statusCode).toBe(502);
       expect(response.json<unknown>()).toMatchObject({
-        success: false,
-        error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
-      });
+      success: false,
+      error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
+    });
       expect(await client.get(key)).toBeNull();
     } finally {
       await portal.query(
@@ -556,11 +555,11 @@ describe('組織樹 API（合成 Portal）', () => {
       for (const response of responses) {
         expect(response.statusCode).toBe(502);
         expect(response.json<unknown>()).toMatchObject({
-          success: false,
-          error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
-        });
+      success: false,
+      error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
+    });
         for (const value of [config.host, config.user, config.database])
-          expect(response.body).not.toContain(value);
+      expect(response.body).not.toContain(value);
         expect(response.body).not.toContain('chi_department');
       }
       expect(sourceCalls()).toBe(50);

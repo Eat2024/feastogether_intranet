@@ -1,0 +1,26 @@
+-- 歷史格式封存，非現行 migration；不得直接對共用資料庫執行。
+CREATE TABLE `esign_audit_events` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '稽核事件流水號',
+  `document_id` bigint NOT NULL COMMENT '文件 ID',
+  `signer_id` bigint DEFAULT NULL COMMENT '簽署人 ID',
+  `actor_user_id` bigint DEFAULT NULL COMMENT '操作員工 ID',
+  `event_type` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '事件類型',
+  `occurred_at` datetime(6) NOT NULL COMMENT '事件發生時間',
+  `previous_event_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '前一事件 hash',
+  `event_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '事件 hash',
+  `request_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '請求追蹤 ID',
+  `metadata_json` json DEFAULT NULL COMMENT '事件中繼資料',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_esign_audit_events_event_hash` (`event_hash`),
+  KEY `idx_esign_audit_events_document_occurred_id` (`document_id`,`occurred_at`,`id`),
+  KEY `idx_esign_audit_events_signer_id` (`signer_id`),
+  KEY `idx_esign_audit_events_actor_user_id` (`actor_user_id`),
+  KEY `idx_esign_audit_events_event_type` (`event_type`),
+  KEY `idx_esign_audit_events_request_id` (`request_id`),
+  KEY `idx_esign_audit_events_occurred_at` (`occurred_at`),
+  KEY `idx_esign_audit_events_created_at` (`created_at`),
+  CONSTRAINT `fk_esign_audit_events_actor` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_esign_audit_events_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_esign_audit_events_signer` FOREIGN KEY (`signer_id`) REFERENCES `esign_signers` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='不可變文件稽核事件';

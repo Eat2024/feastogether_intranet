@@ -135,9 +135,6 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
         'SELECT f.object_key, f.object_version FROM esign_file_objects f LEFT JOIN esign_signature_records r ON r.id=f.signature_record_id LEFT JOIN esign_signers s ON s.id=r.signer_id WHERE f.document_id=? OR s.document_id=?',
         [documentId, documentId],
       );
-      await db.query('DELETE FROM esign_audit_events WHERE document_id=?', [
-        documentId,
-      ]);
       await db.query(
         'DELETE FROM esign_verification_records WHERE document_id=?',
         [documentId],
@@ -352,12 +349,11 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
         ready: number;
         records: number;
         files: number;
-        events: number;
         manifestBytes: number;
         storageBytes: number;
       }>
     >(
-      "SELECT d.status, (SELECT COUNT(*) FROM esign_signers s WHERE s.document_id=d.id AND s.completion_status='ready') ready, (SELECT COUNT(*) FROM esign_signature_records r JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=d.id) records, (SELECT COUNT(*) FROM esign_file_objects f JOIN esign_signature_records r ON r.id=f.signature_record_id JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=d.id AND f.file_purpose='completed_pdf') files, (SELECT COUNT(*) FROM esign_audit_events a WHERE a.document_id=d.id AND a.event_type='document.completed') events, (SELECT OCTET_LENGTH(v.manifest_json) FROM esign_verification_records v WHERE v.document_id=d.id) manifestBytes, (SELECT SUM(f.file_size) FROM esign_file_objects f JOIN esign_signature_records r ON r.id=f.signature_record_id JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=d.id AND f.file_purpose='completed_pdf') storageBytes FROM esign_documents d WHERE d.id=?",
+      "SELECT d.status, (SELECT COUNT(*) FROM esign_signers s WHERE s.document_id=d.id AND s.completion_status='ready') ready, (SELECT COUNT(*) FROM esign_signature_records r JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=d.id) records, (SELECT COUNT(*) FROM esign_file_objects f JOIN esign_signature_records r ON r.id=f.signature_record_id JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=d.id AND f.file_purpose='completed_pdf') files, (SELECT OCTET_LENGTH(v.manifest_json) FROM esign_verification_records v WHERE v.document_id=d.id) manifestBytes, (SELECT SUM(f.file_size) FROM esign_file_objects f JOIN esign_signature_records r ON r.id=f.signature_record_id JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=d.id AND f.file_purpose='completed_pdf') storageBytes FROM esign_documents d WHERE d.id=?",
       [documentId],
     );
     expect(summary).toMatchObject({
@@ -365,7 +361,6 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       ready: SIGNER_COUNT,
       records: SIGNER_COUNT,
       files: SIGNER_COUNT,
-      events: 1,
     });
     const completed = await db.query<
       Array<{

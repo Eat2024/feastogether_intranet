@@ -1,3 +1,4 @@
+import { ExportJobRepository } from '#app/features/esign/repositories/export-job.repository';
 import { User } from '#app/features/users/entities/user.entity';
 import { DataSource } from 'typeorm';
 import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.options';
@@ -14,7 +15,6 @@ const BUSINESS_TABLES = [
   'esign_signers',
   'esign_signature_records',
   'esign_file_objects',
-  'esign_audit_events',
   'esign_verification_records',
   'esign_notification_batches',
   'esign_notification_logs',
@@ -29,6 +29,126 @@ const optionsFor = (database: string) =>
 
 describe('e-sign schema migrations', () => {
   jest.setTimeout(60_000);
+
+  it('停用歷程刪表但保留舊驗證資料，有快照時拒絕無法還原證據的 down', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = await new DataSource(optionsFor(database)).initialize();
+      try {
+        await ds.runMigrations();
+        await ds.undoLastMigration();
+        await seedExportDocument(ds);
+        await ds.query(
+          "INSERT INTO esign_audit_events(document_id,event_type,occurred_at,event_hash) VALUES(1,'document.created',NOW(6),?)",
+          ['a'.repeat(64)],
+        );
+        await ds.query(
+          "INSERT INTO esign_verification_records(document_id,public_id,manifest_json,manifest_sha256,audit_root_hash,issued_at) VALUES(1,'00000000-0000-4000-8000-000000000026',JSON_OBJECT('schemaVersion','esign-verification-manifest-v2'),?,?,NOW(6))",
+          ['b'.repeat(64), 'a'.repeat(64)],
+        );
+        const before = await ds.query(
+          'SELECT * FROM esign_verification_records',
+        );
+        const document = await ds.query('SELECT * FROM esign_documents');
+        await ds.runMigrations();
+        expect(await listBusinessTables(ds, database)).not.toContain(
+          'esign_audit_events',
+        );
+        expect(
+          await ds.query('SELECT * FROM esign_verification_records'),
+        ).toEqual(before);
+        expect(await ds.query('SELECT * FROM esign_documents')).toEqual(
+          document,
+        );
+        await expect(ds.undoLastMigration()).rejects.toThrow(
+          '無法還原已刪除的稽核鏈',
+        );
+        expect(await listBusinessTables(ds, database)).not.toContain(
+          'esign_audit_events',
+        );
+        await ds.query(
+          'UPDATE esign_verification_records SET audit_root_hash=NULL',
+        );
+        expect(
+          (
+            await ds.query(
+              'SELECT audit_root_hash FROM esign_verification_records',
+            )
+          )[0].audit_root_hash,
+        ).toBeNull();
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
+
+  it('匯出檔名 migration 舊列為 NULL，並行只保存首次檔名，可 up/down/up', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = await new DataSource(optionsFor(database)).initialize();
+      try {
+        await ds.runMigrations();
+        await revertAfter(ds, 'BackgroundSignatureInitiation1793750401000');
+        await seedExportDocument(ds);
+        await ds.query(
+          "INSERT INTO esign_export_jobs (public_id,export_type,document_id,created_by_user_id,status,scope_description,snapshot_json) VALUES ('00000000-0000-4000-8000-000000000033','signed_copies_zip',1,1,'completed','全部',JSON_ARRAY())",
+        );
+        const before = await ds.query<Record<string, unknown>[]>(
+          'SELECT * FROM esign_export_jobs WHERE id=1',
+        );
+        await ds.runMigrations();
+        expect(
+          await ds.query(
+            'SELECT download_file_name FROM esign_export_jobs WHERE id=1',
+          ),
+        ).toEqual([{ download_file_name: null }]);
+        const jobs = new ExportJobRepository();
+        const results = await Promise.all([
+          jobs.recordDownloadFileName(1, '第一次.zip', ds.manager),
+          jobs.recordDownloadFileName(1, '第二次.zip', ds.manager),
+        ]);
+        expect(results.reduce((sum, r) => sum + (r.affected ?? 0), 0)).toBe(1);
+        const saved: unknown = await ds.query(
+          'SELECT download_file_name FROM esign_export_jobs WHERE id=1',
+        );
+        expect(
+          (await jobs.recordDownloadFileName(1, '不能覆寫.zip', ds.manager))
+            .affected,
+        ).toBe(0);
+        expect(
+          await ds.query(
+            'SELECT download_file_name FROM esign_export_jobs WHERE id=1',
+          ),
+        ).toEqual(saved);
+        await revertAfter(ds, 'ExportDownloadFileName1793836800000');
+        await ds.undoLastMigration();
+        expect(
+          await hasColumn(
+            ds,
+            database,
+            'esign_export_jobs',
+            'download_file_name',
+          ),
+        ).toBe(false);
+        // 寫入快照會更新 updated_at；回滾只移除新欄位，不改其他資料。
+        const restored = await ds.query<Record<string, unknown>[]>(
+          'SELECT * FROM esign_export_jobs WHERE id=1',
+        );
+        expect(
+          restored.map(({ updated_at: _updatedAt, ...row }) => row),
+        ).toEqual(before.map(({ updated_at: _updatedAt, ...row }) => row));
+        await ds.runMigrations();
+        expect(
+          await ds.query(
+            'SELECT download_file_name FROM esign_export_jobs WHERE id=1',
+          ),
+        ).toEqual([{ download_file_name: null }]);
+        expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual(
+          [],
+        );
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
 
   it('員工信箱 migration 保留既有資料，隱藏一般查詢且可 up/down/up', async () => {
     await withSchemaTestDatabase(async ({ database }) => {
@@ -279,21 +399,22 @@ describe('e-sign schema migrations', () => {
             "INSERT INTO esign_documents (doc_number,title,created_by_user_id,status,sign_start_at,sign_end_at) VALUES ('00000000-0000-4000-8000-000000000001','到期文件',1,?,'2026-01-01','2026-12-31')",
             [kind === 'expired' ? 'expired' : 'stopped'],
           );
+          await revertAfter(ds, 'ExpiredDocuments1792368000000');
           if (kind === 'reopened')
             await ds.query(
               "INSERT INTO esign_audit_events (document_id,event_type,occurred_at,event_hash) VALUES (1,'document.reopened',NOW(6),?)",
               ['a'.repeat(64)],
             );
           const before: unknown = await ds.query(
-            'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
-          );
+          'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
+        );
           await revertAfter(ds, 'ExpiredDocuments1792368000000');
           await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
           expect(
-            await ds.query(
-              'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
-            ),
-          ).toEqual(before);
+          await ds.query(
+            'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
+          ),
+        ).toEqual(before);
         } finally {
           await ds.destroy();
         }
@@ -403,6 +524,7 @@ describe('e-sign schema migrations', () => {
           await ds.runMigrations();
           await seedExportDocument(ds);
           await ds.query(insertRecord);
+          await revertAfter(ds, 'ExportHistory1792454406000');
           const rows: unknown = await ds.query(
             'SELECT * FROM esign_export_jobs ORDER BY id',
           );
@@ -429,7 +551,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(74);
+        expect(first.timeColumns).toHaveLength(72);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(
@@ -452,7 +574,7 @@ describe('e-sign schema migrations', () => {
 
         await dataSource.undoLastMigration();
         expect(await listBusinessTables(dataSource, database)).toEqual(
-          BUSINESS_TABLES.filter((table) => table !== 'esign_initiation_jobs'),
+          [...BUSINESS_TABLES, 'esign_audit_events'].sort(),
         );
         expect(
           await hasColumn(

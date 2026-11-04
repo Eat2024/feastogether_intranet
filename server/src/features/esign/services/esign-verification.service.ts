@@ -11,25 +11,19 @@ import type {
   SignatureVerificationDto,
 } from '../dto/signature-verification.dto';
 import type { EsignFileObject } from '../entities/esign-file-object.entity';
-import type { EsignAuditEvent } from '../entities/esign-audit-event.entity';
 import type { EsignDocument } from '../entities/esign-document.entity';
 import type { EsignSignatureRecord } from '../entities/esign-signature-record.entity';
 import type { EsignSigner } from '../entities/esign-signer.entity';
-import { AuditEventRepository } from '../repositories/audit-event.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { VerificationRecordRepository } from '../repositories/verification-record.repository';
-import {
-  auditEventHash,
-  canonicalJson,
-  canonicalSha256,
-} from './esign-audit.service';
+import { canonicalJson, canonicalSha256 } from '../helpers/signing-evidence';
 import { EsignTokenService } from './esign-token.service';
 
 const REJECTION_MANIFEST_SCHEMA = 'esign-verification-manifest-v3';
-export const VERIFICATION_MANIFEST_SCHEMA = 'esign-verification-manifest-v2';
+export const VERIFICATION_MANIFEST_SCHEMA = 'esign-verification-manifest-v4';
 
 /** 結案 transaction 內已鎖定、即將標示完成的文件狀態。 */
 export interface VerificationSnapshotInput {
@@ -37,8 +31,6 @@ export interface VerificationSnapshotInput {
   /** 依 sort_order、id 排序的全部簽署人 */
   signers: EsignSigner[];
   completedAt: Date;
-  /** 同 transaction 寫入的 document.completed event hash */
-  auditRootHash: string;
 }
 
 interface SignedEvidence {
@@ -68,14 +60,12 @@ function manifestSigner(
   signer: EsignSigner,
   record: EsignSignatureRecord,
   file: EsignFileObject,
-  copyEvent: EsignAuditEvent,
 ) {
   return {
     signerPublicId: signer.publicId,
     signatureRecordId: record.id,
     completedFileId: file.id,
     completedPdfSha256: file.sha256,
-    copyCompletedEventHash: copyEvent.eventHash,
     signedAt: record.signedAtUtc.toISOString(),
     authenticationMethod: record.authenticationMethod,
     consentVersion: record.consentVersion,
@@ -99,32 +89,6 @@ function evidenceConsistent({
   );
 }
 
-/**
- * 稽核鏈終點必須是 document.completed；由終點往回走到第一筆事件並逐筆重算 hash，
- * 走得到起點才算完整。
- */
-function reachesAuditRoot(
-  events: EsignAuditEvent[],
-  auditRootHash: string,
-): Set<string> | null {
-  const visited = new Set<string>();
-  const byHash = new Map(events.map((event) => [event.eventHash, event]));
-  let current = byHash.get(auditRootHash);
-  if (current?.eventType !== 'document.completed') return null;
-  for (let step = 0; current && step < events.length; step += 1) {
-    const previous = current.previousEventHash ?? undefined;
-    const recalculated = auditEventHash(previous, {
-      ...current,
-      metadata: current.metadataJson,
-    });
-    if (recalculated !== current.eventHash) return null;
-    visited.add(current.eventHash);
-    if (previous === undefined) return visited;
-    current = byHash.get(previous);
-  }
-  return null;
-}
-
 /** 取出 manifest 中本人的項目；manifest 形狀不可信，非預期結構一律視為缺漏。 */
 function manifestEntryOf(manifest: Record<string, unknown>, publicId: string) {
   const signers = manifest.signers;
@@ -134,14 +98,11 @@ function manifestEntryOf(manifest: Record<string, unknown>, publicId: string) {
   );
 }
 
-/** 產物歸屬與個人完成稽核必須指向同一份證據。 */
+/** 個人完成 PDF 必須僅歸屬此簽署紀錄。 */
 function copyConsistent(
   file: EsignFileObject,
   record: EsignSignatureRecord,
-  event: EsignAuditEvent,
-  documentId: number,
 ): boolean {
-  const metadata = event.metadataJson as Record<string, unknown> | undefined;
   return (
     file.signatureRecordId === record.id &&
     file.documentId == null &&
@@ -149,12 +110,7 @@ function copyConsistent(
     file.verificationRecordId == null &&
     file.exportJobId == null &&
     file.filePurpose === 'completed_pdf' &&
-    file.archiveStatus === 'active' &&
-    event.documentId === documentId &&
-    event.signerId === record.signerId &&
-    metadata?.signatureRecordId === record.id &&
-    metadata.completedFileId === file.id &&
-    metadata.completedPdfSha256 === file.sha256
+    file.archiveStatus === 'active'
   );
 }
 
@@ -164,6 +120,7 @@ function verificationView(
   completedPdfSha256: string | null,
 ): SignatureVerificationDto {
   return {
+    verificationScope: 'stored_records',
     signature: {
       signerName: signer.nameSnapshot,
       signedAt: record.signedAtUtc.toISOString(),
@@ -189,7 +146,6 @@ export class EsignVerificationService {
     private readonly signers: SignerRepository,
     private readonly records: SignatureRecordRepository,
     private readonly files: FileObjectRepository,
-    private readonly audits: AuditEventRepository,
     private readonly snapshots: VerificationRecordRepository,
     private readonly tokens: EsignTokenService,
     private readonly logger: AppLoggerService,
@@ -201,52 +157,31 @@ export class EsignVerificationService {
     manager: EntityManager,
   ): Promise<void> {
     const { document, signers } = input;
-    const [source, events] = await Promise.all([
-      this.files.findDocumentFile(document.id, 'source_pdf', manager),
-      this.audits.findDocumentEvents(document.id, manager),
-    ]);
-    const chain = reachesAuditRoot(events, input.auditRootHash);
+    const source = await this.files.findDocumentFile(
+      document.id,
+      'source_pdf',
+      manager,
+    );
     if (
       !source ||
-      !chain ||
       signers.length === 0 ||
       canonicalSha256(document.signingPayloadJson) !==
         document.signingPayloadSha256
     )
       throw this.integrity();
-    const copies = new Map(
-      events
-        .filter(
-          (event) =>
-            event.eventType === 'signer.copy_completed' &&
-            chain.has(event.eventHash),
-        )
-        .map((event) => [event.signerId, event]),
-    );
     const rejected = signers
       .filter((signer) => signer.status === 'rejected')
       .map((signer) => {
-        const event = events.find(
-          (event) =>
-            event.signerId === signer.id &&
-            event.eventType === 'signer.rejected' &&
-            chain.has(event.eventHash),
-        );
         if (
-          !event ||
           !signer.rejectedAt ||
           signer.signedAt ||
-          signer.completionStatus != null ||
-          event.occurredAt.getTime() !== signer.rejectedAt.getTime() ||
-          (event.metadataJson?.reason ?? '') !== signer.rejectReason ||
-          (event.requestId ?? null) !== (signer.rejectRequestId ?? null)
+          signer.completionStatus != null
         )
           throw this.integrity();
         return {
           signerPublicId: signer.publicId,
           rejectedAt: signer.rejectedAt.toISOString(),
           reasonSha256: canonicalSha256(signer.rejectReason),
-          rejectionEventHash: event.eventHash,
         };
       });
     if (
@@ -274,11 +209,9 @@ export class EsignVerificationService {
       for (const signer of batch) {
         const record = recordBySigner.get(signer.id);
         const file = record && fileByRecord.get(record.id);
-        const event = copies.get(signer.id);
         if (
           !record ||
           !file ||
-          !event ||
           signer.status !== 'signed' ||
           signer.completionStatus !== 'ready' ||
           !evidenceConsistent({
@@ -287,20 +220,17 @@ export class EsignVerificationService {
             record,
             sourcePdfSha256: source.sha256,
           }) ||
-          !copyConsistent(file, record, event, document.id)
+          !copyConsistent(file, record)
         )
           throw this.integrity();
-        entries.push(manifestSigner(signer, record, file, event));
+        entries.push(manifestSigner(signer, record, file));
       }
     }
     const manifest = {
-      schemaVersion: rejected.length
-        ? REJECTION_MANIFEST_SCHEMA
-        : VERIFICATION_MANIFEST_SCHEMA,
+      schemaVersion: VERIFICATION_MANIFEST_SCHEMA,
       ...(rejected.length ? { rejected } : {}),
       document: manifestDocument(document, source.sha256, input.completedAt),
       signers: entries,
-      auditRootHash: input.auditRootHash,
     };
     await this.snapshots.insert(
       {
@@ -309,7 +239,7 @@ export class EsignVerificationService {
         manifestJson: manifest,
         manifestSha256: canonicalSha256(manifest),
         finalPdfSha256: null,
-        auditRootHash: input.auditRootHash,
+        auditRootHash: null,
         status: 'valid',
         issuedAt: input.completedAt,
       },
@@ -355,16 +285,15 @@ export class EsignVerificationService {
 
   /**
    * 比對有效的驗證快照：manifest 自身摘要、文件項目與現存文件及完成 PDF、
-   * 本人項目與簽署紀錄、稽核鏈終點；一致才回傳完成文件摘要。
+   * 本人項目與簽署紀錄；不再驗證已停用的事件鏈。
    */
   private async verifiedFinalPdfSha256(
     { signer, document, record, sourcePdfSha256 }: SignedEvidence,
     manager: EntityManager,
   ): Promise<string> {
-    const [snapshot, completedPdf, events] = await Promise.all([
+    const [snapshot, completedPdf] = await Promise.all([
       this.snapshots.findByDocumentId(document.id, manager),
       this.files.findCompletedFile(record.id, manager),
-      this.audits.findDocumentEvents(document.id, manager),
     ]);
     const manifest = snapshot?.manifestJson ?? {};
     const expectedDocument = manifestDocument(
@@ -372,65 +301,70 @@ export class EsignVerificationService {
       sourcePdfSha256,
       document.completedAt,
     );
-    const chain = snapshot && reachesAuditRoot(events, snapshot.auditRootHash);
-    const copyEvent = events.find(
-      (event) =>
-        event.signerId === signer.id &&
-        event.eventType === 'signer.copy_completed' &&
-        chain?.has(event.eventHash),
+    const entry = manifestEntryOf(manifest, signer.publicId);
+    // 舊 manifest 保留原始 bytes/hash；只在證據欄位比對時排除已停用的事件 hash。
+    const comparableEntry = entry && { ...entry };
+    if (
+      comparableEntry &&
+      manifest.schemaVersion !== VERIFICATION_MANIFEST_SCHEMA
+    )
+      delete comparableEntry.copyCompletedEventHash;
+    const rejectedConsistent = await this.rejectionsConsistent(
+      manifest,
+      document.id,
+      manager,
     );
     const consistent =
       snapshot?.status === 'valid' &&
-      [VERIFICATION_MANIFEST_SCHEMA, REJECTION_MANIFEST_SCHEMA].includes(
-        String(manifest.schemaVersion),
-      ) &&
-      (manifest.schemaVersion !== REJECTION_MANIFEST_SCHEMA ||
-        this.rejectionsConsistent(manifest, events, chain || new Set())) &&
+      [
+        VERIFICATION_MANIFEST_SCHEMA,
+        REJECTION_MANIFEST_SCHEMA,
+        'esign-verification-manifest-v2',
+      ].includes(String(manifest.schemaVersion)) &&
+      rejectedConsistent &&
       signer.completionStatus === 'ready' &&
       completedPdf &&
-      copyEvent &&
-      copyConsistent(completedPdf, record, copyEvent, document.id) &&
+      copyConsistent(completedPdf, record) &&
       canonicalSha256(manifest) === snapshot.manifestSha256 &&
       snapshot.finalPdfSha256 === null &&
-      manifest.auditRootHash === snapshot.auditRootHash &&
+      (manifest.schemaVersion === VERIFICATION_MANIFEST_SCHEMA
+        ? snapshot.auditRootHash === null &&
+          manifest.auditRootHash === undefined
+        : manifest.auditRootHash === snapshot.auditRootHash) &&
       canonicalJson(manifest.document) === canonicalJson(expectedDocument) &&
-      canonicalJson(manifestEntryOf(manifest, signer.publicId)) ===
-        canonicalJson(
-          manifestSigner(signer, record, completedPdf, copyEvent),
-        ) &&
-      chain;
+      canonicalJson(comparableEntry) ===
+        canonicalJson(manifestSigner(signer, record, completedPdf));
     if (!consistent) throw this.integrityFailed(document.id);
     return completedPdf.sha256;
   }
 
-  private rejectionsConsistent(
+  private async rejectionsConsistent(
     manifest: Record<string, unknown>,
-    events: EsignAuditEvent[],
-    chain: Set<string>,
-  ): boolean {
-    if (!Array.isArray(manifest.rejected) || manifest.rejected.length === 0)
+    documentId: number,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    const signers = await this.signers.findByDocument(documentId, manager);
+    const rejected = signers.filter((signer) => signer.status === 'rejected');
+    const entries = manifest.rejected ?? [];
+    if (!Array.isArray(entries) || entries.length !== rejected.length)
       return false;
-    const rejections = events.filter(
-      (event) =>
-        event.eventType === 'signer.rejected' && chain.has(event.eventHash),
-    );
-    return (
-      rejections.length === manifest.rejected.length &&
-      manifest.rejected.every((entry: unknown) => {
-        if (!entry || typeof entry !== 'object') return false;
-        const row = entry as Record<string, unknown>;
-        const event = rejections.find(
-          (event) => event.eventHash === row.rejectionEventHash,
-        );
-        return (
-          event &&
-          row.rejectedAt === event.occurredAt.toISOString() &&
-          row.reasonSha256 ===
-            canonicalSha256(event.metadataJson?.reason ?? '') &&
-          typeof row.signerPublicId === 'string'
-        );
-      })
-    );
+    const seen = new Set<string>();
+    return entries.every((entry: unknown) => {
+      if (!entry || typeof entry !== 'object') return false;
+      const row = entry as Record<string, unknown>;
+      const signer = rejected.find(
+        (signer) => signer.publicId === row.signerPublicId,
+      );
+      if (!signer || seen.has(signer.publicId)) return false;
+      seen.add(signer.publicId);
+      return (
+        !signer.signedAt &&
+        signer.completionStatus == null &&
+        !!signer.rejectedAt &&
+        row.rejectedAt === signer.rejectedAt.toISOString() &&
+        row.reasonSha256 === canonicalSha256(signer.rejectReason)
+      );
+    });
   }
 
   private notFound(): AppException {

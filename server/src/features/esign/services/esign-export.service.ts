@@ -4,7 +4,7 @@ import type {
   PreparedExportDownloadDto,
 } from '../dto/export.dto';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { canonicalSha256 } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -47,7 +47,7 @@ export class EsignExportService {
     private readonly access: EsignAccessPolicyService,
   ) {}
 
-  /** 只讀準備當次下載，實際匯出仍沿用既有授權與記錄流程。 */
+  /** 準備當次下載；ZIP 在資格與成果驗證成功後保存首次提供的檔名。 */
   async prepareDownload(
     documentId: number,
     userId: number,
@@ -65,8 +65,8 @@ export class EsignExportService {
     if (body.type === 'excel') {
       if (body.exportId !== undefined || body.fileId !== undefined)
         throw new AppException(
-          ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
-        );
+        ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
+      );
       return { type: 'excel', fileName };
     }
     if (!body.exportId || !body.fileId)
@@ -79,11 +79,23 @@ export class EsignExportService {
       Number(body.fileId),
       userId,
     );
+    const downloadFileName =
+      fileName ?? file.originalFileName ?? 'signed-copies.zip';
+    await this.recordDownloadFileName(file.exportJobId!, downloadFileName);
     return {
       type: 'zip',
-      fileName: fileName ?? file.originalFileName ?? 'signed-copies.zip',
+      fileName: downloadFileName,
       downloadPath: `/api/esign/documents/${documentId}/exports/${body.exportId}/files/${file.id}${fileName === null ? '' : '?downloadName=client'}`,
     };
+  }
+
+  /** 呼叫端必須先取得經 download 授權與成果驗證的檔案，不能傳入客戶端檔名。 */
+  recordDownloadFileName(jobId: number, fileName: string) {
+    return this.jobs.recordDownloadFileName(
+      jobId,
+      fileName,
+      this.mysql.getManager(),
+    );
   }
 
   async request(documentId: number, userId: number) {

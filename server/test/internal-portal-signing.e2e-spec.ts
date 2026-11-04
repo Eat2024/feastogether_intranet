@@ -13,7 +13,6 @@ import { SignerRepository } from '#app/features/esign/repositories/signer.reposi
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { EsignSignatureRecord } from '#app/features/esign/entities/esign-signature-record.entity';
-import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
 import { EsignFileObject } from '#app/features/esign/entities/esign-file-object.entity';
 import { apiData } from './api-response.helper';
 import { esignTestPng } from './esign-test-png';
@@ -89,31 +88,35 @@ describe('Spec016 員工 session 本人簽署', () => {
       signers: Array<{ publicId: string }>;
       fields: Array<{ id: string }>;
     }>(
-      await completeInitiation(ctx, request(ctx.server)
-        .post(`/api/esign/documents/${created.id}/initiations`)
-        .set('Cookie', cookies[0])
-        .set('Origin', origin)
-        .send({
-          signers: users
-            .slice(0, 2)
-            .map((user) => ({ type: 'user', userId: String(user.id) })),
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 20,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: new Date(Date.now() - 60000).toISOString(),
-          signEndAt: new Date(Date.now() + 86400000).toISOString(),
-          watermark: false,
-          allowReject: true,
-        })
-        .expect(202), cookies[0]),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${created.id}/initiations`)
+          .set('Cookie', cookies[0])
+          .set('Origin', origin)
+          .send({
+            signers: users
+              .slice(0, 2)
+              .map((user) => ({ type: 'user', userId: String(user.id) })),
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 20,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: new Date(Date.now() - 60000).toISOString(),
+            signEndAt: new Date(Date.now() + 86400000).toISOString(),
+            watermark: false,
+            allowReject: true,
+          })
+          .expect(202),
+        cookies[0],
+      ),
     );
     const signers = await Promise.all(
       document.signers.map((signer) =>
@@ -182,9 +185,6 @@ describe('Spec016 員工 session 本人簽署', () => {
       .set('Cookie', cookies[2])
       .expect(404);
     const body = await bodyFor(id);
-    const before = await manager().count(EsignAuditEvent, {
-      where: { signerId: signer.id, eventType: 'document.opened' },
-    });
     const source = await request(ctx.server)
       .get(path(id) + '/source-file')
       .set('Cookie', cookies[0])
@@ -192,11 +192,6 @@ describe('Spec016 員工 session 本人簽署', () => {
     expect(source.headers['content-type']).toContain('application/pdf');
     expect(source.headers['cache-control']).toBe('private, no-store');
     expect(source.headers['x-content-type-options']).toBe('nosniff');
-    expect(
-      await manager().count(EsignAuditEvent, {
-        where: { signerId: signer.id, eventType: 'document.opened' },
-      }),
-    ).toBe(before);
     await post(path(id) + '/signatures', body, cookies[2]).expect(404);
     await request(ctx.server)
       .post(path(id) + '/signatures')

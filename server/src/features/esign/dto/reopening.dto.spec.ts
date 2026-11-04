@@ -8,6 +8,13 @@ describe('補簽輸入', () => {
     signEndAt: '2026-10-26T08:00:00+08:00',
     reason: ' 補簽 ',
   };
+  it('不填已停用的補簽原因也可提交', async () => {
+    expect(
+      await validate(
+        plainToInstance(ReopenDocumentDto, { ...input, reason: undefined }),
+      ),
+    ).toEqual([]);
+  });
   it('接受明確時區與 500 個 Unicode 字元，原因去除首尾空白', async () => {
     const dto = plainToInstance(ReopenDocumentDto, {
       ...input,

@@ -28,7 +28,7 @@ import {
   EsignDocumentCreatorDto,
   EsignSignerViewDto,
 } from './esign-common.dto';
-import { NUMERIC_ID_PATTERN } from './export.dto';
+import { ExportDownloadFileNameDto, NUMERIC_ID_PATTERN } from './export.dto';
 
 /** 歷史匯出文件頁的頁籤：簽署紀錄清單 Excel、單人已簽 PDF、已簽署副本 ZIP。 */
 export const EXPORT_HISTORY_TYPES = ['excel', 'pdf', 'zip'] as const;
@@ -103,7 +103,7 @@ export class ExportConditionsDto implements ExportConditions {
 }
 
 /** 前端下載 Excel 前回報的匯出紀錄；匯出人取自 session。 */
-export class CreateExcelExportRecordDto {
+export class CreateExcelExportRecordDto extends ExportDownloadFileNameDto {
   /** 只接受 excel；PDF 與 ZIP 由後端自行記錄 */
   @ApiProperty({ enum: ['excel'] })
   @Equals('excel')
@@ -148,6 +148,12 @@ export class ExportHistoryItemDto {
   document!: ExportHistoryDocumentDto;
   exportedBy!: ExportedByDto;
   exportedAt!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: '首次下載提供的檔名快照；null 為未記錄',
+  })
+  downloadFileName!: string | null;
   /** 範圍說明 */
   scope!: string;
   /** 筆數 */

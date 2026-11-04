@@ -15,7 +15,7 @@ import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignExpiryService } from './esign-expiry.service';
 import { EsignTokenService } from './esign-token.service';
-import { canonicalSha256, EsignAuditService } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 import { EsignJobProducerService } from './esign-job-producer.service';
 
 @Injectable()
@@ -29,7 +29,6 @@ export class EsignReopeningService {
     private readonly validation: EsignDocumentValidationService,
     private readonly expiry: EsignExpiryService,
     private readonly tokens: EsignTokenService,
-    private readonly audit: EsignAuditService,
     private readonly jobs: EsignJobProducerService,
   ) {}
 
@@ -55,7 +54,7 @@ export class EsignReopeningService {
         manager,
       );
       const now = new Date();
-      const { previous, pending, next, reason } = this.validateReopening(
+      const { pending, next } = this.validateReopening(
         document,
         signers,
         input,
@@ -80,12 +79,7 @@ export class EsignReopeningService {
       await this.expiry.expireLocked(document, signers, now, manager);
       await this.supersedeNotifications(logs, pending, now, manager);
       await this.rotatePendingInvitations(pending, next, manager);
-      await this.saveReopenedDocument(
-        document,
-        userId,
-        { previous, next, reason, now },
-        manager,
-      );
+      await this.saveReopenedDocument(document, next, manager);
       const batch = await this.notifications.saveBatch(
         this.notifications.createBatch(
           {
@@ -184,17 +178,17 @@ export class EsignReopeningService {
       throw new AppException(...AppErrors.ESIGN_DOCUMENT_NOT_REOPENABLE);
     }
     const next = new Date(input.signEndAt);
-    const reason = input.reason.trim();
+    const reason = input.reason?.trim();
     if (
       !Number.isFinite(next.getTime()) ||
       next <= now ||
       next <= previous ||
-      Array.from(reason).length < 1 ||
-      Array.from(reason).length > 500
+      (reason !== undefined &&
+        (Array.from(reason).length < 1 || Array.from(reason).length > 500))
     ) {
       throw new AppException(...AppErrors.ESIGN_REOPEN_INPUT_INVALID);
     }
-    return { previous, pending, next, reason };
+    return { previous, pending, next };
   }
 
   private validateOriginalPayload(document: EsignDocument): string {
@@ -267,28 +261,11 @@ export class EsignReopeningService {
 
   private async saveReopenedDocument(
     document: EsignDocument,
-    userId: number,
-    change: { previous: Date; next: Date; reason: string; now: Date },
+    next: Date,
     manager: EntityManager,
   ): Promise<void> {
-    const { previous, next, reason, now } = change;
     document.status = 'active';
     document.signEndAt = next;
     await this.documents.save(document, manager);
-    await this.audit.append(
-      {
-        documentId: document.id,
-        actorUserId: userId,
-        eventType: 'document.reopened',
-        occurredAt: now,
-        metadata: {
-          status: 'active',
-          previousSignEndAt: previous.toISOString(),
-          signEndAt: next.toISOString(),
-          reason,
-        },
-      },
-      manager,
-    );
   }
 }

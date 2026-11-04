@@ -10,7 +10,6 @@ import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
-import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
 import { ExternalAccessCredentialService } from '#app/features/esign/services/external-access-credential.service';
 import { INTERNAL_PORTAL_LOGIN_URL } from '#app/features/esign/esign.constants';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
@@ -96,37 +95,41 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
       signers: Array<{ publicId: string }>;
       fields: Array<{ id: string }>;
     }>(
-      await completeInitiation(ctx, request(ctx.server)
-        .post(`/api/esign/documents/${created.id}/initiations`)
-        .set('Cookie', cookies[0])
-        .set('Origin', origin)
-        .send({
-          signers: users.slice(0, 2).map((user, index) =>
-            external
-              ? {
-                  type: 'email',
-                  name: user.name,
-                  email: `shared${index}@example.test`,
-                }
-              : { type: 'user', userId: String(user.id) },
-          ),
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 20,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: new Date(Date.now() - 60000).toISOString(),
-          signEndAt: new Date(Date.now() + 86400000).toISOString(),
-          watermark: false,
-          allowReject: true,
-        })
-        .expect(202), cookies[0]),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${created.id}/initiations`)
+          .set('Cookie', cookies[0])
+          .set('Origin', origin)
+          .send({
+            signers: users.slice(0, 2).map((user, index) =>
+              external
+                ? {
+                    type: 'email',
+                    name: user.name,
+                    email: `shared${index}@example.test`,
+                  }
+                : { type: 'user', userId: String(user.id) },
+            ),
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 20,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: new Date(Date.now() - 60000).toISOString(),
+            signEndAt: new Date(Date.now() + 86400000).toISOString(),
+            watermark: false,
+            allowReject: true,
+          })
+          .expect(202),
+        cookies[0],
+      ),
     );
     const signers = await Promise.all(
       document.signers.map((signer) =>
@@ -275,10 +278,6 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
   it('舊內部 GET 無副作用，POST 固定 Portal；有效舊 cookie 所有入口403而本人 session 可簽', async () => {
     const f = await fixture();
     const publicId = f.signers[0]!.publicId;
-    const manager = ctx.app.get(MysqlService).getManager();
-    const before = await manager.count(EsignAuditEvent, {
-      where: { documentId: Number(f.document.id) },
-    });
     const mails = otpMails(ctx).length;
     await request(ctx.server)
       .get(`/api/external-signature-invitations/${f.tokens[0]}`)
@@ -292,11 +291,6 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
       expect(response.text).not.toContain('合成內部驗證文件');
     }
     expect(otpMails(ctx)).toHaveLength(mails);
-    expect(
-      await manager.count(EsignAuditEvent, {
-        where: { documentId: Number(f.document.id) },
-      }),
-    ).toBe(before);
     await requestOtp(ctx, 'Z'.repeat(43)).expect(401);
     const body = {
       signerPublicId: publicId,

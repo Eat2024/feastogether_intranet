@@ -1,9 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
-  auditEventHash,
-  canonicalJson,
-  canonicalSha256,
-} from './esign-audit.service';
+import { canonicalJson, canonicalSha256 } from '../helpers/signing-evidence';
 import {
   EsignVerificationService,
   VERIFICATION_MANIFEST_SCHEMA,
@@ -16,38 +12,6 @@ const completedAt = new Date('2026-10-16T08:00:00.000Z');
 const stoppedAt = new Date('2026-10-16T09:00:00.000Z');
 const sha = (char: string) => char.repeat(64);
 const verificationCode = 'Xy3_kLm9-QwErTyUiOpAsD';
-
-/** 依寫入規則建立一條合法稽核鏈；metadata 為 null 模擬 DB 讀回的空 JSON。 */
-function auditChain(eventTypes: string[]) {
-  let previous: string | undefined;
-  return eventTypes.map((eventType, index) => {
-    const event = {
-      id: index + 1,
-      documentId: 4,
-      signerId: index === 1 ? 8 : index === 2 ? 9 : null,
-      actorUserId: null,
-      eventType,
-      occurredAt: new Date(signedAt.getTime() + index * 1000),
-      requestId: null,
-      metadataJson:
-        eventType === 'signer.copy_completed'
-          ? {
-              signatureRecordId: index + 20,
-              completedFileId: index + 30,
-              completedPdfSha256: index === 1 ? sha('f') : sha('e'),
-            }
-          : null,
-      previousEventHash: previous ?? null,
-      eventHash: '',
-    };
-    event.eventHash = auditEventHash(previous, {
-      ...event,
-      metadata: event.metadataJson,
-    });
-    previous = event.eventHash;
-    return event;
-  });
-}
 
 function setup(
   status: 'active' | 'finalizing' | 'completed' | 'stopped' = 'completed',
@@ -102,12 +66,6 @@ function setup(
     completedAt: status === 'completed' ? completedAt : undefined,
     stoppedAt: status === 'stopped' ? stoppedAt : undefined,
   };
-  const events = auditChain([
-    'document.created',
-    'signer.copy_completed',
-    'signer.copy_completed',
-    'document.completed',
-  ]);
   const files = {
     source: { sha256: sha('a') },
     completed: {
@@ -128,7 +86,10 @@ function setup(
   const state: { snapshot: Record<string, any> | null } = { snapshot: null };
   const repositories = {
     documents: { findById: jest.fn(async () => document) },
-    signers: { findById: jest.fn(async () => signer) },
+    signers: {
+      findById: jest.fn(async () => signer),
+      findByDocument: jest.fn(async () => [signer, other]),
+    },
     records: {
       // 刻意反序，確認 manifest 依簽署人順序而非紀錄順序
       findBySignerIds: jest.fn(async () => [otherRecord, record]),
@@ -143,7 +104,6 @@ function setup(
         purpose === 'source_pdf' ? files.source : files.completed,
       ),
     },
-    audits: { findDocumentEvents: jest.fn(async () => events) },
     snapshots: {
       insert: jest.fn(async (row: Record<string, any>) => {
         state.snapshot = row;
@@ -161,7 +121,6 @@ function setup(
     repositories.signers as never,
     repositories.records as never,
     repositories.files as never,
-    repositories.audits as never,
     repositories.snapshots as never,
     tokens as never,
     logger as never,
@@ -172,16 +131,15 @@ function setup(
         document: document as never,
         signers: [signer, other] as never,
         completedAt,
-        auditRootHash: events[3].eventHash,
       },
       {} as never,
     );
   return {
     service,
     signer,
+    other,
     record,
     document,
-    events,
     files,
     state,
     repositories,
@@ -191,14 +149,8 @@ function setup(
 }
 
 describe('EsignVerificationService.saveSnapshot', () => {
-  it('全拒建立含可追查拒簽摘要的 v3 manifest，不要求簽名或 PDF', async () => {
+  it('全拒建立含可追查拒簽摘要的 v4 manifest，不要求簽名或 PDF', async () => {
     const f = setup();
-    const events = auditChain([
-      'document.created',
-      'signer.rejected',
-      'document.completed',
-    ]);
-    f.repositories.audits.findDocumentEvents.mockResolvedValue(events);
     await f.service.saveSnapshot(
       {
         document: f.document as never,
@@ -208,38 +160,36 @@ describe('EsignVerificationService.saveSnapshot', () => {
             status: 'rejected',
             signedAt: undefined,
             completionStatus: null,
-            rejectedAt: events[1].occurredAt,
+            rejectedAt: completedAt,
             rejectReason: '',
             rejectRequestId: null,
           },
         ] as never,
         completedAt,
-        auditRootHash: events[2].eventHash,
       },
       {} as never,
     );
     expect(f.state.snapshot?.manifestJson).toMatchObject({
-      schemaVersion: 'esign-verification-manifest-v3',
+      schemaVersion: 'esign-verification-manifest-v4',
       signers: [],
       rejected: [
         {
           signerPublicId,
-          rejectedAt: events[1].occurredAt.toISOString(),
-          rejectionEventHash: events[1].eventHash,
+          rejectedAt: completedAt.toISOString(),
         },
       ],
     });
   });
 
   it('依 canonical manifest 寫入一筆快照，signers 依簽署人順序且不含個資', async () => {
-    const { state, saveSnapshot, events } = setup();
+    const { state, saveSnapshot } = setup();
     await saveSnapshot();
     const snapshot = state.snapshot!;
 
     expect(snapshot).toMatchObject({
       documentId: 4,
       finalPdfSha256: null,
-      auditRootHash: events[3].eventHash,
+      auditRootHash: null,
       status: 'valid',
       issuedAt: completedAt,
     });
@@ -261,11 +211,9 @@ describe('EsignVerificationService.saveSnapshot', () => {
           signatureRecordId: 21,
           completedFileId: 31,
           completedPdfSha256: sha('f'),
-          copyCompletedEventHash: events[1].eventHash,
         }),
         expect.objectContaining({ signerPublicId: otherPublicId }),
       ],
-      auditRootHash: events[3].eventHash,
     });
     expect(snapshot.manifestSha256).toBe(
       createHash('sha256')
@@ -303,6 +251,7 @@ describe('EsignVerificationService.verify', () => {
     const result = await service.verify(verificationCode);
 
     expect(result).toEqual({
+      verificationScope: 'stored_records',
       signature: {
         signerName: '王小明',
         signedAt: signedAt.toISOString(),
@@ -350,9 +299,7 @@ describe('EsignVerificationService.verify', () => {
     [
       '查無此代碼',
       (ctx: ReturnType<typeof setup>) => {
-        ctx.repositories.records.findByVerificationCode.mockResolvedValue(
-          null as never,
-        );
+        ctx.repositories.records.findByVerificationCode.mockResolvedValue(null);
       },
     ],
     [
@@ -424,21 +371,6 @@ describe('EsignVerificationService.verify', () => {
       },
     ],
     [
-      '稽核鏈遭竄改',
-      (ctx: ReturnType<typeof setup>) => {
-        ctx.events[1].eventType = 'tampered';
-      },
-    ],
-    [
-      '稽核鏈終點不是 document.completed',
-      (ctx: ReturnType<typeof setup>) => {
-        const snapshot = ctx.state.snapshot!;
-        snapshot.auditRootHash = ctx.events[1].eventHash;
-        snapshot.manifestJson.auditRootHash = ctx.events[1].eventHash;
-        snapshot.manifestSha256 = canonicalSha256(snapshot.manifestJson);
-      },
-    ],
-    [
       '快照已撤銷',
       (ctx: ReturnType<typeof setup>) => {
         ctx.state.snapshot!.status = 'revoked';
@@ -498,3 +430,64 @@ async function expectIntegrityFailure(ctx: ReturnType<typeof setup>) {
     verificationCode,
   );
 }
+
+describe('停用事件鏈後的驗證相容性', () => {
+  it.each(['esign-verification-manifest-v2', 'esign-verification-manifest-v3'])(
+    '舊 %s 保留原快照與摘要，僅比對現存證據',
+    async (schemaVersion) => {
+      const f = setup();
+      await f.saveSnapshot();
+      const snapshot = f.state.snapshot!;
+      snapshot.auditRootHash = sha('b');
+      snapshot.manifestJson.schemaVersion = schemaVersion;
+      snapshot.manifestJson.auditRootHash = sha('b');
+      for (const signer of snapshot.manifestJson.signers)
+        signer.copyCompletedEventHash = sha('c');
+      snapshot.manifestSha256 = canonicalSha256(snapshot.manifestJson);
+      const original = JSON.stringify(snapshot);
+      expect(await f.service.verify(verificationCode)).toMatchObject({
+        verificationScope: 'stored_records',
+      });
+      expect(JSON.stringify(snapshot)).toBe(original);
+      snapshot.manifestJson.signers[0].copyCompletedEventHash = sha('d');
+      await expectIntegrityFailure(f);
+    },
+  );
+  it('v4 不產生任何事件 hash，錯誤檔案歸屬仍拒絕驗證', async () => {
+    const f = setup();
+    await f.saveSnapshot();
+    expect(f.state.snapshot!.auditRootHash).toBeNull();
+    expect(JSON.stringify(f.state.snapshot!.manifestJson)).not.toMatch(
+      /EventHash|auditRootHash/,
+    );
+    f.files.completed.signatureRecordId = 999;
+    await expectIntegrityFailure(f);
+  });
+});
+
+
+describe('拒簽證據在停用前後的相容性', () => {
+  it('含拒簽的 v4 與舊 v3 比對現存狀態；原因改動或缺項仍回 409', async () => {
+    const f = setup();
+    Object.assign(f.other, { status: 'rejected', signedAt: null, completionStatus: null,
+      rejectedAt: completedAt, rejectReason: '合成拒簽原因' });
+    await f.saveSnapshot();
+    expect(await f.service.verify(verificationCode)).toMatchObject({ verificationScope: 'stored_records' });
+    const snapshot = f.state.snapshot!;
+    const manifest = snapshot.manifestJson;
+    manifest.schemaVersion = 'esign-verification-manifest-v3';
+    manifest.auditRootHash = sha('b');
+    snapshot.auditRootHash = sha('b');
+    manifest.signers[0].copyCompletedEventHash = sha('c');
+    manifest.rejected[0].rejectionEventHash = sha('d');
+    snapshot.manifestSha256 = canonicalSha256(manifest);
+    const original = JSON.stringify(snapshot);
+    await f.service.verify(verificationCode);
+    expect(JSON.stringify(snapshot)).toBe(original);
+    Object.assign(f.other, { rejectReason: '修改後原因' });
+    await expectIntegrityFailure(f);
+    delete manifest.rejected;
+    snapshot.manifestSha256 = canonicalSha256(manifest);
+    await expectIntegrityFailure(f);
+  });
+});

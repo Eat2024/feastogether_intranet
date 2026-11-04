@@ -5,7 +5,7 @@ import { EsignCompletionAccessService } from './esign-completion-access.service'
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { PdfValidationService } from './pdf-validation.service';
-import { canonicalSha256 } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 
 describe('EsignCompletionAccessService 個人下載', () => {
   async function setup(status = 'active') {

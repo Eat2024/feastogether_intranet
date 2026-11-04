@@ -4,7 +4,6 @@ import request from 'supertest';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
-import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
@@ -77,13 +76,13 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     sourceFailed = false;
     const manager = ctx.app.get(MysqlService).getManager();
     await manager.delete(MailRecipientWhitelist, {
-      type: 'employee',
-      value: empid,
-    });
+        type: 'employee',
+        value: empid,
+      });
     await manager.delete(MailRecipientWhitelist, {
-      type: 'email',
-      value: email,
-    });
+        type: 'email',
+        value: email,
+      });
   });
   afterEach(() => {
     expect(hr.get).not.toHaveBeenCalled();
@@ -160,13 +159,6 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
       .set('X-Forwarded-For', randomClientIp())
       .type('form')
       .send({ token, code });
-  const audits = (signer: EsignSigner) =>
-    ctx.app
-      .get(MysqlService)
-      .getManager()
-      .count(EsignAuditEvent, {
-        where: { signerId: signer.id, eventType: 'external_otp.sent' },
-      });
   it('阻擋回 403 安全頁且無新碼或成功稽核；新增規則後立即可寄出並驗證', async () => {
     const { token, signer } = await fixture();
     const blocked = await otp(token).expect(403);
@@ -176,7 +168,6 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     expect(blocked.text).not.toContain('<form');
     expect(blocked.text).not.toContain(email);
     expect(transport).not.toHaveBeenCalled();
-    expect(await audits(signer)).toBe(0);
     const redis = ctx.app.get(RedisService);
     for (const key of ['code', 'cooldown', 'hourly'])
       expect(
@@ -193,7 +184,6 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     await otp(token).expect(200);
     const [mail] = transport.mock.calls[0];
     expect(mail.recipientEmail).toBe(email);
-    expect(await audits(signer)).toBe(1);
     await verify(token, mail.code).expect(303);
   });
   it('來源故障回 503、不寄送、不增成功次數，恢復後無冷卻即可寄出', async () => {
@@ -203,7 +193,6 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     const failed = await otp(token).expect(503);
     expect(failed.text).not.toContain('synthetic-db-secret');
     expect(transport).not.toHaveBeenCalled();
-    expect(await audits(signer)).toBe(0);
     const redis = ctx.app.get(RedisService);
     for (const key of ['code', 'cooldown', 'hourly'])
       expect(
@@ -211,31 +200,27 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
       ).toBeNull();
     sourceFailed = false;
     await otp(token).expect(200);
-    expect(await audits(signer)).toBe(1);
   });
   it('信箱規則命中時本機員工查詢故障仍寄出並可驗證', async () => {
-    const { token, signer } = await fixture();
+    const { token } = await fixture();
     await allow('email', email);
     sourceFailed = true;
     await otp(token).expect(200);
     const [mail] = transport.mock.calls[0];
     expect(mail.recipientEmail).toBe(email);
-    expect(await audits(signer)).toBe(1);
     await verify(token, mail.code).expect(303);
   });
   it('真正傳輸失敗仍回 503，未儲存新碼，重試成功後保留冷卻限制', async () => {
-    const { token, signer } = await fixture();
+    const { token } = await fixture();
     await allow();
     transport.mockRejectedValueOnce(new Error('synthetic-smtp-secret'));
     const failed = await otp(token).expect(503);
     expect(failed.text).not.toContain('synthetic-smtp-secret');
-    expect(await audits(signer)).toBe(0);
     const [unsent] = transport.mock.calls[0];
     await verify(token, unsent.code).expect(401);
     await otp(token).expect(200);
     await otp(token).expect(429);
     expect(transport).toHaveBeenCalledTimes(2);
-    expect(await audits(signer)).toBe(1);
   });
   it('撤銷後重寄被阻擋仍保留原有效碼，且不能新增成功稽核', async () => {
     const { token, signer } = await fixture();
@@ -251,7 +236,6 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     });
     await otp(token).expect(403);
     expect(transport).toHaveBeenCalledTimes(1);
-    expect(await audits(signer)).toBe(1);
     expect(await redis.get(`esign:external-otp:${signer.id}:hourly`)).toBe('1');
     await verify(token, mail.code).expect(303);
   });

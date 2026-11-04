@@ -5,7 +5,6 @@ import type { EsignDocument } from '../entities/esign-document.entity';
 import type { EsignSigner } from '../entities/esign-signer.entity';
 import { DocumentRepository } from '../repositories/document.repository';
 import { SignerRepository } from '../repositories/signer.repository';
-import { EsignAuditService } from './esign-audit.service';
 
 @Injectable()
 export class EsignExpiryService {
@@ -13,7 +12,6 @@ export class EsignExpiryService {
     private readonly mysql: MysqlService,
     private readonly documents: DocumentRepository,
     private readonly signers: SignerRepository,
-    private readonly audit: EsignAuditService,
   ) {}
 
   async reconcile(now = new Date()): Promise<number> {
@@ -73,18 +71,6 @@ export class EsignExpiryService {
     await this.signers.saveMany(signers, manager);
     document.status = 'expired';
     await this.documents.save(document, manager);
-    await this.audit.append(
-      {
-        documentId: document.id,
-        eventType: 'document.expired',
-        occurredAt: new Date(),
-        metadata: {
-          status: 'expired',
-          expiredAt: document.signEndAt.toISOString(),
-        },
-      },
-      manager,
-    );
     return true;
   }
 }

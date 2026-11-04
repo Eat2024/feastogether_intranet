@@ -10,7 +10,7 @@ import {
   degrees,
 } from 'pdf-lib';
 import { create as createQr } from 'qrcode';
-import { canonicalJson } from './esign-audit.service';
+import { canonicalJson } from '../helpers/signing-evidence';
 import {
   CompletedPdfService,
   signatureFieldLayout,

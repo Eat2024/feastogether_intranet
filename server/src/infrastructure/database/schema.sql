@@ -46,35 +46,6 @@ CREATE TABLE `auth_sessions` (
   CONSTRAINT `chk_auth_sessions_status` CHECK ((`status` in (_utf8mb4'validating',_utf8mb4'pending',_utf8mb4'active',_utf8mb4'failed',_utf8mb4'revoked')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='WebView 啟動與員工登入 Session';
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `esign_audit_events`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `esign_audit_events` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '稽核事件流水號',
-  `document_id` bigint NOT NULL COMMENT '文件 ID',
-  `signer_id` bigint DEFAULT NULL COMMENT '簽署人 ID',
-  `actor_user_id` bigint DEFAULT NULL COMMENT '操作員工 ID',
-  `event_type` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '事件類型',
-  `occurred_at` datetime(6) NOT NULL COMMENT '事件發生時間',
-  `previous_event_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '前一事件 hash',
-  `event_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '事件 hash',
-  `request_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '請求追蹤 ID',
-  `metadata_json` json DEFAULT NULL COMMENT '事件中繼資料',
-  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_esign_audit_events_event_hash` (`event_hash`),
-  KEY `idx_esign_audit_events_document_occurred_id` (`document_id`,`occurred_at`,`id`),
-  KEY `idx_esign_audit_events_signer_id` (`signer_id`),
-  KEY `idx_esign_audit_events_actor_user_id` (`actor_user_id`),
-  KEY `idx_esign_audit_events_event_type` (`event_type`),
-  KEY `idx_esign_audit_events_request_id` (`request_id`),
-  KEY `idx_esign_audit_events_occurred_at` (`occurred_at`),
-  KEY `idx_esign_audit_events_created_at` (`created_at`),
-  CONSTRAINT `fk_esign_audit_events_actor` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_esign_audit_events_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_esign_audit_events_signer` FOREIGN KEY (`signer_id`) REFERENCES `esign_signers` (`id`) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='不可變文件稽核事件';
-/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_document_fields`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -153,6 +124,7 @@ DROP TABLE IF EXISTS `esign_export_jobs`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `esign_export_jobs` (
+  `download_file_name` varchar(1024) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '首次下載提供的檔名快照，NULL 為尚未記錄',
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '匯出工作流水號',
   `export_type` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '匯出類型',
   `document_id` bigint DEFAULT NULL COMMENT '文件 ID',
@@ -416,7 +388,7 @@ CREATE TABLE `esign_verification_records` (
   `manifest_json` json NOT NULL COMMENT '驗證 manifest',
   `manifest_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'manifest SHA-256',
   `final_pdf_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '最終 PDF SHA-256',
-  `audit_root_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '稽核鏈 root hash',
+  `audit_root_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '停用前稽核鏈 root hash（僅歷史參考）',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'valid' COMMENT '驗證狀態',
   `issued_at` datetime(6) NOT NULL COMMENT '核發時間',
   `revoked_at` datetime(6) DEFAULT NULL COMMENT '撤銷時間',

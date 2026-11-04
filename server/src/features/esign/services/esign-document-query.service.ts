@@ -6,7 +6,6 @@ import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { EsignTokenService } from './esign-token.service';
 import { Inject, Injectable } from '@nestjs/common';
-import type { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import {
@@ -15,13 +14,11 @@ import {
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 import type {
-  EsignHistoryItemDto,
   EsignDocumentDetailDto,
   EsignSourceFileDto,
   EsignInvitationDelivery,
 } from '../dto/esign-common.dto';
 import type { EsignDocument } from '../entities/esign-document.entity';
-import { AuditEventRepository } from '../repositories/audit-event.repository';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
@@ -42,7 +39,6 @@ export class EsignDocumentQueryService {
     private readonly fields: DocumentFieldRepository,
     private readonly files: FileObjectRepository,
     private readonly notifications: NotificationRepository,
-    private readonly audits: AuditEventRepository,
     private readonly policy: EsignAccessPolicyService,
     private readonly validation: EsignDocumentValidationService,
     private readonly mapper: EsignViewMapper,
@@ -346,105 +342,6 @@ export class EsignDocumentQueryService {
     const metadata = await this.pdf.validatePersistedPdf(bytes);
     this.validation.assertSourceIntegrity(readable, source, metadata.sha256);
     return { bytes, fileName: source.originalFileName ?? 'document.pdf' };
-  }
-
-  async history(
-    documentId: number,
-    userId: number,
-  ): Promise<EsignHistoryItemDto[]> {
-    const manager = this.mysql.getManager();
-    const document = await this.documents.findById(documentId, manager);
-    const signers = document
-      ? await this.signers.findByDocument(documentId, manager)
-      : [];
-    const signer = signers.find((candidate) => candidate.userId === userId);
-    if (!document || document.deletedAt) {
-      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
-    }
-    if (!signer) await this.policy.readableDocument(document, userId, manager);
-    const events = await this.audits.findDocumentEvents(documentId, manager);
-    const isCreator = document?.createdByUserId === userId;
-    const bySignerId = new Map(signers.map((item) => [item.id, item]));
-    const actorIds = [
-      ...new Set(
-        events.flatMap((event) =>
-          event.actorUserId ? [event.actorUserId] : [],
-        ),
-      ),
-    ];
-    const actors = new Map(
-      (
-        await Promise.all(
-          actorIds.map((id) => this.users.findById(id, manager)),
-        )
-      )
-        .filter((user): user is User => user !== null)
-        .map((user) => [user.id, user]),
-    );
-    const documentEvents = new Set([
-      'document.created',
-      'document.initiated',
-      'document.completed',
-      'document.stopped_by_creator',
-      'document.stopped_by_deadline',
-      'document.expired',
-      'document.reopened',
-    ]);
-    return events
-      .filter(
-        (event) =>
-          isCreator ||
-          documentEvents.has(event.eventType) ||
-          (!!signer && event.signerId === signer.id),
-      )
-      .map((event) => {
-        if (event.eventType === 'document.reopened') {
-          const base: EsignHistoryItemDto = {
-            type: event.eventType,
-            label: this.mapper.historyLabel(event.eventType),
-            actor: { kind: 'employee', name: '建立人' },
-            reason: null,
-            occurredAt: event.occurredAt.toISOString(),
-            signEndAt:
-              typeof event.metadataJson?.signEndAt === 'string'
-                ? event.metadataJson.signEndAt
-                : undefined,
-          };
-          return isCreator
-            ? {
-                ...base,
-                actor: this.mapper.historyActor(
-                  event,
-                  undefined,
-                  event.actorUserId ? actors.get(event.actorUserId) : undefined,
-                ),
-                actorUserId: String(event.actorUserId),
-                previousSignEndAt:
-                  typeof event.metadataJson?.previousSignEndAt === 'string'
-                    ? event.metadataJson.previousSignEndAt
-                    : undefined,
-                reason:
-                  typeof event.metadataJson?.reason === 'string'
-                    ? event.metadataJson.reason
-                    : null,
-              }
-            : base;
-        }
-        return {
-          type: event.eventType,
-          label: this.mapper.historyLabel(event.eventType),
-          occurredAt: event.occurredAt.toISOString(),
-          actor: this.mapper.historyActor(
-            event,
-            event.signerId ? bySignerId.get(event.signerId) : undefined,
-            event.actorUserId ? actors.get(event.actorUserId) : undefined,
-          ),
-          reason:
-            typeof event.metadataJson?.reason === 'string'
-              ? event.metadataJson.reason
-              : null,
-        };
-      });
   }
 
   /** 匯出資料與一般詳情分離授權，不產生匯出紀錄或回傳管理憑證。 */

@@ -65,6 +65,8 @@ interface ExportHistoryItemBase {
   /** 員工有 employeeNo、email 為 null；外部簽署人相反 */
   exportedBy: { name: string; employeeNo: string | null; email: string | null };
   exportedAt: string;
+  /** 首次下載提供的檔名快照；null 為未記錄 */
+  downloadFileName: string | null;
   /** 畫面顯示用的範圍說明（超過 255 字會被截斷） */
   scope: string;
   count: number;

@@ -75,7 +75,6 @@ describe('EsignSigningService', () => {
       { assertAccepted: jest.fn() } as never,
       tokens as never,
       {} as never,
-      {} as never,
       storage as never,
     );
     return {
@@ -127,11 +126,11 @@ describe('EsignSigningService', () => {
       signer.signerType = 'user';
       useRealExternalPolicy(access);
       await expect(
-        service.sign(signerPublicId, externalPrincipal, submission, {}),
-      ).rejects.toMatchObject({
-        status: 403,
-        code: 'ESIGN_INTERNAL_LOGIN_REQUIRED',
-      });
+      service.sign(signerPublicId, externalPrincipal, submission, {}),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'ESIGN_INTERNAL_LOGIN_REQUIRED',
+    });
       expect(storage.store).not.toHaveBeenCalled();
     },
   );

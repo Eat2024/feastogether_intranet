@@ -326,11 +326,21 @@ describe('Spec009 匯出 API', () => {
           .get(a.downloadPath)
           .set('Cookie', outsider)
           .expect(404);
+        const afterJobs = await db.manager.find(EsignExportJob, {
+          where: { documentId: Number(id) },
+        });
         expect(
-          await db.manager.find(EsignExportJob, {
-            where: { documentId: Number(id) },
-          }),
-        ).toEqual(beforeJobs);
+          afterJobs.map(
+            ({ downloadFileName: _name, updatedAt: _updatedAt, ...job }) => job,
+          ),
+        ).toEqual(
+          beforeJobs.map(
+            ({ downloadFileName: _name, updatedAt: _updatedAt, ...job }) => job,
+          ),
+        );
+        expect(['合成甲.zip', '合成乙.zip']).toContain(
+          afterJobs[0].downloadFileName,
+        );
         expect(
           await db.manager.find(EsignFileObject, {
             where: { exportJobId: beforeJobs[0].id },
@@ -890,13 +900,6 @@ describe('Spec009 匯出 API', () => {
       { status: 'expired', completedAt: new Date() },
     );
     await make().expect(503);
-    const history = apiData<{ total: number }>(
-      await request(ctx.server)
-        .get(`/api/esign/history/export?type=zip&documentId=${documentId}`)
-        .set('Cookie', cookie)
-        .expect(200),
-    );
-    expect(history.total).toBe(2);
   });
 
   it('兩個 worker 仍只有一個匯出，慢目的端不會預先打開全部小副本', async () => {
@@ -976,17 +979,17 @@ describe('Spec009 匯出 API', () => {
             }),
           );
           const record = await db.manager.save(
-            EsignSignatureRecord,
-            db.manager.create(EsignSignatureRecord, {
-              signerId: signer.id,
-              documentSha256: 'a'.repeat(64),
-              signingPayloadSha256: 'b'.repeat(64),
-              consentVersion: 'test',
-              authenticationMethod: 'test',
-              authenticationEventId: randomUUID(),
-              signedAtUtc: new Date(),
-            }),
-          );
+      EsignSignatureRecord,
+      db.manager.create(EsignSignatureRecord, {
+        signerId: signer.id,
+        documentSha256: 'a'.repeat(64),
+        signingPayloadSha256: 'b'.repeat(64),
+        consentVersion: 'test',
+        authenticationMethod: 'test',
+        authenticationEventId: randomUUID(),
+        signedAtUtc: new Date(),
+      }),
+    );
           const file = await storage.store({
             directory: `documents/bounded-${documentId}`,
             extension: 'pdf',
@@ -1180,7 +1183,16 @@ describe('Spec009 匯出 API', () => {
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');
-    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
+    await Promise.all(
+      [empid].map((employeeNo) =>
+        ctx.app
+          .get<DataSource>(MYSQL_MAIN)
+          .query('UPDATE users SET email=? WHERE empid=?', [
+            `${employeeNo.toLowerCase()}@example.test`,
+            employeeNo,
+          ]),
+      ),
+    );
     return value;
   }
 });
@@ -1211,4 +1223,3 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-

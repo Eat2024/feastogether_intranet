@@ -23,7 +23,7 @@ import {
 } from '../entities/esign-initiation-job.entity';
 import { type SignerInputDto } from '../dto/signer.dto';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { canonicalSha256 } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 import { EsignInitiationService } from './esign-initiation.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
 
@@ -401,8 +401,8 @@ export class EsignInitiationJobService {
       heartbeat.assertHealthy();
       if (!(await this.jobs.renew(lease, this.mysql.getManager())))
         throw new AppException(
-          ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
-        );
+              ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+            );
       const result = await this.mysql.transaction(async (manager) => {
         const result = await this.initiation.initiateInTransaction(
           {
@@ -425,8 +425,8 @@ export class EsignInitiationJobService {
           current.deadlineAt <= new Date()
         )
           throw new AppException(
-            ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
-          );
+              ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+            );
         current.status = 'succeeded';
         current.stage = 'completed';
         current.processedCount = current.totalCount;
@@ -438,8 +438,8 @@ export class EsignInitiationJobService {
         await this.jobs.save(current, manager);
         if (current.deadlineAt <= new Date())
           throw new AppException(
-            ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
-          );
+              ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+            );
         return result;
       });
       notificationJobs = result.notificationJobs;

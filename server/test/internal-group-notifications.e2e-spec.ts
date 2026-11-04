@@ -13,7 +13,6 @@ import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitati
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { apiData } from './api-response.helper';
@@ -97,42 +96,46 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
         })
         .expect(201),
     ).id;
-    await completeInitiation(ctx, request(ctx.server)
-      .post(`/api/esign/documents/${documentId}/initiations`)
-      .set('Cookie', cookie)
-      .set('Origin', origin)
-      .send({
-        signers: [
-          ...users
-            .slice(0, count)
-            .map((user) => ({ type: 'user', userId: String(user.id) })),
-          ...(external
-            ? [
-                {
-                  type: 'email',
-                  name: '外部合成',
-                  email: 'external@example.test',
-                },
-              ]
-            : []),
-        ],
-        fields: [
-          {
-            type: 'signature',
-            page: 1,
-            xPercent: 10,
-            yPercent: 10,
-            widthPercent: 20,
-            heightPercent: 10,
-            sortOrder: 0,
-          },
-        ],
-        signStartAt: new Date(Date.now() + 3600000).toISOString(),
-        signEndAt: new Date(Date.now() + 86400000).toISOString(),
-        watermark: false,
-        allowReject: true,
-      })
-      .expect(202), cookie);
+    await completeInitiation(
+      ctx,
+      request(ctx.server)
+        .post(`/api/esign/documents/${documentId}/initiations`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .send({
+          signers: [
+            ...users
+              .slice(0, count)
+              .map((user) => ({ type: 'user', userId: String(user.id) })),
+            ...(external
+              ? [
+                  {
+                    type: 'email',
+                    name: '外部合成',
+                    email: 'external@example.test',
+                  },
+                ]
+              : []),
+          ],
+          fields: [
+            {
+              type: 'signature',
+              page: 1,
+              xPercent: 10,
+              yPercent: 10,
+              widthPercent: 20,
+              heightPercent: 10,
+              sortOrder: 0,
+            },
+          ],
+          signStartAt: new Date(Date.now() + 3600000).toISOString(),
+          signEndAt: new Date(Date.now() + 86400000).toISOString(),
+          watermark: false,
+          allowReject: true,
+        })
+        .expect(202),
+      cookie,
+    );
     const logs = await ctx.app.get(MysqlService).getManager().query<
       Array<{
         id: number;
@@ -165,7 +168,6 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
         ctx.app.get(NotificationRepository),
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
-        ctx.app.get(EsignAuditService),
         mailFixture(ctx).guard(mailer),
       ),
     };

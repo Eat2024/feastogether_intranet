@@ -67,7 +67,6 @@ describe('EsignDraftService', () => {
       build: jest.fn(() => [{ fieldType: 'signature' }]),
       buildFields: jest.fn(),
     };
-    const audit = { append: jest.fn() };
     const storage = {
       store: jest.fn(async () => stored),
       openReadStream: jest.fn(async () => Readable.from([Buffer.from('pdf')])),
@@ -80,7 +79,6 @@ describe('EsignDraftService', () => {
       fields as never,
       access as never,
       pdf as never,
-      audit as never,
       storage,
       fieldService as never,
     );
@@ -95,7 +93,6 @@ describe('EsignDraftService', () => {
       files,
       fields,
       fieldService,
-      audit,
     };
   }
 
@@ -149,14 +146,13 @@ describe('EsignDraftService', () => {
     AppErrors.ESIGN_DEPARTMENT_UNAVAILABLE,
     AppErrors.ESIGN_RESOURCE_NOT_FOUND,
   ])('缺部門或失效帳號拒絕後不寫文件／稽核，清除上傳', async (...error) => {
-    const { service, access, documents, files, audit, storage } = setup();
+    const { service, access, documents, files, storage } = setup();
     access.requireDepartment.mockRejectedValueOnce(new AppException(...error));
     await expect(
       service.create({ title: '合成文件', creatorUserId: 9, ...pdfFile }),
     ).rejects.toBeInstanceOf(AppException);
     expect(documents.create).not.toHaveBeenCalled();
     expect(files.save).not.toHaveBeenCalled();
-    expect(audit.append).not.toHaveBeenCalled();
     expect(storage.delete).toHaveBeenCalledWith(stored);
   });
 
@@ -204,7 +200,7 @@ describe('EsignDraftService', () => {
   });
 
   it('建立草稿時保存驗證後 PDF metadata 與 audit', async () => {
-    const { service, documents, files, storage, audit } = setup();
+    const { service, documents, files, storage } = setup();
     await service.create({
       title: '  合約  ',
       creatorUserId: 9,
@@ -228,14 +224,6 @@ describe('EsignDraftService', () => {
           /^documents\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/source$/,
         ),
       }),
-    );
-    expect(audit.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        documentId: 1,
-        actorUserId: 9,
-        eventType: 'document.created',
-      }),
-      manager,
     );
   });
 
@@ -262,7 +250,7 @@ describe('EsignDraftService', () => {
   });
 
   it('建立草稿時欄位不合法，整筆不建立並清除已上傳的 PDF', async () => {
-    const { service, storage, fieldService, audit } = setup();
+    const { service, storage, fieldService } = setup();
     fieldService.build.mockImplementationOnce(() => {
       throw new Error('欄位頁碼或位置超出 PDF 範圍');
     });
@@ -275,7 +263,6 @@ describe('EsignDraftService', () => {
         ...pdfFile,
       }),
     ).rejects.toThrow('欄位頁碼或位置超出 PDF 範圍');
-    expect(audit.append).not.toHaveBeenCalled();
     expect(storage.delete).toHaveBeenCalledWith(stored);
   });
 
@@ -420,21 +407,6 @@ describe('EsignDraftService', () => {
     expect(storage.delete).toHaveBeenCalledWith(stored);
     expect(files.deleteById).not.toHaveBeenCalled();
     expect(fields.deleteDraftFields).not.toHaveBeenCalled();
-  });
-
-  it('audit 失敗時保留舊檔，只清除新上傳的 PDF', async () => {
-    const { service, files, audit, storage } = setup();
-    files.findDocumentFile.mockResolvedValue({
-      id: 88,
-      objectKey: 'esign/old/source.pdf',
-    });
-    audit.append.mockRejectedValueOnce(new Error('audit failed'));
-
-    await expect(service.update(1, 9, { file: pdfFile })).rejects.toThrow(
-      'audit failed',
-    );
-    expect(storage.delete).toHaveBeenCalledTimes(1);
-    expect(storage.delete).toHaveBeenCalledWith(stored);
   });
 
   it('換 PDF 與多個欄位只驗證新檔一次，不重新讀取 PDF 或逐欄位查詢', async () => {

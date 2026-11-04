@@ -50,7 +50,7 @@ export class ExportsController {
   @ApiOperation({
     summary: '準備當次匯出下載',
     description:
-      '需有效員工 session、同源 Origin，以及同部門已發起且未刪除的文件。驗證名稱並補上 Excel／ZIP 副檔名；Excel 空白回 null，ZIP 空白沿用成果名稱與原下載路徑。ZIP 需提供 exportId、fileId，確認成果可用後回傳同源下載資訊。此操作不保存設定、不產檔、不新增歷史紀錄。',
+      '需有效員工 session、同源 Origin，以及同部門已發起且未刪除的文件。驗證名稱並補上 Excel／ZIP 副檔名；Excel 空白回 null，ZIP 空白沿用成果名稱與原下載路徑。ZIP 需提供 exportId、fileId，確認成果可用後回傳同源下載資訊。ZIP 準備成功時僅首次保存下載檔名快照，之後改名下載不覆寫；不產檔、不新增歷史列。Excel 由記錄匯出 API 保存檔名。',
   })
   @ApiOkResponse({ type: PreparedExportDownloadDto })
   @ApiResponse({
@@ -164,6 +164,11 @@ export class ExportsController {
         .status(416)
         .header('Content-Range', `bytes */${size}`)
         .send();
+    if (query.downloadName !== 'client')
+      await this.exports.recordDownloadFileName(
+        file.exportJobId!,
+        file.originalFileName ?? 'signed-copies.zip',
+      );
     if (selected)
       reply
         .status(206)

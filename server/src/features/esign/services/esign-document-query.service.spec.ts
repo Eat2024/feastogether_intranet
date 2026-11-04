@@ -1,7 +1,6 @@
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
-import { EsignAuditEvent } from '../entities/esign-audit-event.entity';
 import { EsignDocumentQueryService } from './esign-document-query.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignViewMapper } from './esign-view.mapper';
@@ -64,11 +63,6 @@ function setup(doc = document()) {
     canExportDocument: jest.fn(() => Promise.resolve(true)),
     checkEsignCreator: jest.fn(),
   };
-  const audits = {
-    findDocumentEvents: jest.fn<Promise<EsignAuditEvent[]>, []>(() =>
-      Promise.resolve([]),
-    ),
-  };
   const exports = { documentSummary: jest.fn(() => Promise.resolve(null)) };
   const users = {
     findById: jest.fn(() =>
@@ -93,7 +87,6 @@ function setup(doc = document()) {
     fields as never,
     { findDocumentFile: jest.fn(() => Promise.resolve(null)) } as never,
     notifications as never,
-    audits as never,
     policy as never,
     new EsignDocumentValidationService(),
     new EsignViewMapper({ verificationUrl: () => null } as never),
@@ -115,7 +108,6 @@ function setup(doc = document()) {
     records,
     policy,
     manager,
-    audits,
   };
 }
 
@@ -309,32 +301,5 @@ describe('部門文件查詢', () => {
       status: 404,
     });
     expect(s.signers.findByDocument).not.toHaveBeenCalled();
-  });
-
-  it('同部門歷程不因缺少 signerId 放行管理事件，保留本人事件', async () => {
-    const s = setup();
-    s.audits.findDocumentEvents.mockResolvedValue([
-      Object.assign(new EsignAuditEvent(), {
-        eventType: 'document.created',
-        occurredAt: now,
-      }),
-      Object.assign(new EsignAuditEvent(), {
-        eventType: 'document.draft_updated',
-        occurredAt: now,
-      }),
-      Object.assign(new EsignAuditEvent(), {
-        eventType: 'signer.rejected',
-        signerId: 30,
-        occurredAt: now,
-        metadataJson: { reason: '本人理由' },
-      }),
-    ]);
-    expect((await s.service.history(10, 2)).map((x) => x.type)).toEqual([
-      'document.created',
-    ]);
-    expect((await s.service.history(10, 3)).map((x) => x.type)).toEqual([
-      'document.created',
-      'signer.rejected',
-    ]);
   });
 });

@@ -13,10 +13,7 @@ import { DocumentRepository } from '#app/features/esign/repositories/document.re
 import { FileObjectRepository } from '#app/features/esign/repositories/file-object.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { SignatureRecordRepository } from '#app/features/esign/repositories/signature-record.repository';
-import {
-  canonicalSha256,
-  EsignAuditService,
-} from '#app/features/esign/services/esign-audit.service';
+import { canonicalSha256 } from '#app/features/esign/helpers/signing-evidence';
 import { CompletedPdfService } from '#app/features/esign/services/completed-pdf.service';
 import { EsignVerificationService } from '#app/features/esign/services/esign-verification.service';
 import { ESIGN_DOCUMENT_FINALIZATION_QUEUE } from '#app/features/esign/esign-queue.constants';
@@ -43,7 +40,6 @@ export class DocumentFinalizationProcessor extends WorkerHost {
     private readonly signers: SignerRepository,
     private readonly files: FileObjectRepository,
     private readonly completedPdf: CompletedPdfService,
-    private readonly audit: EsignAuditService,
     private readonly verification: EsignVerificationService,
     @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
     private readonly records: SignatureRecordRepository,
@@ -124,9 +120,9 @@ export class DocumentFinalizationProcessor extends WorkerHost {
     manager: EntityManager,
   ): Promise<boolean> {
     const document = await this.documents.findByIdForUpdate(
-      documentId,
-      manager,
-    );
+        documentId,
+        manager,
+      );
     const signer = await this.signers.findByIdForUpdate(signerId, manager);
     if (
       !document ||
@@ -157,7 +153,7 @@ export class DocumentFinalizationProcessor extends WorkerHost {
     ) {
       throw new Error('個人副本與簽署證據不一致');
     }
-    const file = await this.files.save(
+    await this.files.save(
       this.files.create(
         {
           signatureRecordId: record.id,
@@ -179,20 +175,6 @@ export class DocumentFinalizationProcessor extends WorkerHost {
     signer.completionLeaseToken = null;
     signer.completionLeaseExpiresAt = null;
     await this.signers.save(signer, manager);
-    await this.audit.append(
-      {
-        documentId,
-        signerId,
-        eventType: 'signer.copy_completed',
-        occurredAt: readyAt,
-        metadata: {
-          signatureRecordId: record.id,
-          completedFileId: file.id,
-          completedPdfSha256: file.sha256,
-        },
-      },
-      manager,
-    );
     return true;
   }
 
@@ -215,17 +197,8 @@ export class DocumentFinalizationProcessor extends WorkerHost {
       const completedAt = new Date();
       document.status = 'completed';
       document.completedAt = completedAt;
-      const auditRootHash = await this.audit.append(
-        {
-          documentId,
-          eventType: 'document.completed',
-          occurredAt: completedAt,
-          metadata: { status: 'completed' },
-        },
-        manager,
-      );
       await this.verification.saveSnapshot(
-        { document, signers, completedAt, auditRootHash },
+        { document, signers, completedAt },
         manager,
       );
       await this.documents.save(document, manager);
@@ -247,16 +220,6 @@ export class DocumentFinalizationProcessor extends WorkerHost {
       signer.completionLeaseExpiresAt = null;
       signer.completionReadyAt = null;
       await this.signers.save(signer, manager);
-      await this.audit.append(
-        {
-          documentId,
-          signerId,
-          eventType: 'signer.copy_failed',
-          occurredAt: new Date(),
-          metadata: { errorCode: 'FINALIZATION_FAILED' },
-        },
-        manager,
-      );
     });
   }
 }

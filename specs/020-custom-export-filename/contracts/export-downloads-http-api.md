@@ -1,10 +1,10 @@
 # HTTP Contract: 準備自訂名稱的匯出下載
 
-本文件為待實作契約。所有 JSON 成功回應沿用 `{ success: true, data: ... }`；錯誤沿用既有 error envelope，訊息使用繁體中文。
+本文件為目前實作契約。所有 JSON 成功回應沿用 `{ success: true, data: ... }`；錯誤沿用既有 error envelope，訊息使用繁體中文。
 
 ## POST /api/esign/documents/:documentId/export-downloads
 
-**用途**：驗證當次名稱與下載資格並回傳下載資訊；不持久保存、不產檔、不建立匯出紀錄。重複請求不產生業務寫入。
+**用途**：驗證當次名稱與下載資格並回傳下載資訊；Excel 準備唯讀；ZIP 在成功驗證後以條件式寫入首次檔名快照，不產檔、不新增歷史列，重複請求不覆寫。
 
 **授權**：有效員工 session cookie、OriginGuard、未刪除且已發起的同部門文件。外部簽署 session 不適用。ZIP 準備階段須檢查 document/export/file 關聯與成果可用性；既有 GET 再次執行相同授權。
 
@@ -30,7 +30,7 @@ ZIP body：
 { "success": true, "data": { "type": "excel", "fileName": "年度紀錄.xlsx" } }
 ```
 
-未指定名稱時 `fileName: null`。前端必須準備成功後才呼叫既有 Excel 記錄 API；該 API body／回應與歷史儲存均不修改。
+未指定名稱時 `fileName: null`。前端準備成功並產生 Excel 後呼叫記錄 API，帶入原始 fileName；記錄 API 再次驗證、決定最終名稱並保存，前端使用回傳的 downloadFileName 下載。
 
 **200 ZIP**：
 
@@ -66,7 +66,7 @@ JSON 回應不快取，檔名不寫入 application/access log。
 - 值為 client：成功回應僅 `Content-Disposition: attachment`，不包含 filename／filename*；前端同源連結的 `download` 屬性指定 POST 回傳名稱。
 - 兩者均沿用原本 session、同部門權限、成果歸屬與可用性驗證。client 模式無須持久票證；本機建議名稱不是授權資料。
 - `Content-Type: application/zip`、private/no-store、nosniff、ETag、Accept-Ranges、200／206／416 與 If-Range 規則維持原樣。
-- 不回傳自訂名稱到共用 metadata，不新增歷史，不重新打包。準備成功後資格變動仍拒絕實際 GET。
+- 不修改 file object 的名稱或 ZIP 內容，不新增歷史列、不重新打包。首次準備下載成功記錄工作 download_file_name；未經準備的預設名稱 GET 在合法 Range 驗證後才記錄。後續下載不覆寫。準備成功後資格變動仍拒絕實際 GET。
 
 ## 前端交付與失敗邊界
 
@@ -89,3 +89,14 @@ JSON 回應不快取，檔名不寫入 application/access log。
 - 成功維持 200 PDF bytes，由 Content-Disposition 的 filename* 回傳正規化名稱，不修改檔案內容或歷史。
 - session、OriginGuard、同部門存取與副本完整性檢查沿用原流程；名稱不進 URL。
 - 歷史頁下載按鈕開啟共用 Dialog，留白沿用預設；處理中停用重複送出，錯誤保留輸入，重新開啟重設名稱。
+
+## 檔名快照與歷史欄位（2026-11-04）
+
+- `esign_export_jobs.download_file_name`：nullable VARCHAR(1024)，容納系統產生的文件／人名組合；自訂輸入仍遵守既有 100 字及最終 255 bytes 限制。
+- 歷史列表每筆新增 `downloadFileName: string | null`，前端新增「匯出檔名」欄；NULL 顯示「未記錄」。既有來源文件名稱保留。
+- 新 Excel 紀錄接受選填 `fileName`（不接受 null），由 server 正規化或以文件編號與台北日期產生預設名稱；回傳的快照就是 client 應提供的下載名稱。舊客戶端省略欄位仍可記錄。
+- 新 PDF 紀錄保存副本回應的 `fileName`；文件頁改用 Content-Disposition 的名稱，避免另行拼接導致快照與下載不一致。
+- ZIP 同一工作只保存首次成功準備下載的名稱，以 `WHERE download_file_name IS NULL` 保護並行與重試；若直接下載預設名稱，由 GET 首次記錄。非法名稱、未授權、不可用成果及 416 不寫入名稱。
+- 舊紀錄不推測回填。舊 ZIP 日後下載時可保存上線後首次提供的名稱，不能視為還原過去；Excel／PDF 歷史重下載永不覆寫原快照。
+- 「首次」指系統開始保存後首次提供下載的名稱，不是瀏覽器完成傳輸、另存或使用者本機最終名稱。ZIP 的原匯出時間／匯出人仍是工作建立資訊，不是首次下載者資訊。
+- migration 為 `1793836800000-ExportDownloadFileName`，須先套用再部署依賴新欄位的 server。回滾 migration 會丟失快照，需先備份；不新增環境變數。

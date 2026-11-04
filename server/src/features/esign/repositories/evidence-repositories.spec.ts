@@ -1,9 +1,8 @@
-import { AuditEventRepository } from './audit-event.repository';
 import { SignatureRecordRepository } from './signature-record.repository';
 import { VerificationRecordRepository } from './verification-record.repository';
 
 describe('evidence repository boundaries', () => {
-  it.each([SignatureRecordRepository, AuditEventRepository])(
+  it.each([SignatureRecordRepository])(
     '%p 只暴露 insert/query，不暴露通用更新或刪除',
     (RepositoryClass) => {
       const repository = new RepositoryClass() as unknown as Record<

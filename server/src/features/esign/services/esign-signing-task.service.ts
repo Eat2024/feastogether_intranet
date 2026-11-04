@@ -8,7 +8,6 @@ import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignViewMapper } from './esign-view.mapper';
-import { EsignAuditService } from './esign-audit.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { PdfValidationService } from './pdf-validation.service';
 import { FileObjectRepository } from '../repositories/file-object.repository';
@@ -31,7 +30,6 @@ export class EsignSigningTaskService {
     private readonly users: UserRepository,
     private readonly records: SignatureRecordRepository,
     private readonly validation: EsignDocumentValidationService,
-    private readonly audit: EsignAuditService,
     private readonly files: FileObjectRepository,
     private readonly pdf: PdfValidationService,
     @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
@@ -58,35 +56,19 @@ export class EsignSigningTaskService {
   }
 
   async open(signerPublicId: string, userId: number) {
-    return this.mysql.transaction(async (manager) => {
-      const candidate = await this.signers.findByPublicId(
-        signerPublicId,
-        manager,
-      );
-      const document = candidate
-        ? await this.documents.findByIdForUpdate(candidate.documentId, manager)
-        : null;
-      const signer = document
-        ? await this.signers.findByPublicIdForUpdate(signerPublicId, manager)
-        : null;
-      if (!document || !signer) {
-        this.access.checkEsignCreator(null, userId);
-        throw new Error('unreachable');
-      }
-      this.access.assertInternalSigner(document, signer, userId);
-      if (signer.status === 'pending')
+    const manager = this.mysql.getManager();
+    const signer = await this.signers.findByPublicId(signerPublicId, manager);
+    const document = signer
+      ? await this.documents.findById(signer.documentId, manager)
+      : null;
+    if (!document || !signer) {
+      this.access.checkEsignCreator(null, userId);
+      throw new Error('unreachable');
+    }
+    this.access.assertInternalSigner(document, signer, userId);
+    if (signer.status === 'pending')
         this.validation.assertActiveSigningWindow(document, new Date());
-      await this.audit.append(
-        {
-          documentId: document.id,
-          signerId: signer.id,
-          eventType: 'document.opened',
-          occurredAt: new Date(),
-        },
-        manager,
-      );
-      return this.toTask(document, signer, manager);
-    });
+    return this.toTask(document, signer, manager);
   }
 
   async source(

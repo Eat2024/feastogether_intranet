@@ -22,7 +22,6 @@ import { SignerRepository } from '#app/features/esign/repositories/signer.reposi
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { EsignSignatureRecord } from '#app/features/esign/entities/esign-signature-record.entity';
-import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
 import { EsignFileObject } from '#app/features/esign/entities/esign-file-object.entity';
 import { apiData } from './api-response.helper';
 import { esignTestPng } from './esign-test-png';
@@ -114,31 +113,35 @@ describe('Spec016 員工拒簽與本人副本', () => {
       signers: Array<{ publicId: string }>;
       fields: Array<{ id: string }>;
     }>(
-      await completeInitiation(ctx, request(ctx.server)
-        .post(`/api/esign/documents/${created.id}/initiations`)
-        .set('Cookie', cookies[0])
-        .set('Origin', origin)
-        .send({
-          signers: users
-            .slice(0, 2)
-            .map((user) => ({ type: 'user', userId: String(user.id) })),
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 20,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: new Date(Date.now() - 60000).toISOString(),
-          signEndAt: new Date(Date.now() + 86400000).toISOString(),
-          watermark: false,
-          allowReject: true,
-        })
-        .expect(202), cookies[0]),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${created.id}/initiations`)
+          .set('Cookie', cookies[0])
+          .set('Origin', origin)
+          .send({
+            signers: users
+              .slice(0, 2)
+              .map((user) => ({ type: 'user', userId: String(user.id) })),
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 20,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: new Date(Date.now() - 60000).toISOString(),
+            signEndAt: new Date(Date.now() + 86400000).toISOString(),
+            watermark: false,
+            allowReject: true,
+          })
+          .expect(202),
+        cookies[0],
+      ),
     );
     const signers = await Promise.all(
       document.signers.map((signer) =>
@@ -196,11 +199,6 @@ describe('Spec016 員工拒簽與本人副本', () => {
     ]);
     expect(responses.map((r) => r.status).sort()).toEqual([200, 201]);
     expect(apiData<{ reason: string }>(responses[0]).reason).toBe('不同意');
-    expect(
-      await manager().count(EsignAuditEvent, {
-        where: { signerId: f.signers[0]!.id, eventType: 'signer.rejected' },
-      }),
-    ).toBe(1);
     await manager().update(EsignDocument, Number(f.document.id), {
       status: 'stopped',
     });
@@ -256,13 +254,9 @@ describe('Spec016 員工拒簽與本人副本', () => {
       await post(path(id) + '/rejection', { requestId: randomUUID() }).expect(
         409,
       );
-      expect(
-        await manager().count(EsignAuditEvent, {
-          where: { signerId: f.signers[0]!.id, eventType: 'signer.rejected' },
-        }),
-      ).toBe(0);
     },
   );
+
   it('真實 worker 產製本人副本；到期仍下載相同 PDF，跨人及損毀 fail closed', async () => {
     const f = await fixture();
     const beforeCompletion = await manager().findOneByOrFail(EsignDocument, {

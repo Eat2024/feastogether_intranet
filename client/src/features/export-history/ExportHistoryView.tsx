@@ -426,6 +426,7 @@ export default function ExportHistoryView() {
   const head: HeadCell[] = [
     { label: "匯出時間", sortKey: "exportedAt" },
     { label: "文件名稱", sortKey: "title" },
+    { label: "匯出檔名" },
     { label: "文件編號", sortKey: "docNumber" },
     ...columns.head,
     { label: "匯出人", sortKey: "exportedBy" },
@@ -526,6 +527,9 @@ export default function ExportHistoryView() {
                     {formatDateTime(r.exportedAt)}
                   </TableCell>
                   <TableCell>{r.document.title}</TableCell>
+                  <TableCell sx={{ overflowWrap: "anywhere", minWidth: 180, maxWidth: 320 }}>
+                    {r.downloadFileName ?? "未記錄"}
+                  </TableCell>
                   <TableCell sx={{ whiteSpace: "nowrap" }}>
                     {r.document.docNumber}
                   </TableCell>

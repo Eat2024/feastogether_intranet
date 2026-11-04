@@ -6,7 +6,6 @@ import { User } from '#app/features/users/entities/user.entity';
 import { AuthSession } from '#app/features/auth/entities/auth-session.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { EsignFileObject } from '#app/features/esign/entities/esign-file-object.entity';
-import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
 import {
   PRIVATE_FILE_STORAGE,
   type PrivateFileStorage,
@@ -46,9 +45,6 @@ describe('建立文件固定部門快照', () => {
         where: { documentId: In(documents.map((doc) => doc.id)) },
       });
       for (const file of files) await storage.delete(file);
-      await f.manager.delete(EsignAuditEvent, {
-        documentId: In(documents.map((doc) => doc.id)),
-      });
       await f.manager.delete(EsignFileObject, {
         id: In(files.map((file) => file.id)),
       });
@@ -117,11 +113,6 @@ describe('建立文件固定部門快照', () => {
             where: { createdByUserId: f.users.missing.id },
           }),
         ).toBe(before);
-        expect(
-          await f.manager.count(EsignAuditEvent, {
-            where: { actorUserId: f.users.missing.id },
-          }),
-        ).toBe(0);
         expect(store).toHaveBeenCalledTimes(1);
         expect(remove).toHaveBeenCalledTimes(1);
         const [uploaded] = remove.mock.calls[0];

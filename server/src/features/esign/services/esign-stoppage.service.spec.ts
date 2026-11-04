@@ -52,22 +52,20 @@ describe('EsignStoppageService', () => {
           throw new Error('只有簽署中的文件可以停止');
       }),
     };
-    const audit = { append: jest.fn() };
     const service = new EsignStoppageService(
       mysql as never,
       documents as never,
       signerRepository as never,
       access as never,
       validation as never,
-      audit as never,
     );
-    return { service, document, signers, documents, access, audit };
+    return { service, document, signers, documents, access };
   }
 
   it.each(['active', 'expired'])(
     '%s creator 停止時必填理由、保留已簽 credential/evidence 並使 pending 邀請失效',
     async (status) => {
-      const { service, document, signers, access, audit } = setup(status);
+      const { service, document, signers, access } = setup(status);
       expect(() => service.stopByCreator(3, 7, '   ')).toThrow(
         '停止原因必須為 1 至 500 字',
       );
@@ -85,10 +83,6 @@ describe('EsignStoppageService', () => {
       expect(signers[0].completionStatus).toBe('ready');
       expect(signers[1].invitationTokenSha256).toBeNull();
       expect(signers[1].invitationTokenCiphertext).toBeNull();
-      expect(audit.append).toHaveBeenCalledWith(
-        expect.objectContaining({ eventType: 'document.stopped_by_creator' }),
-        manager,
-      );
     },
   );
 

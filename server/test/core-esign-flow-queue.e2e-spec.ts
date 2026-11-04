@@ -1,4 +1,7 @@
-import { completeInitiation, deleteInitiationJobs } from './helpers/await-initiation';
+import {
+  completeInitiation,
+  deleteInitiationJobs,
+} from './helpers/await-initiation';
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import { PDFDocument } from 'pdf-lib';
@@ -13,7 +16,7 @@ import {
   ESIGN_MAINTENANCE_QUEUE,
 } from '#app/features/esign/esign-queue.constants';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
-import { canonicalSha256 } from '#app/features/esign/services/esign-audit.service';
+import { canonicalSha256 } from '#app/features/esign/helpers/signing-evidence';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import {
   PRIVATE_FILE_STORAGE,
@@ -164,33 +167,37 @@ describe('核心電子簽真實 queue e2e', () => {
         ],
       })
       .expect(200);
-    await completeInitiation(ctx, request(ctx.server)
-      .post(`/api/esign/documents/${documentId}/initiations`)
-      .set('Cookie', creatorCookie)
-      .set('Origin', 'http://localhost:3000')
-      .send({
-        signers: [
-          {
-            type: 'email',
-            name: 'Queue 外部簽署人',
-            email: 'queue-candidate@example.test',
-          },
-        ],
-        fields: Array.from({ length: 1 }, (_, index) => ({
-          type: 'signature',
-          page: 1,
-          xPercent: 10,
-          yPercent: 10 + index * 20,
-          widthPercent: 25,
-          heightPercent: 10,
-          sortOrder: index,
-        })),
-        signStartAt: new Date(Date.now() - 60_000).toISOString(),
-        signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
-        watermark: false,
-        allowReject: false,
-      })
-      .expect(202), creatorCookie);
+    await completeInitiation(
+      ctx,
+      request(ctx.server)
+        .post(`/api/esign/documents/${documentId}/initiations`)
+        .set('Cookie', creatorCookie)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          signers: [
+            {
+              type: 'email',
+              name: 'Queue 外部簽署人',
+              email: 'queue-candidate@example.test',
+            },
+          ],
+          fields: Array.from({ length: 1 }, (_, index) => ({
+            type: 'signature',
+            page: 1,
+            xPercent: 10,
+            yPercent: 10 + index * 20,
+            widthPercent: 25,
+            heightPercent: 10,
+            sortOrder: index,
+          })),
+          signStartAt: new Date(Date.now() - 60_000).toISOString(),
+          signEndAt: new Date(Date.now() + 86_400_000).toISOString(),
+          watermark: false,
+          allowReject: false,
+        })
+        .expect(202),
+      creatorCookie,
+    );
 
     const invitationRows = await db.query<
       Array<{
@@ -255,12 +262,6 @@ describe('核心電子簽真實 queue e2e', () => {
         }),
       ]);
       await waitForJobs(duplicateInvitations);
-      const invitationAudits = await db.query<Array<{ count: number }>>(
-        `SELECT COUNT(*) count FROM esign_audit_events
-         WHERE document_id = ? AND event_type = 'external_invitation.delivered'`,
-        [documentId],
-      );
-      expect(Number(invitationAudits[0].count)).toBe(1);
 
       const schedulers = await maintenanceQueue.getJobSchedulers();
       expect(schedulers).toEqual(
@@ -347,15 +348,14 @@ describe('核心電子簽真實 queue e2e', () => {
       ]);
       await waitForJobs(duplicateFinalizations);
       const completionRows = await db.query<
-        Array<{ file_count: number; audit_count: number }>
+        Array<{ file_count: number; snapshot_count: number }>
       >(
         `SELECT
            (SELECT COUNT(*) FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = ? AND f.file_purpose = 'completed_pdf') file_count,
-           (SELECT COUNT(*) FROM esign_audit_events WHERE document_id = ? AND event_type = 'document.completed') audit_count`,
+           (SELECT COUNT(*) FROM esign_verification_records WHERE document_id = ?) snapshot_count`,
         [documentId, documentId],
       );
       expect(Number(completionRows[0].file_count)).toBe(1);
-      expect(Number(completionRows[0].audit_count)).toBe(1);
 
       const snapshots = await db.query<
         Array<{
@@ -374,7 +374,7 @@ describe('核心電子簽真實 queue e2e', () => {
         `SELECT v.manifest_json, v.manifest_sha256, v.final_pdf_sha256,
            v.audit_root_hash, v.status, v.issued_at, v.revoked_at, d.completed_at,
            (SELECT f.sha256 FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = d.id AND f.file_purpose = 'completed_pdf') completed_pdf_sha256,
-           (SELECT a.event_hash FROM esign_audit_events a WHERE a.document_id = d.id AND a.event_type = 'document.completed') completed_event_hash
+           (SELECT COUNT(*) FROM esign_signature_records r JOIN esign_signers s ON s.id=r.signer_id WHERE s.document_id=d.id) signature_count
          FROM esign_verification_records v
          JOIN esign_documents d ON d.id = v.document_id
          WHERE v.document_id = ?`,
@@ -386,14 +386,13 @@ describe('核心電子簽真實 queue e2e', () => {
       expect(snapshot.revoked_at).toBeNull();
       expect(snapshot.final_pdf_sha256).toBeNull();
       expect(snapshot.manifest_json).toMatchObject({
-        schemaVersion: 'esign-verification-manifest-v2',
+        schemaVersion: 'esign-verification-manifest-v4',
         signers: [
           expect.objectContaining({
             completedPdfSha256: snapshot.completed_pdf_sha256,
           }),
         ],
       });
-      expect(snapshot.audit_root_hash).toBe(snapshot.completed_event_hash);
       expect(new Date(snapshot.issued_at).getTime()).toBe(
         new Date(snapshot.completed_at).getTime(),
       );
@@ -422,7 +421,16 @@ describe('核心電子簽真實 queue e2e', () => {
       .type('form')
       .send({ code })
       .expect(303);
-    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
+    await Promise.all(
+      [empid].map((employeeNo) =>
+        ctx.app
+          .get<DataSource>(MYSQL_MAIN)
+          .query('UPDATE users SET email=? WHERE empid=?', [
+            `${employeeNo.toLowerCase()}@example.test`,
+            employeeNo,
+          ]),
+      ),
+    );
     return cookieNamed(activated.headers['set-cookie'], 'FT_ESIGN_SESSION');
   }
 
@@ -436,9 +444,6 @@ describe('核心電子簽真實 queue e2e', () => {
        WHERE f.document_id = ? OR s.document_id = ?`,
       [id, id],
     );
-    await db.query('DELETE FROM esign_audit_events WHERE document_id = ?', [
-      id,
-    ]);
     await db.query(
       'DELETE FROM esign_verification_records WHERE document_id = ?',
       [id],
@@ -534,4 +539,3 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-

@@ -1,3 +1,4 @@
+import { revertAfter } from './schema-migration.helper';
 import { EsignInitiationJob } from '#app/features/esign/entities/esign-initiation-job.entity';
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
@@ -48,6 +49,7 @@ describe('背景發起工作 schema', () => {
         "UPDATE esign_initiation_jobs SET status='failed',stage='failed',error_code='ESIGN_INITIATION_INPUT_INVALID',completed_at=UTC_TIMESTAMP(6) WHERE id=1",
       );
       await expect(insertJob(ds, key)).rejects.toThrow(/Duplicate entry/);
+      await revertAfter(ds, 'BackgroundSignatureInitiation1793750401000');
       await insertJob(ds);
       expect(
         await ds.query('SELECT COUNT(*) AS count FROM esign_initiation_jobs'),
@@ -56,6 +58,7 @@ describe('背景發起工作 schema', () => {
   });
   it('一般工作讀取不載入敏感 JSON，維護掃描索引涵蓋狀態與時間', async () => {
     await withJobs(async (ds) => {
+      await revertAfter(ds, 'BackgroundSignatureInitiation1793750401000');
       await insertJob(ds);
       const job = await ds.manager.findOneByOrFail(EsignInitiationJob, {
         id: 1,
@@ -91,6 +94,7 @@ describe('背景發起工作 schema', () => {
   });
   it('非法狀態、計數、租約與非終態清理均由資料庫拒絕', async () => {
     await withJobs(async (ds) => {
+      await revertAfter(ds, 'BackgroundSignatureInitiation1793750401000');
       await insertJob(ds);
       for (const mutation of [
         "status='unknown'",
@@ -116,6 +120,7 @@ describe('背景發起工作 schema', () => {
   });
   it('非空工作表拒絕 down，空表可 down/up', async () => {
     await withJobs(async (ds) => {
+      await revertAfter(ds, 'BackgroundSignatureInitiation1793750401000');
       await insertJob(ds);
       await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
       expect(

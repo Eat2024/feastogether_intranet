@@ -14,6 +14,8 @@
 
 維護者從有效隱藏網址輸入專用帳密登入，不依賴 OAuth 或員工資格；畫面明確顯示目前為 Super user。
 
+**帳密適用範圍**：本規格的帳密產生、雜湊驗證與更新僅供 intranet 的 Super user 專用。`SUPER_USER_ACCOUNT`／`SUPER_USER_PASSWORD_HASH` 與 OAuth 無關，不是員工 OAuth 帳密，也不是 OAuth client ID／client secret；不得向 OAuth 專案傳送或使用這組帳密驗證。一般員工仍經 OAuth／WebView 登入；兩類身分只共用 intranet 會話與切換規則。
+
 **Why this priority**: 提供後續授權管理的獨立維護入口。
 
 **Independent Test**: 在員工登入上游無法使用時，完成入口查詢、維護登入、身分查詢及登出，不需要角色管理功能。
@@ -87,7 +89,7 @@
 ### Functional Requirements
 
 - **FR-001**: 系統 MUST 保留 OAuth／WebView，沿用員工資格、可信部門與身分配對；移除一般員工帳密登入，不開放開發用身分旁路。（US2）
-- **FR-002**: 系統 MUST 僅有一組部署管理的 Super user 帳密，不依賴員工資格，不能由角色管理授予、撤銷或產生第二組帳號。（US1、US4）
+- **FR-002**: 系統 MUST 僅有一組部署管理的 Super user 帳密，僅使用 Super user 專用設定驗證，與 OAuth 帳密及 client 憑證無關，不依賴 OAuth 或員工資格，不能由角色管理授予、撤銷或產生第二組帳號。（US1、US4）
 - **FR-003**: 密碼 MUST 以雜湊保存；不提供註冊、忘記密碼、網頁改密碼或預設帳密，登入受後端驗證與限流保護。（US1、Edge Cases）
 - **FR-004**: 隱藏頁與登入提交 MUST 同時驗證目前入口；無效入口回 404，維持來源防護與禁止敏感回應快取，使用受保護會話。（US1、US3）
 - **FR-005**: 所有入口 MUST 共用會話及身分查詢／登出規則；切換成功撤銷原會話，失敗保留原會話，登出不還原先前身分。（US2）

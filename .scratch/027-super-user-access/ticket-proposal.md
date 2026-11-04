@@ -6,7 +6,7 @@
 
 ## 編號清單
 
-1. **027-01：安全產生與驗證維護帳密設定**。Blocked by：無。交付：維護者在離線工具產生合法密碼雜湊，服務能拒絕缺漏或不合法設定。
+1. **027-01：安全產生與驗證 Super user 專用帳密設定**。Blocked by：無。交付：離線產生 Super user 專用密碼雜湊並驗證設定，與 OAuth 帳密及 client 憑證無關。
 2. **027-02：擴充可辨識操作者的共用會話，保持員工相容**。Blocked by：027-01。交付：可驗證兩類操作者的會話生命週期與原子替換，既有員工資料與會話保持相容；這是後續登入旅程的前置重構。
 3. **027-03：透過窄 REPL 初始化及查詢維護入口**。Blocked by：027-02。交付：維護者不用啟動 HTTP 或業務 worker，即可明確初始化、查入口及檢查設定版本。
 4. **027-04：完成受保護的隱藏登入、身分顯示與登出**。Blocked by：027-03。交付：真正從 REPL 取得入口、在瀏覽器登入並辨識維護身分及登出；錯誤入口、帳密與來源均無法繞過，入口不洩漏到一般紀錄。
@@ -15,16 +15,17 @@
 7. **027-07：明確啟用新帳密並跨實例撤銷舊維護會話**。Blocked by：027-04。交付：維護者啟用新設定後，所有舊維護會話失效，舊設定實例不能重新簽發，員工不受影響。
 8. **027-08：完成部署、回復與三入口整合驗收**。Blocked by：027-05、027-06、027-07。交付：完整可交付的 027，具備實際驗證、部署及回復證據與清楚限制。
 
-## 027-01：安全產生與驗證維護帳密設定
+## 027-01：安全產生與驗證 Super user 專用帳密設定
 
-**What to build:** 維護者透過不連外的互動工具產生密碼雜湊；服務只接受符合契約的唯一維護帳密設定，並能穩定辨識設定版本。
+**What to build:** 維護者透過不連外的互動工具產生 Super user 專用密碼雜湊；服務只接受符合契約的唯一 Super user 帳密設定，並能穩定辨識設定版本。這組設定與 OAuth 無關，不用於員工登入或 OAuth client 驗證。
 
 **Blocked by:** None (can start immediately).
 
 **主要 tasks:** T005、T011、T027。
 
 - [ ] 離線工具以 TTY 無回顯輸入及二次確認取得密碼，只輸出 hash；不接命令列密碼、不載入 Nest／DB、不留密碼歷史。
-- [ ] 僅接受兩個 server-only 帳密設定與固定 scrypt 格式：N=32768、r=8、p=1、salt 16 bytes、derived key 64 bytes、maxmem 64 MiB；缺漏或格式錯誤明確失敗，沒有預設密碼或 fallback。
+- [ ] 僅使用 server-only 的 `SUPER_USER_ACCOUNT`／`SUPER_USER_PASSWORD_HASH` 驗證 Super user；不讀取、修改或共用 OAuth 員工帳密、client ID／client secret，不將這組帳密送往 OAuth 專案。一般員工保留 OAuth／WebView，後續僅共用 intranet 會話機制。
+- [ ] 僅接受兩個 Super user 專用 server-only 帳密設定與固定 scrypt 格式：N=32768、r=8、p=1、salt 16 bytes、derived key 64 bytes、maxmem 64 MiB；缺漏或格式錯誤明確失敗，沒有預設密碼或 fallback。
 - [ ] 帳號及密碼不 trim／normalize；非同步 KDF、固定長度安全比較，錯帳號仍執行相同 KDF 工作量。
 - [ ] fingerprint 使用契約既定 domain separation 與序列化；同一 hash 穩定，新 salt 視為新版本；本張不自動啟用 DB 版本。
 - [ ] 使用合成 fixture 驗證合法／非法設定、輸入邊界與 fingerprint 行為；不提交真實 secret、不新增密碼 dependency。
@@ -33,7 +34,7 @@
 
 **What to build:** 先將既有會話擴充為可辨識 employee／super_user 的共用生命週期，使後續三種入口能原子替換身分；完成後以既有員工回歸與隔離整合測試證明相容性。
 
-**Blocked by:** 027-01：安全產生與驗證維護帳密設定。
+**Blocked by:** 027-01：安全產生與驗證 Super user 專用帳密設定。
 
 **主要 tasks:** T001、T002、T004、T006、T007、T008、T009、T010、T012、T013、T014、T053。
 

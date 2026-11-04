@@ -96,7 +96,7 @@ export const getDocumentExportPreview = async (id: string): Promise<EsignExportP
   return res.data;
 };
 
-/** 驗證當次匯出名稱與資格；ZIP 首次保存檔名快照，不產檔或新增匯出列。 */
+/** 驗證當次匯出名稱與資格；不保存設定、不產檔或記錄匯出。 */
 export const prepareExportDownload = async (id: string, body: PrepareExportDownloadBody): Promise<PreparedExportDownload> => {
   const res = await api<PreparedExportDownload>({
     method: 'POST',

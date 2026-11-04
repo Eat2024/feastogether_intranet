@@ -40,6 +40,7 @@ export default function StopDocumentButton({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id] });
+      void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT_HISTORY, doc.id] });
       setOpen(false);
       showSnackbar(`已停止「${doc.title}」的簽署`, 'success');
     },

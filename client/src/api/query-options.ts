@@ -15,6 +15,10 @@ export const queryOptions: Record<
     staleTime: 0,
     gcTime: minutes(5),
   },
+  useGetDocumentHistoryQuery: {
+    staleTime: 0,
+    gcTime: minutes(5),
+  },
   // 催簽由後端背景寄送，結果會陸續更新
   useGetNotificationBatchesQuery: {
     staleTime: 0,

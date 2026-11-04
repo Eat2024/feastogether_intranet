@@ -122,9 +122,9 @@ function VerifiedResult({ data }: { data: SignatureVerification }) {
           </Box>
           <Box>
             <Typography variant="sectionTitle" component="h1">
-              簽署資料比對一致
+              簽章有效
             </Typography>
-            <Typography variant="description">僅比對現存簽署紀錄與檔案摘要，不包含簽署歷程或事件鏈驗證。</Typography>
+            <Typography variant="description">此簽章由本系統簽發，簽署紀錄與文件資料比對一致。</Typography>
           </Box>
         </Box>
 
@@ -219,7 +219,7 @@ export default function SignatureVerificationView({ code }: { code: string }) {
         />
       );
     }
-    // 簽署證據、驗證快照、完成文件摘要不一致：不得顯示為有效
+    // 簽署證據、驗證快照、完成文件摘要或稽核鏈不一致：不得顯示為有效
     if (status === 409) {
       return (
         <ResultCard

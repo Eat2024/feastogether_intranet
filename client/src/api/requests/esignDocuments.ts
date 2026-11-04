@@ -6,6 +6,7 @@ import type {
   DraftSettingsBody,
   EsignDocumentDetail,
   EsignDocumentListItem,
+  EsignHistoryItem,
   EsignNotificationBatch,
   EsignNotificationBatchList,
   EsignOrgDepartment,
@@ -23,7 +24,7 @@ import type {
   SignerNoteResult,
   UpdateDocumentBody,
 } from '@/api/types';
-import { downloadNamedFile } from './blob';
+import { downloadFile } from './blob';
 
 /**
  * @name 列出電子簽文件
@@ -77,6 +78,15 @@ export const updateDocument = async ({ id, title, file, fields }: UpdateDocument
  */
 export const getDocument = async (id: string): Promise<EsignDocumentDetail> => {
   const res = await api<EsignDocumentDetail>({ method: 'GET', url: endpoints.ESIGN_DOCUMENT(id) });
+  return res.data;
+};
+
+/**
+ * @name 查詢文件簽署歷程
+ * @description 建立人可看到文件的所有事件（依時間由舊到新），含停止原因
+ */
+export const getDocumentHistory = async (id: string): Promise<EsignHistoryItem[]> => {
+  const res = await api<EsignHistoryItem[]>({ method: 'GET', url: endpoints.ESIGN_DOCUMENT_HISTORY(id) });
   return res.data;
 };
 
@@ -150,7 +160,7 @@ export const downloadSignerCompletedFile = async ({
 }: {
   id: string;
   signerPublicId: string;
-}): Promise<{ bytes: Blob; fileName: string }> => downloadNamedFile(endpoints.ESIGN_SIGNER_COMPLETED_FILE(id, signerPublicId), 'POST');
+}): Promise<Blob> => (await downloadFile(endpoints.ESIGN_SIGNER_COMPLETED_FILE(id, signerPublicId), 'POST')).bytes;
 
 /**
  * @name 查詢內部簽署人候選

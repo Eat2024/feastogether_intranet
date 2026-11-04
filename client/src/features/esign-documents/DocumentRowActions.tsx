@@ -27,7 +27,7 @@ export default function DocumentRowActions({
         href={`/forms/${doc.id}/signers`}
         disabled={doc.status !== 'draft'}
       />
-      {/* 檢視簽署進度（草稿尚無進度，停用） */}
+      {/* 檢視簽署進度與歷程（草稿尚無進度，停用） */}
       <TooltipIconButton
         label="檢視"
         icon={<VisibilityRoundedIcon />}

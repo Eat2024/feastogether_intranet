@@ -1,6 +1,6 @@
 'use client';
 
-// 檢視頁（後端文件）：GET /api/esign/documents/:id 取得文件詳情與簽署人。
+// 檢視頁（後端文件）：GET /api/esign/documents/:id 取得文件詳情與簽署人，GET .../history 取得簽署歷程。
 // 簽署人清單的狀態分頁、搜尋、排序與分頁記在網址上，在瀏覽器端處理。
 import { useGetDocumentQuery } from '@/api/queries';
 import { documentSourceFileUrl } from '@/api/requests';
@@ -25,6 +25,7 @@ import Typography from '@mui/material/Typography';
 import dayjs from 'dayjs';
 import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
+import DocumentHistory from './DocumentHistory';
 import DocumentSignerTable, { ReadonlyDocumentSignerTable } from './DocumentSignerTable';
 import { DOCUMENT_STATUS_META, periodText } from './listQuery';
 import {
@@ -207,6 +208,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
         {result.isCreator ? (
           <DocumentSignerTable
             documentId={doc.id}
+            fileNamePrefix={`${doc.docNumber}_${doc.title}`}
             canNotify={doc.status === 'active'}
             canExport={doc.canExport}
             eligibleIds={eligibleIds}
@@ -218,6 +220,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
         ) : (
           <ReadonlyDocumentSignerTable
             documentId={doc.id}
+            fileNamePrefix={`${doc.docNumber}_${doc.title}`}
             canExport={doc.canExport}
             rows={result.items}
             sort={query.sort}
@@ -229,6 +232,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
       </Stack>
 
       {doc.isCreator && <NotificationHistory documentId={doc.id} />}
+      <DocumentHistory documentId={doc.id} />
     </>
   );
 }

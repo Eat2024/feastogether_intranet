@@ -224,8 +224,8 @@ export interface ReopenDocumentBody {
   expectedSignEndAt: string;
   /** 新的截止時間，須晚於現在與目前截止時間；補簽不修改原開始時間 */
   signEndAt: string;
-  /** 去除首尾空白後 1～500 字 */
-  reason: string;
+  /** 舊客戶端相容欄位，提供時須為 1～500 字；不再保存。 */
+  reason?: string;
 }
 
 export interface ReopenDocumentResult {
@@ -309,27 +309,6 @@ export interface SaveSignerNoteBody {
 export interface SignerNoteResult {
   signerPublicId: string;
   note: string;
-}
-
-/** GET esign/documents/:id/history 的一筆事件（依發生時間由舊到新） */
-export interface EsignHistoryItem {
-  /** 事件類型，例如 document.initiated、signature.completed、document.stopped_by_creator */
-  type: string;
-  /** 後端統一提供的繁體中文事件說明 */
-  label: string;
-  occurredAt: string;
-  /** 操作者：簽署人、員工（建立人）或系統；同名簽署人以 signerPublicId 區分 */
-  actor: {
-    kind: 'signer' | 'employee' | 'system';
-    name: string;
-    signerPublicId?: string;
-  };
-  /** 停止簽署等事件的原因；依權限裁切 */
-  reason: string | null;
-  /** 僅補簽事件提供；舊期限與建立人識別僅建立人可見 */
-  signEndAt?: string;
-  previousSignEndAt?: string;
-  actorUserId?: string;
 }
 
 /** GET esign/signer-candidates 的一筆資料 */

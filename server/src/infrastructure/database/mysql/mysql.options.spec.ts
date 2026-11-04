@@ -40,7 +40,7 @@ describe('buildMysqlOptions', () => {
   it('明確註冊電子簽 entities、AuthSession 與拒簽 migration', () => {
     const options = buildMysqlOptions(readEnv);
 
-    expect(options.entities).toHaveLength(15);
+    expect(options.entities).toHaveLength(14);
     expect(
       (options.migrations as Array<{ name: string }>).map(
         (migration) => migration.name,
@@ -84,6 +84,7 @@ describe('buildMysqlOptions', () => {
       'UserNotificationEmail1793750400000',
       'BackgroundSignatureInitiation1793750401000',
       'ExportDownloadFileName1793836800000',
+      'RetireSigningAudit1793836801000',
     ]);
   });
 

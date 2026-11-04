@@ -11,7 +11,7 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { DocumentRepository } from '../repositories/document.repository';
 import { NotificationRepository } from '../repositories/notification.repository';
 import { SignerRepository } from '../repositories/signer.repository';
-import { canonicalSha256, EsignAuditService } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignConsentService } from './esign-consent.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
@@ -51,7 +51,6 @@ export class EsignInitiationService {
     private readonly access: EsignAccessPolicyService,
     private readonly consent: EsignConsentService,
     private readonly tokens: EsignTokenService,
-    private readonly audit: EsignAuditService,
     private readonly jobs: EsignJobProducerService,
     private readonly signerService: EsignSignerService,
     private readonly fieldService: EsignFieldService,
@@ -144,14 +143,6 @@ export class EsignInitiationService {
       input,
       document.id,
       signers,
-      initiatedAt,
-      manager,
-    );
-    await this.recordInitiationAudit(
-      input,
-      document,
-      signers,
-      snapshot.consentVersion,
       initiatedAt,
       manager,
     );
@@ -368,35 +359,5 @@ export class EsignInitiationService {
     return internalBatchIds.length
       ? [notificationLogIds, internalBatchIds]
       : [notificationLogIds];
-  }
-
-  private async recordInitiationAudit(
-    input: InitiateDocumentInput,
-    document: EsignDocument,
-    signers: EsignSigner[],
-    consentVersion: string,
-    initiatedAt: Date,
-    manager: EntityManager,
-  ): Promise<void> {
-    await this.audit.appendMany(
-      [
-        ...signers.map((signer) => ({
-          documentId: document.id,
-          signerId: signer.id,
-          actorUserId: input.creatorUserId,
-          eventType: 'signer.assigned',
-          occurredAt: initiatedAt,
-          metadata: { status: 'pending' },
-        })),
-        {
-          documentId: document.id,
-          actorUserId: input.creatorUserId,
-          eventType: 'document.initiated',
-          occurredAt: initiatedAt,
-          metadata: { status: 'active', consentVersion },
-        },
-      ],
-      manager,
-    );
   }
 }

@@ -262,7 +262,6 @@ describe('022 背景工作終態明細保留', () => {
           'esign_signers',
           'esign_document_fields',
           'esign_notification_batches',
-          'esign_audit_events',
           'esign_file_objects',
         ].map((table) =>
           mysql
@@ -336,17 +335,17 @@ describe('022 背景工作終態明細保留', () => {
     const doc = await newDoc();
     const input = body();
     const parent = await terminal(
-      doc,
-      new Date(now.getTime() - retentionMs),
-      input,
-    );
+        doc,
+        new Date(now.getTime() - retentionMs),
+        input,
+      );
     const key = randomUUID();
     const accepted = apiData<InitiationJobDto>(
       await retry(doc, parent.publicId, key).expect(202),
     );
     const child = await mysql
-      .getManager()
-      .findOneByOrFail(EsignInitiationJob, { publicId: accepted.jobId });
+          .getManager()
+          .findOneByOrFail(EsignInitiationJob, { publicId: accepted.jobId });
     ownedJobs.add(child.id);
     await ctx.app.get(EsignInitiationJobService).maintain(now);
     expect((await details(parent)).inputJson).toBeNull();
@@ -519,11 +518,7 @@ describe('022 背景工作終態明細保留', () => {
           [documentId],
         );
         for (const job of jobs) await tx.delete(EsignInitiationJob, job.id);
-        for (const table of [
-          'esign_audit_events',
-          'esign_file_objects',
-          'esign_document_fields',
-        ])
+        for (const table of ['esign_file_objects', 'esign_document_fields'])
           await tx.query(`DELETE FROM ${table} WHERE document_id=?`, [
             documentId,
           ]);

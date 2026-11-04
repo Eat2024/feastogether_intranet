@@ -203,29 +203,29 @@ export class ExternalSignatureController {
     clearExternalAccessCookie(reply);
   }
 
-  // 以 Email OTP 存取憑證開啟本人任務並記錄開啟事件。
+  // 以 Email OTP 存取憑證開啟本人任務（唯讀）。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '開啟外部簽署任務',
     description:
-      '以 Email OTP 存取 cookie（僅限外部指派） 驗證邀請，回傳任務並記錄開啟事件，不依賴員工登入；已簽者也可開啟，不比對簽署期限與文件狀態，依 signer.status 顯示完成頁。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSigning 每次進入頁面呼叫一次。',
+      '以 Email OTP 存取 cookie（僅限外部指派） 驗證邀請，回傳任務（唯讀），不依賴員工登入；已簽者也可開啟，不比對簽署期限與文件狀態，依 signer.status 顯示完成頁。\n\n前端串接參考：/external-signatures/[signerPublicId] 的 ExternalSigning 每次進入頁面呼叫一次。',
   })
   @Post('external-signing-task')
   @HttpCode(HttpStatus.OK)
   open(@Req() request: FastifyRequest) {
-    return this.external.task(this.accessCredential(request), true);
+    return this.external.task(this.accessCredential(request));
   }
 
   // 唯讀查詢本人簽署任務與副本狀態，不記錄開啟事件。
   @ApiOperation({
     summary: '查詢外部簽署任務（唯讀）',
     description:
-      '回傳與開啟任務相同的內容，但不記錄開啟事件、不寫入任何資料。\n\n前端串接參考：ExternalSigning 完成頁在本人副本產生中（completion.status 為 pending／processing）時每 3 秒輪詢，ready 或 failed 即停止。',
+      '回傳與開啟任務相同的內容，不寫入任何資料。\n\n前端串接參考：ExternalSigning 完成頁在本人副本產生中（completion.status 為 pending／processing）時每 3 秒輪詢，ready 或 failed 即停止。',
   })
   @Get('external-signing-task')
   @Header('Cache-Control', 'private, no-store')
   read(@Req() request: FastifyRequest) {
-    return this.external.task(this.accessCredential(request), false);
+    return this.external.task(this.accessCredential(request));
   }
 
   // 驗證 Email OTP 存取權限後回傳本人任務的原始 PDF。

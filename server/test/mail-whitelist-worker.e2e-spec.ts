@@ -8,10 +8,8 @@ import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
 import { EsignNotificationBatch } from '#app/features/esign/entities/esign-notification-batch.entity';
-import { AuditEventRepository } from '#app/features/esign/repositories/audit-event.repository';
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.options';
@@ -51,7 +49,6 @@ async function fixture(ds: DataSource) {
   });
   const tokens = new EsignTokenService(config);
   const notifications = new NotificationRepository();
-  const auditRepository = new AuditEventRepository();
   const employeeRepository = new UserRepository();
   const readEmails = jest.spyOn(employeeRepository, 'findMailWhitelistEmails');
   const upstream = {
@@ -88,7 +85,6 @@ async function fixture(ds: DataSource) {
     notifications,
     new SignerRepository(),
     tokens,
-    new EsignAuditService(auditRepository),
     sender,
   );
   const users = await manager.save(
@@ -171,7 +167,6 @@ async function fixture(ds: DataSource) {
       id: batch.id,
       logs: () => notifications.findBatchLogs(batch.id, manager),
       counts: () => notifications.batchCounts(batch.id, manager),
-      events: () => auditRepository.findDocumentEvents(document.id, manager),
       run: async () => {
         const logs = await notifications.findBatchLogs(batch.id, manager);
         const data =
@@ -341,10 +336,6 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
       expect(logs[1].signer?.status).toBe('pending');
       expect(logs[1].signer?.invitationDeliveredAt).toBeNull();
       expect(await work.counts()).toEqual({ delivered: 2, skipped: 1 });
-      expect((await work.events()).map((event) => event.eventType)).toEqual([
-        'internal_invitation.delivered',
-        'internal_invitation.delivered',
-      ]);
     });
   });
   it('外部催簽被政策阻擋為 skipped，清除本次密文且不新增成功稽核', async () => {
@@ -364,7 +355,6 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
       });
       expect(log.completedAt).toBeInstanceOf(Date);
       expect(log.signer?.status).toBe('pending');
-      expect(await work.events()).toEqual([]);
       await work.run();
       expect((await work.logs())[0].attemptCount).toBe(1);
     });
@@ -393,9 +383,6 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
           nextAttemptAt: null,
         });
         expect(await work.counts()).toEqual({ delivered: 1 });
-        expect((await work.events()).map((event) => event.eventType)).toEqual([
-          `external_${kind}.delivered`,
-        ]);
       });
     },
   );
@@ -445,7 +432,6 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
           expect(readEmails).not.toHaveBeenCalled();
           expect(adapter.deliveries).toEqual([]);
           expect(adapter.internalGroupDeliveries).toEqual([]);
-          expect(await work.events()).toEqual([]);
           expect(await work.counts()).toEqual({ failed: 1 });
           expect(
             await notifications.findEligibleInvitationLogIds(
@@ -526,7 +512,6 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
       await work.run();
       expect(sendGroup).toHaveBeenCalledTimes(1);
       expect(await work.counts()).toEqual({ unknown: 1, skipped: 1 });
-      expect(await work.events()).toEqual([]);
     });
   });
 
@@ -535,10 +520,10 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
     async (signerType) => {
       await withFixture(async ({ batch, adapter, manager, notifications }) => {
         const work = await batch(
-          'reminder',
-          ['allowed@example.test'],
-          signerType,
-        );
+            'reminder',
+            ['allowed@example.test'],
+            signerType,
+          );
         const supersede = async () => {
           const [log] = await work.logs();
           log.result = 'failed';
@@ -571,7 +556,6 @@ describe('白名單群發與催簽完整 worker 路徑', () => {
           errorCode: 'INVITATION_SUPERSEDED',
           leaseToken: null,
         });
-        expect(await work.events()).toEqual([]);
       });
     },
   );

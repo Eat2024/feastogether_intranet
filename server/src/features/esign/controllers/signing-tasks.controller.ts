@@ -86,7 +86,7 @@ export class SigningTasksController {
   @ApiOperation({
     summary: '開啟本人簽署任務',
     description:
-      '以員工 session 開啟本人任務並記錄開啟事件；非本人或外部指派回 404、未登入回 401。',
+      '以員工 session 開啟本人任務（唯讀）；非本人或外部指派回 404、未登入回 401。',
   })
   @Post(':signerPublicId')
   open(

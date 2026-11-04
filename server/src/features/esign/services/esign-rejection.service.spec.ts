@@ -1,13 +1,10 @@
 import type { EntityManager } from 'typeorm';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
-import { EsignAuditEvent } from '../entities/esign-audit-event.entity';
 import { DocumentRepository } from '../repositories/document.repository';
 import { SignerRepository } from '../repositories/signer.repository';
-import { AuditEventRepository } from '../repositories/audit-event.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
-import { EsignAuditService } from './esign-audit.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
 import { EsignRejectionService } from './esign-rejection.service';
 
@@ -52,8 +49,7 @@ function fixture(lockAsInternal = false) {
           ? signer
           : null,
     save: async (value: unknown) => value,
-    insert: async (entity: unknown, value: object) => {
-      if (entity === EsignAuditEvent) events.push(value);
+    insert: async () => {
       return {};
     },
     createQueryBuilder: () => builder,
@@ -77,7 +73,6 @@ function fixture(lockAsInternal = false) {
       { active: jest.fn().mockResolvedValue(null) } as never,
     ),
     validation,
-    new EsignAuditService(new AuditEventRepository()),
     new EsignJobProducerService(
       {} as never,
       { add: async () => undefined } as never,

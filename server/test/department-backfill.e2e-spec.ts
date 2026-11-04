@@ -1,3 +1,4 @@
+import { revertAfter } from './schema-migration.helper';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -30,6 +31,7 @@ async function fixture(
     const runner = ds.createQueryRunner();
     try {
       await ds.runMigrations();
+      await revertAfter(ds, 'ExportDownloadFileName1793836800000');
       await runner.connect();
       const manager = runner.manager;
       await manager.query(

@@ -80,9 +80,10 @@ export class EsignVerificationRecord {
     length: 64,
     charset: 'ascii',
     collation: 'ascii_bin',
-    comment: '稽核鏈 root hash',
+    nullable: true,
+    comment: '停用前稽核鏈 root hash（僅歷史參考）',
   })
-  auditRootHash!: string;
+  auditRootHash!: string | null;
 
   @Column({
     type: 'varchar',

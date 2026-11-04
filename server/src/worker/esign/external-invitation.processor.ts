@@ -24,7 +24,6 @@ import {
 } from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { ESIGN_EXTERNAL_INVITATION_QUEUE } from '#app/features/esign/esign-queue.constants';
 
@@ -53,7 +52,6 @@ export class ExternalInvitationProcessor extends WorkerHost {
     private readonly notifications: NotificationRepository,
     private readonly signers: SignerRepository,
     private readonly tokens: EsignTokenService,
-    private readonly audit: EsignAuditService,
     @Inject(INVITATION_MAIL_SENDER)
     private readonly mailer: InvitationMailSender,
   ) {
@@ -109,32 +107,12 @@ export class ExternalInvitationProcessor extends WorkerHost {
       // SMTP 後寫入失敗保留 processing；維護復原為 unknown，不能再發信。
       await this.mysql.transaction(async (manager) => {
         const context =
-          await this.notifications.findInternalBatchContextForUpdate(
-            batchId,
-            manager,
-          );
+        await this.notifications.findInternalBatchContextForUpdate(
+          batchId,
+          manager,
+        );
         if (!context) return;
         const now = new Date();
-        const resultEmails = results.map((item) =>
-          item.recipientEmail.trim().toLowerCase(),
-        );
-        if (
-          resultEmails.some((email) => !claim.emails.includes(email)) ||
-          claim.emails.some(
-            (email) =>
-              resultEmails.filter((value) => value === email).length !== 1,
-          )
-        ) {
-          await this.audit.append(
-            {
-              documentId: context.document.id,
-              eventType: 'internal_notification.protocol_error',
-              occurredAt: now,
-              metadata: { errorCode: 'MAIL_RESULT_MISMATCH' },
-            },
-            manager,
-          );
-        }
         for (const log of context.logs) {
           if (
             log.result !== 'processing' ||
@@ -176,18 +154,6 @@ export class ExternalInvitationProcessor extends WorkerHost {
           if (log.result === 'delivered' && log.signer) {
             log.signer.invitationDeliveredAt = now;
             await this.signers.save(log.signer, manager);
-            await this.audit.append(
-              {
-                documentId: context.document.id,
-                signerId: log.signerId,
-                eventType:
-                  context.batch.kind === 'reminder'
-                    ? 'internal_reminder.delivered'
-                    : 'internal_invitation.delivered',
-                occurredAt: now,
-              },
-              manager,
-            );
           }
         }
       });
@@ -478,15 +444,6 @@ export class ExternalInvitationProcessor extends WorkerHost {
       signer.invitationTokenCiphertext = null;
       await this.notifications.saveLog(log, manager);
       await this.signers.save(signer, manager);
-      await this.audit.append(
-        {
-          documentId: claim.documentId,
-          signerId: signer.id,
-          eventType: 'external_invitation.delivered',
-          occurredAt: completedAt,
-        },
-        manager,
-      );
     });
   }
 
@@ -640,17 +597,6 @@ export class ExternalInvitationProcessor extends WorkerHost {
       if (!log.nextAttemptAt) log.reminderTokenCiphertext = null;
       this.recordAttempt(log, now);
       await this.notifications.saveLog(log, manager);
-      // SMTP 已接受就是 delivered，不因隨後簽署／停止而改寫歷史。
-      if (outcome === 'delivered')
-        await this.audit.append(
-          {
-            documentId: claim.documentId,
-            signerId: claim.signerId,
-            eventType: 'external_reminder.delivered',
-            occurredAt: now,
-          },
-          manager,
-        );
     });
   }
 

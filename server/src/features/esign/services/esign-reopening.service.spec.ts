@@ -1,14 +1,13 @@
 import { EsignReopeningService } from './esign-reopening.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { canonicalSha256, EsignAuditService } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 import { EsignExpiryService } from './esign-expiry.service';
 import { EsignTokenService } from './esign-token.service';
 import { ConfigService } from '@nestjs/config';
 import { DocumentRepository } from '../repositories/document.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { NotificationRepository } from '../repositories/notification.repository';
-import { AuditEventRepository } from '../repositories/audit-event.repository';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
 import { EsignNotificationBatch } from '../entities/esign-notification-batch.entity';
@@ -82,13 +81,7 @@ describe('EsignReopeningService', () => {
     };
     const documents = new DocumentRepository();
     const signers = new SignerRepository();
-    const audit = new EsignAuditService(new AuditEventRepository());
-    const expiry = new EsignExpiryService(
-      mysql as never,
-      documents,
-      signers,
-      audit,
-    );
+    const expiry = new EsignExpiryService(mysql as never, documents, signers);
     const service = new EsignReopeningService(
       mysql as never,
       documents,
@@ -113,7 +106,6 @@ describe('EsignReopeningService', () => {
           EXTERNAL_SIGNING_ORIGIN: 'https://example.test',
         }),
       ),
-      audit,
       new EsignJobProducerService(
         {
           addBulk: (jobs: unknown[]) => {
@@ -164,8 +156,8 @@ describe('EsignReopeningService', () => {
       const { service, document, input } = setup();
       document.status = status;
       await expect(service.reopen(1, 2, input)).rejects.toMatchObject({
-        code: 'ESIGN_DOCUMENT_NOT_REOPENABLE',
-      });
+      code: 'ESIGN_DOCUMENT_NOT_REOPENABLE',
+    });
     },
   );
   it('任何待簽者缺固定信箱時拒絕整次補簽，不透露信箱', async () => {

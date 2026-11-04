@@ -5,7 +5,6 @@ import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitati
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import {
   INVITATION_MAIL_SENDER,
   type InvitationMailSender,
@@ -407,9 +406,9 @@ describe('022 背景發起只讀查詢', () => {
       return row;
     }
     expect(await item()).toMatchObject({
-      status: 'initiating',
-      initiation: { totalCount: 1 },
-    });
+          status: 'initiating',
+          initiation: { totalCount: 1 },
+        });
     const core = ctx.app.get(EsignInitiationService);
     const execute = core.initiateInTransaction.bind(
       core,
@@ -476,7 +475,6 @@ describe('022 背景發起只讀查詢', () => {
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
-      ctx.app.get(EsignAuditService),
       ctx.app.get<InvitationMailSender>(INVITATION_MAIL_SENDER),
     );
     await processor.process({
@@ -689,7 +687,6 @@ describe('022 背景發起只讀查詢', () => {
       await manager.transaction(async (tx) => {
         for (const table of [
           'esign_initiation_jobs',
-          'esign_audit_events',
           'esign_file_objects',
           'esign_document_fields',
         ])

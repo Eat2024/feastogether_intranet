@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq';
-import { canonicalSha256 } from '#app/features/esign/services/esign-audit.service';
+import { canonicalSha256 } from '#app/features/esign/helpers/signing-evidence';
 import { DocumentFinalizationProcessor } from './document-finalization.processor';
 
 describe('DocumentFinalizationProcessor 個人副本', () => {
@@ -86,7 +86,6 @@ describe('DocumentFinalizationProcessor 個人副本', () => {
         sha256: record.documentSha256,
       })),
     };
-    const audit = { append: jest.fn(async () => 'c'.repeat(64)) };
     const verification = { saveSnapshot: jest.fn(async () => undefined) };
     const storage = { delete: jest.fn(async () => undefined) };
     const processor = new DocumentFinalizationProcessor(
@@ -95,7 +94,6 @@ describe('DocumentFinalizationProcessor 個人副本', () => {
       signers as never,
       files as never,
       completedPdf as never,
-      audit as never,
       verification as never,
       storage as never,
       { findBySignerId: jest.fn(async () => record) } as never,
@@ -109,7 +107,7 @@ describe('DocumentFinalizationProcessor 個人副本', () => {
       output,
       completedPdf,
       files,
-      audit,
+
       verification,
       storage,
       stored,
@@ -148,18 +146,6 @@ describe('DocumentFinalizationProcessor 個人副本', () => {
     expect(f.files.create.mock.calls[0][0]).not.toHaveProperty('documentId');
     expect(f.document.status).toBe('completed');
     expect(f.verification.saveSnapshot).toHaveBeenCalledTimes(1);
-    expect(f.audit.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventType: 'signer.copy_completed',
-        signerId: 7,
-        metadata: {
-          signatureRecordId: 21,
-          completedFileId: 31,
-          completedPdfSha256: 'b'.repeat(64),
-        },
-      }),
-      manager,
-    );
     await f.processor.process(job);
     expect(f.completedPdf.create).toHaveBeenCalledTimes(1);
   });

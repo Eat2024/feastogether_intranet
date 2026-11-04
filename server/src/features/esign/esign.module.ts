@@ -16,7 +16,6 @@ import { LoggingModule } from '#app/infrastructure/logging/logging.module';
 import { MailModule } from '#app/infrastructure/mail/mail.module';
 import { PortalModule } from '#app/infrastructure/portal/portal.module';
 import { EsignAccessPolicyService } from './services/esign-access-policy.service';
-import { EsignAuditService } from './services/esign-audit.service';
 import { EsignConsentService } from './services/esign-consent.service';
 import { EsignDocumentValidationService } from './services/esign-document-validation.service';
 import { EsignSignerService } from './services/esign-signer.service';
@@ -57,7 +56,7 @@ const esignServices = [
   EsignExpiryService,
   EsignReopeningService,
   EsignAccessPolicyService,
-  EsignAuditService,
+
   EsignConsentService,
   EsignDocumentValidationService,
   EsignDocumentQueryService,

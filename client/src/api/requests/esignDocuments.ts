@@ -6,7 +6,6 @@ import type {
   DraftSettingsBody,
   EsignDocumentDetail,
   EsignDocumentListItem,
-  EsignHistoryItem,
   EsignNotificationBatch,
   EsignNotificationBatchList,
   EsignOrgDepartment,
@@ -78,15 +77,6 @@ export const updateDocument = async ({ id, title, file, fields }: UpdateDocument
  */
 export const getDocument = async (id: string): Promise<EsignDocumentDetail> => {
   const res = await api<EsignDocumentDetail>({ method: 'GET', url: endpoints.ESIGN_DOCUMENT(id) });
-  return res.data;
-};
-
-/**
- * @name 查詢文件簽署歷程
- * @description 建立人可看到文件的所有事件（依時間由舊到新），含停止原因
- */
-export const getDocumentHistory = async (id: string): Promise<EsignHistoryItem[]> => {
-  const res = await api<EsignHistoryItem[]>({ method: 'GET', url: endpoints.ESIGN_DOCUMENT_HISTORY(id) });
   return res.data;
 };
 

@@ -48,7 +48,6 @@ const ESIGN_TABLES = [
   'esign_signers',
   'esign_signature_records',
   'esign_file_objects',
-  'esign_audit_events',
   'esign_verification_records',
 ];
 

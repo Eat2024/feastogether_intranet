@@ -7,8 +7,6 @@ import { AuthSession } from '#app/features/auth/entities/auth-session.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
 import { EsignFileObject } from '#app/features/esign/entities/esign-file-object.entity';
-import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import type {
   EsignDocumentDetailDto,
   EsignDocumentListItemDto,
@@ -139,35 +137,10 @@ describe('電子簽部門列表與唯讀內容', () => {
         archiveStatus: 'active',
       }),
     );
-    const audits = ctx.app.get(EsignAuditService);
-    await f.manager.transaction(async (manager) => {
-      for (const eventType of ['document.created', 'document.draft_updated']) {
-        await audits.append(
-          {
-            documentId: draft.id,
-            eventType,
-            occurredAt: new Date(),
-            actorUserId: f.users.a1.id,
-          },
-          manager,
-        );
-      }
-      await audits.append(
-        {
-          documentId: draft.id,
-          signerId: privateSigner.id,
-          eventType: 'signer.rejected',
-          occurredAt: new Date(),
-          metadata: { reason: '個別理由' },
-        },
-        manager,
-      );
-    });
   });
 
   afterAll(async () => {
     if (f) {
-      await f.manager.delete(EsignAuditEvent, { documentId: In(documentIds) });
       await f.manager.delete(EsignFileObject, { documentId: In(documentIds) });
       await f.manager.delete(EsignSigner, { documentId: In(documentIds) });
       await f.manager.delete(EsignDocument, { id: In(documentIds) });
@@ -263,7 +236,7 @@ describe('電子簽部門列表與唯讀內容', () => {
     const creator = apiData<EsignDocumentDetailDto>(
       await get(`/${draft.id}`, f.cookies.a1).expect(200),
     );
-    expect(creator).toMatchObject({
+expect(creator).toMatchObject({
       isCreator: true,
       signers: [{ email: 'private@example.test', note: '管理備註' }],
     });
@@ -278,22 +251,9 @@ describe('電子簽部門列表與唯讀內容', () => {
     ).toBe(stored.sha256);
   });
 
-  it('同部門僅取得文件層級歷程，指定簽署人仍取得本人事件', async () => {
-    const read = apiData<Array<{ type: string }>>(
-      await get(`/${draft.id}/history`, f.cookies.a2).expect(200),
-    );
-    expect(read.map((x) => x.type)).toEqual(['document.created']);
-    const own = apiData<Array<{ type: string }>>(
-      await get(`/${draft.id}/history`, f.cookies.b1).expect(200),
-    );
-    expect(own.map((x) => x.type)).toEqual([
-      'document.created',
-      'signer.rejected',
-    ]);
-    const creator = apiData<Array<{ type: string }>>(
-      await get(`/${draft.id}/history`, f.cookies.a1).expect(200),
-    );
-    expect(creator).toHaveLength(3);
+  it('已停用歷程 API，建立人、同部門與簽署人均回 404', async () => {
+    for (const cookie of [f.cookies.a1, f.cookies.a2, f.cookies.b1])
+      await get(`/${draft.id}/history`, cookie).expect(404);
   });
 
   it('export 視角提供完整 Excel 欄位但沒有管理憑證；跨部門與缺碼拒絕', async () => {

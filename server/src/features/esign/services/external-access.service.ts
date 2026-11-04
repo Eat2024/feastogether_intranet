@@ -19,10 +19,6 @@ import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import {
-  EsignAuditService,
-  type EsignAuditMetadata,
-} from './esign-audit.service';
-import {
   EsignCompletionAccessService,
   type PersonalCopyDownload,
 } from './esign-completion-access.service';
@@ -62,7 +58,6 @@ export class ExternalAccessService {
     private readonly consent: EsignConsentService,
     private readonly mapper: EsignViewMapper,
     private readonly pdf: PdfValidationService,
-    private readonly audit: EsignAuditService,
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly completions: EsignCompletionAccessService,
@@ -79,7 +74,7 @@ export class ExternalAccessService {
 
   /**
    * 按下「開啟電子簽署文件」或「重新寄送驗證碼」：先做存取檢查（失效 401、尚未開始 409，都不寄信），
-   * 通過後寄驗證碼到邀請信箱並記錄寄出；冷卻中、已達每小時上限或寄信失敗時不記錄。
+   * 通過後寄驗證碼到邀請信箱；沿用冷卻與每小時寄送上限。
    * 回傳收件信箱供輸入頁遮罩顯示，以及寄送結果供顯示可再寄送的時間或寄送失敗頁。
    */
   async sendOtp(token: string): Promise<{ email: string; issue: OtpIssue }> {
@@ -96,50 +91,25 @@ export class ExternalAccessService {
         validMinutes: OTP_TTL_SECONDS / 60,
       }),
     );
-    if (issue.status !== 'sent') return { email, issue };
-    await this.mysql.transaction((manager) =>
-      this.audit.append(
-        {
-          documentId: document.id,
-          signerId: signer.id,
-          eventType: 'external_otp.sent',
-          occurredAt: new Date(),
-        },
-        manager,
-      ),
-    );
     return { email, issue };
   }
 
   /**
    * 以邀請 token＋驗證碼建立外部存取。邀請失效（401）或尚未開始（409）時不比對驗證碼；
-   * 驗證成功記錄 external_otp.verified 與 external_invitation.opened 並建立存取憑證，錯誤記錄 failed／locked。
+   * 驗證成功後建立存取憑證；錯誤次數與鎖定仍由 OTP 服務控管。
    */
   async createSession(
     token: string,
     code: string,
   ): Promise<ExternalSessionResult> {
     return this.mysql.transaction(async (manager) => {
-      const { signer, document } = await this.checkedAccess(
+      const { signer } = await this.checkedAccess(
         { invitationToken: token },
         manager,
         true,
       );
-      const append = (eventType: string, metadata?: EsignAuditMetadata) =>
-        this.audit.append(
-          {
-            documentId: document.id,
-            signerId: signer.id,
-            eventType,
-            occurredAt: new Date(),
-            metadata,
-          },
-          manager,
-        );
       const verification = await this.otp.verify(signer.id, code);
       if (verification.status === 'verified') {
-        await append('external_otp.verified');
-        await append('external_invitation.opened');
         return {
           verified: true,
           signerPublicId: signer.publicId,
@@ -152,33 +122,19 @@ export class ExternalAccessService {
       const email = invitationEmail(signer);
       if (verification.status === 'wrong') {
         const { remainingAttempts } = verification;
-        await append('external_otp.failed', { remainingAttempts });
         return { verified: false, email, remainingAttempts };
       }
-      if (verification.status === 'locked') await append('external_otp.locked');
       return { verified: false, email, remainingAttempts: 0 };
     });
   }
 
-  /** appendOpened 時在交易內鎖定並記錄開啟；否則為唯讀查詢 */
-  async task(credential: string, appendOpened: boolean) {
+  /** 開啟與查詢均僅讀取本人有權查看的任務。 */
+  async task(credential: string) {
     const run = async (manager: EntityManager) => {
       const { signer, document } = await this.checkedAccess(
         { credential },
         manager,
-        appendOpened,
       );
-      if (appendOpened) {
-        await this.audit.append(
-          {
-            documentId: document.id,
-            signerId: signer.id,
-            eventType: 'document.opened',
-            occurredAt: new Date(),
-          },
-          manager,
-        );
-      }
       const [totals, allFields] = await Promise.all([
         this.signers.completionCounts(document.id, manager),
         this.fields.findByDocument(document.id, manager),
@@ -202,9 +158,7 @@ export class ExternalAccessService {
         ...counts,
       };
     };
-    return appendOpened
-      ? this.mysql.transaction(run)
-      : run(this.mysql.getManager());
+    return run(this.mysql.getManager());
   }
 
   async source(credential: string) {

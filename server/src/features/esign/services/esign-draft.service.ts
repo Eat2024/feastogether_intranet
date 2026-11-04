@@ -18,7 +18,6 @@ import { DocumentRepository } from '../repositories/document.repository';
 import { DocumentFieldRepository } from '../repositories/document-field.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { EsignAuditService } from './esign-audit.service';
 import { EsignFieldService } from './esign-field.service';
 import {
   type PdfUpload,
@@ -54,7 +53,6 @@ export class EsignDraftService {
     private readonly fields: DocumentFieldRepository,
     private readonly access: EsignAccessPolicyService,
     private readonly pdf: PdfValidationService,
-    private readonly audit: EsignAuditService,
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly fieldService: EsignFieldService,
@@ -96,11 +94,6 @@ export class EsignDraftService {
             manager,
           );
         }
-        await this.recordDraftCreatedAudit(
-          document.id,
-          input.creatorUserId,
-          manager,
-        );
         return document;
       });
     } catch (error) {
@@ -155,23 +148,6 @@ export class EsignDraftService {
     await this.fields.save(fields, manager);
   }
 
-  private async recordDraftCreatedAudit(
-    documentId: number,
-    creatorUserId: number,
-    manager: EntityManager,
-  ): Promise<void> {
-    await this.audit.append(
-      {
-        documentId,
-        actorUserId: creatorUserId,
-        eventType: 'document.created',
-        occurredAt: new Date(),
-        metadata: { status: 'draft' },
-      },
-      manager,
-    );
-  }
-
   async update(documentId: number, userId: number, input: UpdateDraftInput) {
     const title = this.validateUpdateInput(input);
     await this.access.assertCreatorNotInitiating(
@@ -206,7 +182,6 @@ export class EsignDraftService {
           );
         }
         const saved = await this.documents.save(lockedFile, manager);
-        await this.recordDraftUpdateAudit(documentId, userId, manager);
         return saved;
       });
       // 舊檔只能在交易提交成功後刪除。
@@ -334,23 +309,6 @@ export class EsignDraftService {
     await this.fields.save(fields, manager);
   }
 
-  private async recordDraftUpdateAudit(
-    documentId: number,
-    userId: number,
-    manager: EntityManager,
-  ): Promise<void> {
-    await this.audit.append(
-      {
-        documentId,
-        actorUserId: userId,
-        eventType: 'document.draft_updated',
-        occurredAt: new Date(),
-        metadata: { status: 'draft' },
-      },
-      manager,
-    );
-  }
-
   async delete(documentId: number, userId: number): Promise<void> {
     await this.access.assertCreatorNotInitiating(
       documentId,
@@ -360,16 +318,6 @@ export class EsignDraftService {
     await this.mysql.transaction(async (manager) => {
       await this.access.checkAndLockDraftDoc(documentId, userId, manager);
       await this.documents.softDeleteDraft(documentId, new Date(), manager);
-      await this.audit.append(
-        {
-          documentId,
-          actorUserId: userId,
-          eventType: 'document.draft_deleted',
-          occurredAt: new Date(),
-          metadata: { status: 'draft' },
-        },
-        manager,
-      );
     });
   }
 

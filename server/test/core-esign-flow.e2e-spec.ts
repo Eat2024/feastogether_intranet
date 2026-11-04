@@ -8,7 +8,6 @@ import { EsignJobProducerService } from '#app/features/esign/services/esign-job-
 import { todayInTaipei } from '#app/common/date-time.helper';
 import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
 import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
@@ -174,9 +173,6 @@ describe('核心電子簽 US1', () => {
          WHERE f.document_id = ? OR s.document_id = ?`,
         [documentId, documentId],
       );
-      await db.query('DELETE FROM esign_audit_events WHERE document_id = ?', [
-        documentId,
-      ]);
       await db.query(
         'DELETE FROM esign_verification_records WHERE document_id = ?',
         [documentId],
@@ -242,6 +238,11 @@ describe('核心電子簽 US1', () => {
     await closeSecurityE2eApp(ctx);
   });
 
+  it('停用後沒有稽核表，建立人也無法呼叫簽署歷程 API', async () => {
+    expect(await db.query("SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='esign_audit_events'" )).toEqual([]);
+    await request(ctx.server).get('/api/esign/documents/1/history').set('Cookie', creatorCookie).expect(404);
+  });
+
   it('一次發起可從空草稿完成設定；失敗完整回滾既有名單、欄位與通知', async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -297,7 +298,16 @@ describe('核心電子簽 US1', () => {
       signEndAt: input.signEndAt,
     }).expect(400);
     await initiate(input, outsiderCookie).expect(404);
-    expect(await driveInitiation(ctx, await initiate({ ...input, fields: [{ ...field, type: 'date' }] }).expect(202), creatorCookie)).toMatchObject({ status: 'failed' });
+    expect(
+      await driveInitiation(
+        ctx,
+        await initiate({
+          ...input,
+          fields: [{ ...field, type: 'date' }],
+        }).expect(202),
+        creatorCookie,
+      ),
+    ).toMatchObject({ status: 'failed' });
     expect(await detail()).toEqual(empty);
     // 先存一份草稿設定，後續發起失敗不得刪掉這份設定。
     apiData<Array<{ publicId: string }>>(
@@ -487,14 +497,6 @@ describe('核心電子簽 US1', () => {
       .get(`/api/esign/documents/${draftId}`)
       .set('Cookie', creatorCookie)
       .expect(404);
-    const events = await db.query<Array<{ event_type: string }>>(
-      'SELECT event_type FROM esign_audit_events WHERE document_id = ? ORDER BY id',
-      [draftId],
-    );
-    expect(events.map((event) => event.event_type)).toEqual([
-      'document.created',
-      'document.draft_deleted',
-    ]);
 
     const activeId = await create('已發起不可刪除');
     documentIds.push(activeId);
@@ -995,26 +997,6 @@ describe('核心電子簽 US1', () => {
       batch_count: 1,
       log_count: 1,
     });
-    const initiatedAudits = await db.query<
-      Array<{
-        event_type: string;
-        signer_id: number | null;
-        metadata_json: Record<string, unknown> | null;
-      }>
-    >(
-      `SELECT event_type, signer_id, metadata_json
-       FROM esign_audit_events WHERE document_id = ? ORDER BY id`,
-      [documentId],
-    );
-    expect(initiatedAudits.map((event) => event.event_type)).toEqual([
-      'document.created',
-      'signer.assigned',
-      'document.initiated',
-    ]);
-    expect(initiatedAudits[1].signer_id).not.toBeNull();
-    expect(JSON.stringify(initiatedAudits)).not.toMatch(
-      /candidate@example|token|sourceIp|userAgent|pngDataUrl/i,
-    );
 
     const credentials = await db.query<
       Array<{ invitation_token_ciphertext: string }>
@@ -1037,13 +1019,6 @@ describe('核心電子簽 US1', () => {
       '<form method="post" action="/api/external-signature-otps">',
     );
     expect(bridge.text).toContain('開啟電子簽署文件</button>');
-    // 只開啟邀請連結不記錄開啟、不寄驗證碼
-    expect(
-      await db.query(
-        'SELECT event_type, signer_id, metadata_json FROM esign_audit_events WHERE document_id = ? ORDER BY id',
-        [documentId],
-      ),
-    ).toEqual(initiatedAudits);
 
     // 按下開啟：寄驗證碼到邀請信箱並顯示輸入頁；驗證前不設 cookie
     const otpMailCount = otpMails(ctx).length;
@@ -1167,6 +1142,7 @@ describe('核心電子簽 US1', () => {
         await getSignatureVerification(ctx.server, verificationUrl).expect(200),
       ),
     ).toEqual({
+      verificationScope: 'stored_records',
       signature: {
         signerName: '外部簽署人',
         signedAt: signedBody.signedAt,
@@ -1202,19 +1178,6 @@ describe('核心電子簽 US1', () => {
       invitation_token_ciphertext: null,
       invitation_expires_at: null,
     });
-
-    const signingAudits = await db.query<
-      Array<{ event_type: string; request_id: string | null }>
-    >(
-      `SELECT event_type, request_id FROM esign_audit_events
-       WHERE document_id = ? AND request_id = ? ORDER BY id`,
-      [documentId, signatureRequestId],
-    );
-    expect(signingAudits).toEqual([
-      { event_type: 'consent.accepted', request_id: signatureRequestId },
-      { event_type: 'signature.submitted', request_id: signatureRequestId },
-      { event_type: 'signature.completed', request_id: signatureRequestId },
-    ]);
     const signingRows = await db.query<
       Array<{ record_count: number; file_count: number }>
     >(
@@ -1257,16 +1220,6 @@ describe('核心電子簽 US1', () => {
       status: 'signed',
       completion: { status: 'pending' },
     });
-    const auditCount = async () =>
-      Number(
-        (
-          await db.query<Array<{ count: number }>>(
-            'SELECT COUNT(*) count FROM esign_audit_events WHERE document_id = ?',
-            [documentId],
-          )
-        )[0].count,
-      );
-    const auditsBeforePolling = await auditCount();
     const polled = await request(ctx.server)
       .get('/api/external-signing-task')
       .set('Cookie', externalCookie)
@@ -1276,7 +1229,6 @@ describe('核心電子簽 US1', () => {
       signerPublicId: signers[0].publicId,
       signer: { status: 'signed', completion: { status: 'pending' } },
     });
-    expect(await auditCount()).toBe(auditsBeforePolling);
     // 副本尚未產生：下載回 409，不回傳檔案
     const notReady = await downloadCopy(
       '/api/external-signing-task',
@@ -1317,14 +1269,12 @@ describe('核心電子簽 US1', () => {
         Array<{ status: string; file_count: number; event_count: number }>
       >(
         `SELECT d.status,
-          (SELECT COUNT(*) FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = d.id AND f.file_purpose = 'completed_pdf') file_count,
-          (SELECT COUNT(*) FROM esign_audit_events a WHERE a.document_id = d.id AND a.event_type = 'document.completed') event_count
+          (SELECT COUNT(*) FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = d.id AND f.file_purpose = 'completed_pdf') file_count
          FROM esign_documents d WHERE d.id = ?`,
         [documentId],
       );
       expect(rolledBack[0].status).toBe('finalizing');
       expect(Number(rolledBack[0].file_count)).toBe(1);
-      expect(Number(rolledBack[0].event_count)).toBe(0);
       await db.query(
         'DELETE FROM esign_verification_records WHERE document_id = ?',
         [documentId],
@@ -1360,7 +1310,6 @@ describe('核心電子簽 US1', () => {
           .expect(200),
       ).signer.completion.status,
     ).toBe('ready');
-    const auditsBeforeDownload = await auditCount();
     const externalCopy = await downloadCopy(
       '/api/external-signing-task',
       externalCookie,
@@ -1376,7 +1325,6 @@ describe('核心電子簽 US1', () => {
     expect(
       Buffer.compare(externalCopy.body as Buffer, creatorCopy.body as Buffer),
     ).toBe(0);
-    expect(await auditCount()).toBe(auditsBeforeDownload);
     await downloadCopy(
       `/api/esign/documents/${documentId}/signers/${signers[0].publicId}`,
       outsiderCookie,
@@ -1406,7 +1354,6 @@ describe('核心電子簽 US1', () => {
       'SELECT signing_payload_json,signing_payload_sha256 FROM esign_documents WHERE id=?',
       [documentId],
     );
-    const auditBeforeNote = await auditCount();
     await request(ctx.server)
       .patch(
         `/api/esign/documents/${documentId}/signers/${signers[0].publicId}/note`,
@@ -1427,7 +1374,6 @@ describe('核心電子簽 US1', () => {
         [documentId],
       ),
     ).toEqual(payloadBeforeNote);
-    expect(await auditCount()).toBe(auditBeforeNote);
     const externalAfterNote = apiData<SigningTask>(
       await request(ctx.server)
         .get('/api/external-signing-task')
@@ -1653,13 +1599,11 @@ describe('核心電子簽 US1', () => {
     const stoppedRows = await db.query<
       Array<{ status: string; stop_count: number }>
     >(
-      `SELECT d.status,
-        (SELECT COUNT(*) FROM esign_audit_events a WHERE a.document_id = d.id AND a.event_type = 'document.stopped_by_creator') stop_count
+      `SELECT d.status
        FROM esign_documents d WHERE d.id = ?`,
       [stoppedDocumentId],
     );
     expect(stoppedRows[0].status).toBe('stopped');
-    expect(Number(stoppedRows[0].stop_count)).toBe(1);
     const stoppedLogs = await db.query<Array<{ id: number }>>(
       'SELECT l.id FROM esign_notification_logs l JOIN esign_signers s ON s.id=l.signer_id WHERE s.document_id=?',
       [stoppedDocumentId],
@@ -1830,15 +1774,6 @@ describe('核心電子簽 US1', () => {
     const invitationToken = tokenService.decrypt(
       credential.invitation_token_ciphertext,
     );
-    const openedEvents = async () =>
-      (
-        await db.query<Array<{ event_type: string }>>(
-          `SELECT event_type FROM esign_audit_events
-           WHERE document_id = ? AND event_type IN ('external_invitation.opened', 'document.opened')
-           ORDER BY id`,
-          [id],
-        )
-      ).map((event) => event.event_type);
     // 台北固定 UTC+8、無日光節約時間
     const taipeiStart = new Date(start.getTime() + 8 * 3_600_000)
       .toISOString()
@@ -1867,13 +1802,11 @@ describe('核心電子簽 US1', () => {
     ).expect(409);
     expect(sessionBeforeStart.text).toBe(notStarted.text);
     expect(sessionBeforeStart.headers['set-cookie']).toBeUndefined();
-    expect(await openedEvents()).toEqual([]);
 
     useFakeDate(start);
     let accessCookie: string;
     try {
       accessCookie = await openExternalSession(invitationToken);
-      expect(await openedEvents()).toEqual(['external_invitation.opened']);
     } finally {
       jest.useRealTimers();
     }
@@ -1888,11 +1821,10 @@ describe('核心電子簽 US1', () => {
       message: `簽署尚未開始，請於 ${taipeiStart}（台北時間）後簽署`,
       details: { startAt: start.toISOString() },
     });
-    expect(await openedEvents()).toEqual(['external_invitation.opened']);
   });
 
   it('驗證碼：只持有邀請連結無法開啟；錯誤顯示剩餘次數，正確才建立瀏覽器階段存取且只能用一次；稽核與 log 不含驗證碼與 token', async () => {
-    const { documentId, token } = await initiateEmailDocument(
+    const { token } = await initiateEmailDocument(
       '驗證碼流程文件',
       'otp-flow@example.test',
     );
@@ -1936,26 +1868,8 @@ describe('核心電子簽 US1', () => {
       const reused = await submitOtp(ctx, token, code).expect(401);
       expect(reused.headers['set-cookie']).toBeUndefined();
       expect(reused.text).toContain('驗證碼已失效，請重新寄送。');
-
-      const audits = await db.query<
-        Array<{ event_type: string; metadata_json: unknown }>
-      >(
-        `SELECT event_type, metadata_json FROM esign_audit_events
-         WHERE document_id = ? AND event_type LIKE 'external\\_%' ORDER BY id`,
-        [documentId],
-      );
-      expect(audits).toEqual([
-        { event_type: 'external_otp.sent', metadata_json: null },
-        {
-          event_type: 'external_otp.failed',
-          metadata_json: { remainingAttempts: 4 },
-        },
-        { event_type: 'external_otp.verified', metadata_json: null },
-        { event_type: 'external_invitation.opened', metadata_json: null },
-      ]);
       // 以布林比對，失敗訊息不印出驗證碼或 token
       const recorded = JSON.stringify([
-        audits,
         accessLog.mock.calls,
         ...appLogs.map((spy) => spy.mock.calls),
       ]);
@@ -2040,7 +1954,7 @@ describe('核心電子簽 US1', () => {
   });
 
   it('驗證碼錯滿 5 次即失效並記錄；重新寄送的新驗證碼使舊的立即失效', async () => {
-    const { documentId, token } = await initiateEmailDocument(
+    const { token } = await initiateEmailDocument(
       '驗證碼錯誤次數文件',
       'otp-lock@example.test',
     );
@@ -2068,22 +1982,6 @@ describe('核心電子簽 US1', () => {
     const replaced = await submitOtp(ctx, token, second).expect(401);
     expect(replaced.text).toContain('驗證碼錯誤，還可以再試 4 次。');
     await submitOtp(ctx, token, latest).expect(303);
-
-    const events = await db.query<Array<{ event_type: string }>>(
-      `SELECT event_type FROM esign_audit_events
-       WHERE document_id = ? AND event_type LIKE 'external\\_%' ORDER BY id`,
-      [documentId],
-    );
-    expect(events.map((event) => event.event_type)).toEqual([
-      'external_otp.sent',
-      ...Array<string>(4).fill('external_otp.failed'),
-      'external_otp.locked',
-      'external_otp.sent',
-      'external_otp.sent',
-      'external_otp.failed',
-      'external_otp.verified',
-      'external_invitation.opened',
-    ]);
   });
 
   it('驗證碼只以雜湊存在 Redis 並在 10 分鐘後過期，過期後無法建立存取', async () => {
@@ -2253,12 +2151,6 @@ describe('核心電子簽 US1', () => {
           `esign:external-otp:${signer.id}:hourly`,
         ),
     ).toBe(0);
-    const [{ count }] = await db.query<Array<{ count: number }>>(
-      `SELECT COUNT(*) count FROM esign_audit_events
-       WHERE document_id = ? AND event_type = 'external_otp.sent'`,
-      [documentId],
-    );
-    expect(Number(count)).toBe(0);
 
     await openExternalSession(token);
   });
@@ -2296,7 +2188,6 @@ describe('核心電子簽 US1', () => {
       ctx.app.get(MysqlService),
       ctx.app.get(DocumentRepository),
       ctx.app.get(SignerRepository),
-      ctx.app.get(EsignAuditService),
     );
     // 掃描後期限已更新，鎖內必須以最新期限判定。
     await db.query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
@@ -2499,7 +2390,6 @@ describe('核心電子簽 US1', () => {
         ctx.app.get(MysqlService),
         ctx.app.get(DocumentRepository),
         ctx.app.get(SignerRepository),
-        ctx.app.get(EsignAuditService),
       );
       expect(
         await Promise.all([
@@ -2507,27 +2397,6 @@ describe('核心電子簽 US1', () => {
           expiry.expireByDeadline(Number(id)),
         ]),
       ).toEqual(expect.arrayContaining([true, false]));
-      const history = apiData<Array<{ type: string }>>(
-        await request(ctx.server)
-          .get(`/api/esign/documents/${id}/history`)
-          .set('Cookie', creatorCookie)
-          .expect(200),
-      );
-      expect(history.filter((e) => e.type === 'document.expired')).toHaveLength(
-        1,
-      );
-      const signerHistory = apiData<Array<{ type: string }>>(
-        await request(ctx.server)
-          .get(`/api/esign/documents/${id}/history`)
-          .set('Cookie', signerCookie)
-          .expect(200),
-      );
-      expect(
-        signerHistory.some((event) => event.type === 'document.expired'),
-      ).toBe(true);
-      expect(
-        history.some((e) => e.type === 'document.stopped_by_deadline'),
-      ).toBe(false);
       expect(await snapshot()).toEqual(beforeSnapshot);
       expect(await evidence()).toEqual(beforeEvidence);
       await request(ctx.server)
@@ -2906,27 +2775,6 @@ describe('核心電子簽 US1', () => {
       .get('/api/esign/documents?role=owner')
       .set('Cookie', creatorCookie)
       .expect(400);
-
-    const signerHistory = apiData<
-      Array<{
-        type: string;
-        actor: { kind: string; name: string };
-        reason: string | null;
-      }>
-    >(
-      await request(ctx.server)
-        .get(`/api/esign/documents/${documentId}/history`)
-        .set('Cookie', signerCookie)
-        .expect(200),
-    );
-    expect(signerHistory.map((event) => event.type)).toEqual([
-      'document.created',
-      'signer.assigned',
-      'document.initiated',
-    ]);
-    expect(
-      signerHistory.find((event) => event.type === 'signer.assigned'),
-    ).toMatchObject({ actor: { kind: 'employee' }, reason: null });
     await request(ctx.server)
       .get(`/api/esign/documents/${documentId}/history`)
       .set('Cookie', outsiderCookie)
@@ -3206,12 +3054,11 @@ describe('核心電子簽 US1', () => {
           fields: number;
         }>
       >(
-        "SELECT d.status, (SELECT COUNT(*) FROM esign_audit_events a WHERE a.document_id = d.id AND a.event_type = 'document.completed') events, (SELECT COUNT(*) FROM esign_signature_records r JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = d.id) records, (SELECT COUNT(*) FROM esign_document_fields f WHERE f.document_id = d.id) fields FROM esign_documents d WHERE d.id = ?",
+        'SELECT d.status, (SELECT COUNT(*) FROM esign_signature_records r JOIN esign_signers s ON s.id = r.signer_id WHERE s.document_id = d.id) records, (SELECT COUNT(*) FROM esign_document_fields f WHERE f.document_id = d.id) fields FROM esign_documents d WHERE d.id = ?',
         [id],
       );
       expect(result).toMatchObject({
         status: 'completed',
-        events: 1,
         records: 10,
         fields: 3,
       });
@@ -3374,20 +3221,20 @@ describe('核心電子簽 US1', () => {
   /** 只固定系統時間（Date），計時器與 I/O 照常運作 */
   function useFakeDate(now: Date): void {
     jest.useFakeTimers({
-      now,
-      doNotFake: [
-        'hrtime',
-        'nextTick',
-        'performance',
-        'queueMicrotask',
-        'setImmediate',
-        'clearImmediate',
-        'setInterval',
-        'clearInterval',
-        'setTimeout',
-        'clearTimeout',
-      ],
-    });
+    now,
+    doNotFake: [
+      'hrtime',
+      'nextTick',
+      'performance',
+      'queueMicrotask',
+      'setImmediate',
+      'clearImmediate',
+      'setInterval',
+      'clearInterval',
+      'setTimeout',
+      'clearTimeout',
+    ],
+  });
   }
 
   /** 單一簽署人文件的簽署人 id（Redis 驗證碼 key 以它區分） */
@@ -3690,7 +3537,6 @@ describe('核心電子簽 US1', () => {
       notifications,
       ctx.app.get(SignerRepository),
       tokenService,
-      ctx.app.get(EsignAuditService),
       mailFixture(ctx).guard(
         Object.assign(new FakeInvitationMailSender(), {
           send: async () => {
@@ -3727,15 +3573,9 @@ describe('核心電子簽 US1', () => {
         ).code,
       ).toBe('ESIGN_REOPEN_INPUT_INVALID');
       const countsBefore = await esignRowCounts(db);
-      const audit = ctx.app.get<EsignAuditService>(EsignAuditService);
-      const append = audit.append.bind(audit);
       const fail = jest
-        .spyOn(audit, 'append')
-        .mockImplementation(async (event, manager) => {
-          if (event.eventType === 'document.reopened')
-            throw new Error('測試交易回滾');
-          return append(event, manager);
-        });
+        .spyOn(ctx.app.get(DocumentRepository), 'save')
+        .mockRejectedValueOnce(new Error('測試交易回滾'));
       try {
         await send(input).expect(500);
       } finally {
@@ -3766,16 +3606,6 @@ describe('核心電子簽 US1', () => {
       expect(apiError(responses.find((r) => r.status === 409)!).code).toBe(
         'ESIGN_REOPEN_STALE',
       );
-      const history = apiData<Array<{ type: string; reason?: string }>>(
-        await request(ctx.server)
-          .get(`/api/esign/documents/${id}/history`)
-          .set('Cookie', creatorCookie)
-          .expect(200),
-      );
-      expect(
-        history.filter((e) => e.type === 'document.reopened'),
-      ).toHaveLength(1);
-      expect(history.at(-1)?.reason).toBe('補簽第一輪');
       expect(await snapshot()).toEqual(beforeSnapshot);
       const [retired] = await db.query<
         Array<{
@@ -3858,22 +3688,6 @@ describe('核心電子簽 US1', () => {
             .expect(200),
         ),
       ).toEqual(apiData(invitations));
-      const signerHistory = apiData<Array<{ type: string }>>(
-        await request(ctx.server)
-          .get(`/api/esign/documents/${id}/history`)
-          .set('Cookie', signerCookie)
-          .expect(200),
-      );
-      expect(signerHistory.find((e) => e.type === 'document.reopened')).toEqual(
-        {
-          type: 'document.reopened',
-          label: '建立人設定補簽，重新開放未簽署者簽署',
-          actor: { kind: 'employee', name: '建立人' },
-          reason: null,
-          occurredAt: end.toISOString(),
-          signEndAt: input.signEndAt,
-        },
-      );
 
       const newToken = apiData<Array<{ invitationUrl: string }>>(invitations)[0]
         .invitationUrl.split('/')
@@ -3900,16 +3714,6 @@ describe('核心電子簽 US1', () => {
       ]);
       expect(secondResponse.status).toBe(201);
       expect(await snapshot()).toEqual(beforeSnapshot);
-      const secondHistory = apiData<Array<{ type: string; reason?: string }>>(
-        await request(ctx.server)
-          .get(`/api/esign/documents/${id}/history`)
-          .set('Cookie', creatorCookie)
-          .expect(200),
-      );
-      expect(
-        secondHistory.filter((e) => e.type === 'document.reopened'),
-      ).toHaveLength(2);
-      expect(secondHistory.at(-1)?.reason).toBe(second.reason);
       await requestOtp(ctx, newToken).expect(401);
       // 舊到期掃描與補簽交易不覆蓋新期限。
       expect(
@@ -3965,7 +3769,16 @@ describe('核心電子簽 US1', () => {
     const raw: unknown = activated.headers['set-cookie'];
     const cookie = Array.isArray(raw) ? raw[0] : raw;
     if (typeof cookie !== 'string') throw new Error('缺少 session cookie');
-    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
+    await Promise.all(
+      [empid].map((employeeNo) =>
+        ctx.app
+          .get<DataSource>(MYSQL_MAIN)
+          .query('UPDATE users SET email=? WHERE empid=?', [
+            `${employeeNo.toLowerCase()}@example.test`,
+            employeeNo,
+          ]),
+      ),
+    );
     return cookie;
   }
 });
@@ -4021,4 +3834,3 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-

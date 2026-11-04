@@ -133,33 +133,37 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       id: string;
       signers: Array<{ publicId: string }>;
     }>(
-      await completeInitiation(ctx, request(ctx.server)
-        .post(`/api/esign/documents/${created.id}/initiations`)
-        .set('Cookie', creatorCookie)
-        .set('Origin', origin)
-        .send({
-          signers: users.slice(1, 1 + signerCount).map((user, index) => ({
-            type: 'email',
-            name: user.name,
-            email: `copy${index}@example.test`,
-          })),
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 20,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: new Date(Date.now() - 60000).toISOString(),
-          signEndAt: new Date(Date.now() + 86400000).toISOString(),
-          watermark: true,
-          allowReject: true,
-        })
-        .expect(202), creatorCookie),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${created.id}/initiations`)
+          .set('Cookie', creatorCookie)
+          .set('Origin', origin)
+          .send({
+            signers: users.slice(1, 1 + signerCount).map((user, index) => ({
+              type: 'email',
+              name: user.name,
+              email: `copy${index}@example.test`,
+            })),
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 20,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: new Date(Date.now() - 60000).toISOString(),
+            signEndAt: new Date(Date.now() + 86400000).toISOString(),
+            watermark: true,
+            allowReject: true,
+          })
+          .expect(202),
+        creatorCookie,
+      ),
     );
     const signers = await Promise.all(
       document.signers.map(async ({ publicId }) => {
@@ -271,8 +275,8 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       f.document.id,
     ]);
     await ctx.app
-      .get(EsignExpiryService)
-      .expireByDeadline(Number(f.document.id));
+          .get(EsignExpiryService)
+          .expireByDeadline(Number(f.document.id));
     const copy = await request(ctx.server)
       .post(
         `/api/esign/signing-tasks/${f.signers[0].publicId}/completed-file/downloads`,
@@ -293,8 +297,8 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     );
     expect(after.signature).toEqual(evidence.signature);
     expect(after.document.signedSourceSha256).toBe(
-      evidence.document.signedSourceSha256,
-    );
+        evidence.document.signedSourceSha256,
+      );
   });
   it('補簽只輪替待簽者；已簽者原邀請重新 OTP 取得相同 PDF 與不可變證據', async () => {
     const f = await fixture();
@@ -316,8 +320,8 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         f.document.id,
       ]);
     await ctx.app
-      .get(EsignExpiryService)
-      .expireByDeadline(Number(f.document.id));
+          .get(EsignExpiryService)
+          .expireByDeadline(Number(f.document.id));
     await request(ctx.server)
       .post(`/api/esign/documents/${f.document.id}/reopenings`)
       .set('Cookie', creatorCookie)
@@ -332,8 +336,8 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     await requestOtp(ctx, f.signers[1].token).expect(401);
     const renewed = await openExternalSession(ctx, f.signers[0].token);
     expect((await downloadCopy(renewed).expect(200)).body).toEqual(
-      original.body,
-    );
+        original.body,
+      );
     const after = apiData<SignatureVerification>(
       await getSignatureVerification(ctx.server, signed.verificationUrl).expect(
         200,
@@ -341,11 +345,11 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     );
     expect(after.signature).toEqual(evidence.signature);
     expect(after.document.signedSourceSha256).toBe(
-      evidence.document.signedSourceSha256,
-    );
+        evidence.document.signedSourceSha256,
+      );
     expect(after.document.completedPdfSha256).toBe(
-      evidence.document.completedPdfSha256,
-    );
+        evidence.document.completedPdfSha256,
+      );
   });
   it('內部員工同次 OTP 存取可輪詢 pending→ready，取得與建立人完全相同的真實 PDF', async () => {
     const f = await fixture();
@@ -364,12 +368,6 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       apiData<Task>(await get('', f.cookie).expect(200)).signer.completion
         .status,
     ).toBe('ready');
-    const history = () =>
-      request(ctx.server)
-        .get(`/api/esign/documents/${f.document.id}/history`)
-        .set('Cookie', creatorCookie)
-        .expect(200);
-    const before = apiData<unknown>(await history());
     const personal = await downloadCopy(f.cookie)
       .expect(200)
       .expect('Content-Type', /application\/pdf/)
@@ -390,7 +388,6 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     await get('/source-file', f.cookie)
       .expect(200)
       .expect('Cache-Control', 'private, no-store');
-    expect(apiData<unknown>(await history())).toEqual(before);
   });
   it('儲存設備失敗可讀 failed；重試處理中可讀 processing 並拒絕未就緒下載', async () => {
     const f = await fixture();

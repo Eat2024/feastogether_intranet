@@ -7,7 +7,6 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
@@ -105,7 +104,16 @@ describe('內外部催簽 API', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
-    await Promise.all(['E2E00905'].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
+    await Promise.all(
+      ['E2E00905'].map((employeeNo) =>
+        ctx.app
+          .get<DataSource>(MYSQL_MAIN)
+          .query('UPDATE users SET email=? WHERE empid=?', [
+            `${employeeNo.toLowerCase()}@example.test`,
+            employeeNo,
+          ]),
+      ),
+    );
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
@@ -130,29 +138,33 @@ describe('內外部催簽 API', () => {
         .expect(201),
     );
     return apiData<Detail>(
-      await completeInitiation(ctx, request(ctx.server)
-        .post(`/api/esign/documents/${created.id}/initiations`)
-        .set('Cookie', cookie)
-        .set('Origin', origin)
-        .send({
-          signers,
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 25,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: new Date(Date.now() - 60000).toISOString(),
-          signEndAt: new Date(Date.now() + 86400000).toISOString(),
-          watermark: false,
-          allowReject: true,
-        })
-        .expect(202), cookie),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${created.id}/initiations`)
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .send({
+            signers,
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 25,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: new Date(Date.now() - 60000).toISOString(),
+            signEndAt: new Date(Date.now() + 86400000).toISOString(),
+            watermark: false,
+            allowReject: true,
+          })
+          .expect(202),
+        cookie,
+      ),
     );
   }
   const post = (id: string, body: object) =>
@@ -164,10 +176,10 @@ describe('內外部催簽 API', () => {
   it('單人申請受理並可追查，同請求重送重用批次，另一申請阻擋排隊中對象', async () => {
     const doc = await create();
     const body = {
-      requestId: randomUUID(),
-      selection: 'selected',
-      signerPublicIds: [doc.signers[0].publicId],
-    };
+        requestId: randomUUID(),
+        selection: 'selected',
+        signerPublicIds: [doc.signers[0].publicId],
+      };
     const first = apiData<Batch>(await post(doc.id, body).expect(202));
     expect(first).toMatchObject({
       queuedCount: 1,
@@ -217,7 +229,6 @@ describe('內外部催簽 API', () => {
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
-      ctx.app.get(EsignAuditService),
       mailFixture(ctx).guard(mailer),
     );
     const before = mailer.deliveries.length;
@@ -273,7 +284,6 @@ describe('內外部催簽 API', () => {
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
-      ctx.app.get(EsignAuditService),
       mailFixture(ctx).guard(mailer),
     );
   }
@@ -480,9 +490,9 @@ describe('內外部催簽 API', () => {
     '%s 並發申請只受理一批；跨文件識別整批拒絕，未登入與缺 Origin 不可催簽',
     async (type) => {
       const [user] = await db.query<Array<{ id: number }>>(
-        'SELECT id FROM users WHERE empid=?',
-        ['E2E00905'],
-      );
+      'SELECT id FROM users WHERE empid=?',
+      ['E2E00905'],
+    );
       const doc = await create(
         type === 'user' ? [{ type, userId: String(user.id) }] : undefined,
       );
@@ -896,4 +906,3 @@ describe('內外部催簽 API', () => {
     );
   });
 });
-

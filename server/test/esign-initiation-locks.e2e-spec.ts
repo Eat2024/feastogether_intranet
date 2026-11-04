@@ -576,9 +576,9 @@ describe('022 員工共享鎖與跨文件受理', () => {
         ),
       );
       expect(
-        apiData<InitiationJobDto>(await get(doc, job.publicId).expect(200))
-          .status,
-      ).toBe('succeeded');
+          apiData<InitiationJobDto>(await get(doc, job.publicId).expect(200))
+            .status,
+        ).toBe('succeeded');
       expect(heldMs).toBeGreaterThanOrEqual(4900);
       expect(acceptedMs).toBeLessThan(3000);
       expect(same.elapsedMs).toBeLessThan(3000);
@@ -695,18 +695,18 @@ describe('022 員工共享鎖與跨文件受理', () => {
       });
       const storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
       const original: PrivateFileStorage['openReadStream'] =
-        storage.openReadStream.bind(
-          storage,
-        ) as PrivateFileStorage['openReadStream'];
+      storage.openReadStream.bind(
+        storage,
+      ) as PrivateFileStorage['openReadStream'];
       const entered = deferred();
       const release = deferred();
       const gate = jest
-        .spyOn(storage, 'openReadStream')
-        .mockImplementationOnce(async (...args) => {
-          entered.resolve();
-          await release.promise;
-          return original(...args);
-        });
+      .spyOn(storage, 'openReadStream')
+      .mockImplementationOnce(async (...args) => {
+        entered.resolve();
+        await release.promise;
+        return original(...args);
+      });
       const writer = await externalConnection();
       const processing = ctx.app.get(EsignInitiationJobService).process(job.id);
       let mutation: Promise<unknown> | undefined;
@@ -929,11 +929,7 @@ describe('022 員工共享鎖與跨文件受理', () => {
           [documentId],
         );
         for (const job of jobs) await tx.delete(EsignInitiationJob, job.id);
-        for (const table of [
-          'esign_audit_events',
-          'esign_file_objects',
-          'esign_document_fields',
-        ])
+        for (const table of ['esign_file_objects', 'esign_document_fields'])
           await tx.query(`DELETE FROM ${table} WHERE document_id=?`, [
             documentId,
           ]);

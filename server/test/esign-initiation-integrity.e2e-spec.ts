@@ -158,8 +158,8 @@ describe('022 草稿版本完整性', () => {
       .send({ fields: [{ ...body().fields[0], xPercent: 35 }] })
       .expect(200);
     expect(apiError(await retry(doc, parent).expect(409)).code).toBe(
-      'ESIGN_INITIATION_DOCUMENT_CHANGED',
-    );
+        'ESIGN_INITIATION_DOCUMENT_CHANGED',
+      );
     expect(await version(doc)).not.toBe(before);
   });
 
@@ -244,8 +244,8 @@ describe('022 草稿版本完整性', () => {
     const before = await version(doc);
     await edit(doc, kind);
     expect(apiError(await retry(doc, parent).expect(409)).code).toBe(
-      'ESIGN_INITIATION_DOCUMENT_CHANGED',
-    );
+        'ESIGN_INITIATION_DOCUMENT_CHANGED',
+      );
     expect((await version(doc)) > before).toBe(true);
   });
   async function databaseClock(timestamp: number) {
@@ -412,11 +412,7 @@ describe('022 草稿版本完整性', () => {
           [documentId],
         );
         for (const job of jobs) await tx.delete(EsignInitiationJob, job.id);
-        for (const table of [
-          'esign_audit_events',
-          'esign_file_objects',
-          'esign_document_fields',
-        ])
+        for (const table of ['esign_file_objects', 'esign_document_fields'])
           await tx.query(`DELETE FROM ${table} WHERE document_id=?`, [
             documentId,
           ]);

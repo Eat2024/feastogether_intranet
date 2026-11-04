@@ -27,7 +27,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       signEndAt: new Date(Date.now() + 60_000),
     };
     const files = { findDocumentFile: jest.fn() };
-    const audit = { append: jest.fn() };
     const completions = {
       personalCopy: jest.fn(async () => ({
         bytes: Buffer.from('%PDF-'),
@@ -99,7 +98,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
         field: jest.fn(),
       } as never,
       {} as never,
-      audit as never,
       {} as never,
       completions as never,
       new ExternalOtpService(redis as never, { warn: jest.fn() } as never),
@@ -113,7 +111,7 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       document,
       access,
       files,
-      audit,
+
       completions,
       mailer,
       store,
@@ -122,12 +120,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
 
   const token = 'A'.repeat(43);
   type Setup = ReturnType<typeof setup>;
-
-  function auditedEvents(audit: Setup['audit']) {
-    return audit.append.mock.calls.map(
-      ([event]: [{ eventType: string }]) => event.eventType,
-    );
-  }
 
   /** 寄出驗證碼並回傳信中的驗證碼 */
   async function sentCode({ service, mailer }: Setup): Promise<string> {
@@ -167,12 +159,12 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       await expect(
         context.service.createSession(token, '123456'),
       ).rejects.toMatchObject(expected);
-      await expect(
-        context.service.task(credential, true),
-      ).rejects.toMatchObject(expected);
-      await expect(
-        context.service.task(credential, false),
-      ).rejects.toMatchObject(expected);
+      await expect(context.service.task(credential)).rejects.toMatchObject(
+        expected,
+      );
+      await expect(context.service.task(credential)).rejects.toMatchObject(
+        expected,
+      );
       await expect(context.service.source(credential)).rejects.toMatchObject(
         expected,
       );
@@ -183,7 +175,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
         context.service.signingPrincipal(credential),
       ).rejects.toMatchObject(expected);
       expect(context.mailer.otpDeliveries).toEqual([]);
-      expect(context.audit.append).not.toHaveBeenCalled();
       expect(context.files.findDocumentFile).not.toHaveBeenCalled();
       expect(context.completions.personalCopy).not.toHaveBeenCalled();
       expect(context.store.size).toBe(1);
@@ -217,11 +208,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
           validMinutes: 10,
         },
       ]);
-      expect(auditedEvents(context.audit)).toEqual(['external_otp.sent']);
-      expect(context.audit.append).toHaveBeenCalledWith(
-        expect.objectContaining({ documentId: 4, signerId: 3 }),
-        manager,
-      );
     },
   );
 
@@ -234,7 +220,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       issue: { status: 'cooldown', retryAfterSeconds: 60 },
     });
     expect(context.mailer.otpDeliveries).toHaveLength(1);
-    expect(auditedEvents(context.audit)).toEqual(['external_otp.sent']);
   });
 
   it('待簽者在文件停止後不寄驗證碼，回 401', async () => {
@@ -246,7 +231,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       status: 401,
     });
     expect(context.mailer.otpDeliveries).toEqual([]);
-    expect(context.audit.append).not.toHaveBeenCalled();
   });
 
   it('簽署尚未開始時不寄驗證碼，回 409', async () => {
@@ -271,7 +255,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       issue: { status: 'delivery-failed' },
     });
     expect(context.store.size).toBe(0);
-    expect(context.audit.append).not.toHaveBeenCalled();
   });
 
   it('正確驗證碼建立存取：產生不同於邀請 token 的存取憑證，記錄驗證成功與開啟邀請，驗證碼不進稽核', async () => {
@@ -286,12 +269,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       credential: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
     });
     expect(session.verified && session.credential).not.toBe(token);
-    expect(auditedEvents(context.audit)).toEqual([
-      'external_otp.sent',
-      'external_otp.verified',
-      'external_invitation.opened',
-    ]);
-    expect(JSON.stringify(context.audit.append.mock.calls)).not.toContain(code);
   });
 
   it('驗證碼錯誤時記錄失敗與剩餘次數，不建立存取', async () => {
@@ -304,16 +281,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
       email: 'daming.wang@example.com',
       remainingAttempts: 4,
     });
-    expect(context.audit.append).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        eventType: 'external_otp.failed',
-        metadata: { remainingAttempts: 4 },
-      }),
-      manager,
-    );
-    expect(auditedEvents(context.audit)).not.toContain(
-      'external_invitation.opened',
-    );
   });
 
   it('錯滿 5 次記錄驗證碼失效，之後正確驗證碼也無法建立存取', async () => {
@@ -322,12 +289,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
     const wrong = code === '000000' ? '000001' : '000000';
     for (let i = 0; i < 5; i += 1)
       await context.service.createSession(token, wrong);
-
-    expect(auditedEvents(context.audit)).toEqual([
-      'external_otp.sent',
-      ...Array<string>(4).fill('external_otp.failed'),
-      'external_otp.locked',
-    ]);
     await expect(context.service.createSession(token, code)).resolves.toEqual({
       verified: false,
       email: 'daming.wang@example.com',
@@ -341,7 +302,6 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
     await expect(
       context.service.createSession(token, '123456'),
     ).resolves.toMatchObject({ verified: false, remainingAttempts: 0 });
-    expect(context.audit.append).not.toHaveBeenCalled();
   });
 
   it('邀請已失效時不比對驗證碼，回 401 且不消耗驗證碼', async () => {
@@ -373,7 +333,7 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
   it('只持有邀請 token（未通過驗證碼）時，任務、原始檔、本人副本與送出簽名一律 401', async () => {
     const { service, files, completions } = setup();
     for (const read of [
-      () => service.task(token, false),
+      () => service.task(token),
       () => service.source(token),
       () => service.completedFile(token),
       () => service.signingPrincipal(token),
@@ -389,9 +349,9 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
     const credential = await accessCredential(context);
     await context.service.endSession(credential);
 
-    await expect(context.service.task(credential, false)).rejects.toMatchObject(
-      { status: 401 },
-    );
+    await expect(context.service.task(credential)).rejects.toMatchObject({
+      status: 401,
+    });
     await expect(
       context.service.signingPrincipal(credential),
     ).rejects.toMatchObject({ status: 401 });
@@ -411,11 +371,9 @@ describe('外部 Email 存取與舊內部憑證切換', () => {
   it('唯讀查詢已簽者的任務，不記錄開啟稽核', async () => {
     const context = setup();
     const credential = await accessCredential(context);
-    context.audit.append.mockClear();
-    await expect(
-      context.service.task(credential, false),
-    ).resolves.toMatchObject({ signerPublicId: context.signer.publicId });
-    expect(context.audit.append).not.toHaveBeenCalled();
+    await expect(context.service.task(credential)).resolves.toMatchObject({
+      signerPublicId: context.signer.publicId,
+    });
   });
 
   it('已簽者可下載本人副本', async () => {

@@ -171,26 +171,6 @@ export class EsignManagedDocumentDetailDto extends EsignDocumentSummaryDto {
   fields!: EsignFieldViewDto[];
 }
 
-export class EsignHistoryActorDto {
-  kind!: 'signer' | 'employee' | 'system';
-  name!: string;
-  signerPublicId?: string;
-}
-
-export class EsignHistoryItemDto {
-  type!: string;
-  /** 後端統一提供的繁體中文事件說明。 */
-  label!: string;
-  occurredAt!: string;
-  actor!: EsignHistoryActorDto;
-  reason!: string | null;
-  /** 補簽後期限；僅補簽事件提供。 */
-  signEndAt?: string;
-  /** 僅文件建立人可見的補簽資訊。 */
-  actorUserId?: string;
-  previousSignEndAt?: string;
-}
-
 export type EsignDocumentDetailDto =
   | EsignManagedDocumentDetailDto
   | EsignReadonlyDocumentDetailDto;

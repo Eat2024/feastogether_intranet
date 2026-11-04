@@ -17,7 +17,7 @@ export class SignatureVerificationController {
   @ApiOperation({
     summary: '以驗證代碼查詢單一簽章的驗證結果',
     description:
-      '路徑 /signature-verifications/{code}，code 為簽署時產生的 22 字驗證代碼。不需登入，沿用登入端點的 client IP 限流（每 60 秒 10 次、每 300 秒 50 次）；只讀，不寫任何資料或稽核事件。格式錯誤、查無或尚未簽署一律回相同 404；完成文件的驗證快照、完成文件摘要或稽核鏈不一致回 409。\n\n前端串接參考：公開驗證頁 /verify/[code] 以同源 fetch 呼叫，只顯示本 API 回傳的欄位。',
+      '路徑 /signature-verifications/{code}，code 為簽署時產生的 22 字驗證代碼。不需登入，沿用登入端點的 client IP 限流（每 60 秒 10 次、每 300 秒 50 次）；只讀，verificationScope 為 stored_records，僅比對現存簽署紀錄與檔案摘要，不驗證事件鏈。格式錯誤、查無或尚未簽署一律回相同 404；完成文件的驗證快照、完成文件摘要不一致回 409。\n\n前端串接參考：公開驗證頁 /verify/[code] 以同源 fetch 呼叫，只顯示本 API 回傳的欄位。',
   })
   // 以 wildcard 接住任何長度或含 / 的路徑，格式錯誤也走同一個 404 與標頭
   @Get('*')

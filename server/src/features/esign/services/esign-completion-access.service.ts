@@ -14,7 +14,7 @@ import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { canonicalSha256 } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 import { PdfValidationService } from './pdf-validation.service';
 
 /** 已驗證完整性的本人副本。 */

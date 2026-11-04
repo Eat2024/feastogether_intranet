@@ -5,7 +5,7 @@ import { EsignDocumentField } from '../entities/esign-document-field.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignFileObject } from '../entities/esign-file-object.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
-import { canonicalJson } from './esign-audit.service';
+import { canonicalJson } from '../helpers/signing-evidence';
 
 export function effectiveDocumentStatus(
   document: EsignDocument,

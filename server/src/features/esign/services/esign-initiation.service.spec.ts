@@ -104,7 +104,6 @@ describe('EsignInitiationService', () => {
         ciphertext: 'v1.encrypted',
       })),
     };
-    const audit = { append: jest.fn(), appendMany: jest.fn() };
     const jobs = { enqueueInvitations: jest.fn() };
     const signerService = {
       prepareSigners: jest.fn(() => Promise.resolve(signers)),
@@ -142,7 +141,6 @@ describe('EsignInitiationService', () => {
       access as never,
       consent as never,
       tokens as never,
-      audit as never,
       jobs as never,
       signerService as never,
       fieldService as never,
@@ -161,12 +159,11 @@ describe('EsignInitiationService', () => {
       notifications,
       jobs,
       tokens,
-      audit,
     };
   }
 
   it('呼叫端交易可完成發起核心但不自行提交或派送通知', async () => {
-    const { service, mysql, documents, jobs, audit } = setup();
+    const { service, mysql, documents, jobs } = setup();
     const input: InitiateDocumentInput = {
       documentId: 3,
       creatorUserId: 7,
@@ -195,15 +192,6 @@ describe('EsignInitiationService', () => {
     expect(mysql.transaction).not.toHaveBeenCalled();
     expect(mysql.getManager).not.toHaveBeenCalled();
     expect(documents.save).toHaveBeenCalledWith(result.document, manager);
-    expect(audit.appendMany).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          actorUserId: 7,
-          eventType: 'document.initiated',
-        }),
-      ]),
-      manager,
-    );
     expect(jobs.enqueueInvitations).not.toHaveBeenCalled();
   });
 
@@ -215,7 +203,7 @@ describe('EsignInitiationService', () => {
       access,
       notifications,
       jobs,
-      audit,
+
       signerService,
       fieldService,
       employeeEmails,
@@ -302,21 +290,6 @@ describe('EsignInitiationService', () => {
           invitationTokenSha256: 'c'.repeat(64),
           invitationTokenCiphertext: 'v1.encrypted',
           invitationExpiresAt: end,
-        }),
-      ],
-      manager,
-    );
-    expect(audit.append).not.toHaveBeenCalled();
-    expect(audit.appendMany).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({
-          documentId: 3,
-          signerId: 11,
-          eventType: 'signer.assigned',
-        }),
-        expect.objectContaining({
-          documentId: 3,
-          eventType: 'document.initiated',
         }),
       ],
       manager,

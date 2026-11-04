@@ -4,7 +4,7 @@ import type {
   PreparedExportDownloadDto,
 } from '../dto/export.dto';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { canonicalSha256 } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -65,8 +65,8 @@ export class EsignExportService {
     if (body.type === 'excel') {
       if (body.exportId !== undefined || body.fileId !== undefined)
         throw new AppException(
-          ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
-        );
+        ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
+      );
       return { type: 'excel', fileName };
     }
     if (!body.exportId || !body.fileId)

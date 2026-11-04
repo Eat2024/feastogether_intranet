@@ -1,17 +1,9 @@
 import { InitiationJobResponseDto } from '../dto/initiation-response.dto';
-import { EsignHistoryItemDto } from '../dto/esign-common.dto';
 import { SignerNoteDto } from '../dto/signer-note.dto';
 import { DraftSaveDto, DraftSettingsDto } from '../dto/draft-settings.dto';
 import { ReopenDocumentDto, type ReopeningInput } from '../dto/reopening.dto';
 import { EsignReopeningService } from '../services/esign-reopening.service';
-import {
-  ApiBody,
-  ApiHeader,
-  ApiOperation,
-  ApiResponse,
-  ApiOkResponse,
-  ApiCookieAuth,
-} from '@nestjs/swagger';
+import { ApiBody, ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -163,7 +155,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '刪除草稿',
     description:
-      '僅建立人可刪除尚未發起的文件，以軟刪除保留資料並記錄稽核事件。',
+      '僅建立人可刪除尚未發起的文件，以軟刪除保留資料。',
   })
   @Delete(':documentId')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -287,7 +279,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: '重新開放已到期文件補簽',
     description:
-      '僅建立人可設定新期限及原因；舊期限不符或任一外部待簽者缺固定信箱／原邀請回 409。內部無信箱仍可補簽；成功後有信箱者依內部群寄、外部逐人方式通知，保留已簽及已拒證據。',
+      '僅建立人可設定新期限；reason 可省略，舊客戶端提供的原因不再保存。舊期限不符或任一外部待簽者缺固定信箱／原邀請回 409。內部無信箱仍可補簽；成功後有信箱者依內部群寄、外部逐人方式通知，保留已簽及已拒證據。',
   })
   @ApiBody({ type: ReopenDocumentDto })
   @Post(':documentId/reopenings')
@@ -368,26 +360,6 @@ export class DocumentsController {
     const documentId = this.id(id);
     await this.stoppages.stopByCreator(documentId, userId, body.reason);
     return this.queries.detail(documentId, userId);
-  }
-
-  // 回傳目前員工可見的歷程與中文說明。
-  @ApiOperation({
-    summary: '查詢文件簽署歷程',
-    description:
-      '建立人取得管理事件；同部門取得文件層級事件，保留本人簽署事件可見規則。',
-  })
-  @Get(':documentId/history')
-  @ApiOperation({
-    summary: '查詢可見的簽署歷程',
-    description:
-      '每筆包含原事件 type 與繁體中文 label；未知事件使用中性中文說明。保留既有歷程授權與補簽資訊裁切，不改寫稽核資料。',
-  })
-  @ApiOkResponse({
-    type: [EsignHistoryItemDto],
-    description: '全域回應 envelope 的 data 為歷程陣列',
-  })
-  history(@Param('documentId') id: string, @CurrentUserId() userId: number) {
-    return this.queries.history(this.id(id), userId);
   }
 
   // 由建立人儲存指定簽署人的管理備註。

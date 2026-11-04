@@ -293,7 +293,7 @@ export const AppErrors = {
   ],
   ESIGN_REOPEN_INPUT_INVALID: [
     AppErrorCode.ESIGN_REOPEN_INPUT_INVALID,
-    '請填寫有效的補簽期限與 1 至 500 字的補簽原因',
+    '請填寫有效的補簽期限；若提供補簽原因，須為 1 至 500 字',
     HttpStatus.BAD_REQUEST,
   ],
   ESIGN_REOPEN_STALE: [

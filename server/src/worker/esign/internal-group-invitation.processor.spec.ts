@@ -64,7 +64,6 @@ function setup(emails: string[]) {
         })),
     ),
   };
-  const audit = { append: jest.fn() };
   // 序列交易模擬 DB 鎖；SMTP 仍在交易外，可讓下一 worker 同時進入。
   let queue = Promise.resolve();
   const mysql = {
@@ -83,7 +82,6 @@ function setup(emails: string[]) {
     notifications as never,
     signers as never,
     {} as never,
-    audit as never,
     mailer,
   );
   const job = { data: { notificationBatchId: 9 } } as Job;
@@ -93,7 +91,7 @@ function setup(emails: string[]) {
     mailer,
     job,
     notifications,
-    audit,
+
     document,
     batch,
   };
@@ -127,7 +125,7 @@ describe('內部通知群寄', () => {
     [51, [50, 1]],
   ])('不同收件地址 %s 人按50上限拆批', async (count, sizes) => {
     const { processor, mailer, job } = setup(
-      Array.from({ length: count as number }, (_, i) => `u${i}@example.test`),
+      Array.from({ length: count }, (_, i) => `u${i}@example.test`),
     );
     await processor.process(job);
     expect(
@@ -294,7 +292,7 @@ describe('內部通知群寄', () => {
   });
 
   it('忽略不屬本批地址並記去敏感協定異常，缺少結果者 unknown', async () => {
-    const { processor, logs, mailer, job, audit } = setup([
+    const { processor, logs, mailer, job } = setup([
       'a@example.test',
       'b@example.test',
     ]);
@@ -312,16 +310,6 @@ describe('內部通知群寄', () => {
     ]);
     await processor.process(job);
     expect(logs.map((log) => log.result)).toEqual(['delivered', 'unknown']);
-    expect(audit.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventType: 'internal_notification.protocol_error',
-        metadata: { errorCode: 'MAIL_RESULT_MISMATCH' },
-      }),
-      expect.anything(),
-    );
-    expect(JSON.stringify(audit.append.mock.calls)).not.toContain(
-      '@example.test',
-    );
   });
   it('adapter 回 DATA 斷線 unknown 後沒有 retry time，重複工作不會再發信', async () => {
     const { processor, logs, mailer, job } = setup(['a@example.test']);

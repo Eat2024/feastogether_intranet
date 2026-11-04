@@ -6,6 +6,7 @@ export type EsignAuthenticationMethod = 'employee_session' | 'internal_session' 
 
 /** GET signature-verifications/:code 的回應；查無、格式錯誤一律 404，資料不一致 409 */
 export interface SignatureVerification {
+  verificationScope: 'stored_records';
   signature: {
     /** 發起時固定的簽署人完整姓名 */
     signerName: string;

@@ -34,7 +34,7 @@ import { DocumentRepository } from '../repositories/document.repository';
 import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
-import { canonicalSha256 } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
 import { EsignTokenService } from './esign-token.service';
 import {
@@ -320,8 +320,8 @@ export class CompletedPdfService {
         persisted.pageCount !== sourceMetadata.pageCount ||
         persisted.sha256 !== stored.sha256
       ) {
-        throw this.integrity();
-      }
+      throw this.integrity();
+    }
       return {
         stored,
         metadata: persisted,
@@ -395,8 +395,8 @@ export class CompletedPdfService {
 
     for (const field of fields) {
       if (field.pageNumber < 1 || field.pageNumber > output.getPageCount()) {
-        throw this.integrity();
-      }
+      throw this.integrity();
+    }
       const page = output.getPage(field.pageNumber - 1);
       const { width: pageWidth, height: pageHeight } = beginVisiblePage(page);
       const x = (Number(field.xPercent) / 100) * pageWidth;
@@ -435,8 +435,8 @@ export class CompletedPdfService {
           color: rgb(0, 0, 0),
         });
       } else {
-        throw this.integrity();
-      }
+      throw this.integrity();
+    }
       page.pushOperators(popGraphicsState());
     }
   }

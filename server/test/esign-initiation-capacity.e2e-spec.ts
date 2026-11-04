@@ -5,7 +5,6 @@ import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitati
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import {
   INVITATION_MAIL_SENDER,
   type InvitationMailSender,
@@ -212,8 +211,8 @@ describe('022 完整名單背景發起容量與原子性', () => {
           batches: string;
         }>
       >(
-        `SELECT (SELECT COUNT(*) FROM esign_audit_events WHERE document_id=? AND event_type='signer.assigned') assigned,
-      (SELECT COUNT(*) FROM esign_audit_events WHERE document_id=? AND event_type='document.initiated') initiated,
+        `SELECT (SELECT COUNT(*) FROM esign_signers WHERE document_id=?) assigned,
+      (SELECT COUNT(*) FROM esign_documents WHERE id=? AND status='active') initiated,
       (SELECT COUNT(*) FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=?) logs,
       (SELECT COUNT(*) FROM esign_notification_batches WHERE document_id=?) batches`,
         [documentId, documentId, documentId, documentId],
@@ -280,7 +279,6 @@ describe('022 完整名單背景發起容量與原子性', () => {
         ctx.app.get(NotificationRepository),
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
-        ctx.app.get(EsignAuditService),
         ctx.app.get<InvitationMailSender>(INVITATION_MAIL_SENDER),
       );
       await worker.process(delivery);
@@ -313,9 +311,9 @@ describe('022 完整名單背景發起容量與原子性', () => {
         errorCode: 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE',
       });
       expect(await detail(documentId)).toMatchObject({
-        status: 'draft',
-        signers: [],
-      });
+      status: 'draft',
+      signers: [],
+    });
     },
   );
 
@@ -377,11 +375,6 @@ describe('022 完整名單背景發起容量與原子性', () => {
       status: 'draft',
       signers: [],
     });
-    const rows = await mysql.query<Array<{ n: string }>>(
-      'SELECT COUNT(*) n FROM esign_audit_events WHERE document_id=? AND event_type IN (?,?)',
-      [documentId, 'document.initiated', 'signer.assigned'],
-    );
-    expect(Number(rows[0].n)).toBe(0);
     const batches = await mysql.query<Array<{ n: string }>>(
       'SELECT COUNT(*) n FROM esign_notification_batches WHERE document_id=?',
       [documentId],
@@ -507,7 +500,6 @@ describe('022 完整名單背景發起容量與原子性', () => {
       await manager.transaction(async (tx) => {
         for (const table of [
           'esign_initiation_jobs',
-          'esign_audit_events',
           'esign_file_objects',
           'esign_document_fields',
         ])

@@ -13,7 +13,6 @@ import {
   type PrivateFileStorage,
 } from '#app/infrastructure/file-storage/private-file-storage.port';
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
-import { EsignAuditEvent } from '#app/features/esign/entities/esign-audit-event.entity';
 import { EsignNotificationBatch } from '#app/features/esign/entities/esign-notification-batch.entity';
 import {
   ESIGN_EXTERNAL_INVITATION_QUEUE,
@@ -60,7 +59,6 @@ describe('Spec017 部門管理安全邊界', () => {
     if (fixture) {
       const manager = fixture.manager;
       if (document) {
-        await manager.delete(EsignAuditEvent, { documentId: document.id });
         await manager.delete(EsignSigner, { documentId: document.id });
         await manager.delete(EsignDocument, { id: document.id });
       }
@@ -123,7 +121,7 @@ describe('Spec017 部門管理安全邊界', () => {
 
   it('跨部門、同名異碼及來源直接ID均拒絕，不洩漏資源存在性', async () => {
     for (const cookie of [fixture.cookies.b1, fixture.cookies.sameName]) {
-      for (const suffix of ['', '/history', '/source-file']) {
+      for (const suffix of ['', '/source-file']) {
         await request(ctx.server)
           .get(path + suffix)
           .set('Cookie', cookie)
@@ -147,9 +145,6 @@ describe('Spec017 部門管理安全邊界', () => {
     });
     const beforeSigner = await manager.findOneByOrFail(EsignSigner, {
       id: signer.id,
-    });
-    const auditsBefore = await manager.count(EsignAuditEvent, {
-      where: { documentId: document.id },
     });
     const batchesBefore = await manager.count(EsignNotificationBatch, {
       where: { documentId: document.id },
@@ -246,11 +241,6 @@ describe('Spec017 部門管理安全邊界', () => {
     expect(
       await manager.findOneByOrFail(EsignSigner, { id: signer.id }),
     ).toEqual(beforeSigner);
-    expect(
-      await manager.count(EsignAuditEvent, {
-        where: { documentId: document.id },
-      }),
-    ).toBe(auditsBefore);
     expect(
       await manager.count(EsignNotificationBatch, {
         where: { documentId: document.id },
@@ -382,7 +372,6 @@ describe('Spec017 一般匯出直接網址安全邊界', () => {
           exportJobId: In(jobs.map((job) => job.id)),
         });
       await manager.delete(EsignExportJob, { documentId: In(documentIds) });
-      await manager.delete(EsignAuditEvent, { documentId: In(documentIds) });
       await manager.delete(EsignSigner, { documentId: In(documentIds) });
       await manager.delete(EsignDocument, { id: In(documentIds) });
       const userIds = Object.values(users).map((user) => user.id);
@@ -513,9 +502,6 @@ describe('Spec017 一般匯出直接網址安全邊界', () => {
       files: await manager.find(EsignFileObject, {
         where: { exportJobId: In(zipJobs.map((job) => job.id)) },
         order: { id: 'ASC' },
-      }),
-      audits: await manager.count(EsignAuditEvent, {
-        where: { documentId: In(ids) },
       }),
     });
     const before = await snapshot();

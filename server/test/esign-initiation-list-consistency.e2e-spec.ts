@@ -269,7 +269,6 @@ describe('025 發起列表一致性與終態', () => {
       await manager.transaction(async (tx) => {
         for (const table of [
           'esign_initiation_jobs',
-          'esign_audit_events',
           'esign_file_objects',
           'esign_document_fields',
         ])

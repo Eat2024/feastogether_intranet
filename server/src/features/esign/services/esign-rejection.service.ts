@@ -10,7 +10,6 @@ import { DocumentRepository } from '../repositories/document.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { EsignDocumentValidationService } from './esign-document-validation.service';
-import { EsignAuditService } from './esign-audit.service';
 import { EsignJobProducerService } from './esign-job-producer.service';
 import type { SigningPrincipal } from './esign-signing.service';
 
@@ -22,7 +21,6 @@ export class EsignRejectionService {
     private readonly signers: SignerRepository,
     private readonly access: EsignAccessPolicyService,
     private readonly validation: EsignDocumentValidationService,
-    private readonly audit: EsignAuditService,
     private readonly jobs: EsignJobProducerService,
   ) {}
 
@@ -144,19 +142,6 @@ export class EsignRejectionService {
     signer.invitationTokenCiphertext = null;
     signer.invitationExpiresAt = null;
     await this.signers.save(signer, manager);
-    await this.audit.append(
-      {
-        documentId: signer.documentId,
-        signerId: signer.id,
-        actorUserId:
-          principal.kind === 'internal' ? principal.userId : undefined,
-        eventType: 'signer.rejected',
-        occurredAt: now,
-        requestId,
-        metadata: { reason },
-      },
-      manager,
-    );
   }
 
   private async markDocumentFinalizing(

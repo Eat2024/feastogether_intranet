@@ -16,7 +16,7 @@ import { FileObjectRepository } from '../repositories/file-object.repository';
 import { SignatureRecordRepository } from '../repositories/signature-record.repository';
 import { SignerRepository } from '../repositories/signer.repository';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
-import { canonicalSha256, EsignAuditService } from './esign-audit.service';
+import { canonicalSha256 } from '../helpers/signing-evidence';
 import { EsignConsentService } from './esign-consent.service';
 import {
   EsignDocumentValidationService,
@@ -63,7 +63,6 @@ export class EsignSigningService {
     private readonly pdf: PdfValidationService,
     private readonly consent: EsignConsentService,
     private readonly tokens: EsignTokenService,
-    private readonly audit: EsignAuditService,
     private readonly jobs: EsignJobProducerService,
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
@@ -303,35 +302,6 @@ export class EsignSigningService {
         lockedSigner.completionLeaseExpiresAt = null;
         lockedSigner.completionReadyAt = null;
         await this.signers.save(lockedSigner, tx);
-        const auditBase = {
-          documentId: lockedDocument.id,
-          signerId: lockedSigner.id,
-          occurredAt: signedAt,
-          requestId: submission.requestId,
-        };
-        await this.audit.append(
-          {
-            ...auditBase,
-            eventType: 'consent.accepted',
-            metadata: { consentVersion: submission.consentVersion },
-          },
-          tx,
-        );
-        await this.audit.append(
-          {
-            ...auditBase,
-            eventType: 'signature.submitted',
-          },
-          tx,
-        );
-        await this.audit.append(
-          {
-            ...auditBase,
-            eventType: 'signature.completed',
-            metadata: { status: 'signed' },
-          },
-          tx,
-        );
         const counts = await this.signers.completionCounts(
           lockedDocument.id,
           tx,

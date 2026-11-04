@@ -4,7 +4,6 @@ import {
   driveInitiation,
   exhaustInitiationRetries,
 } from './helpers/await-initiation';
-import { AuditEventRepository } from '#app/features/esign/repositories/audit-event.repository';
 import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import type { SendInternalGroupMailInput } from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { HttpService } from '@nestjs/axios';
@@ -21,7 +20,6 @@ import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitati
 import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
-import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
 import { EsignExpiryService } from '#app/features/esign/services/esign-expiry.service';
 import type { Job } from 'bullmq';
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
@@ -203,7 +201,6 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
-      ctx.app.get(EsignAuditService),
       mailFixture(ctx).guard(
         Object.assign(new FakeInvitationMailSender(), {
           send,
@@ -276,12 +273,12 @@ describe('Spec016 內部發起與邀請', () => {
     '真正補簽交易隔離在途舊邀請結果（SMTP失敗=%s）',
     async (failure) => {
       const initiated = apiData<{ signEndAt: string }>(
-        await completeInitiation(
-          ctx,
-          initiate(externalSigners(), 60000).expect(202),
-          cookie,
-        ),
-      );
+      await completeInitiation(
+        ctx,
+        initiate(externalSigners(), 60000).expect(202),
+        cookie,
+      ),
+    );
       const [oldLog] = await notificationLogs();
       let rotated: Awaited<ReturnType<typeof invitations>> = [];
       const worker = invitationWorker(async () => {
@@ -311,12 +308,12 @@ describe('Spec016 內部發起與邀請', () => {
     '任一待簽者缺少%s，補簽409且不留下部分變更',
     async (column) => {
       const initiated = apiData<{ signEndAt: string }>(
-        await completeInitiation(
-          ctx,
-          initiate(externalSigners(), 60000).expect(202),
-          cookie,
-        ),
-      );
+      await completeInitiation(
+        ctx,
+        initiate(externalSigners(), 60000).expect(202),
+        cookie,
+      ),
+    );
       await ctx.app
         .get(MysqlService)
         .getManager()
@@ -495,10 +492,6 @@ describe('Spec016 內部發起與邀請', () => {
         'SELECT l.* FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? ORDER BY l.id',
         [documentId],
       ),
-      audits: await manager.query<unknown[]>(
-        'SELECT * FROM esign_audit_events WHERE document_id=? ORDER BY id',
-        [documentId],
-      ),
     });
     const before = await snapshot();
     expect(before.signers).toHaveLength(1);
@@ -507,19 +500,15 @@ describe('Spec016 內部發起與邀請', () => {
     expect(before.logs).toEqual([]);
     let insertedInsideTransaction = false;
     const fault = jest
-      .spyOn(ctx.app.get(AuditEventRepository), 'insertMany')
-      .mockImplementationOnce(async (events, transaction) => {
-        expect(events.length).toBeGreaterThan(1);
-        await new AuditEventRepository().insertMany(
-          events.slice(0, 1),
+      .spyOn(ctx.app.get(NotificationRepository), 'insertLogs')
+      .mockImplementationOnce(async (logs, transaction) => {
+        expect(logs.length).toBeGreaterThan(1);
+        const saved = await new NotificationRepository().insertLogs(
+          logs.slice(0, 1),
           transaction,
         );
-        const rows = await transaction.query<Array<{ count: number }>>(
-          'SELECT COUNT(*) count FROM esign_audit_events WHERE document_id=? AND event_type=?',
-          [documentId, 'signer.assigned'],
-        );
-        insertedInsideTransaction = Number(rows[0].count) === 1;
-        throw new Error('合成批次稽核後段寫入失敗');
+        insertedInsideTransaction = saved.length === 1;
+        throw new Error('合成通知後段寫入失敗');
       });
     const enqueue = jest.spyOn(
       ctx.app.get(EsignJobProducerService),
@@ -635,7 +624,6 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
-      ctx.app.get(EsignAuditService),
       mailFixture(ctx).guard(
         Object.assign(new FakeInvitationMailSender(), mailer),
       ),
@@ -677,10 +665,10 @@ describe('Spec016 內部發起與邀請', () => {
       );
       const mysql = ctx.app.get(MysqlService);
       const [log] = await mysql
-        .getManager()
-        .query<
-          Array<{ id: number }>
-        >('SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? LIMIT 1', [documentId]);
+      .getManager()
+      .query<
+        Array<{ id: number }>
+      >('SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? LIMIT 1', [documentId]);
       await mysql
         .getManager()
         .query(
@@ -693,7 +681,6 @@ describe('Spec016 內部發起與邀請', () => {
         ctx.app.get(NotificationRepository),
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
-        ctx.app.get(EsignAuditService),
         mailFixture(ctx).guard(
           Object.assign(new FakeInvitationMailSender(), mailer),
         ),
@@ -708,10 +695,10 @@ describe('Spec016 內部發起與邀請', () => {
   );
   it('SMTP 失敗保持 active、留下可重試寄送狀態且不洩漏錯誤內容', async () => {
     await completeInitiation(
-      ctx,
-      initiate(externalSigners()).expect(202),
-      cookie,
-    );
+        ctx,
+        initiate(externalSigners()).expect(202),
+        cookie,
+      );
     const mysql = ctx.app.get(MysqlService);
     const [log] = await mysql
       .getManager()
@@ -728,14 +715,13 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
-      ctx.app.get(EsignAuditService),
       mailFixture(ctx).guard(
         Object.assign(new FakeInvitationMailSender(), mailer),
       ),
     );
     await worker.process({ data: { notificationLogId: log.id } } as Job<{
-      notificationLogId: number;
-    }>);
+        notificationLogId: number;
+      }>);
     const result = await detail();
     expect(result.status).toBe('active');
     expect(result.signers.map((s) => s.invitationDelivery)).toContain('failed');
@@ -772,7 +758,6 @@ describe('Spec016 內部發起與邀請', () => {
         ctx.app.get(NotificationRepository),
         ctx.app.get(SignerRepository),
         ctx.app.get(EsignTokenService),
-        ctx.app.get(EsignAuditService),
         mailFixture(ctx).guard(
           Object.assign(new FakeInvitationMailSender(), mailer),
         ),
@@ -826,7 +811,6 @@ describe('Spec016 內部發起與邀請', () => {
           ctx.app.get(NotificationRepository),
           ctx.app.get(SignerRepository),
           ctx.app.get(EsignTokenService),
-          ctx.app.get(EsignAuditService),
           mailFixture(ctx).guard(
             Object.assign(new FakeInvitationMailSender(), mailer),
           ),
@@ -862,7 +846,7 @@ describe('Spec016 內部發起與邀請', () => {
       const [totals] = await manager.query<
         Array<{ notifications: string; audits: string }>
       >(
-        "SELECT (SELECT COUNT(*) FROM esign_notification_batches WHERE document_id=?) notifications,(SELECT COUNT(*) FROM esign_audit_events WHERE document_id=? AND event_type='document.initiated') audits",
+        "SELECT (SELECT COUNT(*) FROM esign_notification_batches WHERE document_id=?) notifications,(SELECT COUNT(*) FROM esign_documents WHERE id=? AND status='active') audits",
         [documentId, documentId],
       );
       expect(Number(totals.notifications)).toBe(0);
@@ -956,7 +940,6 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
-      ctx.app.get(EsignAuditService),
       mailFixture(ctx).guard(deliveries),
     );
     await deliver(worker, (await notificationLogs())[0].id);
@@ -1003,8 +986,14 @@ describe('Spec016 內部發起與邀請', () => {
           attemptCount: 1,
         });
         expect(jobs[index].nextAttemptAt).not.toBeNull();
-        for (let attempt = 1; jobs[index].status === 'queued' && attempt < 3; attempt++) {
-          expect(jobs[index].errorCode).toBe('ESIGN_INITIATION_TRANSIENT_FAILURE');
+        for (
+          let attempt = 1;
+          jobs[index].status === 'queued' && attempt < 3;
+          attempt++
+        ) {
+          expect(jobs[index].errorCode).toBe(
+            'ESIGN_INITIATION_TRANSIENT_FAILURE',
+          );
           expect(jobs[index].nextAttemptAt).not.toBeNull();
           await ctx.app.get(MysqlService).getManager().update(
             EsignInitiationJob,
@@ -1067,7 +1056,6 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
-      ctx.app.get(EsignAuditService),
       mailFixture(ctx).guard(
         Object.assign(new FakeInvitationMailSender(), mailer),
       ),
@@ -1130,7 +1118,6 @@ describe('Spec016 內部發起與邀請', () => {
       ctx.app.get(NotificationRepository),
       ctx.app.get(SignerRepository),
       ctx.app.get(EsignTokenService),
-      ctx.app.get(EsignAuditService),
       mailFixture(ctx).guard(
         Object.assign(new FakeInvitationMailSender(), mailer),
       ),

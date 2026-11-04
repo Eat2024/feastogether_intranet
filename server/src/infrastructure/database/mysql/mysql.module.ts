@@ -5,7 +5,6 @@ import { ExportJobRepository } from '#app/features/esign/repositories/export-job
 import { Module } from '@nestjs/common';
 import { OauthIdentityRepository } from '#app/features/auth/repositories/oauth-identity.repository';
 import { AuthSessionRepository } from '#app/features/auth/repositories/auth-session.repository';
-import { AuditEventRepository } from '#app/features/esign/repositories/audit-event.repository';
 import { SignatureRecordRepository } from '#app/features/esign/repositories/signature-record.repository';
 import { VerificationRecordRepository } from '#app/features/esign/repositories/verification-record.repository';
 import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
@@ -25,7 +24,7 @@ const repositories = [
   UserRepository,
   OauthIdentityRepository,
   AuthSessionRepository,
-  AuditEventRepository,
+
   SignatureRecordRepository,
   VerificationRecordRepository,
   DocumentRepository,

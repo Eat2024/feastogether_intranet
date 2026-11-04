@@ -128,7 +128,16 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
-    await Promise.all(['E2E00910'].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
+    await Promise.all(
+      ['E2E00910'].map((employeeNo) =>
+        ctx.app
+          .get<DataSource>(MYSQL_MAIN)
+          .query('UPDATE users SET email=? WHERE empid=?', [
+            `${employeeNo.toLowerCase()}@example.test`,
+            employeeNo,
+          ]),
+      ),
+    );
     const rows = await db.query<Array<{ id: string }>>(
       "SELECT id FROM users WHERE empid = 'E2E00910'",
     );
@@ -166,29 +175,33 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       })
       .expect(200);
     return apiData<Detail>(
-      await completeInitiation(ctx, request(ctx.server)
-        .post(`/api/esign/documents/${created.id}/initiations`)
-        .set('Cookie', cookie)
-        .set('Origin', 'http://localhost:3000')
-        .send({
-          signers,
-          fields: [
-            {
-              type: 'signature',
-              page: 1,
-              xPercent: 10,
-              yPercent: 10,
-              widthPercent: 25,
-              heightPercent: 10,
-              sortOrder: 0,
-            },
-          ],
-          signStartAt: new Date(Date.now() - 60000).toISOString(),
-          signEndAt: new Date(Date.now() + 86400000).toISOString(),
-          watermark: true,
-          allowReject,
-        })
-        .expect(202), cookie),
+      await completeInitiation(
+        ctx,
+        request(ctx.server)
+          .post(`/api/esign/documents/${created.id}/initiations`)
+          .set('Cookie', cookie)
+          .set('Origin', 'http://localhost:3000')
+          .send({
+            signers,
+            fields: [
+              {
+                type: 'signature',
+                page: 1,
+                xPercent: 10,
+                yPercent: 10,
+                widthPercent: 25,
+                heightPercent: 10,
+                sortOrder: 0,
+              },
+            ],
+            signStartAt: new Date(Date.now() - 60000).toISOString(),
+            signEndAt: new Date(Date.now() + 86400000).toISOString(),
+            watermark: true,
+            allowReject,
+          })
+          .expect(202),
+        cookie,
+      ),
     );
   }
   async function external(publicId: string) {
@@ -674,20 +687,20 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       ])
         await request(ctx.server).get(path).set('Cookie', other).expect(404);
       const before = await db.query<unknown[]>(
-        'SELECT (SELECT COUNT(*) FROM esign_export_jobs) AS jobs,(SELECT COUNT(*) FROM esign_audit_events) AS events',
+        'SELECT (SELECT COUNT(*) FROM esign_export_jobs) AS jobs',
       );
       for (const path of reads.slice(0, 3))
         await request(ctx.server).get(path).set('Cookie', other).expect(200);
       expect(
         await db.query<unknown[]>(
-          'SELECT (SELECT COUNT(*) FROM esign_export_jobs) AS jobs,(SELECT COUNT(*) FROM esign_audit_events) AS events',
+          'SELECT (SELECT COUNT(*) FROM esign_export_jobs) AS jobs',
         ),
       ).toEqual(before);
     } finally {
       await worker.close();
     }
   });
-  it('既有全簽 v2 manifest 與副本經備註、匯出、重送結案後均不變', async () => {
+  it('既有全簽 v4 manifest 與副本經備註、匯出、重送結案後均不變', async () => {
     const doc = await create([{ type: 'user', userId }]);
     const signed = await signInternal(doc.signers[0].publicId);
     const worker = await createSyntheticWorker(ctx);
@@ -696,7 +709,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       expect((await read(doc.id)).status).toBe('completed');
       const before = await evidence(doc.id);
       expect(JSON.stringify(before.manifests)).toContain(
-        'esign-verification-manifest-v2',
+        'esign-verification-manifest-v4',
       );
       await saveNote(doc.id, doc.signers[0].publicId, note).expect(200);
       await exportDocument(worker, doc.id, await otherEmployee());
@@ -715,4 +728,3 @@ describe('Spec009 跨故事與管理安全邊界', () => {
     }
   });
 });
-

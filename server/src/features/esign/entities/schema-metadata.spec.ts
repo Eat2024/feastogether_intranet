@@ -1,5 +1,4 @@
 import { getMetadataArgsStorage } from 'typeorm';
-import { EsignAuditEvent } from './esign-audit-event.entity';
 import { EsignDocumentField } from './esign-document-field.entity';
 import { EsignDocument } from './esign-document.entity';
 import { EsignExportJob } from './esign-export-job.entity';
@@ -18,7 +17,6 @@ describe('esign schema metadata', () => {
     [EsignSigner, 'esign_signers'],
     [EsignSignatureRecord, 'esign_signature_records'],
     [EsignFileObject, 'esign_file_objects'],
-    [EsignAuditEvent, 'esign_audit_events'],
     [EsignVerificationRecord, 'esign_verification_records'],
     [EsignNotificationBatch, 'esign_notification_batches'],
     [EsignNotificationLog, 'esign_notification_logs'],
@@ -91,8 +89,6 @@ describe('esign schema metadata', () => {
     [EsignSignatureRecord, 'signed_at_utc', 'signedAtUtc'],
     [EsignSignatureRecord, 'created_at', 'createdAt'],
     [EsignFileObject, 'created_at', 'createdAt'],
-    [EsignAuditEvent, 'occurred_at', 'occurredAt'],
-    [EsignAuditEvent, 'created_at', 'createdAt'],
     [EsignVerificationRecord, 'issued_at', 'issuedAt'],
     [EsignVerificationRecord, 'revoked_at', 'revokedAt'],
     [EsignVerificationRecord, 'created_at', 'createdAt'],
@@ -130,7 +126,7 @@ describe('esign schema metadata', () => {
   });
 
   it('append-only signature/audit 不含更新與軟刪除欄位', () => {
-    for (const target of [EsignSignatureRecord, EsignAuditEvent]) {
+    for (const target of [EsignSignatureRecord]) {
       const properties = storage.columns
         .filter((column) => column.target === target)
         .map((column) => column.propertyName);
@@ -159,7 +155,6 @@ describe('esign schema metadata', () => {
       [EsignSigner, 'invitationTokenSha256'],
       [EsignSigner, 'completionLeaseToken'],
       [EsignSignatureRecord, 'documentSha256'],
-      [EsignAuditEvent, 'eventHash'],
       [EsignVerificationRecord, 'publicId'],
     ] as const) {
       expect(column(target, property)).toMatchObject({

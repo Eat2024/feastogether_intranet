@@ -25,6 +25,8 @@ export class SignatureVerificationDocumentDto {
 }
 
 export class SignatureVerificationDto {
+  /** 僅比對現存簽署紀錄與檔案摘要，不驗證事件鏈。 */
+  verificationScope!: 'stored_records';
   signature!: SignatureVerificationSignatureDto;
   document!: SignatureVerificationDocumentDto;
 }

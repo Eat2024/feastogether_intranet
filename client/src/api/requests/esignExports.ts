@@ -79,8 +79,8 @@ export const getExcelExportDocument = async (recordId: string): Promise<ExcelExp
  * @name 重新下載單人 PDF
  * @description 只接受 pdf 紀錄；回該簽署人目前的已簽副本，並新增一筆匯出人為目前使用者的紀錄
  */
-export const redownloadPdfExport = (recordId: string): Promise<{ bytes: Blob; fileName: string }> =>
-  downloadNamedFile(endpoints.ESIGN_EXPORT_HISTORY_DOWNLOADS(recordId), 'POST');
+export const redownloadPdfExport = (recordId: string, fileName?: string): Promise<{ bytes: Blob; fileName: string }> =>
+  downloadNamedFile(endpoints.ESIGN_EXPORT_HISTORY_DOWNLOADS(recordId), 'POST', { fileName });
 
 /** 下載 ZIP 的網址：檔案可能很大，以瀏覽器直接下載（同源請求會帶上 session cookie），不先讀進記憶體 */
 export const documentExportFileUrl = (id: string, exportId: string, fileId: string) =>

@@ -30,6 +30,8 @@ import {
   CompletedPdfDownload,
   sendCompletedPdf,
 } from '../helpers/completed-pdf-reply';
+import { ExportDownloadFileNameDto } from '../dto/export.dto';
+import { exportFileName } from '../helpers/export-file-name';
 import { EsignExportHistoryService } from '../services/esign-export-history.service';
 
 @Controller('esign/history/export')
@@ -185,6 +187,10 @@ export class ExportHistoryController {
       '**回應**',
       '- 200 `application/pdf` 附件：該簽署人目前的已簽署副本，標頭與其他副本下載相同',
       '',
+      '**Body（可省略）**',
+      '- `fileName`：本次下載名稱；省略或空白沿用預設，依匯出命名規則驗證並補上 .pdf，不持久保存',
+      '- 不合法名稱或未知欄位回 400',
+      '',
       '**紀錄**',
       '- 沿用原紀錄，不新增或改寫匯出歷史；重複請求不產生業務寫入',
       '',
@@ -214,7 +220,10 @@ export class ExportHistoryController {
     @Param('id') id: string,
     @CurrentUserId() userId: number,
     @Res() reply: FastifyReply,
+    @Body() body: ExportDownloadFileNameDto,
   ): Promise<void> {
-    sendCompletedPdf(reply, await this.history.redownloadPdf(id, userId));
+    const fileName = exportFileName(body?.fileName, 'pdf');
+    const file = await this.history.redownloadPdf(id, userId);
+    sendCompletedPdf(reply, { ...file, fileName: fileName ?? file.fileName });
   }
 }

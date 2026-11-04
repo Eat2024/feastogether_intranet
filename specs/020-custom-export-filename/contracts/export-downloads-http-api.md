@@ -73,3 +73,19 @@ JSON 回應不快取，檔名不寫入 application/access log。
 準備 API 以既有 api requests／mutation 串接，失敗顯示中文、保留原頁輸入。ZIP 成功準備後直接交付同源瀏覽器下載，不使用 Blob 載入大檔。原頁不得因下載錯誤被取代；不因發出連結就顯示完成。
 
 前端不能觀測原生下載的完整傳輸結果；GET 晚期失敗、網路中斷與使用者取消由瀏覽器下載介面呈現，不能被當作 API 已保證下載成功。此行為須於實際嵌入環境驗收。
+
+## 歷史下載命名擴充（2026-11-04）
+
+歷史頁 Excel／ZIP 重用上述準備 API；Excel 仍由 `GET /api/esign/history/export/:id/document` 取得資料，不呼叫新增匯出紀錄 API。ZIP 仍為同源直接下載，不載入 Blob。
+
+`POST /api/esign/history/export/:id/downloads`（歷史 PDF）新增可選 JSON body：
+
+```json
+{ "fileName": "年度已簽文件" }
+```
+
+- body 可省略；`fileName` 省略或空白沿用既有名稱，null／非字串／未知欄位回 400。
+- 名稱沿用既有匯出驗證（100 Unicode 字元、最終 255 bytes、禁止路徑／控制字元及保留名稱），結尾 `.xlsx`／`.zip`／`.pdf` 不分大小寫替換為目標副檔名。共用命名 helper 的 Excel／ZIP 也接受替換 `.pdf`。
+- 成功維持 200 PDF bytes，由 Content-Disposition 的 filename* 回傳正規化名稱，不修改檔案內容或歷史。
+- session、OriginGuard、同部門存取與副本完整性檢查沿用原流程；名稱不進 URL。
+- 歷史頁下載按鈕開啟共用 Dialog，留白沿用預設；處理中停用重複送出，錯誤保留輸入，重新開啟重設名稱。

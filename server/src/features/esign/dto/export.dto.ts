@@ -50,13 +50,7 @@ export class ExportJobViewDto {
 }
 
 /** 當次下載設定：不保存檔名，空白沿用既有預設。 */
-export class PrepareExportDownloadDto {
-  @ApiProperty({ enum: ['excel', 'zip'] })
-  @IsIn(['excel', 'zip'], {
-    message: AppErrors.ESIGN_EXPORT_DOWNLOAD_TYPE_INVALID[1],
-  })
-  type!: 'excel' | 'zip';
-
+export class ExportDownloadFileNameDto {
   @ApiPropertyOptional({
     description:
       'trim 後最多 100 Unicode 字元；省略或空白沿用預設，不接受 null',
@@ -64,6 +58,14 @@ export class PrepareExportDownloadDto {
   @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsString({ message: AppErrors.ESIGN_EXPORT_FILE_NAME_INVALID[1] })
   fileName?: string;
+}
+
+export class PrepareExportDownloadDto extends ExportDownloadFileNameDto {
+  @ApiProperty({ enum: ['excel', 'zip'] })
+  @IsIn(['excel', 'zip'], {
+    message: AppErrors.ESIGN_EXPORT_DOWNLOAD_TYPE_INVALID[1],
+  })
+  type!: 'excel' | 'zip';
 
   @ApiPropertyOptional({ description: 'ZIP 必填的匯出工作 UUID；Excel 不接受' })
   @ValidateIf((body: PrepareExportDownloadDto) => body.type === 'zip')

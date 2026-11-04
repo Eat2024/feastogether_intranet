@@ -147,3 +147,12 @@ queued／processing 期間，PATCH 文件、DELETE 草稿、draftSave、draft-se
 ## 相容與發布
 
 發起 API 不再回 201／EsignDocumentDetail；key 選填，legacy userId 與舊 body 仍可受理。本輪不改 client：呼叫端不讀返回 detail，因此可接受 202，但其舊型別、前置解析與 published 成功導頁仍為已知限制。只協調 server／worker 發布，client 不部署。不得新增 production 同步捷徑讓舊測試繼續通過。
+
+
+### 列表發起中狀態（2026-11-04）
+
+`GET /api/esign/documents` 的 `status` 新增衍生值 `initiating`，並支援同值篩選。
+草稿有 queued / processing 的有效背景任務時顯示「發起中」；只回傳顯示狀態，不揭露任務輸入或租約。
+DB 文件仍維持 draft，worker 成功提交後依既有規則顯示 active 等狀態；失敗且無有效任務時回到草稿。
+列表接受發起後立即更新快取，存在發起中項目時每 2 秒重新查詢，完成後停止輪詢。
+發起中停用列表操作，後端既有異動保護維持有效。此變更不需 migration。

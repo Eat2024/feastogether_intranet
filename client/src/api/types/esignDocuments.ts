@@ -5,7 +5,7 @@ import type { EsignExportJob } from './esignExports';
  * 後端文件狀態：finalizing 為所有人已簽署、系統正在產生完成檔；
  * expired 為超過簽署期限仍有人未簽署（後端即時計算，可補簽重新開放）
  */
-export type EsignDocumentStatus = 'draft' | 'active' | 'expired' | 'finalizing' | 'completed' | 'stopped';
+export type EsignDocumentStatus = 'initiating' | 'draft' | 'active' | 'expired' | 'finalizing' | 'completed' | 'stopped';
 
 /** GET esign/documents 的查詢參數（皆選填） */
 export interface GetDocumentsParams {

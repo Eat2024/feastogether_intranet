@@ -6,8 +6,17 @@ export class ListDocumentsQueryDto {
   role?: 'dep' | 'created' | 'assigned';
 
   @IsOptional()
-  @IsIn(['draft', 'active', 'expired', 'finalizing', 'completed', 'stopped'])
+  @IsIn([
+    'initiating',
+    'draft',
+    'active',
+    'expired',
+    'finalizing',
+    'completed',
+    'stopped',
+  ])
   status?:
+    | 'initiating'
     | 'draft'
     | 'active'
     | 'expired'

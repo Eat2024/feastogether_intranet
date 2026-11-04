@@ -13,6 +13,7 @@ import {
   saveDraftSettings,
 } from "@/api/requests";
 import type {
+  EsignDocumentListItem,
   EsignManagedDocumentDetail,
   EsignSignerInput,
   EsignSignerView,
@@ -347,14 +348,21 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
       return signers.length;
     },
     meta: { suppressGlobalErrorToast: true },
-    onSuccess: (count) => {
+    onSuccess: async (count) => {
+      await queryClient.cancelQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
+      queryClient.setQueriesData<EsignDocumentListItem[]>(
+        { queryKey: [queryKeys.ESIGN_DOCUMENTS] },
+        (items) => items?.map((item) =>
+          item.id === doc.id ? { ...item, status: "initiating" } : item,
+        ),
+      );
       void queryClient.invalidateQueries({
         queryKey: [queryKeys.ESIGN_DOCUMENTS],
       });
       void queryClient.invalidateQueries({
         queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id],
       });
-      router.push(`/forms?flash=published&count=${count}`);
+      router.push(`/forms?flash=initiating&count=${count}`);
     },
     // 查無員工帳號時是自訂的 Error，其餘為後端回應
     onError: (err) =>

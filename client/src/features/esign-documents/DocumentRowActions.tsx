@@ -33,7 +33,7 @@ export default function DocumentRowActions({
         icon={<VisibilityRoundedIcon />}
         color="info"
         href={`/forms/${doc.id}`}
-        disabled={doc.status === 'draft'}
+        disabled={doc.status === 'draft' || doc.status === 'initiating'}
       />
       {/* 匯出簽署紀錄（草稿尚無簽署資料，停用） */}
       <TooltipIconButton
@@ -41,7 +41,7 @@ export default function DocumentRowActions({
         icon={<FileDownloadRoundedIcon />}
         color="info"
         href={`/forms/${doc.id}/export`}
-        disabled={doc.status === 'draft'}
+        disabled={doc.status === 'draft' || doc.status === 'initiating'}
       />
       {/* 後端只允許修改尚未發起的草稿 */}
       <TooltipIconButton

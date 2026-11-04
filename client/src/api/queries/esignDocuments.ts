@@ -22,6 +22,8 @@ export function useGetDocumentsQuery<TData = Awaited<ReturnType<typeof getDocume
     queryKey: [queryKeys.ESIGN_DOCUMENTS, params],
     queryFn: () => getDocuments(params),
     ...queryOptions.useGetDocumentsQuery,
+    refetchInterval: (query) =>
+      query.state.data?.some((document) => document.status === 'initiating') ? 2000 : false,
     ...options,
   });
 }

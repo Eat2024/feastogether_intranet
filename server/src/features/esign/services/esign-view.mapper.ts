@@ -155,7 +155,7 @@ export class EsignViewMapper {
 
   /** 列表項目：摘要再加上簽署期間與建立人 */
   documentListItem(
-    document: EsignDocument,
+    document: EsignDocument & { isInitiating?: boolean },
     counts: EsignSignerCounts,
     creator: User | undefined,
     now = new Date(),
@@ -163,6 +163,7 @@ export class EsignViewMapper {
   ): EsignDocumentListItemDto {
     return {
       ...this.documentSummary(document, counts, now),
+      ...(document.isInitiating ? { status: 'initiating' as const } : {}),
       isCreator: document.createdByUserId === viewerUserId,
       signStartAt: document.signStartAt?.toISOString() ?? null,
       signEndAt: document.signEndAt?.toISOString() ?? null,

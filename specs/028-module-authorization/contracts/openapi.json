@@ -1,0 +1,2938 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Intranet Spec028 多子功能授權 API",
+    "version": "0.1.0",
+    "description": "設計契約，尚未實作；電子簽既有路徑能力與DTO變更見permissions.md／api-behavior.md，不複製完整既有API。"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "本機同源Next代理"
+    }
+  ],
+  "paths": {
+    "/api/me/authorization": {
+      "get": {
+        "operationId": "getMyAuthorization",
+        "summary": "查本人有效能力",
+        "description": "本人有效能力，無讀取副作用。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AuthorizationView"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/authorization/modules": {
+      "get": {
+        "operationId": "listAuthorizationModules",
+        "summary": "查子功能目錄",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Module"
+                      }
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/authorization/modules/{moduleKey}/permissions": {
+      "get": {
+        "operationId": "listModulePermissions",
+        "summary": "查版本定義的權限目錄",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Permission"
+                      }
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          }
+        ]
+      }
+    },
+    "/api/authorization/modules/{moduleKey}/roles": {
+      "get": {
+        "operationId": "listRoles",
+        "summary": "查角色列表",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Role"
+                          }
+                        },
+                        "nextCursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "nextCursor"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "beforeId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createRole",
+        "summary": "建立一般角色",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Role"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "依OriginGuard exact-match與Fetch Metadata規則。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRole"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/authorization/modules/{moduleKey}/roles/{roleId}": {
+      "get": {
+        "operationId": "getRole",
+        "summary": "查角色",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Role"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "roleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateRole",
+        "summary": "改名或啟停一般角色",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Role"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "roleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "依OriginGuard exact-match與Fetch Metadata規則。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRole"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRole",
+        "summary": "軟刪無有效指派的一般角色",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "成功刪除，無body"
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "roleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "依OriginGuard exact-match與Fetch Metadata規則。"
+          },
+          {
+            "name": "expectedVersion",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/authorization/modules/{moduleKey}/roles/{roleId}/permissions": {
+      "put": {
+        "operationId": "replaceRolePermissions",
+        "summary": "覆寫一般角色權限",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Role"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "roleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "依OriginGuard exact-match與Fetch Metadata規則。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRolePermissions"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/authorization/modules/{moduleKey}/roles/{roleId}/employees": {
+      "get": {
+        "operationId": "listRoleEmployees",
+        "summary": "查角色有效指派者",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/EmployeeSummary"
+                          }
+                        },
+                        "nextCursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "nextCursor"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "roleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "beforeId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/authorization/modules/{moduleKey}/employees/{userId}/roles": {
+      "get": {
+        "operationId": "getEmployeeRoles",
+        "summary": "查員工一般與基本角色",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/EmployeeRoles"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/authorization/modules/{moduleKey}/employee-role-assignments": {
+      "post": {
+        "operationId": "createEmployeeRoleAssignment",
+        "summary": "查核員編並原子配置一般角色集合",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AssignmentResult"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_MISSING／AUTH_TOKEN_INVALID：目前操作者會話失效；不得用於指派目標無效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED 或 ACCOUNT_DISABLED；本地停用／刪除員工不復活。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "STAFF_LOOKUP_FAILED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "STAFF_LOOKUP_FAILED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "AUTHORIZATION_EMPLOYEE_INELIGIBLE：員編不存在、無效或非唯一有效員工；指派服務映射資格查核錯誤，不使有效管理會話登出。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "moduleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "依OriginGuard exact-match與Fetch Metadata規則。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/authorization/events": {
+      "get": {
+        "operationId": "listAuthorizationEvents",
+        "summary": "查授權異動稽核",
+        "description": "僅有效Super user；platform.authorization.manage不可由角色指派取得。",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功；既有response envelope",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/AuthorizationEvent"
+                          }
+                        },
+                        "nextCursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "nextCursor"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "REQUEST_FORMAT_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTHORIZATION_DENIED；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_DENIED",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "AUTHORIZATION_RESOURCE_NOT_FOUND；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_RESOURCE_NOT_FOUND",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTHORIZATION_VERSION_CONFLICT；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_VERSION_CONFLICT",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AUTHORIZATION_UNAVAILABLE；完整碼與語意見api-behavior.md",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTHORIZATION_UNAVAILABLE",
+                    "message": "無法完成此操作"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "beforeId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          {
+            "name": "moduleKey",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "FT_ESIGN_SESSION"
+      }
+    },
+    "schemas": {
+      "Actor": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "employee"
+              },
+              "userId": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "kind",
+              "userId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "super_user"
+              },
+              "displayName": {
+                "const": "Super user"
+              }
+            },
+            "required": [
+              "kind",
+              "displayName"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "AuthorizationView": {
+        "type": "object",
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "moduleKey": {
+                  "type": "string"
+                },
+                "permissions": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "maxItems": 100,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                }
+              },
+              "required": [
+                "moduleKey",
+                "permissions"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "actor",
+          "modules"
+        ],
+        "additionalProperties": false
+      },
+      "Module": {
+        "type": "object",
+        "properties": {
+          "moduleKey": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "moduleKey",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "Permission": {
+        "type": "object",
+        "properties": {
+          "moduleKey": {
+            "type": "string"
+          },
+          "permissionKey": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "assignable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "moduleKey",
+          "permissionKey",
+          "name",
+          "assignable"
+        ],
+        "additionalProperties": false
+      },
+      "Role": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "moduleKey": {
+            "type": "string"
+          },
+          "roleCode": {
+            "type": "string"
+          },
+          "roleName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "isProtected": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "permissionKeys": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        },
+        "required": [
+          "id",
+          "moduleKey",
+          "roleCode",
+          "roleName",
+          "isActive",
+          "isProtected",
+          "version",
+          "permissionKeys"
+        ],
+        "additionalProperties": false
+      },
+      "CreateRole": {
+        "type": "object",
+        "properties": {
+          "roleName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "roleName"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateRole": {
+        "type": "object",
+        "properties": {
+          "roleName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "expectedVersion"
+        ],
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "roleName"
+            ]
+          },
+          {
+            "required": [
+              "isActive"
+            ]
+          }
+        ]
+      },
+      "SetRolePermissions": {
+        "type": "object",
+        "properties": {
+          "permissionKeys": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "permissionKeys",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "AssignmentRequest": {
+        "type": "object",
+        "properties": {
+          "empId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "不trim、保留大小寫，僅body傳遞；Portal exact-match。"
+          },
+          "roleIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          "expectedRoleIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          }
+        },
+        "required": [
+          "empId",
+          "roleIds",
+          "expectedRoleIds"
+        ],
+        "additionalProperties": false
+      },
+      "ImplicitRole": {
+        "type": "object",
+        "properties": {
+          "roleCode": {
+            "const": "colleague"
+          },
+          "source": {
+            "const": "baseline"
+          }
+        },
+        "required": [
+          "roleCode",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "EmployeeRoles": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "moduleKey": {
+            "type": "string"
+          },
+          "roleIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          "implicitRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImplicitRole"
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "moduleKey",
+          "roleIds",
+          "implicitRoles"
+        ],
+        "additionalProperties": false
+      },
+      "AssignmentResult": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "moduleKey": {
+            "type": "string"
+          },
+          "roleIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          "implicitRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImplicitRole"
+            }
+          },
+          "changed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "userId",
+          "moduleKey",
+          "roleIds",
+          "implicitRoles",
+          "changed"
+        ],
+        "additionalProperties": false
+      },
+      "EmployeeSummary": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "AuditSnapshot": {
+        "type": "object",
+        "properties": {
+          "roleCode": {
+            "type": "string"
+          },
+          "roleName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "permissionKeys": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "roleIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          "userId": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "AuthorizationEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actorKind": {
+            "enum": [
+              "super_user",
+              "operator",
+              "system"
+            ]
+          },
+          "source": {
+            "enum": [
+              "http",
+              "repl",
+              "migration"
+            ]
+          },
+          "moduleKey": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string"
+          },
+          "targetKind": {
+            "enum": [
+              "role",
+              "user",
+              "catalog"
+            ]
+          },
+          "targetId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "before": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AuditSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AuditSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "occurredAt",
+          "actorKind",
+          "source",
+          "moduleKey",
+          "eventType",
+          "targetKind",
+          "targetId",
+          "before",
+          "after"
+        ],
+        "additionalProperties": false
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": false
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "success",
+          "error",
+          "timestamp"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

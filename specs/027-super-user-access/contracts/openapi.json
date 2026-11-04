@@ -1,0 +1,865 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Intranet Spec 027 維護登入與會話增量契約",
+    "version": "0.1.0",
+    "description": "設計契約，尚未實作；僅列新增與修改操作。OAuth／WebView路徑沿原契約，POST /api/auth/login移除回404。完整行為見api-behavior.md。"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "本機Next同源API代理；不是已部署服務宣告"
+    }
+  ],
+  "paths": {
+    "/api/auth/super-user-entries/{entryKey}": {
+      "get": {
+        "operationId": "getSuperUserEntryAvailability",
+        "summary": "驗證已知維護入口位置，不列出當前入口",
+        "security": [],
+        "parameters": [
+          {
+            "name": "entryKey",
+            "in": "path",
+            "required": true,
+            "description": "已知入口位置；不能單獨授權，不得記入一般log。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "有效位置；不設cookie、不寫DB",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "available"
+                      ],
+                      "properties": {
+                        "available": {
+                          "const": true
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "找不到資源",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "HTTP_NOT_FOUND",
+                    "message": "找不到資源"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "請求過於頻繁",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "等待秒數"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "請求過於頻繁"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "維護登入暫時無法使用",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_SUPER_USER_UNAVAILABLE",
+                    "message": "維護登入暫時無法使用"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/super-user-entries/{entryKey}/sessions": {
+      "post": {
+        "operationId": "createSuperUserSession",
+        "summary": "驗證專用帳密並原子替換目前瀏覽器會話",
+        "description": "可攜帶既有session cookie但不是必要認證；Origin、IP限流與目前入口都需驗證。不得自動重試。輪換先commit則舊入口404；並發替換失敗409且不Set-Cookie。",
+        "security": [],
+        "parameters": [
+          {
+            "name": "entryKey",
+            "in": "path",
+            "required": true,
+            "description": "已知入口位置；不能單獨授權，不得記入一般log。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{43}$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "精確比對受信任前端origin；Sec-Fetch-Site須同源，特殊null規則沿既有OriginGuard。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuperUserLogin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "維護登入成功；user為null，不回token",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "FT_ESIGN_SESSION；HttpOnly、Path=/、host-only，maxAge28800；正式Secure/SameSite=None，本機Lax。只在commit後送出。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SuperUserSession"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "輸入格式不合法",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "REQUEST_FORMAT_INVALID",
+                    "message": "輸入格式不合法"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登入憑證無效",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_SUPER_USER_CREDENTIALS_INVALID",
+                    "message": "帳號或密碼錯誤"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "請求來源不允許",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "CSRF_ORIGIN_REJECTED",
+                    "message": "請求來源不允許"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "找不到資源",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "HTTP_NOT_FOUND",
+                    "message": "找不到資源"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "登入身分已更新，請重新整理",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_SESSION_REPLACED",
+                    "message": "登入身分已更新，請重新整理"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "請求內容過大",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "HTTP_PAYLOAD_TOO_LARGE",
+                    "message": "請求內容過大"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "請求過於頻繁",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "description": "等待秒數"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": "請求過於頻繁"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "維護登入暫時無法使用",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_SUPER_USER_UNAVAILABLE",
+                    "message": "維護登入暫時無法使用"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "operationId": "getCurrentSession",
+        "summary": "取得目前員工或維護身分，保留員工user欄位相容",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "有效身分",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SessionView"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登入憑證無效",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_TOKEN_INVALID",
+                    "message": "登入憑證無效"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "維護登入暫時無法使用",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_SUPER_USER_UNAVAILABLE",
+                    "message": "維護登入暫時無法使用"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCurrentSession",
+        "summary": "冪等撤銷目前會話並清cookie，不恢復舊身分",
+        "security": [],
+        "description": "沿既有OriginGuard；缺少cookie亦成功，DB故障可503。清cookie屬性須與建立時一致。",
+        "responses": {
+          "200": {
+            "description": "登出完成",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "清除FT_ESIGN_SESSION及適用的OAuth交易cookie；Path、Secure、SameSite與建立時一致，Max-Age=0／過去Expires，不建立新session。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data",
+                    "timestamp"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "localLogout"
+                      ],
+                      "properties": {
+                        "localLogout": {
+                          "const": "completed"
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "請求來源不允許",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "CSRF_ORIGIN_REJECTED",
+                    "message": "請求來源不允許"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "維護登入暫時無法使用",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "固定no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "AUTH_SUPER_USER_UNAVAILABLE",
+                    "message": "維護登入暫時無法使用"
+                  },
+                  "timestamp": "2026-11-04T00:00:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "FT_ESIGN_SESSION"
+      }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "success",
+          "error",
+          "timestamp"
+        ],
+        "properties": {
+          "success": {
+            "const": false
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EmployeeUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "empId",
+          "name",
+          "departmentName",
+          "titleName",
+          "lastLoginAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "empId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "departmentName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "titleName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastLoginAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "EmployeeSession": {
+        "type": "object",
+        "required": [
+          "actor",
+          "user",
+          "expiresAt"
+        ],
+        "properties": {
+          "actor": {
+            "type": "object",
+            "required": [
+              "kind",
+              "userId"
+            ],
+            "properties": {
+              "kind": {
+                "const": "employee"
+              },
+              "userId": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "user": {
+            "$ref": "#/components/schemas/EmployeeUser"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SuperUserSession": {
+        "type": "object",
+        "required": [
+          "actor",
+          "user",
+          "expiresAt"
+        ],
+        "properties": {
+          "actor": {
+            "type": "object",
+            "required": [
+              "kind",
+              "displayName"
+            ],
+            "properties": {
+              "kind": {
+                "const": "super_user"
+              },
+              "displayName": {
+                "const": "Super user"
+              }
+            }
+          },
+          "user": {
+            "type": "null"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SessionView": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/EmployeeSession"
+          },
+          {
+            "$ref": "#/components/schemas/SuperUserSession"
+          }
+        ]
+      },
+      "SuperUserLogin": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "account",
+          "password"
+        ],
+        "properties": {
+          "account": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "writeOnly": true,
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "另驗UTF-8總長度最多1024 bytes；不trim或normalize。"
+          }
+        }
+      }
+    }
+  }
+}

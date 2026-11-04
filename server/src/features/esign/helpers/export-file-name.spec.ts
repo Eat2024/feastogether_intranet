@@ -9,6 +9,8 @@ describe('當次匯出檔名', () => {
     expect(exportFileName(value, 'excel')).toBeNull();
   });
   it('結尾副檔名不分大小寫且隨格式切換', () => {
+    expect(exportFileName('年度紀錄.PDF', 'pdf')).toBe('年度紀錄.pdf');
+    expect(exportFileName('年度紀錄.xlsx', 'pdf')).toBe('年度紀錄.pdf');
     expect(exportFileName('年度紀錄.XLSX', 'excel')).toBe('年度紀錄.xlsx');
     expect(exportFileName('年度紀錄.zip', 'excel')).toBe('年度紀錄.xlsx');
     expect(exportFileName('年度紀錄.xlsx', 'zip')).toBe('年度紀錄.zip');

@@ -1,3 +1,5 @@
+import { ExportHistoryController } from './export-history.controller';
+import { EsignExportHistoryService } from '../services/esign-export-history.service';
 import { InitiationJobRepository } from '../repositories/initiation-job.repository';
 import { Readable } from 'node:stream';
 import fastifyCookie from '@fastify/cookie';
@@ -34,6 +36,9 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
   let app: NestFastifyApplication;
   let document: EsignDocument | null;
   const verifySessionToken = jest.fn();
+  const redownloadPdf = jest.fn();
+  const pdfUrl =
+    '/api/esign/history/export/00000000-0000-4000-8000-000000000021/downloads';
   const headers = {
     cookie: `${AUTH_COOKIE_NAME}=session`,
     origin: 'http://localhost:3000',
@@ -52,8 +57,9 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
-      controllers: [ExportsController],
+      controllers: [ExportsController, ExportHistoryController],
       providers: [
+        { provide: EsignExportHistoryService, useValue: { redownloadPdf } },
         {
           provide: InitiationJobRepository,
           useValue: { active: jest.fn().mockResolvedValue(null) },
@@ -139,6 +145,12 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     await app.getHttpAdapter().getInstance().ready();
   });
   beforeEach(() => {
+    redownloadPdf
+      .mockReset()
+      .mockResolvedValue({
+        bytes: Buffer.from('%PDF-test'),
+        fileName: '原檔.pdf',
+      });
     jobStatus = 'completed';
     verifySessionToken.mockResolvedValue({ userId: 7 });
     document = Object.assign(new EsignDocument(), {
@@ -150,6 +162,67 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
   });
   afterAll(async () => {
     await app.close();
+  });
+  it.each([
+    undefined,
+    {},
+    { fileName: '' },
+    { fileName: '  ' },
+    { fileName: '年度.PDF' },
+  ])('歷史 PDF 支援預設與當次名稱：%p', async (payload) => {
+    const response = await app.inject({
+      method: 'POST',
+      url: pdfUrl,
+      headers,
+      payload,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe('%PDF-test');
+    const expected = payload?.fileName?.trim() ? '年度.pdf' : '原檔.pdf';
+    expect(response.headers['content-disposition']).toContain(
+      encodeURIComponent(expected),
+    );
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(redownloadPdf).toHaveBeenCalledTimes(1);
+    expect(redownloadPdf).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000021',
+      7,
+    );
+  });
+  it.each([
+    { fileName: null },
+    { fileName: '../x' },
+    { fileName: 'x\n' },
+    { fileName: 'a'.repeat(101) },
+    { fileName: 'CON' },
+    { unknown: 'x' },
+  ])('歷史 PDF 拒絕非法名稱或未知欄位：%p', async (payload) => {
+    const response = await app.inject({
+      method: 'POST',
+      url: pdfUrl,
+      headers,
+      payload,
+    });
+    expect(response.statusCode).toBe(400);
+    expect(redownloadPdf).not.toHaveBeenCalled();
+  });
+  it('歷史 PDF 命名仍要求 session 與同源請求', async () => {
+    const missingOrigin = await app.inject({
+      method: 'POST',
+      url: pdfUrl,
+      headers: { cookie: headers.cookie },
+      payload: { fileName: '年度' },
+    });
+    expect(missingOrigin.statusCode).toBe(403);
+    verifySessionToken.mockResolvedValue(null);
+    const unauthorized = await app.inject({
+      method: 'POST',
+      url: pdfUrl,
+      headers,
+      payload: { fileName: '年度' },
+    });
+    expect(unauthorized.statusCode).toBe(401);
+    expect(redownloadPdf).not.toHaveBeenCalled();
   });
   it('授權員工可以取得當次 Excel 名稱，無需寫入儲存或 queue', async () => {
     const response = await app.inject({

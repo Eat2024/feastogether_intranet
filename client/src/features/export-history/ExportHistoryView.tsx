@@ -6,7 +6,8 @@
 import { useGetExportHistoryQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
 import {
-  documentExportFileUrl,
+  prepareExportDownload,
+  preparedExportFileUrl,
   getExcelExportDocument,
   redownloadPdfExport,
   retryDocumentExport,
@@ -19,6 +20,7 @@ import type {
   PdfExportHistoryItem,
   ZipExportHistoryItem,
 } from '@/api/types';
+import HistoryDownloadButton from './HistoryDownloadButton';
 import LinkPagination from '@/components/LinkPagination';
 import LinkTabs from '@/components/LinkTabs';
 import SearchField from '@/components/SearchField';
@@ -28,7 +30,6 @@ import { formatDateTime } from '@/features/esign-documents/listQuery';
 import { buildDeptOptions, exportRows, selectedDeptNames } from '@/features/esign-documents/exportQuery';
 import { getErrorMessage } from '@/lib/apiError';
 import { PAGE_SIZE, pageHrefs, parsePage } from '@/lib/paginate';
-import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -96,51 +97,35 @@ function useRefreshHistory() {
 
 /** Excel：依原條件與文件目前資料重新產生，不新增歷史紀錄 */
 function ExcelRedownload({ record }: { record: ExcelExportHistoryItem }) {
-  const { showSnackbar } = useSnackbar();
-  const download = useMutation({
-    mutationFn: async () => {
-      // exceljs 較大，點擊時才載入
-      const [doc, { buildExportXlsx }] = await Promise.all([
-        getExcelExportDocument(record.id),
-        import('@/features/esign-documents/buildExportXlsx'),
-      ]);
-      const rows = exportRows(doc.signers, record.conditions);
-      const deptNames = selectedDeptNames(record.conditions.depts, buildDeptOptions(doc.signers));
-      const { blob, fileName } = await buildExportXlsx(doc, record.conditions, rows, deptNames);
-      saveBlob(blob, fileName);
-    },
-    meta: { suppressGlobalErrorToast: true },
-    onError: (err) => showSnackbar(getErrorMessage(err, '下載失敗，請稍後再試'), 'error'),
-  });
   return (
-    <TooltipIconButton
-      label={download.isPending ? '下載中…' : '依當時條件以目前資料重新產生'}
-      icon={<FileDownloadRoundedIcon />}
-      color="info"
-      disabled={download.isPending}
-      onClick={() => download.mutate()}
+    <HistoryDownloadButton
+      label="依當時條件以目前資料重新產生"
+      extension="xlsx"
+      onDownload={async (requestedFileName) => {
+        const prepared = await prepareExportDownload(record.document.id, { type: 'excel', fileName: requestedFileName });
+        const [doc, { buildExportXlsx }] = await Promise.all([
+          getExcelExportDocument(record.id),
+          import('@/features/esign-documents/buildExportXlsx'),
+        ]);
+        const rows = exportRows(doc.signers, record.conditions);
+        const deptNames = selectedDeptNames(record.conditions.depts, buildDeptOptions(doc.signers));
+        const { blob, fileName } = await buildExportXlsx(doc, record.conditions, rows, deptNames);
+        saveBlob(blob, prepared.fileName ?? fileName);
+      }}
     />
   );
 }
 
 /** PDF：下載該簽署人目前的已簽署副本，不新增歷史紀錄 */
 function PdfRedownload({ record }: { record: PdfExportHistoryItem }) {
-  const { showSnackbar } = useSnackbar();
-  const download = useMutation({
-    mutationFn: () => redownloadPdfExport(record.id),
-    meta: { suppressGlobalErrorToast: true },
-    onSuccess: ({ bytes, fileName }) => {
-      saveBlob(bytes, fileName);
-    },
-    onError: (err) => showSnackbar(getErrorMessage(err, '下載失敗，請稍後再試'), 'error'),
-  });
   return (
-    <TooltipIconButton
-      label={download.isPending ? '下載中…' : '重新下載'}
-      icon={<FileDownloadRoundedIcon />}
-      color="info"
-      disabled={download.isPending}
-      onClick={() => download.mutate()}
+    <HistoryDownloadButton
+      label="重新下載"
+      extension="pdf"
+      onDownload={async (requestedFileName) => {
+        const { bytes, fileName } = await redownloadPdfExport(record.id, requestedFileName);
+        saveBlob(bytes, fileName);
+      }}
     />
   );
 }
@@ -164,11 +149,21 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
   if (record.status === 'completed' && file) {
     // 檔案可能很大，以瀏覽器直接下載（支援續傳），不先讀進記憶體
     return (
-      <TooltipIconButton
+      <HistoryDownloadButton
         label="下載 ZIP"
-        icon={<FileDownloadRoundedIcon />}
-        color="info"
-        href={documentExportFileUrl(record.document.id, record.id, file.id)}
+        extension="zip"
+        onDownload={async (fileName) => {
+          const prepared = await prepareExportDownload(record.document.id, {
+            type: 'zip', exportId: record.id, fileId: file.id, fileName,
+          });
+          if (prepared.type !== 'zip') throw new Error('下載回應格式不正確');
+          const link = document.createElement('a');
+          link.href = preparedExportFileUrl(prepared.downloadPath);
+          link.download = prepared.fileName;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          link.click();
+        }}
       />
     );
   }

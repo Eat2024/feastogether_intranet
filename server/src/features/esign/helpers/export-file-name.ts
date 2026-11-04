@@ -4,7 +4,7 @@ import { AppErrors } from '#app/common/errors/app-errors';
 /** 僅決定當次下載名稱；null 表示沿用原預設，不修改共用成果或歷史紀錄。 */
 export function exportFileName(
   value: unknown,
-  type: 'excel' | 'zip',
+  type: 'excel' | 'zip' | 'pdf',
 ): string | null {
   if (value === undefined) return null;
   const invalid = () =>
@@ -15,14 +15,14 @@ export function exportFileName(
   const name = value.trim();
   if (!name) return null;
   if (Array.from(name).length > 100) throw invalid();
-  const base = name.replace(/\.(xlsx|zip)$/i, '');
+  const base = name.replace(/\.(xlsx|zip|pdf)$/i, '');
   if (
     !base.trim() ||
     /^[.]|[. ]$/.test(base) ||
     /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(base)
   )
     throw invalid();
-  const result = `${base}.${type === 'excel' ? 'xlsx' : 'zip'}`;
+  const result = `${base}.${type === 'excel' ? 'xlsx' : type}`;
   if (Buffer.byteLength(result, 'utf8') > 255) throw invalid();
   return result;
 }

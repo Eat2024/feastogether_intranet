@@ -37,6 +37,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
   let document: EsignDocument | null;
   const verifySessionToken = jest.fn();
   const redownloadPdf = jest.fn();
+  const recordDownloadFileName = jest.fn();
   const pdfUrl =
     '/api/esign/history/export/00000000-0000-4000-8000-000000000021/downloads';
   const headers = {
@@ -49,6 +50,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
   let jobStatus = 'completed';
   const file = {
     id: 1,
+    exportJobId: 1,
     originalFileName: 'original.zip',
     fileSize: 4,
     sha256: 'abc',
@@ -94,6 +96,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
                   }
                 : null,
             files: () => [file],
+            recordDownloadFileName,
           },
         },
         { provide: FileObjectRepository, useValue: {} },
@@ -145,12 +148,11 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     await app.getHttpAdapter().getInstance().ready();
   });
   beforeEach(() => {
-    redownloadPdf
-      .mockReset()
-      .mockResolvedValue({
-        bytes: Buffer.from('%PDF-test'),
-        fileName: '原檔.pdf',
-      });
+    redownloadPdf.mockReset().mockResolvedValue({
+      bytes: Buffer.from('%PDF-test'),
+      fileName: '原檔.pdf',
+    });
+    recordDownloadFileName.mockReset().mockResolvedValue({ affected: 1 });
     jobStatus = 'completed';
     verifySessionToken.mockResolvedValue({ userId: 7 });
     document = Object.assign(new EsignDocument(), {
@@ -223,6 +225,58 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     });
     expect(unauthorized.statusCode).toBe(401);
     expect(redownloadPdf).not.toHaveBeenCalled();
+  });
+  it('ZIP 準備驗證成功才保存正規化檔名；失敗不保存', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { type: 'zip', exportId, fileId: '1', fileName: '首次.XLSX' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(recordDownloadFileName).toHaveBeenCalledWith(
+      1,
+      '首次.zip',
+      expect.anything(),
+    );
+    recordDownloadFileName.mockClear();
+    const invalid = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { type: 'zip', exportId, fileId: '1', fileName: '../bad' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(recordDownloadFileName).not.toHaveBeenCalled();
+    jobStatus = 'processing';
+    const pending = await app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: { type: 'zip', exportId, fileId: '1', fileName: '首次' },
+    });
+    expect(pending.statusCode).toBe(409);
+    expect(recordDownloadFileName).not.toHaveBeenCalled();
+  });
+  it('ZIP 直接下載記錄預設名稱，無效 Range 不保存', async () => {
+    const invalid = await app.inject({
+      method: 'GET',
+      url: downloadPath,
+      headers: { ...headers, range: 'bytes=99-100' },
+    });
+    expect(invalid.statusCode).toBe(416);
+    expect(recordDownloadFileName).not.toHaveBeenCalled();
+    const response = await app.inject({
+      method: 'GET',
+      url: downloadPath,
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(recordDownloadFileName).toHaveBeenCalledWith(
+      1,
+      'original.zip',
+      expect.anything(),
+    );
   });
   it('授權員工可以取得當次 Excel 名稱，無需寫入儲存或 queue', async () => {
     const response = await app.inject({

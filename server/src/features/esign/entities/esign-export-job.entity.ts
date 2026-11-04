@@ -106,6 +106,15 @@ export interface ExportStaging {
 )
 export class EsignExportJob {
   @Column({
+    name: 'download_file_name',
+    type: 'varchar',
+    length: 1024,
+    nullable: true,
+    comment: '首次下載提供的檔名快照，NULL 為尚未記錄',
+  })
+  downloadFileName?: string | null;
+
+  @Column({
     name: 'public_id',
     type: 'char',
     nullable: true,

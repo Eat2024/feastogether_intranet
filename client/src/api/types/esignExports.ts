@@ -65,6 +65,8 @@ interface ExportHistoryItemBase {
   /** 員工有 employeeNo、email 為 null；外部簽署人相反 */
   exportedBy: { name: string; employeeNo: string | null; email: string | null };
   exportedAt: string;
+  /** 首次下載提供的檔名快照；null 為未記錄 */
+  downloadFileName: string | null;
   /** 畫面顯示用的範圍說明（超過 255 字會被截斷） */
   scope: string;
   count: number;
@@ -115,6 +117,8 @@ export interface ExportHistoryPage<T extends ExportHistoryType = ExportHistoryTy
 
 /** POST esign/history/export：記錄一次新 Excel 匯出（歷史重新下載不呼叫此端點）；匯出人取自 session */
 export interface CreateExcelExportRecordBody {
+  /** 當次自訂名稱；省略或空白由後端決定預設名稱 */
+  fileName?: string;
   type: 'excel';
   documentId: string;
   /** trim 後 1～2,000 字 */

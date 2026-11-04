@@ -1,3 +1,4 @@
+import { todayInTaipei } from '#app/common/date-time.helper';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -625,6 +626,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           email: null,
         },
         exportedAt: excelA[0].createdAt.toISOString(),
+        downloadFileName: null,
         scope: '狀態：已簽署；第 0 筆',
         count: 0,
         conditions,
@@ -643,6 +645,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         document: documentView(docA),
         exportedBy,
         exportedAt: job.createdAt.toISOString(),
+        downloadFileName: null,
         scope: job.scopeDescription,
         count: 1,
         signerPublicId: signer.publicId,
@@ -785,6 +788,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
             email: null,
           },
           exportedAt: zipA.createdAt.toISOString(),
+          downloadFileName: null,
           scope: '此次簽署的所有已簽副本',
           count: 6,
           documentId: String(docA.id),
@@ -1029,6 +1033,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         document: documentView(pdfDoc),
         exportedBy,
         exportedAt: expect.any(String) as string,
+        downloadFileName: `${pdfDoc.docNumber}_${pdfDoc.title}_${signer.nameSnapshot}.pdf`,
         scope: `${signer.nameSnapshot}（${label}）`,
         count: 1,
         signerPublicId: signer.publicId,
@@ -1473,6 +1478,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
             email: null,
           },
           exportedAt: expect.any(String) as string,
+          downloadFileName: `${excelDoc.docNumber}_簽署紀錄_${todayInTaipei('yyyyMMdd')}.xlsx`,
           scope: '狀態：已簽署；部門：營運部',
           count: 120,
           conditions,
@@ -1480,6 +1486,30 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         const listed = await history(`type=excel&documentId=${excelDoc.id}`);
         expect(listed.total).toBe(1);
         expect(listed.items).toEqual([item]);
+      });
+
+      it('保存自訂 Excel 檔名，列表回傳快照；非法名稱不新增紀錄', async () => {
+        const item = apiData<HistoryItem>(
+          await record({ ...validBody(), fileName: ' 年度報表.ZIP ' }).expect(
+            201,
+          ),
+        );
+        expect(item.downloadFileName).toBe('年度報表.xlsx');
+        const stored = await manager.findOneByOrFail(EsignExportJob, {
+          publicId: item.id,
+        });
+        expect(stored.downloadFileName).toBe('年度報表.xlsx');
+        const listed = await history(`type=excel&documentId=${excelDoc.id}`);
+        expect(
+          listed.items.find((row) => row.id === item.id)?.downloadFileName,
+        ).toBe('年度報表.xlsx');
+        await expectNoNewRecord(() =>
+          record({ ...validBody(), fileName: '../bad' }).expect(400),
+        );
+        await expectNoNewRecord(() =>
+          record({ ...validBody(), fileName: null }).expect(400),
+        );
+        await manager.delete(EsignExportJob, { publicId: item.id });
       });
 
       it('文件為草稿、已刪除或不存在時回 404，不新增紀錄', async () => {

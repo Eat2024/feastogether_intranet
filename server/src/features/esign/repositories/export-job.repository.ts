@@ -81,6 +81,23 @@ export class ExportJobRepository {
       where: { exportJobId: jobId, filePurpose: 'signed_copies_zip' },
     });
   }
+  /** 只記錄第一個提供的名稱；條件式 UPDATE 避免並行下載互相覆寫。 */
+  recordDownloadFileName(
+    jobId: number,
+    fileName: string,
+    manager: EntityManager,
+  ) {
+    return manager.update(
+      EsignExportJob,
+      {
+        id: jobId,
+        exportType: EXPORT_TYPE_COLUMN.zip,
+        downloadFileName: IsNull(),
+      },
+      { downloadFileName: fileName },
+    );
+  }
+
   save(job: EsignExportJob, manager: EntityManager) {
     return manager.save(job);
   }
@@ -191,6 +208,7 @@ export class ExportJobRepository {
           'job.createdByUserId',
           'job.signerId',
           'job.conditionsJson',
+          'job.downloadFileName',
           'job.status',
           'job.scopeDescription',
           'job.recordCount',

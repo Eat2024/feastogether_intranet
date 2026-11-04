@@ -1,3 +1,4 @@
+import { ExportJobRepository } from '#app/features/esign/repositories/export-job.repository';
 import { User } from '#app/features/users/entities/user.entity';
 import { DataSource } from 'typeorm';
 import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.options';
@@ -29,6 +30,74 @@ const optionsFor = (database: string) =>
 
 describe('e-sign schema migrations', () => {
   jest.setTimeout(60_000);
+
+  it('匯出檔名 migration 舊列為 NULL，並行只保存首次檔名，可 up/down/up', async () => {
+    await withSchemaTestDatabase(async ({ database }) => {
+      const ds = await new DataSource(optionsFor(database)).initialize();
+      try {
+        await ds.runMigrations();
+        await revertAfter(ds, 'BackgroundSignatureInitiation1793750401000');
+        await seedExportDocument(ds);
+        await ds.query(
+          "INSERT INTO esign_export_jobs (public_id,export_type,document_id,created_by_user_id,status,scope_description,snapshot_json) VALUES ('00000000-0000-4000-8000-000000000033','signed_copies_zip',1,1,'completed','全部',JSON_ARRAY())",
+        );
+        const before = await ds.query<Record<string, unknown>[]>(
+          'SELECT * FROM esign_export_jobs WHERE id=1',
+        );
+        await ds.runMigrations();
+        expect(
+          await ds.query(
+            'SELECT download_file_name FROM esign_export_jobs WHERE id=1',
+          ),
+        ).toEqual([{ download_file_name: null }]);
+        const jobs = new ExportJobRepository();
+        const results = await Promise.all([
+          jobs.recordDownloadFileName(1, '第一次.zip', ds.manager),
+          jobs.recordDownloadFileName(1, '第二次.zip', ds.manager),
+        ]);
+        expect(results.reduce((sum, r) => sum + (r.affected ?? 0), 0)).toBe(1);
+        const saved: unknown = await ds.query(
+          'SELECT download_file_name FROM esign_export_jobs WHERE id=1',
+        );
+        expect(
+          (await jobs.recordDownloadFileName(1, '不能覆寫.zip', ds.manager))
+            .affected,
+        ).toBe(0);
+        expect(
+          await ds.query(
+            'SELECT download_file_name FROM esign_export_jobs WHERE id=1',
+          ),
+        ).toEqual(saved);
+        await ds.undoLastMigration();
+        expect(
+          await hasColumn(
+            ds,
+            database,
+            'esign_export_jobs',
+            'download_file_name',
+          ),
+        ).toBe(false);
+        // 寫入快照會更新 updated_at；回滾只移除新欄位，不改其他資料。
+        const restored = await ds.query<Record<string, unknown>[]>(
+          'SELECT * FROM esign_export_jobs WHERE id=1',
+        );
+        expect(
+          restored.map(({ updated_at: _updatedAt, ...row }) => row),
+        ).toEqual(before.map(({ updated_at: _updatedAt, ...row }) => row));
+        await ds.runMigrations();
+        expect(
+          await ds.query(
+            'SELECT download_file_name FROM esign_export_jobs WHERE id=1',
+          ),
+        ).toEqual([{ download_file_name: null }]);
+        expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual(
+          [],
+        );
+      } finally {
+        await ds.destroy();
+      }
+    });
+  });
 
   it('員工信箱 migration 保留既有資料，隱藏一般查詢且可 up/down/up', async () => {
     await withSchemaTestDatabase(async ({ database }) => {

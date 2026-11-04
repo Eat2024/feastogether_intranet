@@ -83,6 +83,7 @@ describe('buildMysqlOptions', () => {
       'MailWhitelistEmailRule1793664001000',
       'UserNotificationEmail1793750400000',
       'BackgroundSignatureInitiation1793750401000',
+      'ExportDownloadFileName1793836800000',
     ]);
   });
 

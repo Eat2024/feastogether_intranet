@@ -72,6 +72,7 @@ export default function ZipExportPanel({ documentId, signedCount, exportSummary,
       link.click();
     },
     meta: { suppressGlobalErrorToast: true },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_EXPORT_HISTORY] }),
     onError: (err) => showSnackbar(getErrorMessage(err, '準備下載失敗，請稍後再試'), 'error'),
   });
 

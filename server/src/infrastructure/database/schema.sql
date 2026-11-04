@@ -153,6 +153,7 @@ DROP TABLE IF EXISTS `esign_export_jobs`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `esign_export_jobs` (
+  `download_file_name` varchar(1024) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '首次下載提供的檔名快照，NULL 為尚未記錄',
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '匯出工作流水號',
   `export_type` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '匯出類型',
   `document_id` bigint DEFAULT NULL COMMENT '文件 ID',

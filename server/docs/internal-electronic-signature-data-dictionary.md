@@ -318,6 +318,7 @@ PDF 或簽署紀錄清單匯出的背景工作。產出檔案透過 `esign_file_
 | `document_id`        | BIGINT       |   否 | FK → `esign_documents.id`、INDEX | 單一文件匯出時填入；跨文件清單匯出為 NULL。           |
 | `created_by_user_id` | BIGINT       |   是 | FK → `users.id`、INDEX           | 發起匯出的員工。                                      |
 | `status`             | VARCHAR(20)  |   是 | INDEX，預設 `pending`            | `pending`、`processing`、`completed`、`failed`。      |
+| `download_file_name` | VARCHAR(1024) | 否 | NULL | 首次提供下載的檔名快照；舊紀錄不推測回填。ZIP 首次準備／直接下載時填入，之後不覆寫。 |
 | `scope_description`  | VARCHAR(255) |   是 |                                  | 匯出範圍的人類可讀說明，不取代實際查詢條件驗證。      |
 | `record_count`       | BIGINT       |   否 |                                  | 成功匯出的資料筆數；完成前可為 NULL。                 |
 | `failure_code`       | VARCHAR(100) |   否 |                                  | 失敗時的穩定錯誤代碼，不保存 stack trace 或敏感資料。 |

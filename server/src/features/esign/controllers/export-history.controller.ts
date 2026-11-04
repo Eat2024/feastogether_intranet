@@ -58,6 +58,7 @@ export class ExportHistoryController {
       '- `total`：該類型的總筆數',
       '- `typeTotals`：各類型總筆數，與 items 套用相同 q、documentId 及可見範圍，不受目前 type 限制',
       '- `exportedBy`：員工有 `employeeNo`、`email` 為 null；外部簽署人相反',
+      '- `downloadFileName`：首次提供下載的檔名快照，尚未記錄為 null',
       '- `conditions`：只在 `excel` 出現',
       '- `signerPublicId`：只在 `pdf` 出現',
       '- `zip` 另含匯出工作狀態：`documentId`、`status`、`snapshotAt`、`expectedCount`、`processedCount`、`waitingCount`、`completedAt`、`expiresAt`、`failureCode`、`files`；只計有快照的匯出工作',
@@ -95,6 +96,7 @@ export class ExportHistoryController {
       '',
       '**Body**',
       '- `type`：只接受 `excel`',
+      '- `fileName`：選填，依匯出檔名規則驗證；省略或空白使用文件編號與台北日期組成的預設名稱，回傳 downloadFileName 為實際下載名稱',
       '- `documentId`：須為已發起、未刪除的文件，否則回 404',
       '- `scope`：trim 後 1–2000 字；超過 255 字時存成前 254 字加「…」',
       '- `count`：0 以上整數',
@@ -108,7 +110,7 @@ export class ExportHistoryController {
       '',
       '**前端串接**',
       '- 僅用於新匯出；歷史重新下載不再次記錄',
-      '- 記錄成功後才產生並下載 Excel',
+      '- Excel 產生成功後記錄匯出，記錄成功後才以回傳的 downloadFileName 下載',
     ].join('\n'),
   })
   @ApiCreatedResponse({

@@ -1,27 +1,32 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import TextField from '@mui/material/TextField';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import TooltipIconButton from '@/components/TooltipIconButton';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
+import { queryKeys } from '@/api/query-keys';
 import { getErrorMessage } from '@/lib/apiError';
 
-/** 當次下載名稱不保存；失敗保留輸入，重新開啟則重設。 */
+/** 重新下載不覆寫既有檔名快照；失敗保留輸入，重新開啟則重設。 */
 export default function HistoryDownloadButton({ label, extension, onDownload }: {
   label: string;
   extension: 'xlsx' | 'pdf' | 'zip';
   onDownload: (fileName: string) => Promise<void>;
 }) {
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState('');
   const { showSnackbar } = useSnackbar();
   const download = useMutation({
     mutationFn: onDownload,
     meta: { suppressGlobalErrorToast: true },
-    onSuccess: () => setOpen(false),
+    onSuccess: () => {
+      setOpen(false);
+      void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_EXPORT_HISTORY] });
+    },
     onError: (err) => showSnackbar(getErrorMessage(err, '下載失敗，請稍後再試'), 'error'),
   });
 

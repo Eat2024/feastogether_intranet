@@ -1,3 +1,5 @@
+import { todayInTaipei } from '#app/common/date-time.helper';
+import { exportFileName } from '../helpers/export-file-name';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
@@ -122,6 +124,9 @@ export class EsignExportHistoryService {
       scopeDescription: fitScope(body.scope, '…'),
       recordCount: body.count,
       conditionsJson: body.conditions,
+      downloadFileName:
+        exportFileName(body.fileName, 'excel') ??
+        `${document.docNumber}_簽署紀錄_${todayInTaipei('yyyyMMdd')}.xlsx`,
     });
     const record = await this.jobs.historyRecord(
       publicId!,
@@ -242,6 +247,7 @@ export class EsignExportHistoryService {
       signerId: signer.id,
       scopeDescription: scope,
       recordCount: 1,
+      downloadFileName: file.fileName,
     });
     return file;
   }
@@ -279,6 +285,7 @@ export class EsignExportHistoryService {
       },
       exportedBy: exportedBy(record),
       exportedAt: record.createdAt.toISOString(),
+      downloadFileName: record.downloadFileName ?? null,
       scope: record.scopeDescription,
       count: Number(record.recordCount ?? 0),
       ...(await this.typeSpecificFields(record, type)),

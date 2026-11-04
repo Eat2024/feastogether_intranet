@@ -24,7 +24,7 @@ import type {
   SignerNoteResult,
   UpdateDocumentBody,
 } from '@/api/types';
-import { downloadFile } from './blob';
+import { downloadNamedFile } from './blob';
 
 /**
  * @name 列出電子簽文件
@@ -160,7 +160,7 @@ export const downloadSignerCompletedFile = async ({
 }: {
   id: string;
   signerPublicId: string;
-}): Promise<Blob> => (await downloadFile(endpoints.ESIGN_SIGNER_COMPLETED_FILE(id, signerPublicId), 'POST')).bytes;
+}): Promise<{ bytes: Blob; fileName: string }> => downloadNamedFile(endpoints.ESIGN_SIGNER_COMPLETED_FILE(id, signerPublicId), 'POST');
 
 /**
  * @name 查詢內部簽署人候選

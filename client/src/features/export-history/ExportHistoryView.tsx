@@ -268,7 +268,7 @@ export default function ExportHistoryView() {
   }, [data, isError, params, pathname, router]);
 
   const columns = COLUMN_SETS[type] as ColumnSet<ExportHistoryType>;
-  const head = ['匯出時間', '文件名稱', '文件編號', ...columns.head, '匯出人', '重新下載'];
+  const head = ['匯出時間', '文件名稱', '匯出檔名', '文件編號', ...columns.head, '匯出人', '重新下載'];
   const pageCount = data && !isError ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
   const placeholder = isPending ? (
@@ -324,6 +324,7 @@ export default function ExportHistoryView() {
                 <TableRow key={r.id} hover>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDateTime(r.exportedAt)}</TableCell>
                   <TableCell>{r.document.title}</TableCell>
+                  <TableCell sx={{ overflowWrap: 'anywhere', minWidth: 180, maxWidth: 320 }}>{r.downloadFileName ?? '未記錄'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.document.docNumber}</TableCell>
                   {columns.cells(r)}
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>

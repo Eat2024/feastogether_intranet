@@ -78,7 +78,6 @@ const NoData = () => <Typography sx={{ color: 'text.disabled' }}>—</Typography
 
 export default function DocumentSignerTable({
   documentId,
-  fileNamePrefix,
   rows,
   sort,
   sortHrefs,
@@ -88,8 +87,6 @@ export default function DocumentSignerTable({
   emptyText,
 }: {
   documentId: string;
-  /** 匯出檔名的前綴（文件編號與名稱） */
-  fileNamePrefix: string;
   rows: EsignManagedSignerView[];
   sort: SignerSort;
   /** 各欄點擊後的排序網址 */
@@ -139,7 +136,7 @@ export default function DocumentSignerTable({
     }
   };
   const download = useMutation({
-    mutationFn: (signer: EsignSignerView) => saveCompletedCopy(documentId, fileNamePrefix, signer),
+    mutationFn: (signer: EsignSignerView) => saveCompletedCopy(documentId, signer),
     meta: { suppressGlobalErrorToast: true },
     onError: (err) => showSnackbar(getErrorMessage(err, '匯出失敗，請稍後再試'), 'error'),
   });
@@ -361,14 +358,13 @@ export default function DocumentSignerTable({
 /** 一般文件頁下載仍由 server 重新檢查部門及副本是否就緒。 */
 async function saveCompletedCopy(
   documentId: string,
-  fileNamePrefix: string,
-  signer: EsignReadonlySignerView & { employeeNo?: string | null },
+  signer: EsignReadonlySignerView,
 ) {
-  const blob = await downloadSignerCompletedFile({ id: documentId, signerPublicId: signer.publicId });
-  const url = URL.createObjectURL(blob);
+  const { bytes, fileName } = await downloadSignerCompletedFile({ id: documentId, signerPublicId: signer.publicId });
+  const url = URL.createObjectURL(bytes);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `${fileNamePrefix}_${signer.name}${signer.employeeNo ?? ''}_已簽署.pdf`;
+  link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -376,7 +372,6 @@ async function saveCompletedCopy(
 /** 同部門唯讀進度；不掛載備註、催簽或通知查詢。 */
 export function ReadonlyDocumentSignerTable({
   documentId,
-  fileNamePrefix,
   rows,
   sort,
   sortHrefs,
@@ -384,7 +379,6 @@ export function ReadonlyDocumentSignerTable({
   emptyText,
 }: {
   documentId: string;
-  fileNamePrefix: string;
   rows: EsignReadonlySignerView[];
   sort: SignerSort;
   sortHrefs: Record<SignerSortKey, string>;
@@ -393,7 +387,7 @@ export function ReadonlyDocumentSignerTable({
 }) {
   const { showSnackbar } = useSnackbar();
   const download = useMutation({
-    mutationFn: (signer: EsignReadonlySignerView) => saveCompletedCopy(documentId, fileNamePrefix, signer),
+    mutationFn: (signer: EsignReadonlySignerView) => saveCompletedCopy(documentId, signer),
     meta: { suppressGlobalErrorToast: true },
     onError: (error) => showSnackbar(getErrorMessage(error, '下載失敗，請稍後再試'), 'error'),
   });

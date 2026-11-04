@@ -86,25 +86,27 @@ export async function buildExportXlsx(
 }
 
 /**
- * 匯出簽署紀錄 Excel：先以 POST /api/esign/history/export 記錄匯出，成功後才產生並下載。
+ * 匯出簽署紀錄 Excel：產生成功後以 POST /api/esign/history/export 記錄最終檔名，成功後才下載。
  * 僅供新匯出使用；歷史重新下載直接產檔，不再次記錄。
  */
 export async function recordAndDownloadExcel(doc: ExportDocument & { id: string }, query: ExportQuery, requestedFileName = '') {
-  const prepared = await prepareExportDownload(doc.id, { type: 'excel', fileName: requestedFileName });
+  await prepareExportDownload(doc.id, { type: 'excel', fileName: requestedFileName });
   const rows = exportRows(doc.signers, query);
   const deptNames = selectedDeptNames(query.depts, buildDeptOptions(doc.signers));
-  await createExcelExportRecord({
+  const { blob } = await buildExportXlsx(doc, query, rows, deptNames);
+  const record = await createExcelExportRecord({
+    fileName: requestedFileName,
     type: 'excel',
     documentId: doc.id,
     scope: describeScope(query, deptNames),
     count: rows.length,
     conditions: { statuses: query.statuses, depts: query.depts, fields: query.fields },
   });
-  const { blob, fileName } = await buildExportXlsx(doc, query, rows, deptNames);
+  if (!record.downloadFileName) throw new Error('匯出紀錄未回傳下載檔名');
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = prepared.fileName ?? fileName;
+  a.download = record.downloadFileName;
   a.click();
   URL.revokeObjectURL(url);
 }

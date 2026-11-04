@@ -208,7 +208,6 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
         {result.isCreator ? (
           <DocumentSignerTable
             documentId={doc.id}
-            fileNamePrefix={`${doc.docNumber}_${doc.title}`}
             canNotify={doc.status === 'active'}
             canExport={doc.canExport}
             eligibleIds={eligibleIds}
@@ -220,7 +219,6 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
         ) : (
           <ReadonlyDocumentSignerTable
             documentId={doc.id}
-            fileNamePrefix={`${doc.docNumber}_${doc.title}`}
             canExport={doc.canExport}
             rows={result.items}
             sort={query.sort}

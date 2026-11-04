@@ -1,3 +1,4 @@
+import type { DocumentListProjection } from '../repositories/document.repository';
 import type { EsignAuditEvent } from '../entities/esign-audit-event.entity';
 import type { EsignHistoryActorDto } from '../dto/esign-common.dto';
 import { Injectable } from '@nestjs/common';
@@ -155,7 +156,7 @@ export class EsignViewMapper {
 
   /** 列表項目：摘要再加上簽署期間與建立人 */
   documentListItem(
-    document: EsignDocument & { isInitiating?: boolean },
+    document: DocumentListProjection,
     counts: EsignSignerCounts,
     creator: User | undefined,
     now = new Date(),
@@ -163,7 +164,13 @@ export class EsignViewMapper {
   ): EsignDocumentListItemDto {
     return {
       ...this.documentSummary(document, counts, now),
-      ...(document.isInitiating ? { status: 'initiating' as const } : {}),
+      ...(document.status === 'draft' && document.isInitiating
+        ? { status: 'initiating' as const }
+        : {}),
+      initiation:
+        document.status === 'draft' && document.isInitiating
+          ? (document.initiation ?? null)
+          : null,
       isCreator: document.createdByUserId === viewerUserId,
       signStartAt: document.signStartAt?.toISOString() ?? null,
       signEndAt: document.signEndAt?.toISOString() ?? null,

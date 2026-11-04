@@ -1,6 +1,15 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
-import type { Queue } from 'bullmq';
+import type { Job, Queue } from 'bullmq';
+import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
+import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
+import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
+import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
+import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
+import {
+  INVITATION_MAIL_SENDER,
+  type InvitationMailSender,
+} from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { AuthService } from '#app/features/auth/services/auth.service';
@@ -11,6 +20,7 @@ import { EsignInitiationService } from '#app/features/esign/services/esign-initi
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
 import { EsignInitiationJob } from '#app/features/esign/entities/esign-initiation-job.entity';
 import type { InitiateDocumentDto } from '#app/features/esign/dto/initiation.dto';
+import type { EsignDocumentListItemDto } from '#app/features/esign/dto/esign-common.dto';
 import type { InitiationJobDto } from '#app/features/esign/dto/initiation-job.dto';
 import {
   ESIGN_DOCUMENT_INITIATION_QUEUE,
@@ -34,6 +44,7 @@ describe('022 背景發起只讀查詢', () => {
   let users: User[] = [];
   let cookie: string;
   let otherCookie: string;
+  let outsiderCookie: string;
   let pdf: Buffer;
   const documents: string[] = [];
   const ownedJobs = new Set<number>();
@@ -44,17 +55,18 @@ describe('022 背景發起只讀查詢', () => {
     const prefix = `Q${randomBytes(4).toString('hex')}`;
     users = await mysql.getManager().save(
       User,
-      [0, 1].map((i) => ({
+      [0, 1, 2].map((i) => ({
         empid: `${prefix}${i}`,
         name: '合成查詢員工',
         isActive: true,
         email: null,
-        departmentCode: 'SYN022QUERY',
+        departmentCode: i === 2 ? 'SYN025OUTSIDE' : 'SYN022QUERY',
         departmentName: '合成查詢部門',
       })),
     );
     cookie = await session(users[0].id);
     otherCookie = await session(users[1].id);
+    outsiderCookie = await session(users[2].id);
     const source = await PDFDocument.create();
     source.addPage();
     pdf = Buffer.from(await source.save());
@@ -125,6 +137,80 @@ describe('022 背景發起只讀查詢', () => {
       .get(`/api/esign/documents/${documentId}/initiation-jobs/${jobId}`)
       .set('Cookie', who);
   }
+  it('025 受理摘要可重讀且僅原有文件讀者可見，不揭露輸入或工作明細', async () => {
+    const doc = await newDoc();
+    const input = body();
+    const job = await submit(doc, input);
+    const expected = {
+      signStartAt: input.signStartAt,
+      signEndAt: input.signEndAt,
+      totalCount: 1,
+    };
+    for (const stage of ['queued', 'processing', 'retry'] as const) {
+      await mysql.getManager().update(
+        EsignInitiationJob,
+        job.id,
+        stage === 'processing'
+          ? {
+              status: 'processing',
+              stage: 'resolving',
+              leaseToken: randomUUID(),
+              leaseExpiresAt: new Date(Date.now() + 60000),
+            }
+          : {
+              status: 'queued',
+              stage: 'queued',
+              leaseToken: null,
+              leaseExpiresAt: null,
+              nextAttemptAt:
+                stage === 'retry' ? new Date(Date.now() + 30000) : null,
+            },
+      );
+      for (const who of [cookie, otherCookie]) {
+        for (let repeat = 0; repeat < 2; repeat++) {
+          const rows = apiData<EsignDocumentListItemDto[]>(
+            await request(ctx.server)
+              .get('/api/esign/documents?role=dep&status=initiating')
+              .set('Cookie', who)
+              .expect(200),
+          );
+          const row = rows.find((item) => item.id === doc);
+          expect(row).toMatchObject({
+            status: 'initiating',
+            initiation: expected,
+          });
+          expect(Object.keys(row!.initiation!).sort()).toEqual([
+            'signEndAt',
+            'signStartAt',
+            'totalCount',
+          ]);
+          for (const secret of [
+            'inputJson',
+            'signers',
+            'email',
+            'leaseToken',
+            'jobId',
+            'documentVersionJson',
+            'issuesJson',
+          ]) {
+            expect(row).not.toHaveProperty(secret);
+          }
+        }
+      }
+      const outside = apiData<EsignDocumentListItemDto[]>(
+        await request(ctx.server)
+          .get('/api/esign/documents?role=dep&status=initiating')
+          .set('Cookie', outsiderCookie)
+          .expect(200),
+      );
+      expect(outside.some((row) => row.id === doc)).toBe(false);
+      await request(ctx.server)
+        .get(`/api/esign/documents/${doc}`)
+        .set('Cookie', outsiderCookie)
+        .expect(404);
+    }
+  });
+
   it('建立人可查 latest；尚無工作回 null，不觸發受理', async () => {
     const documentId = await newDoc();
     const response = await latest(documentId).expect(200);
@@ -305,7 +391,7 @@ describe('022 背景發起只讀查詢', () => {
     });
   });
 
-  it('worker 處理前列表仍 draft，成功後才 active，列表不新增工作摘要欄位', async () => {
+  it('025 worker 完成前列表顯示 initiating 摘要，成功後才 active 並移除摘要', async () => {
     const doc = await newDoc();
     const job = await submit(doc);
     async function item() {
@@ -320,7 +406,10 @@ describe('022 背景發起只讀查詢', () => {
       expect(row).not.toHaveProperty('initiationSummary');
       return row;
     }
-    expect(await item()).toMatchObject({ status: 'draft' });
+    expect(await item()).toMatchObject({
+      status: 'initiating',
+      initiation: { totalCount: 1 },
+    });
     const core = ctx.app.get(EsignInitiationService);
     const execute = core.initiateInTransaction.bind(
       core,
@@ -336,7 +425,10 @@ describe('022 背景發起只讀查詢', () => {
           processedCount: 1,
           attemptCount: 1,
         });
-        expect(await item()).toMatchObject({ status: 'draft' });
+        expect(await item()).toMatchObject({
+          status: 'initiating',
+          initiation: { totalCount: 1 },
+        });
         return execute(...args);
       });
     try {
@@ -351,7 +443,7 @@ describe('022 背景發起只讀查詢', () => {
       stage: 'completed',
       processedCount: 1,
     });
-    expect(await item()).toMatchObject({ status: 'active' });
+    expect(await item()).toMatchObject({ status: 'active', initiation: null });
     const conflict = await request(ctx.server)
       .patch(`/api/esign/documents/${doc}/draft-settings`)
       .set('Cookie', cookie)
@@ -359,6 +451,61 @@ describe('022 背景發起只讀查詢', () => {
       .send({ watermark: false })
       .expect(409);
     expect(apiError(conflict).code).not.toBe('ESIGN_INITIATION_IN_PROGRESS');
+  });
+
+  it('025 白名單略過通知不改變已完成的發起與列表正式統計', async () => {
+    const documentId = await newDoc();
+    const job = await submit(documentId, {
+      ...body(),
+      signers: [
+        {
+          type: 'email',
+          name: '合成未允許收件人',
+          email: 'blocked025@example.test',
+        },
+      ],
+    });
+    await ctx.app.get(EsignInitiationJobService).process(job.id);
+    const [log] = await mysql
+      .getManager()
+      .query<
+        Array<{ id: number }>
+      >('SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=?', [documentId]);
+    const processor = new ExternalInvitationProcessor(
+      mysql,
+      ctx.app.get(NotificationRepository),
+      ctx.app.get(SignerRepository),
+      ctx.app.get(EsignTokenService),
+      ctx.app.get(EsignAuditService),
+      ctx.app.get<InvitationMailSender>(INVITATION_MAIL_SENDER),
+    );
+    await processor.process({
+      data: { notificationLogId: Number(log.id) },
+    } as Job<{ notificationLogId: number }>);
+    const [notification] = await mysql
+      .getManager()
+      .query<
+        Array<{ result: string; error_code: string }>
+      >('SELECT result,error_code FROM esign_notification_logs WHERE id=?', [log.id]);
+    expect(notification).toEqual({
+      result: 'skipped',
+      error_code: 'MAIL_RECIPIENT_NOT_WHITELISTED',
+    });
+    expect(
+      apiData<InitiationJobDto>(await latest(documentId).expect(200)),
+    ).toMatchObject({ status: 'succeeded' });
+    const rows = apiData<EsignDocumentListItemDto[]>(
+      await request(ctx.server)
+        .get('/api/esign/documents?role=created')
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+    expect(rows.find((row) => row.id === documentId)).toMatchObject({
+      status: 'active',
+      initiation: null,
+      pendingCount: 1,
+      signedCount: 0,
+    });
   });
 
   it('成功後的合法重播不重新讀取正式簽署大型快照', async () => {
@@ -412,8 +559,10 @@ describe('022 背景發起只讀查詢', () => {
         );
       async function read() {
         const manager = jest
-          .spyOn(mysql, 'getManager')
-          .mockReturnValue(runner.manager);
+          .spyOn(mysql, 'transaction')
+          .mockImplementation((run, isolation) =>
+            runner.manager.transaction(isolation ?? 'REPEATABLE READ', run),
+          );
         trace.mockClear();
         try {
           const rows = apiData<Array<Record<string, unknown>>>(
@@ -425,24 +574,28 @@ describe('022 背景發起只讀查詢', () => {
           const selects = trace.mock.calls
             .map(([sql]) => sql)
             .filter((sql) => /^SELECT/i.test(sql));
-          expect(
-            selects.some((sql) =>
-              /esign_initiation_jobs|input_json|issues_json|document_version_json/.test(
-                sql,
-              ),
-            ),
-          ).toBe(false);
-          expect(rows.every((row) => !('initiationSummary' in row))).toBe(true);
+          expect(selects.length).toBeGreaterThan(0);
+          const sorted = selects.filter((sql) => /ORDER BY/i.test(sql));
+          expect(sorted.length).toBeGreaterThan(0);
+          expect(sorted.join('\n')).not.toMatch(
+            /input_json|issues_json|document_version_json|JSON_EXTRACT/i,
+          );
+          const dates = selects.filter((sql) => /input_json/i.test(sql));
+          expect(dates).toHaveLength(1);
+          expect(dates[0]).toMatch(/JSON_EXTRACT/);
+          expect(dates[0]).not.toMatch(/ORDER BY/i);
+          expect(rows.every((row) => !('inputJson' in row))).toBe(true);
           return { rows, queries: selects.length };
         } finally {
           manager.mockRestore();
         }
       }
       try {
+        await submit(await newDoc());
         const baseline = await read();
         const input: InitiateDocumentDto = {
           ...body(),
-          signers: Array.from({ length: 5001 }, (_, i) => ({
+          signers: Array.from({ length: 5213 }, (_, i) => ({
             type: 'email',
             name: '合成大型名單'.repeat(10),
             email: `large${i}@example.invalid`,
@@ -455,12 +608,24 @@ describe('022 背景發起只讀查詢', () => {
           const job = await submit(await newDoc());
           await mysql.getManager().update(EsignInitiationJob, job.id, {
             inputJson: input,
-            totalCount: 5001,
+            totalCount: 5213,
           });
         }
         const after = await read();
         expect(after.rows).toHaveLength(baseline.rows.length + 22);
         expect(after.queries).toBe(baseline.queries);
+        expect(
+          after.rows.filter(
+            (row) =>
+              (row.initiation as { totalCount?: number } | null)?.totalCount ===
+              5213,
+          ),
+        ).toHaveLength(22);
+        expect(
+          after.rows
+            .filter((row) => row.status === 'initiating')
+            .every((row) => row.pendingCount === 0),
+        ).toBe(true);
       } finally {
         trace.mockRestore();
       }

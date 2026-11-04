@@ -114,58 +114,59 @@ export class EsignDocumentQueryService {
       | 'completed'
       | 'stopped',
   ) {
-    const now = new Date();
-    const manager = this.mysql.getManager();
-    const department =
-      role === 'dep'
-        ? await this.policy.requireDepartment(userId, manager)
-        : null;
-    const [created, assignedSigners] = await Promise.all([
-      department
-        ? this.documents.findByDepartment(department.departmentCode, manager)
-        : role === 'assigned'
+    return this.mysql.transaction(async (manager) => {
+      const now = new Date();
+      const department =
+        role === 'dep'
+          ? await this.policy.requireDepartment(userId, manager)
+          : null;
+      const [created, assignedSigners] = await Promise.all([
+        department
+          ? this.documents.findByDepartment(department.departmentCode, manager)
+          : role === 'assigned'
+            ? Promise.resolve([])
+            : this.documents.findListCreatedByUser(userId, manager),
+        role === 'created' || role === 'dep'
           ? Promise.resolve([])
-          : this.documents.findListCreatedByUser(userId, manager),
-      role === 'created' || role === 'dep'
-        ? Promise.resolve([])
-        : this.signers.findAssignedToUser(userId, manager),
-    ]);
-    const assigned = (
-      await this.documents.findListByIds(
-        [...new Set(assignedSigners.map((signer) => signer.documentId))],
-        manager,
-      )
-    ).filter((document) => document.status !== 'draft');
-    const byId = new Map(
-      [...created, ...assigned].map((document) => [document.id, document]),
-    );
-    const documents = [...byId.values()].sort(
-      (left, right) =>
-        right.updatedAt.getTime() - left.updatedAt.getTime() ||
-        right.id - left.id,
-    );
-    const creatorIds = [...new Set(documents.map((d) => d.createdByUserId))];
-    const [creatorRows, countsByDocument] = await Promise.all([
-      this.users.findByIds(creatorIds, manager),
-      this.signers.countsByDocumentIds(
-        documents.map((d) => d.id),
-        manager,
-      ),
-    ]);
-    const creators = new Map(creatorRows.map((user) => [user.id, user]));
-    const items = documents.map((document) =>
-      this.mapper.documentListItem(
-        document,
-        countsByDocument.get(document.id) ?? {
-          pendingCount: 0,
-          signedCount: 0,
-        },
-        creators.get(document.createdByUserId),
-        now,
-        userId,
-      ),
-    );
-    return items.filter((document) => !status || document.status === status);
+          : this.signers.findAssignedToUser(userId, manager),
+      ]);
+      const assigned = (
+        await this.documents.findListByIds(
+          [...new Set(assignedSigners.map((signer) => signer.documentId))],
+          manager,
+        )
+      ).filter((document) => document.status !== 'draft');
+      const byId = new Map(
+        [...created, ...assigned].map((document) => [document.id, document]),
+      );
+      const documents = [...byId.values()].sort(
+        (left, right) =>
+          right.updatedAt.getTime() - left.updatedAt.getTime() ||
+          right.id - left.id,
+      );
+      const creatorIds = [...new Set(documents.map((d) => d.createdByUserId))];
+      const [creatorRows, countsByDocument] = await Promise.all([
+        this.users.findByIds(creatorIds, manager),
+        this.signers.countsByDocumentIds(
+          documents.map((d) => d.id),
+          manager,
+        ),
+      ]);
+      const creators = new Map(creatorRows.map((user) => [user.id, user]));
+      const items = documents.map((document) =>
+        this.mapper.documentListItem(
+          document,
+          countsByDocument.get(document.id) ?? {
+            pendingCount: 0,
+            signedCount: 0,
+          },
+          creators.get(document.createdByUserId),
+          now,
+          userId,
+        ),
+      );
+      return items.filter((document) => !status || document.status === status);
+    }, 'REPEATABLE READ');
   }
 
   async detail(

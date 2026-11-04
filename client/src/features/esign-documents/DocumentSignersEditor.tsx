@@ -19,6 +19,7 @@ import type {
   EsignSignerView,
   InitiateDocumentBody,
 } from "@/api/types";
+import { withAcceptedInitiation } from "./initiationCache";
 import PageHeader from "@/components/PageHeader";
 import { formatDate } from "@/features/esign-documents/listQuery";
 import DeadlineRangePicker from "@/features/forms/editor/DeadlineRangePicker";
@@ -316,7 +317,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
   const hasSignatureField = fields.some((f) => f.type === "signature");
 
   const initiate = useMutation({
-    mutationFn: async (): Promise<number> => {
+    mutationFn: async () => {
       const userIds = await resolveUserIds(signers);
       const body: InitiateDocumentBody = {
         signers: toSignerInputs(signers, userIds),
@@ -344,16 +345,18 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
         signEndAt: dayBoundary(deadline.end!, "end"),
         ...options,
       };
-      await initiateDocument({ id: doc.id, body });
-      return signers.length;
+      const job = await initiateDocument({ id: doc.id, body });
+      return { job, signStartAt: body.signStartAt, signEndAt: body.signEndAt };
     },
     meta: { suppressGlobalErrorToast: true },
-    onSuccess: async (count) => {
+    onSuccess: async ({ job, signStartAt, signEndAt }) => {
       await queryClient.cancelQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
       queryClient.setQueriesData<EsignDocumentListItem[]>(
         { queryKey: [queryKeys.ESIGN_DOCUMENTS] },
         (items) => items?.map((item) =>
-          item.id === doc.id ? { ...item, status: "initiating" } : item,
+          withAcceptedInitiation(item, doc.id, job.status, {
+            signStartAt, signEndAt, totalCount: job.totalCount,
+          }),
         ),
       );
       void queryClient.invalidateQueries({
@@ -362,7 +365,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
       void queryClient.invalidateQueries({
         queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id],
       });
-      router.push(`/forms?flash=initiating&count=${count}`);
+      router.push(`/forms?flash=initiating&count=${job.totalCount}`);
     },
     // 查無員工帳號時是自訂的 Error，其餘為後端回應
     onError: (err) =>

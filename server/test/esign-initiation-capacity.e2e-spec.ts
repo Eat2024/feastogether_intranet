@@ -296,25 +296,28 @@ describe('022 完整名單背景發起容量與原子性', () => {
     },
   );
 
-  it('名單含不存在員工，已查核的前批也不產生部分指派', async () => {
-    const selected: InitiateDocumentDto['signers'] = users
-      .slice(0, 500)
-      .map((user) => ({ type: 'employee', employeeNo: user.empid }));
-    selected.push({ type: 'employee', employeeNo: 'SYN022MISSING' });
-    const { documentId, job } = await submit(selected);
-    await ctx.app.get(EsignInitiationJobService).process(job.id);
-    expect(await summary(documentId, job.publicId)).toMatchObject({
-      status: 'failed',
-      // 已查核包含失敗項目；022 issues 會收集完整問題後才結束。
-      processedCount: 501,
-      issueCount: 1,
-      errorCode: 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE',
-    });
-    expect(await detail(documentId)).toMatchObject({
-      status: 'draft',
-      signers: [],
-    });
-  });
+  it.each([500, 5212])(
+    '名單 %s 人加不存在員工，已查核的前批也不產生部分指派',
+    async (validCount) => {
+      const selected: InitiateDocumentDto['signers'] = users
+        .slice(0, validCount)
+        .map((user) => ({ type: 'employee', employeeNo: user.empid }));
+      selected.push({ type: 'employee', employeeNo: 'SYN022MISSING' });
+      const { documentId, job } = await submit(selected);
+      await ctx.app.get(EsignInitiationJobService).process(job.id);
+      expect(await summary(documentId, job.publicId)).toMatchObject({
+        status: 'failed',
+        // 已查核包含失敗項目；022 issues 會收集完整問題後才結束。
+        processedCount: validCount + 1,
+        issueCount: 1,
+        errorCode: 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE',
+      });
+      expect(await detail(documentId)).toMatchObject({
+        status: 'draft',
+        signers: [],
+      });
+    },
+  );
 
   it('預查後員編身分改變，鎖內重新核對而整份失敗', async () => {
     const employee = users[500];

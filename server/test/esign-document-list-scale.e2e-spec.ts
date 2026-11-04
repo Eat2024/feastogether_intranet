@@ -216,11 +216,23 @@ describe('文件列表大型快照回歸', () => {
               createdByDepartmentCode: 'LIST',
               status: 'draft',
             });
+            const initiationInput = {
+              signStartAt: '2026-11-03T16:00:00.000Z',
+              signEndAt: '2026-11-30T15:59:59.999Z',
+              signers: Array.from({ length: 5213 }, (_, i) => ({
+                type: 'email',
+                email: `synthetic${i}@example.invalid`,
+                name: '合成大型名單'.repeat(10),
+              })),
+            };
+            expect(
+              Buffer.byteLength(JSON.stringify(initiationInput)),
+            ).toBeGreaterThan(262144);
             await manager.query(
               `INSERT INTO esign_initiation_jobs
                 (public_id, document_id, created_by_user_id, request_key, request_hash,
                  input_json, document_version_json, total_count, accepted_at, deadline_at)
-               VALUES (?, ?, ?, ?, ?, '{}', '{}', 1, UTC_TIMESTAMP(6),
+               VALUES (?, ?, ?, ?, ?, ?, '{}', 5213, UTC_TIMESTAMP(6),
                  DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 1 HOUR))`,
               [
                 randomUUID(),
@@ -228,6 +240,7 @@ describe('文件列表大型快照回歸', () => {
                 creator.id,
                 randomUUID(),
                 'a'.repeat(64),
+                JSON.stringify(initiationInput),
               ],
             );
             const readStatus = async () => {
@@ -239,6 +252,15 @@ describe('文件列表大型快照回歸', () => {
               ).status;
             };
             expect(await readStatus()).toBe('initiating');
+            const [summary] = await repository.findListByIds(
+              [draft.id],
+              manager,
+            );
+            expect(summary.initiation).toEqual({
+              signStartAt: initiationInput.signStartAt,
+              signEndAt: initiationInput.signEndAt,
+              totalCount: 5213,
+            });
             await manager.query(
               `UPDATE esign_initiation_jobs SET status = 'processing', stage = 'resolving',
                 lease_token = ?, lease_expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 5 MINUTE)

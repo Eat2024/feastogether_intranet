@@ -43,7 +43,7 @@ pnpm dev
 
 `pnpm dev` 使用的 server／worker 開發指令會明確設定 `NODE_ENV=development`；`start:dev` 與 `start:debug` 亦同。其他啟動方式仍須提供合法的 `NODE_ENV`（可依 `server/.env.example` 設定），缺漏或未知值會拒絕啟動。
 
-client 請求 `/api/*` 時，`client/next.config.ts` 會代理到 `API_PROXY_TARGET`（預設 `http://localhost:3001`）。
+client 請求 `/api/*` 時，`client/next.config.ts` 會代理到 `API_PROXY_TARGET`（預設 `http://localhost:3001`）。員工頁面（`client/src/app/(main)`）由 `client/src/proxy.ts` 在伺服器端以同一個位址呼叫 `GET /api/auth/session`，沒有有效員工 session 時回 404 頁。
 
 ## 常用指令
 

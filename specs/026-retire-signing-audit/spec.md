@@ -145,6 +145,6 @@ type ManifestV4 = {
 - 移除舊 `DocumentHistory` 區塊與查詢（目前還原後會呼叫已移除端點並收到 404）。
 - 公開驗證頁依 `verificationScope: stored_records` 說明只比對現存紀錄與摘要，不再宣稱事件鏈驗證。
 - 補簽原因不再保存；處理還原後的原因輸入介面。
-- Excel 記錄 API 傳入實際 `fileName` 並使用回傳名稱；PDF／ZIP 與重新下載的命名交由前端工程師對齊。還原後 Excel 不傳檔名時，後端保存預設名稱，可能與前端實際建議下載名稱不同。
+- ~~Excel 記錄 API 傳入實際 `fileName` 並使用回傳名稱；PDF／ZIP 與重新下載的命名交由前端工程師對齊。~~ 已完成（2026-11-04）：Excel 匯出把輸入的檔名送進記錄 API，並以回傳的 `downloadFileName` 下載；歷史重新下載不再詢問檔名，Excel／PDF／ZIP 一律使用該筆紀錄的 `downloadFileName`，「未記錄」的舊紀錄沿用預設檔名。
 
 本次沒有還原已合併至 dev 的 PR #52 前端功能，也沒有重新開啟後端簽署歷程。

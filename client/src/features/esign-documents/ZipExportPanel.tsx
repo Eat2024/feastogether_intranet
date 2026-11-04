@@ -63,7 +63,6 @@ export default function ZipExportPanel({ documentId, signedCount, exportSummary,
   const download = useMutation({
     mutationFn: async (input: { exportId: string; fileId: string; fileName: string }) => {
       const prepared = await prepareExportDownload(documentId, { type: 'zip', ...input });
-      if (prepared.type !== 'zip') throw new Error('下載回應格式不正確');
       const link = document.createElement('a');
       link.href = preparedExportFileUrl(prepared.downloadPath);
       link.download = prepared.fileName;

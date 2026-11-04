@@ -175,17 +175,14 @@ function useRefreshHistory() {
     });
 }
 
+// 重新下載一律使用紀錄的匯出檔名；「未記錄」的舊紀錄沿用各類型的預設檔名。
+
 /** Excel：依原條件與文件目前資料重新產生，不新增歷史紀錄 */
 function ExcelRedownload({ record }: { record: ExcelExportHistoryItem }) {
   return (
     <HistoryDownloadButton
       label="依當時條件以目前資料重新產生"
-      extension="xlsx"
-      onDownload={async (requestedFileName) => {
-        const prepared = await prepareExportDownload(record.document.id, {
-          type: "excel",
-          fileName: requestedFileName,
-        });
+      onDownload={async () => {
         const [doc, { buildExportXlsx }] = await Promise.all([
           getExcelExportDocument(record.id),
           import("@/features/esign-documents/buildExportXlsx"),
@@ -201,7 +198,7 @@ function ExcelRedownload({ record }: { record: ExcelExportHistoryItem }) {
           rows,
           deptNames,
         );
-        saveBlob(blob, prepared.fileName ?? fileName);
+        saveBlob(blob, record.downloadFileName ?? fileName);
       }}
     />
   );
@@ -212,13 +209,9 @@ function PdfRedownload({ record }: { record: PdfExportHistoryItem }) {
   return (
     <HistoryDownloadButton
       label="重新下載"
-      extension="pdf"
-      onDownload={async (requestedFileName) => {
-        const { bytes, fileName } = await redownloadPdfExport(
-          record.id,
-          requestedFileName,
-        );
-        saveBlob(bytes, fileName);
+      onDownload={async () => {
+        const { bytes, fileName } = await redownloadPdfExport(record.id);
+        saveBlob(bytes, record.downloadFileName ?? fileName);
       }}
     />
   );
@@ -245,15 +238,13 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
     return (
       <HistoryDownloadButton
         label="下載 ZIP"
-        extension="zip"
-        onDownload={async (fileName) => {
+        onDownload={async () => {
           const prepared = await prepareExportDownload(record.document.id, {
             type: "zip",
             exportId: record.id,
             fileId: file.id,
-            fileName,
+            fileName: record.downloadFileName ?? undefined,
           });
-          if (prepared.type !== "zip") throw new Error("下載回應格式不正確");
           const link = document.createElement("a");
           link.href = preparedExportFileUrl(prepared.downloadPath);
           link.download = prepared.fileName;

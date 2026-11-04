@@ -30,7 +30,10 @@ describe('EsignSignerService', () => {
       status: 'draft',
       createdByUserId: 7,
     });
-    const access = { checkAndLockDraftDoc: jest.fn() };
+    const access = {
+      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
+      checkAndLockDraftDoc: jest.fn(),
+    };
     const signers = {
       create: jest.fn((value: object) => value),
       deleteDraftSigners: jest.fn(async () => {
@@ -68,9 +71,11 @@ describe('EsignSignerService', () => {
       status,
     });
     const mysql = {
+      getManager: () => manager,
       transaction: (run: (manager: object) => Promise<unknown>) => run(manager),
     };
     const documents = {
+      findInitiationAccess: jest.fn().mockResolvedValue(document),
       findByIdForUpdate: jest.fn().mockResolvedValue(document),
     };
     const service = new EsignSignerService(
@@ -81,6 +86,10 @@ describe('EsignSignerService', () => {
         new EsignDocumentValidationService(),
         documents as never,
         {} as never,
+        {
+          active: jest.fn().mockResolvedValue(null),
+          activeIdentity: jest.fn().mockResolvedValue(null),
+        } as never,
       ),
       new DocumentRepository(),
     );
@@ -108,6 +117,7 @@ describe('EsignSignerService', () => {
       }),
     };
     const access = {
+      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
       checkAndLockDraftDoc: jest.fn(() => {
         events.push('lock');
         return Promise.resolve(document);
@@ -115,6 +125,7 @@ describe('EsignSignerService', () => {
     };
     const service = new EsignSignerService(
       {
+        getManager: () => manager,
         transaction: (run: (manager: object) => Promise<unknown>) =>
           run(manager),
       } as never,
@@ -293,12 +304,44 @@ describe('草稿完整設定', () => {
       watermarkEnabled: false,
       allowReject: false,
     });
+    // DB 邊界替身；版本推進的真 SQL 行為由 integrity e2e 驗證。
+    class DatabaseQuery {
+      select() {
+        return this;
+      }
+      where() {
+        return this;
+      }
+      setLock() {
+        return this;
+      }
+      getRawOne() {
+        return Promise.resolve({ version: '2026-01-01 00:00:00.000000' });
+      }
+      update() {
+        return this;
+      }
+      set() {
+        return this;
+      }
+      setParameters() {
+        return this;
+      }
+      execute() {
+        return Promise.resolve({ affected: 1 });
+      }
+    }
+    const query = new DatabaseQuery();
     const manager = {
       findOne: () => Promise.resolve(document),
+      findOneOrFail: () =>
+        Promise.resolve({ id: document.id, updatedAt: new Date() }),
+      createQueryBuilder: () => query,
       save: (value: EsignDocument) => Promise.resolve(value),
     };
     const service = new EsignSignerService(
       {
+        getManager: () => manager,
         transaction: (run: (manager: object) => Promise<unknown>) =>
           run(manager),
       } as never,
@@ -308,6 +351,10 @@ describe('草稿完整設定', () => {
         new EsignDocumentValidationService(),
         new DocumentRepository(),
         {} as never,
+        {
+          active: jest.fn().mockResolvedValue(null),
+          activeIdentity: jest.fn().mockResolvedValue(null),
+        } as never,
       ),
       new DocumentRepository(),
     );

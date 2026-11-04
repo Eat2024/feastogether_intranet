@@ -73,6 +73,7 @@ describe('EsignReopeningService', () => {
       createQueryBuilder: () => query,
     };
     const mysql = {
+      getManager: () => manager,
       transaction: async <T>(fn: (manager: never) => Promise<T>) => {
         const result = await fn(manager as never);
         committed = true;
@@ -97,6 +98,10 @@ describe('EsignReopeningService', () => {
         new EsignDocumentValidationService(),
         documents,
         {} as never,
+        {
+          active: jest.fn().mockResolvedValue(null),
+          activeIdentity: jest.fn().mockResolvedValue(null),
+        } as never,
       ),
       new EsignDocumentValidationService(),
       expiry,
@@ -117,6 +122,7 @@ describe('EsignReopeningService', () => {
             return Promise.resolve([]);
           },
         } as never,
+        {} as never,
         {} as never,
         {} as never,
       ),

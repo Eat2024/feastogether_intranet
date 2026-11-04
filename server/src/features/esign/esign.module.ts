@@ -1,3 +1,5 @@
+import { EsignInitiationJobService } from './services/esign-initiation-job.service';
+import { InitiationJobsController } from './controllers/initiation-jobs.controller';
 import { ExportsController } from './controllers/exports.controller';
 import { EsignExportService } from './services/esign-export.service';
 import { ExportHistoryController } from './controllers/export-history.controller';
@@ -46,6 +48,7 @@ import { EsignRejectionService } from './services/esign-rejection.service';
 import { EsignEmployeeEmailService } from './services/esign-employee-email.service';
 
 const esignServices = [
+  EsignInitiationJobService,
   EsignEmployeeEmailService,
   EsignExportService,
   EsignExportHistoryService,
@@ -89,6 +92,7 @@ const esignServices = [
   ],
   providers: esignServices,
   controllers: [
+    InitiationJobsController,
     ExportsController,
     ExportHistoryController,
     NotificationBatchesController,

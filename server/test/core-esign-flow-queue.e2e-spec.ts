@@ -1,3 +1,4 @@
+import { completeInitiation, deleteInitiationJobs } from './helpers/await-initiation';
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import { PDFDocument } from 'pdf-lib';
@@ -163,7 +164,7 @@ describe('核心電子簽真實 queue e2e', () => {
         ],
       })
       .expect(200);
-    await request(ctx.server)
+    await completeInitiation(ctx, request(ctx.server)
       .post(`/api/esign/documents/${documentId}/initiations`)
       .set('Cookie', creatorCookie)
       .set('Origin', 'http://localhost:3000')
@@ -189,7 +190,7 @@ describe('核心電子簽真實 queue e2e', () => {
         watermark: false,
         allowReject: false,
       })
-      .expect(201);
+      .expect(202), creatorCookie);
 
     const invitationRows = await db.query<
       Array<{
@@ -421,7 +422,7 @@ describe('核心電子簽真實 queue e2e', () => {
       .type('form')
       .send({ code })
       .expect(303);
-    await seedSyntheticStaffEmails(ctx.app, [empid]);
+    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     return cookieNamed(activated.headers['set-cookie'], 'FT_ESIGN_SESSION');
   }
 
@@ -465,6 +466,7 @@ describe('核心電子簽真實 queue e2e', () => {
       id,
     ]);
     await db.query('DELETE FROM esign_signers WHERE document_id = ?', [id]);
+    await deleteInitiationJobs(db, id);
     await db.query('DELETE FROM esign_documents WHERE id = ?', [id]);
     await Promise.all(
       files.map((file) =>
@@ -532,4 +534,4 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';
+

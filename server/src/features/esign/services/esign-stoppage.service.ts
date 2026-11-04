@@ -27,18 +27,24 @@ export class EsignStoppageService {
     return this.stop(documentId, normalized, new Date(), creatorUserId);
   }
 
-  private stop(
+  private async stop(
     documentId: number,
     reason: string,
     now: Date,
     creatorUserId: number,
   ) {
+    await this.access.assertCreatorNotInitiating(
+      documentId,
+      creatorUserId,
+      this.mysql.getManager(),
+    );
     return this.mysql.transaction(async (manager) => {
       const document = await this.documents.findByIdForUpdate(
         documentId,
         manager,
       );
       this.access.checkEsignCreator(document, creatorUserId);
+      await this.access.assertNotInitiating(documentId, manager);
       this.validation.assertActiveForStop(document);
       const signers = await this.signers.findByDocumentForUpdate(
         documentId,

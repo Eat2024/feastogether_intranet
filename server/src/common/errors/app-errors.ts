@@ -15,6 +15,82 @@ export function signAfterHint(startAt: Date): string {
 
 /** 業務錯誤的單一來源：錯誤碼、訊息、HTTP 狀態；以 new AppException(...AppErrors.NAME) 使用。 */
 export const AppErrors = {
+  ESIGN_INITIATION_INPUT_EXPIRED: [
+    AppErrorCode.ESIGN_INITIATION_INPUT_EXPIRED,
+    '背景發起明細已清理，請重新確認後發起。',
+    HttpStatus.GONE,
+  ],
+  ESIGN_INITIATION_ISSUES_NOT_READY: [
+    AppErrorCode.ESIGN_INITIATION_ISSUES_NOT_READY,
+    '背景發起尚未失敗，無法讀取問題明細。',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_INITIATION_RETRY_NOT_ALLOWED: [
+    AppErrorCode.ESIGN_INITIATION_RETRY_NOT_ALLOWED,
+    '此工作無法重試，請重新確認後發起。',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_INITIATION_IN_PROGRESS: [
+    AppErrorCode.ESIGN_INITIATION_IN_PROGRESS,
+    '文件正在背景發起中（worker 執行中），暫時無法修改文件或簽署人，請稍後再試。',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_INITIATION_REQUEST_CONFLICT: [
+    AppErrorCode.ESIGN_INITIATION_REQUEST_CONFLICT,
+    '此請求識別已用於其他發起內容，請重新確認。',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_INITIATION_INVALID_REQUEST: [
+    AppErrorCode.ESIGN_INITIATION_INVALID_REQUEST,
+    '發起資料或請求識別不合法，請重新確認。',
+    HttpStatus.BAD_REQUEST,
+  ],
+  ESIGN_INITIATION_NOT_FOUND: [
+    AppErrorCode.ESIGN_INITIATION_NOT_FOUND,
+    '找不到背景發起工作。',
+    HttpStatus.NOT_FOUND,
+  ],
+  ESIGN_INITIATION_DOCUMENT_CHANGED: [
+    AppErrorCode.ESIGN_INITIATION_DOCUMENT_CHANGED,
+    '文件內容已異動，請重新確認後發起。',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_INITIATION_DEADLINE_PASSED: [
+    AppErrorCode.ESIGN_INITIATION_DEADLINE_PASSED,
+    '簽署期限已過，請調整後重新發起。',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_INITIATION_PROCESSING_TIMEOUT: [
+    AppErrorCode.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+    '背景發起已超過處理期限，請稍後重試。',
+    HttpStatus.CONFLICT,
+  ],
+  ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE: [
+    AppErrorCode.ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE,
+    '員工資料尚未同步或帳號不可使用，請確認後重新提交。',
+    HttpStatus.UNPROCESSABLE_ENTITY,
+  ],
+  ESIGN_INITIATION_INPUT_INVALID: [
+    AppErrorCode.ESIGN_INITIATION_INPUT_INVALID,
+    '發起設定不合法，請確認名單、欄位與文件。',
+    HttpStatus.BAD_REQUEST,
+  ],
+  ESIGN_INITIATION_INTERNAL_ERROR: [
+    AppErrorCode.ESIGN_INITIATION_INTERNAL_ERROR,
+    '背景發起失敗，請聯絡維運人員。',
+    HttpStatus.INTERNAL_SERVER_ERROR,
+  ],
+  ESIGN_INITIATION_TRANSIENT_FAILURE: [
+    AppErrorCode.ESIGN_INITIATION_TRANSIENT_FAILURE,
+    '背景服務暫時無法使用，請稍後重試。',
+    HttpStatus.SERVICE_UNAVAILABLE,
+  ],
+  ESIGN_INITIATION_CREATOR_UNAVAILABLE: [
+    AppErrorCode.ESIGN_INITIATION_CREATOR_UNAVAILABLE,
+    '建立人帳號已無法使用。',
+    HttpStatus.FORBIDDEN,
+  ],
+
   ESIGN_EXPORT_FILE_NAME_INVALID: [
     AppErrorCode.INVALID_REQUEST,
     '匯出檔名須為最多 100 字、含副檔名最多 255 bytes，且不可包含路徑、控制字元或系統保留名稱',

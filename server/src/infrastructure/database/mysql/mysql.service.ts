@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
+import type { IsolationLevel } from 'typeorm/driver/types/IsolationLevel';
 import { MYSQL_MAIN } from './mysql.tokens';
 
 /**
@@ -31,8 +32,14 @@ export class MysqlService {
   }
 
   /** 由 Service 定義交易邊界。 */
-  transaction<T>(run: (manager: EntityManager) => Promise<T>): Promise<T> {
-    return this.db.transaction(run);
+  transaction<T>(
+    run: (manager: EntityManager) => Promise<T>,
+    isolationLevel?: IsolationLevel,
+  ): Promise<T> {
+    // TypeORM 使用 SET TRANSACTION，僅作用於本次交易，不修改 SESSION/GLOBAL。
+    return isolationLevel
+      ? this.db.transaction(isolationLevel, run)
+      : this.db.transaction(run);
   }
 
   /** 需要 QueryRunner 等 DataSource 能力時使用。 */

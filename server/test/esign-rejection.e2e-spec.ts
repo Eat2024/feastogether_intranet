@@ -1,3 +1,4 @@
+import { completeInitiation, deleteInitiationJobs } from './helpers/await-initiation';
 import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
 import { getQueueToken } from '@nestjs/bullmq';
 import { ESIGN_DOCUMENT_FINALIZATION_QUEUE } from '#app/features/esign/esign-queue.constants';
@@ -88,7 +89,7 @@ describe('拒簽 HTTP 與結案', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
-    await seedSyntheticStaffEmails(ctx.app, ['E2E00903']);
+    await Promise.all(['E2E00903'].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     const rows = await db.query<Array<{ id: string }>>(
       "SELECT id FROM users WHERE empid = 'E2E00903'",
     );
@@ -131,6 +132,7 @@ describe('拒簽 HTTP 與結案', () => {
           [id],
         );
         await db.query('DELETE FROM esign_signers WHERE document_id=?', [id]);
+        await deleteInitiationJobs(db, id);
         await db.query('DELETE FROM esign_documents WHERE id=?', [id]);
         for (const file of files)
           await ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE).delete({
@@ -158,7 +160,7 @@ describe('拒簽 HTTP 與結案', () => {
     );
     documentIds.push(created.id);
     const result = apiData<Detail>(
-      await request(ctx.server)
+      await completeInitiation(ctx, request(ctx.server)
         .post(`/api/esign/documents/${created.id}/initiations`)
         .set('Cookie', cookie)
         .set('Origin', 'http://localhost:3000')
@@ -180,7 +182,7 @@ describe('拒簽 HTTP 與結案', () => {
           watermark: false,
           allowReject,
         })
-        .expect(201),
+        .expect(202), cookie),
     );
     for (const [index, signer] of result.signers.entries()) {
       if (!('userId' in signers[index])) continue;
@@ -513,4 +515,4 @@ describe('拒簽 HTTP 與結案', () => {
       .expect(200);
   });
 });
-import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';
+

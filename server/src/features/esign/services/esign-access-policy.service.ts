@@ -1,3 +1,7 @@
+import {
+  InitiationJobRepository,
+  type InitiationLease,
+} from '../repositories/initiation-job.repository';
 import { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { AppErrors } from '#app/common/errors/app-errors';
@@ -33,6 +37,7 @@ export class EsignAccessPolicyService {
     private readonly documents: EsignDocumentValidationService,
     private readonly documentRepository: DocumentRepository,
     private readonly users: UserRepository,
+    private readonly initiationJobs: InitiationJobRepository,
   ) {}
 
   /** 每次從 DB 讀取目前可信部門；建立文件時先鎖員工，避免與登入同步交錯。 */
@@ -113,13 +118,84 @@ export class EsignAccessPolicyService {
     documentId: number,
     userId: number,
     manager: EntityManager,
+    lease?: InitiationLease,
   ): Promise<EsignDocument> {
     const document = await this.documentRepository.findByIdForUpdate(
       documentId,
       manager,
     );
     this.checkEsignDraftCreator(document, userId);
+    await this.assertNotInitiating(documentId, manager, lease);
     return document;
+  }
+
+  /** 交易外先授權再快拒忙碌；不可在 RR 交易內先建立普通讀快照。 */
+  async assertCreatorNotInitiating(
+    documentId: number,
+    userId: number,
+    manager: EntityManager,
+  ): Promise<void> {
+    const document = await this.documentRepository.findInitiationAccess(
+      documentId,
+      manager,
+    );
+    this.checkEsignCreator(document, userId);
+    const active = await this.initiationJobs.activeIdentity(
+      documentId,
+      manager,
+    );
+    if (active)
+      throw new AppException(
+        ...AppErrors.ESIGN_INITIATION_IN_PROGRESS,
+        active ? { existingJobId: active.publicId } : undefined,
+      );
+  }
+
+  /** 必須由已授權且持有文件鎖的呼叫端使用，確保競態 current read。 */
+  async assertNotInitiating(
+    documentId: number,
+    manager: EntityManager,
+    lease?: InitiationLease,
+  ): Promise<void> {
+    if (!lease) {
+      const active = await this.initiationJobs.activeIdentity(
+        documentId,
+        manager,
+        true,
+      );
+      if (active)
+        throw new AppException(...AppErrors.ESIGN_INITIATION_IN_PROGRESS, {
+          existingJobId: active.publicId,
+        });
+      return;
+    }
+    const active = await this.initiationJobs.active(documentId, manager);
+    if (
+      !active ||
+      active.id !== lease.jobId ||
+      active.status !== 'processing' ||
+      active.leaseToken !== lease.leaseToken ||
+      !active.leaseExpiresAt ||
+      active.leaseExpiresAt <= new Date()
+    ) {
+      throw new AppException(
+        ...AppErrors.ESIGN_INITIATION_IN_PROGRESS,
+        active ? { existingJobId: active.publicId } : undefined,
+      );
+    }
+    if (active.deadlineAt <= new Date())
+      throw new AppException(...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT);
+    const version = await this.initiationJobs.version(documentId, manager);
+    const expected = active.documentVersionJson;
+    if (
+      !version ||
+      !expected ||
+      version.updatedAt !== expected.updatedAt ||
+      version.sourceFileId !== expected.sourceFileId ||
+      version.sourceSha256 !== expected.sourceSha256 ||
+      version.sourceObjectVersion !== expected.sourceObjectVersion
+    )
+      throw new AppException(...AppErrors.ESIGN_INITIATION_DOCUMENT_CHANGED);
   }
 
   /** 驗證已讀取的文件屬於建立人且仍為草稿，不查詢或取得鎖定。 */

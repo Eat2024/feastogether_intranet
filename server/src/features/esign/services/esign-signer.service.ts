@@ -51,13 +51,19 @@ export class EsignSignerService {
       throw new AppException(...AppErrors.ESIGN_SIGNER_NOTE_INVALID);
     }
     const note = input.trim();
+    await this.access.assertCreatorNotInitiating(
+      documentId,
+      userId,
+      this.mysql.getManager(),
+    );
     return this.mysql.transaction(async (manager) => {
-      // 與簽署、停止及名單變更使用相同鎖順序；不修改文件或簽署證據。
+      // 與簽署、停止及名單變更使用相同鎖順序；草稿註記也使舊發起輸入失效。
       const document = await this.documents.findByIdForUpdate(
         documentId,
         manager,
       );
       this.access.checkEsignCreator(document, userId);
+      await this.access.assertNotInitiating(documentId, manager);
       const signer = await this.signers.findByPublicIdForUpdate(
         signerPublicId,
         manager,
@@ -68,6 +74,8 @@ export class EsignSignerService {
       signer.note = note;
       signer.updatedByUserId = userId;
       await this.signers.save(signer, manager);
+      if (document.status === 'draft')
+        await this.documents.touchDraftVersion(documentId, manager);
       return { signerPublicId: signer.publicId, note };
     });
   }
@@ -101,6 +109,11 @@ export class EsignSignerService {
         ),
       ]),
     ].sort((left, right) => left - right);
+    await this.access.assertCreatorNotInitiating(
+      documentId,
+      creatorUserId,
+      this.mysql.getManager(),
+    );
     return this.mysql.transaction(async (manager) => {
       // signer 寫入會檢查 users 外鍵；與發起流程一致先鎖 users，避免文件鎖倒置。
       const users = await this.users.findByIdsWithEmail(userIds, manager, true);

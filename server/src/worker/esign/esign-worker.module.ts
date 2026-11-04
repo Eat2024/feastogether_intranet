@@ -1,3 +1,11 @@
+import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
+import { EsignInitiationService } from '#app/features/esign/services/esign-initiation.service';
+import { EsignEmployeeEmailService } from '#app/features/esign/services/esign-employee-email.service';
+import { EsignSignerService } from '#app/features/esign/services/esign-signer.service';
+import { EsignFieldService } from '#app/features/esign/services/esign-field.service';
+import { EsignConsentService } from '#app/features/esign/services/esign-consent.service';
+import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
+import { DocumentInitiationProcessor } from './document-initiation.processor';
 import { DocumentExportProcessor } from './document-export.processor';
 import { Module } from '@nestjs/common';
 import { EsignQueueModule } from '#app/features/esign/esign-queue.module';
@@ -28,6 +36,15 @@ import { DocumentFinalizationProcessor } from './document-finalization.processor
     EsignQueueModule.register('worker'),
   ],
   providers: [
+    DocumentInitiationProcessor,
+    EsignInitiationJobService,
+    EsignInitiationService,
+    EsignEmployeeEmailService,
+    EsignSignerService,
+    EsignFieldService,
+    EsignConsentService,
+    EsignJobProducerService,
+
     DocumentExportProcessor,
     EsignTokenService,
     EsignAuditService,

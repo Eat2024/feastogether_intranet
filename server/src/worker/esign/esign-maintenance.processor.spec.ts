@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import type { Job } from 'bullmq';
 import { EsignMaintenanceProcessor } from './esign-maintenance.processor';
 import { EsignMaintenanceScheduler } from './esign-maintenance.scheduler';
@@ -9,8 +10,30 @@ import {
 
 describe('Esign maintenance', () => {
   it('scheduler 固定每 30 秒註冊一個喚醒工作', async () => {
-    const queue = { upsertJobScheduler: jest.fn() };
-    await new EsignMaintenanceScheduler(queue as never).onModuleInit();
+    const client = Object.assign(new EventEmitter(), { status: 'ready' });
+    const queue = {
+      client: Promise.resolve(client),
+      upsertJobScheduler: jest.fn(),
+    };
+    const initiation = {
+      client: Promise.resolve(client),
+      setGlobalConcurrency: jest.fn(),
+    };
+    const scheduler = new EsignMaintenanceScheduler(
+      queue as never,
+      initiation as never,
+      { error: jest.fn() } as never,
+    );
+    await scheduler.onModuleInit();
+    client.emit('close');
+    client.emit('ready');
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
+    expect(initiation.setGlobalConcurrency).toHaveBeenCalledTimes(2);
+    scheduler.onModuleDestroy();
+    client.emit('ready');
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(2);
     expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
       'esign-maintenance:30s',
       { every: 30_000 },
@@ -53,6 +76,7 @@ describe('Esign maintenance', () => {
       finalizationQueue as never,
       signers as never,
       finalization as never,
+      { maintain: jest.fn() } as never,
       { maintain: jest.fn() } as never,
     );
 
@@ -98,6 +122,7 @@ describe('Esign maintenance', () => {
       { findCompletionCandidates: jest.fn(async () => []) } as never,
       {} as never,
       { maintain: jest.fn() } as never,
+      { maintain: jest.fn() } as never,
     );
     await processor.process({ data: {} } as Job);
     expect(add.mock.calls.map((call) => call[1])).toEqual([
@@ -122,6 +147,7 @@ describe('Esign maintenance', () => {
       { add: jest.fn() } as never,
       {} as never,
       {} as never,
+      { maintain: jest.fn() } as never,
       { maintain: jest.fn() } as never,
     );
     await expect(processor.process({ data: {} } as Job)).rejects.toThrow(

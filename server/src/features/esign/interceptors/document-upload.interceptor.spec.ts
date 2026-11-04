@@ -20,7 +20,7 @@ import { EsignDraftService } from '../services/esign-draft.service';
 import { EsignDocumentQueryService } from '../services/esign-document-query.service';
 import { EsignSignerService } from '../services/esign-signer.service';
 import { EsignFieldService } from '../services/esign-field.service';
-import { EsignInitiationService } from '../services/esign-initiation.service';
+import { EsignInitiationJobService } from '../services/esign-initiation-job.service';
 import { EsignStoppageService } from '../services/esign-stoppage.service';
 import { EsignCompletionAccessService } from '../services/esign-completion-access.service';
 import { EsignExportHistoryService } from '../services/esign-export-history.service';
@@ -61,7 +61,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
         ...[
           EsignSignerService,
           EsignFieldService,
-          EsignInitiationService,
+          EsignInitiationJobService,
           EsignStoppageService,
           EsignCompletionAccessService,
           EsignEmployeeEmailService,

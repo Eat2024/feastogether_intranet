@@ -2,7 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "(?:schema-(?:migration|constraints)|mail-whitelist-schema|department-backfill)\\.e2e-spec\\.ts$",
+  "testRegex": "(?:schema-(?:migration|constraints)|esign-initiation-schema|mail-whitelist-schema|department-backfill)\\.e2e-spec\\.ts$",
   "testPathIgnorePatterns": ["/node_modules/"],
   "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
   "transform": {

@@ -1,3 +1,4 @@
+import { completeInitiation } from './helpers/await-initiation';
 import { ExternalReminders1792454402000 } from '#app/infrastructure/database/migrations/1792454402000-ExternalReminders';
 import { openExternalSession, requestOtp } from './external-session.helper';
 import type { Job } from 'bullmq';
@@ -104,7 +105,7 @@ describe('內外部催簽 API', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
-    await seedSyntheticStaffEmails(ctx.app, ['E2E00905']);
+    await Promise.all(['E2E00905'].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
@@ -129,7 +130,7 @@ describe('內外部催簽 API', () => {
         .expect(201),
     );
     return apiData<Detail>(
-      await request(ctx.server)
+      await completeInitiation(ctx, request(ctx.server)
         .post(`/api/esign/documents/${created.id}/initiations`)
         .set('Cookie', cookie)
         .set('Origin', origin)
@@ -151,7 +152,7 @@ describe('內外部催簽 API', () => {
           watermark: false,
           allowReject: true,
         })
-        .expect(201),
+        .expect(202), cookie),
     );
   }
   const post = (id: string, body: object) =>
@@ -895,4 +896,4 @@ describe('內外部催簽 API', () => {
     );
   });
 });
-import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';
+

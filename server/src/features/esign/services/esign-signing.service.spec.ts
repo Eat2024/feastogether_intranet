@@ -98,6 +98,7 @@ describe('EsignSigningService', () => {
       new EsignDocumentValidationService(),
       {} as never,
       {} as never,
+      { active: jest.fn().mockResolvedValue(null) } as never,
     );
     access.assertInternalSigner.mockImplementation(
       (...args: Parameters<EsignAccessPolicyService['assertInternalSigner']>) =>

@@ -28,6 +28,7 @@ describe('EsignStoppageService', () => {
       },
     ];
     const mysql = {
+      getManager: () => manager,
       transaction: jest.fn((run: (value: never) => Promise<unknown>) =>
         run(manager),
       ),
@@ -40,7 +41,11 @@ describe('EsignStoppageService', () => {
       findByDocumentForUpdate: jest.fn(async () => signers),
       saveMany: jest.fn(async (value: object[]) => value),
     };
-    const access = { checkEsignCreator: jest.fn() };
+    const access = {
+      checkEsignCreator: jest.fn(),
+      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
+      assertNotInitiating: jest.fn().mockResolvedValue(undefined),
+    };
     const validation = {
       assertActiveForStop: jest.fn((value: { status: string }) => {
         if (!['active', 'expired', 'finalizing'].includes(value.status))

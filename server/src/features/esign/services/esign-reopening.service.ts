@@ -34,12 +34,18 @@ export class EsignReopeningService {
   ) {}
 
   async reopen(documentId: number, userId: number, input: ReopenDocumentDto) {
+    await this.policy.assertCreatorNotInitiating(
+      documentId,
+      userId,
+      this.mysql.getManager(),
+    );
     const committed = await this.mysql.transaction(async (manager) => {
       const document = await this.documents.findByIdForUpdate(
         documentId,
         manager,
       );
       this.policy.checkEsignCreator(document, userId);
+      await this.policy.assertNotInitiating(documentId, manager);
       const logs = await this.notifications.findByDocumentForUpdate(
         documentId,
         manager,

@@ -1,3 +1,4 @@
+import { completeInitiation } from './helpers/await-initiation';
 import { HttpService } from '@nestjs/axios';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { of } from 'rxjs';
@@ -30,6 +31,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
   const origin = 'http://localhost:3000';
   const http = { get: jest.fn(), post: jest.fn() };
   const jobs = {
+    enqueueInitiation: jest.fn(),
     enqueueInvitations: jest.fn(),
     enqueueFinalization: jest.fn(),
   };
@@ -99,7 +101,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
         })
         .expect(201),
     ).id;
-    await request(ctx.server)
+    await completeInitiation(ctx, request(ctx.server)
       .post(`/api/esign/documents/${documentId}/initiations`)
       .set('Cookie', cookie)
       .set('Origin', origin)
@@ -134,7 +136,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
         watermark: false,
         allowReject: true,
       })
-      .expect(201);
+      .expect(202), cookie);
     const logs = await ctx.app.get(MysqlService).getManager().query<
       Array<{
         id: number;
@@ -312,6 +314,8 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
   it('同日受理阻擋重複催簽，台北跨日後可再群寄，同requestId仍只一批', async () => {
     const clock = new Date();
     clock.setUTCHours(15, 59, 50, 0);
+    // 使用下一個午夜邊界，避免 fake Date 落在真 DB deadline 時鐘之前。
+    if (clock.getTime() < Date.now()) clock.setUTCDate(clock.getUTCDate() + 1);
     at(clock);
     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     const { documentId } = await initiate(2);
@@ -506,6 +510,8 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
   it('跨午夜重試只寄本批暫時拒收地址，不再寄已受理者', async () => {
     const clock = new Date();
     clock.setUTCHours(15, 59, 50, 0);
+    // 使用下一個午夜邊界，避免 fake Date 落在真 DB deadline 時鐘之前。
+    if (clock.getTime() < Date.now()) clock.setUTCDate(clock.getUTCDate() + 1);
     at(clock);
     cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
     const { documentId } = await initiate(2);

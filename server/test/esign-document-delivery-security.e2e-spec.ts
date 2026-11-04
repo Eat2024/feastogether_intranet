@@ -1,3 +1,4 @@
+import { completeInitiation } from './helpers/await-initiation';
 import { LocalZipExports1792454403000 } from '#app/infrastructure/database/migrations/1792454403000-LocalZipExports';
 import { createHash, createPrivateKey, randomUUID, sign } from 'node:crypto';
 import { writeFile, readFile } from 'node:fs/promises';
@@ -127,7 +128,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
-    await seedSyntheticStaffEmails(ctx.app, ['E2E00910']);
+    await Promise.all(['E2E00910'].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
     const rows = await db.query<Array<{ id: string }>>(
       "SELECT id FROM users WHERE empid = 'E2E00910'",
     );
@@ -165,7 +166,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       })
       .expect(200);
     return apiData<Detail>(
-      await request(ctx.server)
+      await completeInitiation(ctx, request(ctx.server)
         .post(`/api/esign/documents/${created.id}/initiations`)
         .set('Cookie', cookie)
         .set('Origin', 'http://localhost:3000')
@@ -187,7 +188,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
           watermark: true,
           allowReject,
         })
-        .expect(201),
+        .expect(202), cookie),
     );
   }
   async function external(publicId: string) {
@@ -714,4 +715,4 @@ describe('Spec009 跨故事與管理安全邊界', () => {
     }
   });
 });
-import { seedSyntheticStaffEmails } from './synthetic-staff-emails.helper';
+

@@ -6,6 +6,7 @@ import {
   ESIGN_EXTERNAL_INVITATION_QUEUE,
   ESIGN_MAINTENANCE_QUEUE,
   ESIGN_EXPORT_QUEUE,
+  ESIGN_DOCUMENT_INITIATION_QUEUE,
 } from './esign-queue.constants';
 
 /** 僅註冊 queue producer；processor 與 scheduler 必須留在 worker module。 */
@@ -21,6 +22,7 @@ export class EsignQueueModule {
           { name: ESIGN_DOCUMENT_FINALIZATION_QUEUE },
           { name: ESIGN_MAINTENANCE_QUEUE },
           { name: ESIGN_EXPORT_QUEUE },
+          { name: ESIGN_DOCUMENT_INITIATION_QUEUE },
         ),
       ],
       exports: [BullModule],

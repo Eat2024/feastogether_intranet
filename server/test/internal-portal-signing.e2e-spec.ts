@@ -1,3 +1,4 @@
+import { completeInitiation } from './helpers/await-initiation';
 import { HttpService } from '@nestjs/axios';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { of } from 'rxjs';
@@ -88,7 +89,7 @@ describe('Spec016 員工 session 本人簽署', () => {
       signers: Array<{ publicId: string }>;
       fields: Array<{ id: string }>;
     }>(
-      await request(ctx.server)
+      await completeInitiation(ctx, request(ctx.server)
         .post(`/api/esign/documents/${created.id}/initiations`)
         .set('Cookie', cookies[0])
         .set('Origin', origin)
@@ -112,7 +113,7 @@ describe('Spec016 員工 session 本人簽署', () => {
           watermark: false,
           allowReject: true,
         })
-        .expect(201),
+        .expect(202), cookies[0]),
     );
     const signers = await Promise.all(
       document.signers.map((signer) =>

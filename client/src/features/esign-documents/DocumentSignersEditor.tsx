@@ -19,6 +19,7 @@ import type {
   EsignSignerView,
   InitiateDocumentBody,
 } from "@/api/types";
+import { withAcceptedInitiation } from "./initiationCache";
 import PageHeader from "@/components/PageHeader";
 import { formatDate } from "@/features/esign-documents/listQuery";
 import DeadlineRangePicker from "@/features/forms/editor/DeadlineRangePicker";
@@ -353,9 +354,9 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
       queryClient.setQueriesData<EsignDocumentListItem[]>(
         { queryKey: [queryKeys.ESIGN_DOCUMENTS] },
         (items) => items?.map((item) =>
-          item.id === doc.id && (job.status === "queued" || job.status === "processing")
-            ? { ...item, status: "initiating", initiation: { signStartAt, signEndAt, totalCount: job.totalCount } }
-            : item,
+          withAcceptedInitiation(item, doc.id, job.status, {
+            signStartAt, signEndAt, totalCount: job.totalCount,
+          }),
         ),
       );
       void queryClient.invalidateQueries({

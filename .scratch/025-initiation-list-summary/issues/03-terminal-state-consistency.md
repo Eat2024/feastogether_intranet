@@ -6,7 +6,7 @@
 
 **對應 Tasks:** T012–T014
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 正式成功與最終失敗後 5 秒內更新，暫時重試仍顯示同一摘要。
 - [ ] 兩連線競態驗證列表回應不混用任務與正式統計，下一輪收斂。
@@ -17,3 +17,5 @@
 ## 執行紀錄
 
 - 使用者已確認此拆分與依賴；尚未開始實作。前置 tickets 均 resolved 後才可 claimed；驗收通過且整合後才可 resolved。
+
+- T012–T014 完成；詳見 Spec 025 validation-03.md。仍為 claimed，待整合後依驗收證據改 resolved。

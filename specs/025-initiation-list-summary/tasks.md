@@ -44,9 +44,9 @@
 **Goal**: 成功改正式結果、失敗恢復草稿，暫時重試保留摘要，舊回應不得覆蓋新結果。
 **Independent Test**: 使用合成工作依次驗證成功、最終失敗、自動重試及快速完成。
 
-- [ ] T012 [P] [US3] 在 server/test/esign-initiation-query.e2e-spec.ts 增加兩連線協調的讀取／worker 提交競態案例：同一列表回應不混用任務與正式統計，下一次讀取收斂；覆蓋 succeeded／failed 移除摘要與 queued 重試保留摘要。
-- [ ] T013 [US3] 在 client/src/features/esign-documents/DocumentSignersEditor.tsx 防止較晚回來的受理回應將正式狀態降回 initiating；終態回應只刷新，未收到成功回應不合成摘要。
-- [ ] T014 [US3] 在 client/src/api/queries/esignDocuments.ts 核對既有輪詢於終態停止且離頁不持續更新；依 specs/025-initiation-list-summary/quickstart.md 驗證成功／失敗 5 秒內切換、網路錯誤不冒充終態與寄信略過不影響文件狀態，將結果記入 validation.md；不新增失敗詳情或重試 UI。
+- [X] T012 [P] [US3] 在 server/test/esign-initiation-list-consistency.e2e-spec.ts 增加兩連線協調的讀取／worker 提交競態案例：同一列表回應不混用任務與正式統計，下一次讀取收斂；覆蓋 succeeded／failed 移除摘要與 queued 重試保留摘要。
+- [X] T013 [US3] 在 client/src/features/esign-documents/DocumentSignersEditor.tsx 防止較晚回來的受理回應將正式狀態降回 initiating；終態回應只刷新，未收到成功回應不合成摘要。
+- [X] T014 [US3] 在 client/src/api/queries/esignDocuments.ts 核對既有輪詢於終態停止且離頁不持續更新；依 specs/025-initiation-list-summary/quickstart.md 驗證成功／失敗 5 秒內切換、網路錯誤不冒充終態與寄信略過不影響文件狀態，將結果記入 validation.md；不新增失敗詳情或重試 UI。
 
 **Checkpoint**: 任務與正式文件狀態一致，操作限制依終態正確恢復。
 

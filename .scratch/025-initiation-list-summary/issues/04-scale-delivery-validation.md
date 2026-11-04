@@ -6,7 +6,7 @@
 
 **對應 Tasks:** T015–T018
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 5213 人大型輸入與 256 KiB sort buffer 回歸通過；不排序完整 JSON、無 N+1。
 - [ ] 讀取快照不阻塞 worker；成功無重複、失敗無部分正式名單。
@@ -17,3 +17,5 @@
 ## 執行紀錄
 
 - 使用者已確認此拆分與依賴；尚未開始實作。前置 tickets 均 resolved 後才可 claimed；驗收通過且整合後才可 resolved。
+
+- 已完成 T015–T018；證據見 Spec 025 validation-04.md。60次瀏覽器提交至列表可見矩陣與61份獨立worker成功，另外完成5213人失敗無部分指派。待 merger 核對並整合後 resolved。

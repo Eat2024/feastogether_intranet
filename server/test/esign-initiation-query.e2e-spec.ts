@@ -1,6 +1,15 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
-import type { Queue } from 'bullmq';
+import type { Job, Queue } from 'bullmq';
+import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
+import { NotificationRepository } from '#app/features/esign/repositories/notification.repository';
+import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
+import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
+import { EsignAuditService } from '#app/features/esign/services/esign-audit.service';
+import {
+  INVITATION_MAIL_SENDER,
+  type InvitationMailSender,
+} from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { AuthService } from '#app/features/auth/services/auth.service';
@@ -138,27 +147,25 @@ describe('022 背景發起只讀查詢', () => {
       totalCount: 1,
     };
     for (const stage of ['queued', 'processing', 'retry'] as const) {
-      await mysql
-        .getManager()
-        .update(
-          EsignInitiationJob,
-          job.id,
-          stage === 'processing'
-            ? {
-                status: 'processing',
-                stage: 'resolving',
-                leaseToken: randomUUID(),
-                leaseExpiresAt: new Date(Date.now() + 60000),
-              }
-            : {
-                status: 'queued',
-                stage: 'queued',
-                leaseToken: null,
-                leaseExpiresAt: null,
-                nextAttemptAt:
-                  stage === 'retry' ? new Date(Date.now() + 30000) : null,
-              },
-        );
+      await mysql.getManager().update(
+        EsignInitiationJob,
+        job.id,
+        stage === 'processing'
+          ? {
+              status: 'processing',
+              stage: 'resolving',
+              leaseToken: randomUUID(),
+              leaseExpiresAt: new Date(Date.now() + 60000),
+            }
+          : {
+              status: 'queued',
+              stage: 'queued',
+              leaseToken: null,
+              leaseExpiresAt: null,
+              nextAttemptAt:
+                stage === 'retry' ? new Date(Date.now() + 30000) : null,
+            },
+      );
       for (const who of [cookie, otherCookie]) {
         for (let repeat = 0; repeat < 2; repeat++) {
           const rows = apiData<EsignDocumentListItemDto[]>(
@@ -446,6 +453,61 @@ describe('022 背景發起只讀查詢', () => {
     expect(apiError(conflict).code).not.toBe('ESIGN_INITIATION_IN_PROGRESS');
   });
 
+  it('025 白名單略過通知不改變已完成的發起與列表正式統計', async () => {
+    const documentId = await newDoc();
+    const job = await submit(documentId, {
+      ...body(),
+      signers: [
+        {
+          type: 'email',
+          name: '合成未允許收件人',
+          email: 'blocked025@example.test',
+        },
+      ],
+    });
+    await ctx.app.get(EsignInitiationJobService).process(job.id);
+    const [log] = await mysql
+      .getManager()
+      .query<
+        Array<{ id: number }>
+      >('SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=?', [documentId]);
+    const processor = new ExternalInvitationProcessor(
+      mysql,
+      ctx.app.get(NotificationRepository),
+      ctx.app.get(SignerRepository),
+      ctx.app.get(EsignTokenService),
+      ctx.app.get(EsignAuditService),
+      ctx.app.get<InvitationMailSender>(INVITATION_MAIL_SENDER),
+    );
+    await processor.process({
+      data: { notificationLogId: Number(log.id) },
+    } as Job<{ notificationLogId: number }>);
+    const [notification] = await mysql
+      .getManager()
+      .query<
+        Array<{ result: string; error_code: string }>
+      >('SELECT result,error_code FROM esign_notification_logs WHERE id=?', [log.id]);
+    expect(notification).toEqual({
+      result: 'skipped',
+      error_code: 'MAIL_RECIPIENT_NOT_WHITELISTED',
+    });
+    expect(
+      apiData<InitiationJobDto>(await latest(documentId).expect(200)),
+    ).toMatchObject({ status: 'succeeded' });
+    const rows = apiData<EsignDocumentListItemDto[]>(
+      await request(ctx.server)
+        .get('/api/esign/documents?role=created')
+        .set('Cookie', cookie)
+        .expect(200),
+    );
+    expect(rows.find((row) => row.id === documentId)).toMatchObject({
+      status: 'active',
+      initiation: null,
+      pendingCount: 1,
+      signedCount: 0,
+    });
+  });
+
   it('成功後的合法重播不重新讀取正式簽署大型快照', async () => {
     const doc = await newDoc();
     const input = body();
@@ -497,8 +559,10 @@ describe('022 背景發起只讀查詢', () => {
         );
       async function read() {
         const manager = jest
-          .spyOn(mysql, 'getManager')
-          .mockReturnValue(runner.manager);
+          .spyOn(mysql, 'transaction')
+          .mockImplementation((run, isolation) =>
+            runner.manager.transaction(isolation ?? 'REPEATABLE READ', run),
+          );
         trace.mockClear();
         try {
           const rows = apiData<Array<Record<string, unknown>>>(
@@ -510,24 +574,28 @@ describe('022 背景發起只讀查詢', () => {
           const selects = trace.mock.calls
             .map(([sql]) => sql)
             .filter((sql) => /^SELECT/i.test(sql));
-          expect(
-            selects.some((sql) =>
-              /esign_initiation_jobs|input_json|issues_json|document_version_json/.test(
-                sql,
-              ),
-            ),
-          ).toBe(false);
-          expect(rows.every((row) => !('initiationSummary' in row))).toBe(true);
+          expect(selects.length).toBeGreaterThan(0);
+          const sorted = selects.filter((sql) => /ORDER BY/i.test(sql));
+          expect(sorted.length).toBeGreaterThan(0);
+          expect(sorted.join('\n')).not.toMatch(
+            /input_json|issues_json|document_version_json|JSON_EXTRACT/i,
+          );
+          const dates = selects.filter((sql) => /input_json/i.test(sql));
+          expect(dates).toHaveLength(1);
+          expect(dates[0]).toMatch(/JSON_EXTRACT/);
+          expect(dates[0]).not.toMatch(/ORDER BY/i);
+          expect(rows.every((row) => !('inputJson' in row))).toBe(true);
           return { rows, queries: selects.length };
         } finally {
           manager.mockRestore();
         }
       }
       try {
+        await submit(await newDoc());
         const baseline = await read();
         const input: InitiateDocumentDto = {
           ...body(),
-          signers: Array.from({ length: 5001 }, (_, i) => ({
+          signers: Array.from({ length: 5213 }, (_, i) => ({
             type: 'email',
             name: '合成大型名單'.repeat(10),
             email: `large${i}@example.invalid`,
@@ -540,12 +608,24 @@ describe('022 背景發起只讀查詢', () => {
           const job = await submit(await newDoc());
           await mysql.getManager().update(EsignInitiationJob, job.id, {
             inputJson: input,
-            totalCount: 5001,
+            totalCount: 5213,
           });
         }
         const after = await read();
         expect(after.rows).toHaveLength(baseline.rows.length + 22);
         expect(after.queries).toBe(baseline.queries);
+        expect(
+          after.rows.filter(
+            (row) =>
+              (row.initiation as { totalCount?: number } | null)?.totalCount ===
+              5213,
+          ),
+        ).toHaveLength(22);
+        expect(
+          after.rows
+            .filter((row) => row.status === 'initiating')
+            .every((row) => row.pendingCount === 0),
+        ).toBe(true);
       } finally {
         trace.mockRestore();
       }

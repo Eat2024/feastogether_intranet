@@ -52,10 +52,10 @@
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T015 在 server/test/esign-document-list-scale.e2e-spec.ts 增加 5213 人 inputJson、256 KiB sort buffer 與多文件案例，驗證只投影小欄位、無排序 JSON 查詢、無 N+1，並確認讀取快照不阻塞 worker 寫入。
-- [ ] T016 依 specs/025-initiation-list-summary/quickstart.md 執行 1／100／5213 人各 20 次效能驗收，分開記錄前置解析、受理、列表可見、worker 終態與寄信時間；在 validation.md 判定 SC-001 至 SC-006，不把背景耗時當受理耗時。
-- [ ] T017 執行 server 受影響單元／整合／異動保護測試及 root pnpm build、pnpm lint；在 specs/025-initiation-list-summary/validation.md 記錄實際指令、結果、環境與任何未完成項目。
-- [ ] T018 核對 specs/025-initiation-list-summary/contracts/list-summary.md、plan.md、quickstart.md 與最終實作一致，將前後端部署順序、回滾無 migration、無個資洩漏與已知限制記入 validation.md。
+- [x] T015 在 server/test/esign-document-list-scale.e2e-spec.ts 增加 5213 人 inputJson、256 KiB sort buffer 與多文件案例，驗證只投影小欄位、無排序 JSON 查詢、無 N+1，並確認讀取快照不阻塞 worker 寫入。
+- [x] T016 依 specs/025-initiation-list-summary/quickstart.md 執行 1／100／5213 人各 20 次效能驗收，分開記錄前置解析、受理、列表可見、worker 終態與寄信時間；在 validation.md 判定 SC-001 至 SC-006，不把背景耗時當受理耗時。
+- [x] T017 執行 server 受影響單元／整合／異動保護測試及 root pnpm build、pnpm lint；在 specs/025-initiation-list-summary/validation.md 記錄實際指令、結果、環境與任何未完成項目。
+- [x] T018 核對 specs/025-initiation-list-summary/contracts/list-summary.md、plan.md、quickstart.md 與最終實作一致，將前後端部署順序、回滾無 migration、無個資洩漏與已知限制記入 validation.md。
 
 ## Dependencies & Execution Order
 

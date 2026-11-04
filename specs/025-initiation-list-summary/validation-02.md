@@ -57,3 +57,7 @@ Chrome headless + 本票 Next（13028）+ Nest（13027），合成部門／文�
 
 本票沒有執行 5213 人效能矩陣，屬 ticket 04；終態雙連線一致性與舊回應覆蓋防護屬 ticket 03。
 未部署 UAT，未開 PR、未推送。等待 merger 整合後才可將票標 resolved。
+
+## 最終 review 修正註記
+
+本票驗收時將列表期間改為台北日曆日，後續 review 發現與既有編輯器的本地日曆日語意不一致。上述固定 UTC fixture 的 LA 顯示結果僅為當時版本證據，不能代表實際選日期的正確性。最終版本已恢復簽署期間的原有本地日曆日格式化與篩選；建立時間仍固定台北。實際點選日曆的 red／green 證據見 [review-fix.md](review-fix.md)。

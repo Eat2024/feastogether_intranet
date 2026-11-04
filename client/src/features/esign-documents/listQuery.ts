@@ -62,8 +62,8 @@ export function formatCreatedTime(iso: string) {
   return `${part('year')}/${part('month')}/${part('day')} ${part('hour')}:${part('minute')}`;
 }
 
-/** 列表期間與日期篩選固定用台北日曆日。 */
-export const formatListDate = (iso: string | null) => iso ? formatCreatedTime(iso).slice(0, 10) : null;
+/** 簽署期間沿用編輯器的本地日曆日；只有建立時間固定使用台北時間。 */
+export const formatListDate = formatDate;
 
 // ── 篩選 ──────────────────────────────────────────────
 
@@ -95,7 +95,7 @@ export function parseDocumentFilters(params: URLSearchParams): DocumentFilters {
 
 export const hasDocumentFilters = (f: DocumentFilters) => !!(f.query || f.statuses.length || f.from || f.to);
 
-const listDate = (iso: string) => formatCreatedTime(iso).slice(0, 10).replaceAll('/', '-');
+const listDate = (iso: string) => dayjs(iso).format('YYYY-MM-DD');
 
 /**
  * 篩選：

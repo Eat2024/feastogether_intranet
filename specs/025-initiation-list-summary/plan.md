@@ -70,7 +70,7 @@ specs/025-initiation-list-summary/
 
 ## 追加範圍：建立時間欄
 
-既有列表 DTO、client 型別與 mapper 已包含 createdAt，repository 已選取 document.createdAt，因此不需新增 API 欄位或 schema。DocumentsTable.tsx 在文件編號後新增「建立時間」欄，將 createdAt 明確以 Asia/Taipei 顯示 YYYY/MM/DD HH:mm；同步表頭、COLUMN_COUNT／colSpan 及窄螢幕版面。listQuery.ts 可沿用日期工具，但不得依使用者瀏覽器時區造成非台北結果；不改動其他頁面既有日期格式或列表預設排序。驗收確認它不是 signStartAt、acceptedAt、updatedAt，且發起前後不變。
+既有列表 DTO、client 型別與 mapper 已包含 createdAt，repository 已選取 document.createdAt，因此不需新增 API 欄位或 schema。DocumentsTable.tsx 在文件編號後新增「建立時間」欄，將 createdAt 明確以 Asia/Taipei 顯示 YYYY/MM/DD HH:mm；同步表頭、COLUMN_COUNT／colSpan 及窄螢幕版面。建立時間 helper 不得依使用者瀏覽器時區造成非台北結果。簽署期間則沿用原編輯器與列表的瀏覽器本地日曆日規則，不擴大為全站時區改造；不改動其他頁面既有日期格式或列表預設排序。驗收確認它不是 signStartAt、acceptedAt、updatedAt，且發起前後不變。
 
 ## Phase 0 — Research
 

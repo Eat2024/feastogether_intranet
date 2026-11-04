@@ -6,7 +6,7 @@
 
 **對應 Tasks:** T001–T008
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 1、100、5213 人皆沿用背景發起；不新增文件、不預建正式簽署人。
 - [x] 期間以本次提交為準，與舊草稿不同時仍顯示正確；N 為受理總數而非寄信或處理數。
@@ -24,3 +24,5 @@
 - 使用者追加「文件建立時間」欄位，併入本票及 T006／T008；依賴與初始狀態不變。
 
 - 已完成 T001～T008，驗證與限制記於 Spec025 validation.md。等待整合分支合併後由 merger 更新為 resolved 並記錄 commit。
+
+- 已以 fast-forward 將實作 commit `d9a156edae8f5439298acf6f9e41e220b2241cbb` 整合至 `impl/025-integration`。merger 核對 validation.md：service 16/16、acceptance e2e 14/14、前後端 build/lint 與真實瀏覽器 1/100 人驗收通過；建立時間與重新整理證據完整。5213 人效能矩陣屬 ticket04，未在本票宣稱執行。

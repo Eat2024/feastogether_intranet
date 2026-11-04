@@ -1,6 +1,6 @@
 'use client';
 
-// 檢視頁（後端文件）：GET /api/esign/documents/:id 取得文件詳情與簽署人，GET .../history 取得簽署歷程。
+// 檢視頁（後端文件）：GET /api/esign/documents/:id 取得文件詳情與簽署人。
 // 簽署人清單的狀態分頁、搜尋、排序與分頁記在網址上，在瀏覽器端處理。
 import { useGetDocumentQuery } from '@/api/queries';
 import { documentSourceFileUrl } from '@/api/requests';
@@ -25,7 +25,6 @@ import Typography from '@mui/material/Typography';
 import dayjs from 'dayjs';
 import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
-import DocumentHistory from './DocumentHistory';
 import DocumentSignerTable, { ReadonlyDocumentSignerTable } from './DocumentSignerTable';
 import { DOCUMENT_STATUS_META, periodText } from './listQuery';
 import {
@@ -38,7 +37,6 @@ import {
   signerHref,
   type SignerSortKey,
 } from './signerQuery';
-import NotificationHistory from './NotificationHistory';
 import ReopenDocumentButton from './ReopenDocumentButton';
 import ReopeningInvitationsButton from './ReopeningInvitationsButton';
 import StopDocumentButton from './StopDocumentButton';
@@ -230,9 +228,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
         )}
         <LinkPagination page={page} hrefs={pageHrefs(pageCount, (p) => signerHref(doc.id, query, { page: p }))} />
       </Stack>
-
-      {doc.isCreator && <NotificationHistory documentId={doc.id} />}
-      <DocumentHistory documentId={doc.id} />
+      {/* 「通知紀錄」（NotificationHistory）與「簽署歷程」（DocumentHistory）區塊暫時移除；元件保留，需要時再放回 */}
     </>
   );
 }

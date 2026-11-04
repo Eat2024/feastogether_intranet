@@ -1,6 +1,6 @@
 import { queryKeys } from '@/api/query-keys';
 import { queryOptions } from '@/api/query-options';
-import { getDocumentExport, getDocumentExportPreview, getExportHistory } from '@/api/requests';
+import { getAllExportHistory, getDocumentExport, getDocumentExportPreview, getExportHistory } from '@/api/requests';
 import type { ExportHistoryPage, ExportHistoryParams, ExportHistoryType } from '@/api/types';
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
@@ -13,6 +13,19 @@ export function useGetExportHistoryQuery<T extends ExportHistoryType>(
   return useQuery({
     queryKey: [queryKeys.ESIGN_EXPORT_HISTORY, params],
     queryFn: () => getExportHistory(params),
+    ...queryOptions.useGetExportHistoryQuery,
+    ...options,
+  });
+}
+
+/** 某類型的全部歷史匯出紀錄（前端排序用；params 共同構成快取 key，與分頁查詢共用前綴，重新下載後一併更新） */
+export function useGetAllExportHistoryQuery<T extends ExportHistoryType>(
+  params: Omit<ExportHistoryParams<T>, 'page' | 'pageSize'>,
+  options?: Omit<UseQueryOptions<Awaited<ReturnType<typeof getAllExportHistory<T>>>, AxiosError>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: [queryKeys.ESIGN_EXPORT_HISTORY, 'all', params],
+    queryFn: () => getAllExportHistory(params),
     ...queryOptions.useGetExportHistoryQuery,
     ...options,
   });

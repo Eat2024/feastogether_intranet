@@ -4,7 +4,7 @@
 import { useGetSigningTasksQuery } from '@/api/queries';
 import type { EsignSigningTask, SigningTaskSignatureResult, SigningTaskRejectionResult } from '@/api/types';
 import PageHeader from '@/components/PageHeader';
-import { formatDate } from '@/features/esign-documents/listQuery';
+import { periodText } from '@/features/esign-documents/listQuery';
 import { getErrorMessage } from '@/lib/apiError';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import VerifiedRoundedIcon from '@mui/icons-material/VerifiedRounded';
@@ -132,13 +132,20 @@ function Task({ task: listedTask }: { task: EsignSigningTask }) {
   return (
     <>
       <BackButton href={signedAt ? '/my-signature?tab=signed' : rejectedAt ? '/my-signature?tab=rejected' : backHref(task)} />
+      {/* 與電子簽列表的檢視頁相同：不顯示大標題，文件資訊逐行列出（說明在 Typography 內，每項以區塊 span 分行） */}
       <PageHeader
-        title={doc.title}
         description={[
-          doc.docNumber,
-          doc.createdBy && `建立人 ${doc.createdBy.name}（${doc.createdBy.employeeNo}）`,
-          `${doc.isReopened ? '補簽期限' : '簽署期限'} ${formatDate(doc.signEndAt) ?? '不限'}`,
-        ].filter(Boolean).join('・')}
+          `文件名稱：${doc.title}`,
+          `文件編號：${doc.docNumber}`,
+          doc.createdBy && `建立人：${doc.createdBy.name}（${doc.createdBy.employeeNo}）`,
+          `簽署期間：${periodText(doc)}`,
+        ]
+          .filter(Boolean)
+          .map((line) => (
+            <Box key={line} component="span" sx={{ display: 'block' }}>
+              {line}
+            </Box>
+          ))}
       />
       {open.error ? (
         <Alert severity="error" action={<Button color="inherit" onClick={() => openTask(task.signerPublicId)}>重新載入</Button>}>

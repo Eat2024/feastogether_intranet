@@ -1,4 +1,8 @@
-import { createSyntheticPortal, type SyntheticPortal } from './synthetic-portal.helper';
+import type { EsignDocumentListItemDto } from '#app/features/esign/dto/esign-common.dto';
+import {
+  createSyntheticPortal,
+  type SyntheticPortal,
+} from './synthetic-portal.helper';
 import { InitiationJobRepository } from '#app/features/esign/repositories/initiation-job.repository';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
 import { EsignAccessPolicyService } from '#app/features/esign/services/esign-access-policy.service';
@@ -130,6 +134,65 @@ describe('022 背景發起受理', () => {
         .expect(201),
     ).id;
   }
+
+  it.each([1, 100])(
+    '025 受理 %i 人後立即讀到期間與預計人數，重讀不需 worker',
+    async (count) => {
+      const doc = await newDoc();
+      const oldStart = new Date(Date.now() - 86400000).toISOString();
+      const oldEnd = new Date(Date.now() + 2 * 86400000).toISOString();
+      await request(ctx.server)
+        .patch(`/api/esign/documents/${doc}/draft-settings`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .send({ signStartAt: oldStart, signEndAt: oldEnd })
+        .expect(200);
+      const body = {
+        ...input(),
+        signers: Array.from({ length: count }, (_, i) => ({
+          type: 'email',
+          name: `合成人員${i}`,
+          email: `summary${i}@example.test`,
+        })),
+      };
+      await submit(doc, body).expect(202);
+      for (let read = 0; read < 2; read++) {
+        const response = await request(ctx.server)
+          .get('/api/esign/documents?role=created')
+          .set('Cookie', cookie)
+          .expect(200);
+        const row = apiData<EsignDocumentListItemDto[]>(response).find(
+          (item) => item.id === doc,
+        );
+        expect(row).toMatchObject({
+          status: 'initiating',
+          signStartAt: oldStart,
+          signEndAt: oldEnd,
+          signedCount: 0,
+          pendingCount: 0,
+          initiation: {
+            signStartAt: body.signStartAt,
+            signEndAt: body.signEndAt,
+            totalCount: count,
+          },
+        });
+      }
+    },
+  );
+
+  it('025 未通過受理的文件不產生發起摘要', async () => {
+    const doc = await newDoc();
+    await submit(doc, { ...input(), signers: [] }).expect(400);
+    const response = await request(ctx.server)
+      .get('/api/esign/documents?role=created')
+      .set('Cookie', cookie)
+      .expect(200);
+    expect(
+      apiData<EsignDocumentListItemDto[]>(response).find(
+        (item) => item.id === doc,
+      ),
+    ).toMatchObject({ status: 'draft', initiation: null });
+  });
 
   it('有 key 重播原摘要，改內容或無 key 再送衝突，非建立人不能查', async () => {
     const doc = await newDoc();
@@ -460,7 +523,17 @@ describe('022 背景發起受理', () => {
   });
 
   async function login(empid: string): Promise<string> {
-    await portal.insertPeople([{ person_empid: empid, person_name: '背景合成員工', person_status: 1, department_id: 'D022', department_name: '測試部', title: '測試員工', email: `${empid.toLowerCase()}@example.test` }]);
+    await portal.insertPeople([
+      {
+        person_empid: empid,
+        person_name: '背景合成員工',
+        person_status: 1,
+        department_id: 'D022',
+        department_name: '測試部',
+        title: '測試員工',
+        email: `${empid.toLowerCase()}@example.test`,
+      },
+    ]);
     const launched = await request(ctx.server)
       .post('/api/auth/webview-launches')
       .set('Authorization', `Bearer ${createLaunchJwt(empid)}`)
@@ -476,7 +549,16 @@ describe('022 背景發起受理', () => {
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');
-    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
+    await Promise.all(
+      [empid].map((employeeNo) =>
+        ctx.app
+          .get<DataSource>(MYSQL_MAIN)
+          .query('UPDATE users SET email=? WHERE empid=?', [
+            `${employeeNo.toLowerCase()}@example.test`,
+            employeeNo,
+          ]),
+      ),
+    );
     return value;
   }
 });
@@ -507,4 +589,3 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-

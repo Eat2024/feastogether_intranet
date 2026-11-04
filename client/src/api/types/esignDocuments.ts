@@ -14,8 +14,38 @@ export interface GetDocumentsParams {
   status?: EsignDocumentStatus;
 }
 
+/** 已受理的確認內容；尚未代表正式簽署人已建立。 */
+export interface EsignInitiationListSummary {
+  signStartAt: string;
+  signEndAt: string;
+  totalCount: number;
+}
+
+/** 背景發起受理回應，與正式文件詳情不同。 */
+export interface EsignInitiationJob {
+  jobId: string;
+  documentId: string;
+  status: 'queued' | 'processing' | 'succeeded' | 'failed';
+  stage: string;
+  totalCount: number;
+  processedCount: number;
+  attemptCount: number;
+  acceptedAt: string;
+  updatedAt: string;
+  deadlineAt: string;
+  nextAttemptAt: string | null;
+  completedAt: string | null;
+  errorCode: string | null;
+  retryable: boolean;
+  issueCount: number;
+  detailsExpired: boolean;
+  reused?: boolean;
+}
+
 /** 文件列表的一筆資料；時間皆為 ISO 8601 */
 export interface EsignDocumentListItem {
+  /** 舊版 server 可能未提供；非發起中為 null。 */
+  initiation?: EsignInitiationListSummary | null;
   isCreator: boolean;
   id: string;
   docNumber: string;

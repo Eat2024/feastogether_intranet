@@ -38,6 +38,30 @@ export function periodText(
   return doc.isReopened && doc.originalSignEndAt ? `${period}（補簽；原 ${formatDate(doc.originalSignEndAt)}）` : period;
 }
 
+/** 列表顯示資料：受理人數不寫入正式 pendingCount。 */
+export function documentListDisplay(doc: EsignDocumentListItem) {
+  const initiation = doc.status === 'initiating' ? doc.initiation : null;
+  return {
+    signStartAt: initiation?.signStartAt ?? doc.signStartAt,
+    signEndAt: initiation?.signEndAt ?? doc.signEndAt,
+    signedCount: initiation ? 0 : doc.signedCount,
+    totalCount: initiation?.totalCount ?? doc.signedCount + doc.pendingCount,
+    isExpectedCount: !!initiation,
+  };
+}
+
+const taipeiCreatedTime = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+/** 文件建立時間固定用台北時間，不隨瀏覽器時區改變。 */
+export function formatCreatedTime(iso: string) {
+  const parts = taipeiCreatedTime.formatToParts(new Date(iso));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value;
+  return `${part('year')}/${part('month')}/${part('day')} ${part('hour')}:${part('minute')}`;
+}
+
 // ── 篩選 ──────────────────────────────────────────────
 
 export type DocumentFilters = {

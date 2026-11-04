@@ -8,23 +8,23 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 核對整合基線已包含 PR #49／#50 與隔離測試連線，將 commit、環境與驗收記錄位置寫入 specs/025-initiation-list-summary/validation.md；不得將實際憑證寫入文件。
+- [x] T001 核對整合基線已包含 PR #49／#50 與隔離測試連線，將 commit、環境與驗收記錄位置寫入 specs/025-initiation-list-summary/validation.md；不得將實際憑證寫入文件。
 
 ## Phase 2: Foundational
 
-- [ ] T002 在 server/src/features/esign/dto/esign-common.dto.ts 與 client/src/api/types/esignDocuments.ts 對齊列表 initiation nullable 摘要；保留「totalCount 為正整數，日期為 normalize 後的有效 ISO 值且 start < end」及「原 pendingCount、signedCount、signStartAt、signEndAt 維持原正式／草稿語意」。同步 client/src/api/requests/esignDocuments.ts 的發起回應型別為既有 job 摘要，不新增 endpoint。
+- [x] T002 在 server/src/features/esign/dto/esign-common.dto.ts 與 client/src/api/types/esignDocuments.ts 對齊列表 initiation nullable 摘要；保留「totalCount 為正整數，日期為 normalize 後的有效 ISO 值且 start < end」及「原 pendingCount、signedCount、signStartAt、signEndAt 維持原正式／草稿語意」。同步 client/src/api/requests/esignDocuments.ts 的發起回應型別為既有 job 摘要，不新增 endpoint。
 
 ## Phase 3: US1 — 受理後立即確認發起內容（P1）
 
 **Goal**: 背景未執行時即可返回列表，看到確認的日期、發起中及 0/N。
 **Independent Test**: 暫停本機 worker，提交與舊草稿不同的期間及名單，首次列表即呈現本次摘要。
 
-- [ ] T003 [P] [US1] 在 server/src/features/esign/services/esign-document-query.service.spec.ts 新增摘要映射測試，覆蓋受理期間優先於舊草稿、totalCount 與正式計數分離、非發起中摘要為 null；先確認新增案例能揭露現況缺口。
-- [ ] T004 [US1] 在 server/src/features/esign/repositories/document.repository.ts 增加有效任務 ID／totalCount 的窄欄位投影及依捕捉 job ID 的批次無排序日期抽取；不載入完整 inputJson、不把 JSON_EXTRACT 放進排序查詢、不做逐文件查詢。
-- [ ] T005 [US1] 在 server/src/features/esign/services/esign-document-query.service.ts 將列表所有讀取放進同一短 REPEATABLE READ 交易並傳遞同一 manager；在 server/src/features/esign/services/esign-view.mapper.ts 僅為 draft＋有效任務輸出 initiation 摘要，不寫回 entity 正式欄位。
-- [ ] T006 [P] [US1] 在 client/src/features/esign-documents/listQuery.ts 集中摘要期間與顯示計數選擇，在 client/src/features/esign-documents/DocumentsTable.tsx 顯示摘要日期、0/N、0% 及預計人數說明；缺少摘要時保留既有顯示，不捏造數字。另在文件編號與開始時間之間新增「建立時間」，取 createdAt 以台北時間 YYYY/MM/DD HH:mm 顯示，同步表頭、欄數與空／載入狀態 colSpan，不改預設排序。
-- [ ] T007 [US1] 在 client/src/features/esign-documents/DocumentSignersEditor.tsx 保存本次已提交期間，以 queued／processing 回應的 totalCount 初始化列表快取，再 invalidate 並導回列表；不得等待正式資料建立或建立重複文件列。
-- [ ] T008 [US1] 在 server/test/esign-initiation-acceptance.e2e-spec.ts 驗證受理提交後即能取得摘要、單人與多人、不同草稿資料、不可靠受理不產生假摘要；依 specs/025-initiation-list-summary/quickstart.md 完成首次列表瀏覽器驗收，並確認 createdAt 在草稿、發起中、完成後顯示相同及窄螢幕可讀，將證據寫入 validation.md。
+- [x] T003 [P] [US1] 在 server/src/features/esign/services/esign-document-query.service.spec.ts 新增摘要映射測試，覆蓋受理期間優先於舊草稿、totalCount 與正式計數分離、非發起中摘要為 null；先確認新增案例能揭露現況缺口。
+- [x] T004 [US1] 在 server/src/features/esign/repositories/document.repository.ts 增加有效任務 ID／totalCount 的窄欄位投影及依捕捉 job ID 的批次無排序日期抽取；不載入完整 inputJson、不把 JSON_EXTRACT 放進排序查詢、不做逐文件查詢。
+- [x] T005 [US1] 在 server/src/features/esign/services/esign-document-query.service.ts 將列表所有讀取放進同一短 REPEATABLE READ 交易並傳遞同一 manager；在 server/src/features/esign/services/esign-view.mapper.ts 僅為 draft＋有效任務輸出 initiation 摘要，不寫回 entity 正式欄位。
+- [x] T006 [P] [US1] 在 client/src/features/esign-documents/listQuery.ts 集中摘要期間與顯示計數選擇，在 client/src/features/esign-documents/DocumentsTable.tsx 顯示摘要日期、0/N、0% 及預計人數說明；缺少摘要時保留既有顯示，不捏造數字。另在文件編號與開始時間之間新增「建立時間」，取 createdAt 以台北時間 YYYY/MM/DD HH:mm 顯示，同步表頭、欄數與空／載入狀態 colSpan，不改預設排序。
+- [x] T007 [US1] 在 client/src/features/esign-documents/DocumentSignersEditor.tsx 保存本次已提交期間，以 queued／processing 回應的 totalCount 初始化列表快取，再 invalidate 並導回列表；不得等待正式資料建立或建立重複文件列。
+- [x] T008 [US1] 在 server/test/esign-initiation-acceptance.e2e-spec.ts 驗證受理提交後即能取得摘要、單人與多人、不同草稿資料、不可靠受理不產生假摘要；依 specs/025-initiation-list-summary/quickstart.md 完成首次列表瀏覽器驗收，並確認 createdAt 在草稿、發起中、完成後顯示相同及窄螢幕可讀，將證據寫入 validation.md。
 
 **Checkpoint**: US1 可端到端示範；不因工作受理而提前開放簽署。
 
@@ -72,4 +72,4 @@
 
 ## Implementation Strategy
 
-先交付 T001～T008 作為 MVP：受理後同一列立即顯示期間與人數。再補齊 US2／US3 的重整、權限與終態行為，最後驗證大名單與部署。所有階段沿用既有 worker，不移動正式大量寫入。每張 ticket 驗收並合併整合分支後才可標 resolved；本文件目前 18 項皆未實作。
+先交付 T001～T008 作為 MVP：受理後同一列立即顯示期間與人數。再補齊 US2／US3 的重整、權限與終態行為，最後驗證大名單與部署。所有階段沿用既有 worker，不移動正式大量寫入。每張 ticket 驗收並合併整合分支後才可標 resolved；T001～T008 已完成並附驗證，其他任務依各 ticket 進度更新。

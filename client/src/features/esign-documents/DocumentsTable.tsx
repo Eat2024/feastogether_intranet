@@ -19,22 +19,25 @@ import DocumentRowActions from './DocumentRowActions';
 import {
   DOCUMENT_STATUS_META,
   documentsHref,
+  documentListDisplay,
+  formatCreatedTime,
   formatDate,
   type DocumentFilters,
   type DocumentSort,
   type DocumentSortKey,
 } from './listQuery';
 
-const SORTABLE_COLUMNS: [DocumentSortKey, string][] = [
+const COLUMNS: [DocumentSortKey | 'createdAt', string][] = [
   ['name', '文件名稱'],
   ['docNumber', '文件編號'],
+  ['createdAt', '建立時間'],
   ['startAt', '開始時間'],
   ['endAt', '結束時間'],
   ['status', '文件狀態'],
   ['progress', '簽署人狀態'],
   ['createdBy', '建立人'],
 ];
-const COLUMN_COUNT = SORTABLE_COLUMNS.length + 1;
+const COLUMN_COUNT = COLUMNS.length + 1;
 
 /** 電子簽列表（後端資料）；docs 需已篩選、排序、分頁 */
 export default function DocumentsTable({
@@ -54,7 +57,9 @@ export default function DocumentsTable({
       <Table>
         <TableHead>
           <TableRow>
-            {SORTABLE_COLUMNS.map(([key, label]) => (
+            {COLUMNS.map(([key, label]) => key === 'createdAt' ? (
+              <TableCell key={key} sx={{ whiteSpace: 'nowrap' }}>{label}</TableCell>
+            ) : (
               <SortableHeaderCell
                 key={key}
                 active={sort?.key === key}
@@ -77,15 +82,17 @@ export default function DocumentsTable({
           ) : (
             docs.map((doc) => {
               const status = DOCUMENT_STATUS_META[doc.status];
-              const total = doc.signedCount + doc.pendingCount;
+              const display = documentListDisplay(doc);
+              const total = display.totalCount;
               return (
                 <TableRow key={doc.id} hover>
                   <TableCell>{doc.title}</TableCell>
                   {/* 草稿尚未發起時以「—」表示；已發起但未設結束時間為「不限」 */}
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{doc.docNumber || '—'}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(doc.signStartAt) ?? '—'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatCreatedTime(doc.createdAt)}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(display.signStartAt) ?? '—'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    {formatDate(doc.signEndAt) ?? (doc.signStartAt ? '不限' : '—')}
+                    {formatDate(display.signEndAt) ?? (display.signStartAt ? '不限' : '—')}
                     {/* 補簽過：結束日為補簽的新期限 */}
                     {doc.isReopened && (
                       <Typography variant="helper" component="div">
@@ -98,9 +105,10 @@ export default function DocumentsTable({
                   </TableCell>
                   <TableCell sx={{ minWidth: 140 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                      <LinearProgress variant="determinate" value={total ? (doc.signedCount / total) * 100 : 0} />
+                      <LinearProgress variant="determinate" value={total ? (display.signedCount / total) * 100 : 0} />
                       <Typography variant="helper">
-                        {doc.signedCount}/{total}
+                        {display.signedCount}/{total}
+                        {display.isExpectedCount && <span>（預計簽署人數）</span>}
                       </Typography>
                     </Box>
                   </TableCell>

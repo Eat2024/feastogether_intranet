@@ -7,6 +7,17 @@ import {
   IsNull,
 } from 'typeorm';
 import { EsignDocument } from '../entities/esign-document.entity';
+import { EsignInitiationJob } from '../entities/esign-initiation-job.entity';
+
+/** 僅供列表讀取，不得將受理摘要寫回文件。 */
+export type DocumentListProjection = EsignDocument & {
+  isInitiating?: boolean;
+  initiation?: {
+    signStartAt: string;
+    signEndAt: string;
+    totalCount: number;
+  } | null;
+};
 
 @Injectable()
 export class DocumentRepository {
@@ -87,7 +98,7 @@ export class DocumentRepository {
   private async findList(
     where: FindOptionsWhere<EsignDocument>,
     manager: EntityManager,
-  ): Promise<Array<EsignDocument & { isInitiating?: boolean }>> {
+  ): Promise<DocumentListProjection[]> {
     const { entities, raw: initiationRows } = await manager
       .createQueryBuilder(EsignDocument, 'document')
       .setFindOptions({
@@ -108,21 +119,28 @@ export class DocumentRepository {
         'document.completedAt',
         'document.stoppedAt',
       ])
-      .addSelect(
-        `EXISTS (SELECT 1 FROM esign_initiation_jobs job
-          WHERE job.active_document_id = document.id AND job.deleted_at IS NULL)`,
-        'isInitiating',
+      .leftJoin(
+        EsignInitiationJob,
+        'job',
+        'job.activeDocumentId = document.id AND job.deletedAt IS NULL',
       )
-      .getRawAndEntities();
-    const initiatingIds = new Set<number>(
+      .addSelect('job.id', 'initiationJobId')
+      .addSelect('job.totalCount', 'initiationTotalCount')
+      .getRawAndEntities<{
+        document_id: number | string;
+        initiationJobId: number | string | null;
+        initiationTotalCount: number | string | null;
+      }>();
+    const jobsByDocument = new Map(
       initiationRows
-        .filter(
-          (row: { isInitiating: number | string }) =>
-            Number(row.isInitiating) === 1,
-        )
-        .map((row: { document_id: number | string }) =>
+        .filter((row) => row.initiationJobId !== null)
+        .map((row) => [
           Number(row.document_id),
-        ),
+          {
+            id: Number(row.initiationJobId),
+            totalCount: Number(row.initiationTotalCount),
+          },
+        ]),
     );
     if (entities.length === 0) return entities;
     // JSON_EXTRACT 的來源欄位也可能進入 MySQL filesort；分開讀取且不排序。
@@ -151,12 +169,46 @@ export class DocumentRepository {
         period: { endAt: originalEnds.get(document.id) ?? null },
       };
     }
-    return entities.map((document) =>
-      Object.assign(document, {
-        isInitiating:
-          document.status === 'draft' && initiatingIds.has(document.id),
-      }),
+    // 日期只在無排序批次查詢抽取，避免大型 input_json 進入 filesort。
+    const jobIds = [...jobsByDocument.values()].map((job) => job.id);
+    const periods = jobIds.length
+      ? await manager
+          .createQueryBuilder(EsignInitiationJob, 'job')
+          .select('job.id', 'id')
+          .addSelect(
+            "JSON_UNQUOTE(JSON_EXTRACT(job.input_json, '$.signStartAt'))",
+            'signStartAt',
+          )
+          .addSelect(
+            "JSON_UNQUOTE(JSON_EXTRACT(job.input_json, '$.signEndAt'))",
+            'signEndAt',
+          )
+          .where('job.id IN (:...jobIds)', { jobIds })
+          .getRawMany<{
+            id: number | string;
+            signStartAt: string;
+            signEndAt: string;
+          }>()
+      : [];
+    const periodsByJob = new Map(
+      periods.map((period) => [Number(period.id), period]),
     );
+    return entities.map((document) => {
+      const job = jobsByDocument.get(document.id);
+      const period = job ? periodsByJob.get(job.id) : undefined;
+      const isInitiating = document.status === 'draft' && !!job;
+      return Object.assign(document, {
+        isInitiating,
+        initiation:
+          isInitiating && period
+            ? {
+                signStartAt: period.signStartAt,
+                signEndAt: period.signEndAt,
+                totalCount: job.totalCount,
+              }
+            : null,
+      });
+    });
   }
 
   create(fields: DeepPartial<EsignDocument>, manager: EntityManager) {

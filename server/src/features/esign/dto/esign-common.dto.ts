@@ -40,8 +40,16 @@ export class EsignDocumentCreatorDto {
   employeeNo!: string;
 }
 
+/** 已受理發起的列表摘要，不代表正式簽署資料已建立。 */
+export class EsignInitiationListSummaryDto {
+  signStartAt!: string;
+  signEndAt!: string;
+  totalCount!: number;
+}
+
 /** 文件列表項目：摘要再加上簽署期間與建立人（僅供員工 session 的列表使用） */
 export class EsignDocumentListItemDto extends EsignDocumentSummaryDto {
+  initiation!: EsignInitiationListSummaryDto | null;
   isCreator!: boolean;
   signStartAt!: string | null;
   /** 建立人帳號不存在時為 null */

@@ -14,6 +14,7 @@ import type {
   EsignSignerResolution,
   GetDocumentsParams,
   InitiateDocumentBody,
+  EsignInitiationJob,
   NotificationListParams,
   NotificationPageParams,
   ReopenDocumentBody,
@@ -110,7 +111,7 @@ export const saveDraftSettings = async ({
 
 /**
  * @name 發起文件簽署
- * @description 一次送出簽署人、欄位指派、簽署期間與可選功能，草稿轉為簽署中；回傳發起後的文件詳情
+ * @description 送出確認內容，受理後交由背景準備正式資料；回傳工作摘要
  */
 export const initiateDocument = async ({
   id,
@@ -118,8 +119,8 @@ export const initiateDocument = async ({
 }: {
   id: string;
   body: InitiateDocumentBody;
-}): Promise<EsignDocumentDetail> => {
-  const res = await api<EsignDocumentDetail>({
+}): Promise<EsignInitiationJob> => {
+  const res = await api<EsignInitiationJob>({
     method: 'POST',
     url: endpoints.ESIGN_DOCUMENT_INITIATIONS(id),
     data: body,

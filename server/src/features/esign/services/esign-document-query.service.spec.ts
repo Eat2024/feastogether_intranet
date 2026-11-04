@@ -83,7 +83,11 @@ function setup(doc = document()) {
     ),
   };
   const service = new EsignDocumentQueryService(
-    { getManager: () => manager } as never,
+    {
+      getManager: () => manager,
+      transaction: (run: (m: typeof manager) => Promise<unknown>) =>
+        run(manager),
+    } as never,
     documents as never,
     signers as never,
     fields as never,
@@ -116,6 +120,44 @@ function setup(doc = document()) {
 }
 
 describe('部門文件查詢', () => {
+  it('受理摘要與舊草稿期間及正式統計分開，不改寫文件', async () => {
+    const doc = Object.assign(
+      document({
+        signStartAt: new Date('2026-10-01T00:00:00Z'),
+        signEndAt: new Date('2026-10-02T00:00:00Z'),
+      }),
+      {
+        isInitiating: true,
+        initiation: {
+          signStartAt: '2026-11-03T16:00:00.000Z',
+          signEndAt: '2026-11-30T15:59:59.999Z',
+          totalCount: 5213,
+        },
+      },
+    );
+    const result = await setup(doc).service.list(1, 'dep');
+    expect(result[0]).toMatchObject({
+      status: 'initiating',
+      signStartAt: '2026-10-01T00:00:00.000Z',
+      signEndAt: '2026-10-02T00:00:00.000Z',
+      signedCount: 0,
+      pendingCount: 1,
+      initiation: {
+        signStartAt: '2026-11-03T16:00:00.000Z',
+        signEndAt: '2026-11-30T15:59:59.999Z',
+        totalCount: 5213,
+      },
+    });
+    expect(doc.status).toBe('draft');
+    expect(doc.signStartAt?.toISOString()).toBe('2026-10-01T00:00:00.000Z');
+  });
+  it.each(['draft', 'active'])(
+    '沒有有效工作時 %s 不回傳受理摘要',
+    async (status) => {
+      const result = await setup(document({ status })).service.list(1, 'dep');
+      expect(result[0]).toHaveProperty('initiation', null);
+    },
+  );
   it('背景發起期間顯示發起中且可篩選，原始草稿狀態不變', async () => {
     const doc = Object.assign(document(), { isInitiating: true });
     const s = setup(doc);

@@ -56,7 +56,7 @@ pnpm start
 
 登入與 session 不在本專案處理：由外部流程建立 session（後端以 HttpOnly cookie 下發），這一層只負責帶著 cookie 呼叫其他 API。
 
-例外：`src/proxy.ts` 在進入員工頁面（`src/app/(main)`）前，於伺服器端以 `API_PROXY_TARGET` 呼叫 `GET /api/auth/session`，401 時改寫成 404，顯示 `src/app/not-found.tsx`。不要改在 layout 判斷：layout 與頁面同時渲染，頁面內容仍會出現在 RSC 回應裡。`(main)` 新增頂層路由時要同步加進 proxy 的 `matcher`。這個 404 頁只放饗賓 LOGO 與「404 找不到網站」，不要加入系統名稱、登入提示或連結。
+例外：`src/proxy.ts` 在進入員工頁面（`src/app/(main)`）前，於伺服器端以 `API_PROXY_TARGET` 呼叫 `GET /api/auth/session`，401 時改寫成 404，顯示 `src/app/not-found.tsx`。不要改在 layout 判斷：layout 與頁面同時渲染，頁面內容仍會出現在 RSC 回應裡。`(main)` 新增頂層路由時要同步加進 proxy 的 `matcher`。這個 404 頁只放饗賓 LOGO 與「404 不好意思，系統找不到您需要的服務」（網頁標題「404 找不到網站」），不要加入系統名稱、登入提示或連結。
 
 | 檔案 | 用途 |
 |---|---|

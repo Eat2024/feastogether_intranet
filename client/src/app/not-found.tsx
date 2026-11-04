@@ -51,7 +51,7 @@ export default function NotFound() {
           <Box component="span" sx={{ fontWeight: fontWeight.bold, letterSpacing: "0.08em" }}>
             404
           </Box>
-          <span>不好意思，找不到您需要的服務</span>
+          <span>不好意思，系統找不到您需要的服務</span>
         </Typography>
       </Box>
     </Box>

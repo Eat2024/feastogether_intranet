@@ -1,5 +1,6 @@
 import { ExportJobViewDto } from './export.dto';
 export type EsignDocumentStatus =
+  | 'initiating'
   | 'draft'
   | 'active'
   | 'expired'

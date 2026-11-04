@@ -116,6 +116,25 @@ function setup(doc = document()) {
 }
 
 describe('部門文件查詢', () => {
+  it('背景發起期間顯示發起中且可篩選，原始草稿狀態不變', async () => {
+    const doc = Object.assign(document(), { isInitiating: true });
+    const s = setup(doc);
+    expect(await s.service.list(1, 'dep', 'initiating')).toEqual([
+      expect.objectContaining({ id: '10', status: 'initiating' }),
+    ]);
+    expect(await s.service.list(1, 'dep', 'draft')).toEqual([]);
+    expect(doc.status).toBe('draft');
+  });
+  it('背景任務結束後依文件狀態顯示草稿或簽署中', async () => {
+    for (const status of ['draft', 'active']) {
+      const s = setup(
+        Object.assign(document({ status }), { isInitiating: false }),
+      );
+      expect(await s.service.list(1, 'dep')).toEqual([
+        expect.objectContaining({ status }),
+      ]);
+    }
+  });
   it('dep 使用可信部門 repository，保留狀態推導且回傳 isCreator', async () => {
     const s = setup(document({ status: 'active', signEndAt: new Date(0) }));
     const result = await s.service.list(2, 'dep', 'expired');

@@ -9,6 +9,7 @@ import { Suspense } from 'react';
 export const metadata: Metadata = { title: '電子簽列表' };
 
 const FLASH_MESSAGES = {
+  initiating: '已受理發起，正在背景處理 {count} 位簽署人',
   published: '已發起簽署，通知 {count} 位簽署人',
   saved: '已儲存簽署設定',
   draftSaved: '已儲存草稿設定',

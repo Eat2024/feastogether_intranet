@@ -208,6 +208,51 @@ describe('文件列表大型快照回歸', () => {
                 isReopened: false,
               });
             }
+            // 同一筆列表 SQL 推導背景狀態，不載入任務的大型 JSON。
+            const draft = await manager.save(EsignDocument, {
+              docNumber: randomUUID(),
+              title: '背景發起測試',
+              createdByUserId: creator.id,
+              createdByDepartmentCode: 'LIST',
+              status: 'draft',
+            });
+            await manager.query(
+              `INSERT INTO esign_initiation_jobs
+                (public_id, document_id, created_by_user_id, request_key, request_hash,
+                 input_json, document_version_json, total_count, accepted_at, deadline_at)
+               VALUES (?, ?, ?, ?, ?, '{}', '{}', 1, UTC_TIMESTAMP(6),
+                 DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 1 HOUR))`,
+              [
+                randomUUID(),
+                draft.id,
+                creator.id,
+                randomUUID(),
+                'a'.repeat(64),
+              ],
+            );
+            const readStatus = async () => {
+              const [row] = await repository.findListByIds([draft.id], manager);
+              return mapper.documentListItem(
+                row,
+                { pendingCount: 0, signedCount: 0 },
+                creator,
+              ).status;
+            };
+            expect(await readStatus()).toBe('initiating');
+            await manager.query(
+              `UPDATE esign_initiation_jobs SET status = 'processing', stage = 'resolving',
+                lease_token = ?, lease_expires_at = DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 5 MINUTE)
+                WHERE document_id = ?`,
+              [randomUUID(), draft.id],
+            );
+            expect(await readStatus()).toBe('initiating');
+            await manager.query(
+              `UPDATE esign_initiation_jobs SET status = 'failed', stage = 'failed',
+                error_code = 'TEST_FAILURE', completed_at = UTC_TIMESTAMP(6),
+                lease_token = NULL, lease_expires_at = NULL WHERE document_id = ?`,
+              [draft.id],
+            );
+            expect(await readStatus()).toBe('draft');
           } finally {
             querySpy.mockRestore();
           }

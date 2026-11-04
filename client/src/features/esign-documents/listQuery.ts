@@ -9,6 +9,7 @@ import dayjs from 'dayjs';
 export type DocumentListStatus = EsignDocumentStatus;
 
 export const DOCUMENT_STATUS_META: Record<DocumentListStatus, { label: string; color: ChipProps['color'] }> = {
+  initiating: { label: '發起中', color: 'info' },
   draft: { label: '草稿', color: 'default' },
   active: { label: '簽署中', color: 'warning' },
   expired: { label: '已到期', color: 'info' },
@@ -18,7 +19,7 @@ export const DOCUMENT_STATUS_META: Record<DocumentListStatus, { label: string; c
 };
 
 /** 依流程先後排列（狀態篩選選項與排序共用） */
-export const DOCUMENT_STATUSES: DocumentListStatus[] = ['draft', 'active', 'expired', 'finalizing', 'completed', 'stopped'];
+export const DOCUMENT_STATUSES: DocumentListStatus[] = ['draft', 'initiating', 'active', 'expired', 'finalizing', 'completed', 'stopped'];
 
 export const DOCUMENT_STATUS_OPTIONS = DOCUMENT_STATUSES.map((s) => ({ value: s, label: DOCUMENT_STATUS_META[s].label }));
 

@@ -106,6 +106,7 @@ export class EsignDocumentQueryService {
     userId: number,
     role?: 'dep' | 'created' | 'assigned',
     status?:
+      | 'initiating'
       | 'draft'
       | 'active'
       | 'expired'

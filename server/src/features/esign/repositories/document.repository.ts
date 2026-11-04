@@ -87,8 +87,8 @@ export class DocumentRepository {
   private async findList(
     where: FindOptionsWhere<EsignDocument>,
     manager: EntityManager,
-  ) {
-    const entities = await manager
+  ): Promise<Array<EsignDocument & { isInitiating?: boolean }>> {
+    const { entities, raw: initiationRows } = await manager
       .createQueryBuilder(EsignDocument, 'document')
       .setFindOptions({
         where: { ...where, deletedAt: IsNull() },
@@ -108,7 +108,22 @@ export class DocumentRepository {
         'document.completedAt',
         'document.stoppedAt',
       ])
-      .getMany();
+      .addSelect(
+        `EXISTS (SELECT 1 FROM esign_initiation_jobs job
+          WHERE job.active_document_id = document.id AND job.deleted_at IS NULL)`,
+        'isInitiating',
+      )
+      .getRawAndEntities();
+    const initiatingIds = new Set<number>(
+      initiationRows
+        .filter(
+          (row: { isInitiating: number | string }) =>
+            Number(row.isInitiating) === 1,
+        )
+        .map((row: { document_id: number | string }) =>
+          Number(row.document_id),
+        ),
+    );
     if (entities.length === 0) return entities;
     // JSON_EXTRACT 的來源欄位也可能進入 MySQL filesort；分開讀取且不排序。
     const raw = await manager
@@ -136,7 +151,12 @@ export class DocumentRepository {
         period: { endAt: originalEnds.get(document.id) ?? null },
       };
     }
-    return entities;
+    return entities.map((document) =>
+      Object.assign(document, {
+        isInitiating:
+          document.status === 'draft' && initiatingIds.has(document.id),
+      }),
+    );
   }
 
   create(fields: DeepPartial<EsignDocument>, manager: EntityManager) {

@@ -35,6 +35,10 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# rewrite 在 build 時寫死；員工頁面在伺服器端確認 session 時於執行期讀取同一個後端位址
+ARG API_PROXY_TARGET=http://server:3000
+ENV API_PROXY_TARGET=$API_PROXY_TARGET
+
 # monorepo standalone 產物保留 client/ 路徑；static / public 需手動帶入。
 COPY --from=builder /workspace/client/.next/standalone ./
 COPY --from=builder /workspace/client/public ./client/public

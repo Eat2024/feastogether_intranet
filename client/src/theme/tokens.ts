@@ -68,6 +68,10 @@ export const color = {
   actionDisabled: "rgba(0,0,0,0.26)",
   actionDisabledBg: "rgba(0,0,0,0.12)",
   scrim: "rgba(0,0,0,0.50)", // Dialog 遮罩，全站只此一值
+
+  // 饗賓品牌色：LOGO 的深灰褐與搭配的米白底，只用於不透露系統資訊的 404 頁
+  brandTaupe: "#80725C",
+  brandCanvas: "#FAF9F6",
 } as const;
 
 // 字重只用三檔（禁用 300／600／800／900）

@@ -55,7 +55,7 @@ https://truststore.pki.rds.amazonaws.com/ap-east-2/ap-east-2-bundle.pem
 
 ## 每次部署與備份
 
-1. 依序 build server/client，context 為 workspace root，前端 build 使用 `API_PROXY_TARGET=http://server:3000`。
+1. 依序 build server/client，context 為 workspace root，前端 build 使用 `API_PROXY_TARGET=http://server:3000`，同一個值也寫入 client runtime image，供員工頁面在伺服器端確認 session。
 2. 推送 GHCR 的 SHA tag，取得 digest；migration、server、worker 使用同一份 server digest。
 3. GitHub concurrency 與主機 flock 防止部署互撞。檢查既有 Redis／檔案 volumes／網路，不啟停舊 MySQL、不重啟 Redis。
 4. 使用候選 server image 檢查 RDS 目標、CA、連線及 pending migrations。連線／程式錯誤直接停止，不誤認為 pending。

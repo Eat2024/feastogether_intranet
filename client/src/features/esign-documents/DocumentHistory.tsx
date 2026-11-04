@@ -12,6 +12,19 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import dayjs from 'dayjs';
 
+/** 文件層級歷程採明確清單；個人行為、通知及副本事件保留於後端稽核，不在此呈現。 */
+const DOCUMENT_EVENTS = new Set([
+  'document.created',
+  'document.draft_updated',
+  'document.draft_deleted',
+  'document.initiated',
+  'document.completed',
+  'document.stopped_by_creator',
+  'document.stopped_by_deadline',
+  'document.expired',
+  'document.reopened',
+]);
+
 /** 需要特別標示的事件 */
 const EVENT_COLOR: Record<string, string> = {
   'document.completed': 'success.dark',
@@ -21,7 +34,7 @@ const EVENT_COLOR: Record<string, string> = {
 };
 
 /**
- * 合併同一秒、同類型、同操作者且沒有原因的連續事件（例如發起時每位簽署人各一筆「指派簽署人」），
+ * 合併同一秒、同類型、同操作者且沒有原因的連續事件（例如連續儲存草稿），
  * 只有相同身分的事件才合併；同名簽署人仍依公開識別區分。
  */
 function groupEvents(events: EsignHistoryItem[]) {
@@ -45,8 +58,8 @@ function groupEvents(events: EsignHistoryItem[]) {
 
 export default function DocumentHistory({ documentId }: { documentId: string }) {
   const { data, isPending, isError, error, refetch, isFetching } = useGetDocumentHistoryQuery(documentId);
-  // 最新的事件在上面
-  const events = data ? groupEvents([...data].reverse()) : [];
+  // 先篩選文件事件，再依時間由新到舊呈現；不更動 query cache 內的原始資料。
+  const events = data ? groupEvents(data.filter((event) => DOCUMENT_EVENTS.has(event.type)).reverse()) : [];
 
   return (
     <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
@@ -66,7 +79,7 @@ export default function DocumentHistory({ documentId }: { documentId: string }) 
           </Button>
         </Stack>
       ) : events.length === 0 ? (
-        <Typography variant="description">目前沒有任何紀錄。</Typography>
+        <Typography variant="description">目前沒有文件層級的歷程紀錄。</Typography>
       ) : (
         <Stack component="ol" sx={{ m: 0, p: 0, listStyle: 'none' }}>
           {events.map((e, i) => (

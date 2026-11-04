@@ -1,6 +1,6 @@
 // 在瀏覽器端產生簽署紀錄清單 Excel（格式與 mock 版 features/forms/export/buildXlsx.ts 相同）。
 // exceljs 套件較大，由呼叫端在點擊匯出時以 dynamic import 載入本檔。
-import { createExcelExportRecord, prepareExportDownload } from '@/api/requests';
+import { createExcelExportRecord } from '@/api/requests';
 import type { ExcelExportDocument } from '@/api/types';
 import { color } from '@/theme/tokens';
 import dayjs from 'dayjs';
@@ -86,25 +86,26 @@ export async function buildExportXlsx(
 }
 
 /**
- * 匯出簽署紀錄 Excel：先以 POST /api/esign/history/export 記錄匯出，成功後才產生並下載。
+ * 匯出簽署紀錄 Excel：先以 POST /api/esign/history/export 記錄匯出（含輸入的檔名），成功後才產生，
+ * 並以紀錄的 downloadFileName 下載，讓歷史匯出的「匯出檔名」與實際下載名稱一致。
  * 僅供新匯出使用；歷史重新下載直接產檔，不再次記錄。
  */
-export async function recordAndDownloadExcel(doc: ExportDocument & { id: string }, query: ExportQuery, requestedFileName = '') {
-  const prepared = await prepareExportDownload(doc.id, { type: 'excel', fileName: requestedFileName });
+export async function recordAndDownloadExcel(doc: ExportDocument & { id: string }, query: ExportQuery, fileName: string) {
   const rows = exportRows(doc.signers, query);
   const deptNames = selectedDeptNames(query.depts, buildDeptOptions(doc.signers));
-  await createExcelExportRecord({
+  const record = await createExcelExportRecord({
     type: 'excel',
     documentId: doc.id,
+    fileName,
     scope: describeScope(query, deptNames),
     count: rows.length,
     conditions: { statuses: query.statuses, depts: query.depts, fields: query.fields },
   });
-  const { blob, fileName } = await buildExportXlsx(doc, query, rows, deptNames);
+  const { blob } = await buildExportXlsx(doc, query, rows, deptNames);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = prepared.fileName ?? fileName;
+  a.download = record.downloadFileName;
   a.click();
   URL.revokeObjectURL(url);
 }

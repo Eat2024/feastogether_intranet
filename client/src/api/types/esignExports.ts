@@ -119,6 +119,8 @@ export interface ExportHistoryPage<T extends ExportHistoryType = ExportHistoryTy
 export interface CreateExcelExportRecordBody {
   type: 'excel';
   documentId: string;
+  /** 匯出檔案名稱；空白使用預設名稱，後端驗證並補上 .xlsx，回傳於 downloadFileName */
+  fileName: string;
   /** trim 後 1～2,000 字 */
   scope: string;
   count: number;
@@ -156,10 +158,15 @@ export interface EsignExportPreviewDocument extends ExcelExportDocument {
 }
 
 /** 當次下載名稱，僅供準備請求，不保存為文件設定。 */
-export type PrepareExportDownloadBody =
-  | { type: 'excel'; fileName?: string }
-  | { type: 'zip'; fileName?: string; exportId: string; fileId: string };
+export interface PrepareExportDownloadBody {
+  type: 'zip';
+  fileName?: string;
+  exportId: string;
+  fileId: string;
+}
 
-export type PreparedExportDownload =
-  | { type: 'excel'; fileName: string | null }
-  | { type: 'zip'; fileName: string; downloadPath: string };
+export interface PreparedExportDownload {
+  type: 'zip';
+  fileName: string;
+  downloadPath: string;
+}

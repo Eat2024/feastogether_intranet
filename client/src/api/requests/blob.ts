@@ -9,10 +9,9 @@ import axios from 'axios';
 export const downloadFile = async (
   url: string,
   method: 'GET' | 'POST' = 'GET',
-  data?: { fileName?: string },
 ): Promise<{ bytes: Blob; fileName: string | null }> => {
   try {
-    const res = await api<Blob>({ method, url, data, responseType: 'blob' });
+    const res = await api<Blob>({ method, url, responseType: 'blob' });
     const disposition: unknown = res.headers['content-disposition'];
     const encoded = typeof disposition === 'string' ? /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1] : undefined;
     return { bytes: res.data, fileName: encoded ? decodeURIComponent(encoded) : null };
@@ -30,8 +29,8 @@ export const downloadFile = async (
 };
 
 /** 本人副本等需要後端檔名的下載：沒有檔名時視為回應格式錯誤 */
-export const downloadNamedFile = async (url: string, method: 'GET' | 'POST' = 'GET', data?: { fileName?: string }) => {
-  const { bytes, fileName } = await downloadFile(url, method, data);
+export const downloadNamedFile = async (url: string, method: 'GET' | 'POST' = 'GET') => {
+  const { bytes, fileName } = await downloadFile(url, method);
   if (!fileName) throw new Error('下載檔名格式不正確');
   return { bytes, fileName };
 };

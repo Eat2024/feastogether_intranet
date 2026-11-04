@@ -80,10 +80,16 @@ export const getAllExportHistory = async <T extends ExportHistoryType>(
 
 /**
  * @name 記錄 Excel 匯出
- * @description 首次匯出與重新下載共用；記錄成功後才在瀏覽器產生 Excel。回傳新紀錄
+ * @description 僅新匯出使用；記錄成功後才在瀏覽器產生 Excel，並以回傳的 downloadFileName 下載
  */
-export const createExcelExportRecord = async (body: CreateExcelExportRecordBody): Promise<ExcelExportHistoryItem> => {
-  const res = await api<ExcelExportHistoryItem>({ method: 'POST', url: endpoints.ESIGN_EXPORT_HISTORY, data: body });
+export const createExcelExportRecord = async (
+  body: CreateExcelExportRecordBody,
+): Promise<ExcelExportHistoryItem & { downloadFileName: string }> => {
+  const res = await api<ExcelExportHistoryItem & { downloadFileName: string }>({
+    method: 'POST',
+    url: endpoints.ESIGN_EXPORT_HISTORY,
+    data: body,
+  });
   return res.data;
 };
 
@@ -98,10 +104,10 @@ export const getExcelExportDocument = async (recordId: string): Promise<ExcelExp
 
 /**
  * @name 重新下載單人 PDF
- * @description 只接受 pdf 紀錄；回該簽署人目前的已簽副本，並新增一筆匯出人為目前使用者的紀錄
+ * @description 只接受 pdf 紀錄；回該簽署人目前的已簽副本，不新增紀錄
  */
-export const redownloadPdfExport = (recordId: string, fileName?: string): Promise<{ bytes: Blob; fileName: string }> =>
-  downloadNamedFile(endpoints.ESIGN_EXPORT_HISTORY_DOWNLOADS(recordId), 'POST', { fileName });
+export const redownloadPdfExport = (recordId: string): Promise<{ bytes: Blob; fileName: string }> =>
+  downloadNamedFile(endpoints.ESIGN_EXPORT_HISTORY_DOWNLOADS(recordId), 'POST');
 
 /** 下載 ZIP 的網址：檔案可能很大，以瀏覽器直接下載（同源請求會帶上 session cookie），不先讀進記憶體 */
 export const documentExportFileUrl = (id: string, exportId: string, fileId: string) =>

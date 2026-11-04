@@ -11,6 +11,7 @@ import { EsignInitiationService } from '#app/features/esign/services/esign-initi
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
 import { EsignInitiationJob } from '#app/features/esign/entities/esign-initiation-job.entity';
 import type { InitiateDocumentDto } from '#app/features/esign/dto/initiation.dto';
+import type { EsignDocumentListItemDto } from '#app/features/esign/dto/esign-common.dto';
 import type { InitiationJobDto } from '#app/features/esign/dto/initiation-job.dto';
 import {
   ESIGN_DOCUMENT_INITIATION_QUEUE,
@@ -34,6 +35,7 @@ describe('022 背景發起只讀查詢', () => {
   let users: User[] = [];
   let cookie: string;
   let otherCookie: string;
+  let outsiderCookie: string;
   let pdf: Buffer;
   const documents: string[] = [];
   const ownedJobs = new Set<number>();
@@ -44,17 +46,18 @@ describe('022 背景發起只讀查詢', () => {
     const prefix = `Q${randomBytes(4).toString('hex')}`;
     users = await mysql.getManager().save(
       User,
-      [0, 1].map((i) => ({
+      [0, 1, 2].map((i) => ({
         empid: `${prefix}${i}`,
         name: '合成查詢員工',
         isActive: true,
         email: null,
-        departmentCode: 'SYN022QUERY',
+        departmentCode: i === 2 ? 'SYN025OUTSIDE' : 'SYN022QUERY',
         departmentName: '合成查詢部門',
       })),
     );
     cookie = await session(users[0].id);
     otherCookie = await session(users[1].id);
+    outsiderCookie = await session(users[2].id);
     const source = await PDFDocument.create();
     source.addPage();
     pdf = Buffer.from(await source.save());
@@ -125,6 +128,82 @@ describe('022 背景發起只讀查詢', () => {
       .get(`/api/esign/documents/${documentId}/initiation-jobs/${jobId}`)
       .set('Cookie', who);
   }
+  it('025 受理摘要可重讀且僅原有文件讀者可見，不揭露輸入或工作明細', async () => {
+    const doc = await newDoc();
+    const input = body();
+    const job = await submit(doc, input);
+    const expected = {
+      signStartAt: input.signStartAt,
+      signEndAt: input.signEndAt,
+      totalCount: 1,
+    };
+    for (const stage of ['queued', 'processing', 'retry'] as const) {
+      await mysql
+        .getManager()
+        .update(
+          EsignInitiationJob,
+          job.id,
+          stage === 'processing'
+            ? {
+                status: 'processing',
+                stage: 'resolving',
+                leaseToken: randomUUID(),
+                leaseExpiresAt: new Date(Date.now() + 60000),
+              }
+            : {
+                status: 'queued',
+                stage: 'queued',
+                leaseToken: null,
+                leaseExpiresAt: null,
+                nextAttemptAt:
+                  stage === 'retry' ? new Date(Date.now() + 30000) : null,
+              },
+        );
+      for (const who of [cookie, otherCookie]) {
+        for (let repeat = 0; repeat < 2; repeat++) {
+          const rows = apiData<EsignDocumentListItemDto[]>(
+            await request(ctx.server)
+              .get('/api/esign/documents?role=dep&status=initiating')
+              .set('Cookie', who)
+              .expect(200),
+          );
+          const row = rows.find((item) => item.id === doc);
+          expect(row).toMatchObject({
+            status: 'initiating',
+            initiation: expected,
+          });
+          expect(Object.keys(row!.initiation!).sort()).toEqual([
+            'signEndAt',
+            'signStartAt',
+            'totalCount',
+          ]);
+          for (const secret of [
+            'inputJson',
+            'signers',
+            'email',
+            'leaseToken',
+            'jobId',
+            'documentVersionJson',
+            'issuesJson',
+          ]) {
+            expect(row).not.toHaveProperty(secret);
+          }
+        }
+      }
+      const outside = apiData<EsignDocumentListItemDto[]>(
+        await request(ctx.server)
+          .get('/api/esign/documents?role=dep&status=initiating')
+          .set('Cookie', outsiderCookie)
+          .expect(200),
+      );
+      expect(outside.some((row) => row.id === doc)).toBe(false);
+      await request(ctx.server)
+        .get(`/api/esign/documents/${doc}`)
+        .set('Cookie', outsiderCookie)
+        .expect(404);
+    }
+  });
+
   it('建立人可查 latest；尚無工作回 null，不觸發受理', async () => {
     const documentId = await newDoc();
     const response = await latest(documentId).expect(200);
@@ -305,7 +384,7 @@ describe('022 背景發起只讀查詢', () => {
     });
   });
 
-  it('worker 處理前列表仍 draft，成功後才 active，列表不新增工作摘要欄位', async () => {
+  it('025 worker 完成前列表顯示 initiating 摘要，成功後才 active 並移除摘要', async () => {
     const doc = await newDoc();
     const job = await submit(doc);
     async function item() {
@@ -320,7 +399,10 @@ describe('022 背景發起只讀查詢', () => {
       expect(row).not.toHaveProperty('initiationSummary');
       return row;
     }
-    expect(await item()).toMatchObject({ status: 'draft' });
+    expect(await item()).toMatchObject({
+      status: 'initiating',
+      initiation: { totalCount: 1 },
+    });
     const core = ctx.app.get(EsignInitiationService);
     const execute = core.initiateInTransaction.bind(
       core,
@@ -336,7 +418,10 @@ describe('022 背景發起只讀查詢', () => {
           processedCount: 1,
           attemptCount: 1,
         });
-        expect(await item()).toMatchObject({ status: 'draft' });
+        expect(await item()).toMatchObject({
+          status: 'initiating',
+          initiation: { totalCount: 1 },
+        });
         return execute(...args);
       });
     try {
@@ -351,7 +436,7 @@ describe('022 背景發起只讀查詢', () => {
       stage: 'completed',
       processedCount: 1,
     });
-    expect(await item()).toMatchObject({ status: 'active' });
+    expect(await item()).toMatchObject({ status: 'active', initiation: null });
     const conflict = await request(ctx.server)
       .patch(`/api/esign/documents/${doc}/draft-settings`)
       .set('Cookie', cookie)

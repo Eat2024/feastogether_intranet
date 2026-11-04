@@ -6,7 +6,7 @@
 
 **對應 Tasks:** T009–T011
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 重整、重新開啟與同部門原可讀帳號可看到相同摘要；不可讀者不能取得資料。
 - [ ] 只回傳日期與人數，不回傳完整名單、信箱、憑證或租約。
@@ -17,3 +17,5 @@
 ## 執行紀錄
 
 - 使用者已確認此拆分與依賴；尚未開始實作。前置 tickets 均 resolved 後才可 claimed；驗收通過且整合後才可 resolved。
+
+- Ticket 02 實作與驗收完成，待 merger 整合後標 resolved；證據見 Spec 025 validation-02.md。

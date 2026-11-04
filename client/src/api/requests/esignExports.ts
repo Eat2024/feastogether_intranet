@@ -57,6 +57,27 @@ export const getExportHistory = async <T extends ExportHistoryType>(
   return res.data;
 };
 
+// 後端每頁上限
+const EXPORT_HISTORY_MAX_PAGE_SIZE = 100;
+
+/**
+ * @name 查詢某類型的全部歷史匯出紀錄
+ * @description 後端沒有排序參數：在前端排序時，依類型與關鍵字逐頁取回全部紀錄（每頁 100 筆，第一頁之後並行）。
+ * 取回期間若有新紀錄，頁面位移可能造成重複，以 id 去除
+ */
+export const getAllExportHistory = async <T extends ExportHistoryType>(
+  params: Omit<ExportHistoryParams<T>, 'page' | 'pageSize'>,
+): Promise<Pick<ExportHistoryPage<T>, 'items' | 'total' | 'typeTotals'>> => {
+  const pageSize = EXPORT_HISTORY_MAX_PAGE_SIZE;
+  const first = await getExportHistory({ ...params, page: 1, pageSize });
+  const pageCount = Math.ceil(first.total / pageSize);
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, pageCount - 1) }, (_, i) => getExportHistory({ ...params, page: i + 2, pageSize })),
+  );
+  const byId = new Map([first, ...rest].flatMap((p) => p.items).map((item) => [item.id, item]));
+  return { items: [...byId.values()], total: first.total, typeTotals: first.typeTotals };
+};
+
 /**
  * @name 記錄 Excel 匯出
  * @description 首次匯出與重新下載共用；記錄成功後才在瀏覽器產生 Excel。回傳新紀錄

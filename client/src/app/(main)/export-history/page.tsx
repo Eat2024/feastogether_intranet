@@ -11,6 +11,7 @@ export default function ExportHistoryPage() {
     <>
       <PageHeader
         title="歷史匯出文件"
+        hideTitleWhenEmbedded
         description="查看所有人匯出的簽署紀錄與已簽署文件，並可重新下載。"
       />
       {/* useSearchParams 需要 Suspense 邊界 */}

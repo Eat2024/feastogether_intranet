@@ -50,17 +50,20 @@ export function documentListDisplay(doc: EsignDocumentListItem) {
   };
 }
 
-const taipeiCreatedTime = new Intl.DateTimeFormat('en-GB', {
+const taipeiListTime = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 });
 
 /** 文件建立時間固定用台北時間，不隨瀏覽器時區改變。 */
 export function formatCreatedTime(iso: string) {
-  const parts = taipeiCreatedTime.formatToParts(new Date(iso));
+  const parts = taipeiListTime.formatToParts(new Date(iso));
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value;
   return `${part('year')}/${part('month')}/${part('day')} ${part('hour')}:${part('minute')}`;
 }
+
+/** 列表期間與日期篩選固定用台北日曆日。 */
+export const formatListDate = (iso: string | null) => iso ? formatCreatedTime(iso).slice(0, 10) : null;
 
 // ── 篩選 ──────────────────────────────────────────────
 
@@ -92,7 +95,7 @@ export function parseDocumentFilters(params: URLSearchParams): DocumentFilters {
 
 export const hasDocumentFilters = (f: DocumentFilters) => !!(f.query || f.statuses.length || f.from || f.to);
 
-const localDate = (iso: string) => dayjs(iso).format('YYYY-MM-DD');
+const listDate = (iso: string) => formatCreatedTime(iso).slice(0, 10).replaceAll('/', '-');
 
 /**
  * 篩選：
@@ -108,9 +111,10 @@ export function filterDocuments(docs: EsignDocumentListItem[], filters: Document
     }
     if (filters.statuses.length && !filters.statuses.includes(d.status)) return false;
     if (filters.from || filters.to) {
-      if (!d.signStartAt) return false;
-      if (filters.to && localDate(d.signStartAt) > filters.to) return false;
-      if (filters.from && d.signEndAt && localDate(d.signEndAt) < filters.from) return false;
+      const display = documentListDisplay(d);
+      if (!display.signStartAt) return false;
+      if (filters.to && listDate(display.signStartAt) > filters.to) return false;
+      if (filters.from && display.signEndAt && listDate(display.signEndAt) < filters.from) return false;
     }
     return true;
   });
@@ -126,22 +130,23 @@ const STATUS_ORDER = Object.fromEntries(DOCUMENT_STATUSES.map((s, i) => [s, i]))
 
 /** 各欄的排序值；null 表示沒有值，不論升冪或降冪都排在最後 */
 const sortValue = (key: DocumentSortKey) => (d: EsignDocumentListItem): SortValue => {
-  const total = d.signedCount + d.pendingCount;
+  const display = documentListDisplay(d);
+  const total = display.totalCount;
   switch (key) {
     case 'name':
       return d.title;
     case 'docNumber':
       return d.docNumber || null;
     case 'startAt':
-      return d.signStartAt;
+      return display.signStartAt;
     // 已發起但未設結束時間（不限）視為最晚；尚未發起才是無值
     case 'endAt':
-      return d.signEndAt ?? (d.signStartAt ? '￿' : null);
+      return display.signEndAt ?? (display.signStartAt ? '￿' : null);
     case 'status':
       return STATUS_ORDER[d.status];
     // 依完成比例，再依已簽人數；沒有簽署人視為無值
     case 'progress':
-      return total ? [d.signedCount / total, d.signedCount] : null;
+      return total ? [display.signedCount / total, display.signedCount] : null;
     case 'createdBy':
       return d.createdBy ? `${d.createdBy.name}\u0000${d.createdBy.employeeNo}` : null;
   }

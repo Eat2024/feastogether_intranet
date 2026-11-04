@@ -128,6 +128,89 @@ describe('022 員工共享鎖與跨文件受理', () => {
     });
     return { promise, resolve };
   }
+  it.each(['queued', 'processing', 'retry'] as const)(
+    '025 %s 摘要可讀仍不允許異動或提前開啟簽署',
+    async (stage) => {
+      const doc = await newDoc();
+      const job = await submit(doc);
+      await mysql
+        .getManager()
+        .update(
+          EsignInitiationJob,
+          job.id,
+          stage === 'processing'
+            ? {
+                status: 'processing',
+                stage: 'validating',
+                leaseToken: randomUUID(),
+                leaseExpiresAt: new Date(Date.now() + 60000),
+              }
+            : {
+                nextAttemptAt:
+                  stage === 'retry' ? new Date(Date.now() + 30000) : null,
+              },
+        );
+      const items = apiData<
+        Array<{
+          id: string;
+          status: string;
+          initiation: { totalCount: number };
+        }>
+      >(
+        await request(ctx.server)
+          .get('/api/esign/documents?role=created')
+          .set('Cookie', cookie)
+          .expect(200),
+      );
+      expect(items.find((item) => item.id === doc)).toMatchObject({
+        status: 'initiating',
+        initiation: { totalCount: 1 },
+      });
+      const changes = [
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}`)
+            .field('title', '不得修改'),
+        () =>
+          request(ctx.server)
+            .patch(`/api/esign/documents/${doc}/draft-settings`)
+            .send({ watermark: false }),
+        () =>
+          request(ctx.server)
+            .put(`/api/esign/documents/${doc}/draftSave`)
+            .send({ signers: [{ type: 'user', userId: String(users[1].id) }] }),
+        () => request(ctx.server).delete(`/api/esign/documents/${doc}`),
+        () =>
+          request(ctx.server)
+            .post(`/api/esign/documents/${doc}/initiations`)
+            .send(body()),
+      ];
+      for (const change of changes) {
+        const response = await change()
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .expect(409);
+        expect(apiError(response)).toMatchObject({
+          code: 'ESIGN_INITIATION_IN_PROGRESS',
+          details: { existingJobId: job.publicId },
+        });
+      }
+      const tasks = apiData<Array<{ documentId: string }>>(
+        await request(ctx.server)
+          .get('/api/esign/signing-tasks')
+          .set('Cookie', cookie)
+          .expect(200),
+      );
+      expect(tasks.some((task) => task.documentId === doc)).toBe(false);
+      // 受理工作識別不是正式簽署任務，不能授予開啟／簽署權限。
+      await request(ctx.server)
+        .post(`/api/esign/signing-tasks/${job.publicId}`)
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .expect(404);
+    },
+  );
+
   it.each(['initial', 'retry'] as const)(
     '同建立人兩份文件同時%s不因缺列gap死鎖回503',
     async (operation) => {

@@ -21,7 +21,7 @@ import {
   documentsHref,
   documentListDisplay,
   formatCreatedTime,
-  formatDate,
+  formatListDate,
   type DocumentFilters,
   type DocumentSort,
   type DocumentSortKey,
@@ -90,13 +90,13 @@ export default function DocumentsTable({
                   {/* 草稿尚未發起時以「—」表示；已發起但未設結束時間為「不限」 */}
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{doc.docNumber || '—'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatCreatedTime(doc.createdAt)}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(display.signStartAt) ?? '—'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatListDate(display.signStartAt) ?? '—'}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    {formatDate(display.signEndAt) ?? (display.signStartAt ? '不限' : '—')}
+                    {formatListDate(display.signEndAt) ?? (display.signStartAt ? '不限' : '—')}
                     {/* 補簽過：結束日為補簽的新期限 */}
                     {doc.isReopened && (
                       <Typography variant="helper" component="div">
-                        補簽；原 {formatDate(doc.originalSignEndAt)}
+                        補簽；原 {formatListDate(doc.originalSignEndAt)}
                       </Typography>
                     )}
                   </TableCell>

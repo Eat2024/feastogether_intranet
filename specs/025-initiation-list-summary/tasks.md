@@ -33,9 +33,9 @@
 **Goal**: 重整與原有讀者看見一致摘要；篩選、日期排序及異動限制不產生矛盾。
 **Independent Test**: 排隊期間重新開啟頁面，以同部門可讀與不可讀帳號分別驗證。
 
-- [ ] T009 [P] [US2] 在 server/test/esign-initiation-query.e2e-spec.ts 覆蓋建立人、原可讀同部門與不可讀者的列表摘要／initiating 篩選，確認不回傳 inputJson、名單、信箱、租約或憑證；重讀仍顯示相同期間與人數。
-- [ ] T010 [P] [US2] 在 client/src/features/esign-documents/listQuery.ts 將日期篩選及排序改用 US1 的顯示期間 helper，並在 validation.md 記錄重整、多分頁、窄螢幕與日期時區人工驗收。
-- [ ] T011 [US2] 在 server/test/esign-initiation-locks.e2e-spec.ts 與 client/src/features/esign-documents/DocumentRowActions.tsx 核對既有發起中保護；對排隊、執行及重試等待驗證文件／簽署人異動、刪除、重複發起及提前簽署仍被阻擋；僅在回歸失敗時修正本功能造成的缺口。
+- [X] T009 [P] [US2] 在 server/test/esign-initiation-query.e2e-spec.ts 覆蓋建立人、原可讀同部門與不可讀者的列表摘要／initiating 篩選，確認不回傳 inputJson、名單、信箱、租約或憑證；重讀仍顯示相同期間與人數。
+- [X] T010 [P] [US2] 在 client/src/features/esign-documents/listQuery.ts 將日期篩選及排序改用 US1 的顯示期間 helper，並在 validation.md 記錄重整、多分頁、窄螢幕與日期時區人工驗收。
+- [X] T011 [US2] 在 server/test/esign-initiation-locks.e2e-spec.ts 與 client/src/features/esign-documents/DocumentRowActions.tsx 核對既有發起中保護；對排隊、執行及重試等待驗證文件／簽署人異動、刪除、重複發起及提前簽署仍被阻擋；僅在回歸失敗時修正本功能造成的缺口。
 
 **Checkpoint**: 不依賴發起者暫存畫面，且未擴大讀寫權限。
 

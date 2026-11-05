@@ -180,5 +180,5 @@ export function documentsHref(opts: { filters: DocumentFilters; sort: DocumentSo
   }
   if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
-  return s ? `/forms?${s}` : '/forms';
+  return s ? `/esign/forms?${s}` : '/esign/forms';
 }

@@ -1,6 +1,6 @@
 'use client';
 
-// 匯出簽署紀錄（後端文件）：畫面與 mock 版 /forms/[id]/export 相同，條件記在網址上。
+// 匯出簽署紀錄（後端文件）：畫面與 mock 版 /esign/forms/[id]/export 相同，條件記在網址上。
 // Excel 以 GET /api/esign/documents/:id?view=export 的授權匯出資料在瀏覽器端產生，產生前先記錄到歷史匯出（Spec 015）。
 import { useGetDocumentExportPreviewQuery } from '@/api/queries';
 import type { EsignExportPreviewDocument, EsignSignerStatus } from '@/api/types';
@@ -298,7 +298,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
       )}
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        <Button size="large" variant="outlined" href="/forms">
+        <Button size="large" variant="outlined" href="/esign/forms">
           {content === 'list' ? '取消' : '返回列表'}
         </Button>
         {content === 'list' && (

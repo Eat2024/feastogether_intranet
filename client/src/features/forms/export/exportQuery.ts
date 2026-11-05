@@ -106,11 +106,11 @@ export function exportPageHref(formId: string, query: ExportQuery, page = 1) {
   const qs = new URLSearchParams(toSearch(query));
   if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
-  return s ? `/forms/${formId}/export?${s}` : `/forms/${formId}/export`;
+  return s ? `/esign/forms/${formId}/export?${s}` : `/esign/forms/${formId}/export`;
 }
 
 /** 下載 Excel 檔案的網址 */
 export function exportFileHref(formId: string, query: ExportQuery) {
   const s = toSearch(query);
-  return s ? `/forms/${formId}/export/file?${s}` : `/forms/${formId}/export/file`;
+  return s ? `/esign/forms/${formId}/export/file?${s}` : `/esign/forms/${formId}/export/file`;
 }

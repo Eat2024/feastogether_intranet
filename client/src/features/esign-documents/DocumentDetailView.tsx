@@ -125,13 +125,13 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
               </Button>
             )}
             {doc.canExport && doc.status !== 'draft' && (
-              <Button size="large" variant="outlined" href={`/forms/${doc.id}/export`}>匯出</Button>
+              <Button size="large" variant="outlined" href={`/esign/forms/${doc.id}/export`}>匯出</Button>
             )}
             {doc.isCreator && <>
               {doc.status === 'draft' ? (
                 <>
-                  <Button size="large" variant="outlined" href={`/forms/${doc.id}/edit`} startIcon={<EditRoundedIcon />}>編輯</Button>
-                  <Button size="large" variant="contained" href={`/forms/${doc.id}/signers`}>設定簽署</Button>
+                  <Button size="large" variant="outlined" href={`/esign/forms/${doc.id}/edit`} startIcon={<EditRoundedIcon />}>編輯</Button>
+                  <Button size="large" variant="contained" href={`/esign/forms/${doc.id}/signers`}>設定簽署</Button>
                 </>
               ) : (
                 <>

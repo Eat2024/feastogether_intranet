@@ -35,15 +35,14 @@ export const SERVICES: ServiceDefinition[] = [
     key: "esign",
     name: "電子簽署",
     icon: DrawRoundedIcon,
-    // 電子簽路由沒有共同前綴（入口網嵌入的 EMBED_TARGET_PATHS 依賴這些路徑），逐一列出
-    pathPrefixes: ["/forms", "/my-signature", "/export-history"],
+    pathPrefixes: ["/esign"],
     menu: [
-      { key: "forms", label: "電子簽列表", href: "/forms", icon: ListAltRoundedIcon },
-      { key: "my-signature", label: "我的電子簽", href: "/my-signature", icon: DrawRoundedIcon },
+      { key: "forms", label: "電子簽列表", href: "/esign/forms", icon: ListAltRoundedIcon },
+      { key: "my-signature", label: "我的電子簽", href: "/esign/my-signature", icon: DrawRoundedIcon },
       {
         key: "export-history",
         label: "歷史匯出文件",
-        href: "/export-history",
+        href: "/esign/export-history",
         icon: HistoryRoundedIcon,
       },
     ],
@@ -68,7 +67,7 @@ export const SERVICES: ServiceDefinition[] = [
   },
 ];
 
-/** pathname 是 href 本身或其子路由（/forms 不會匹配 /forms-x） */
+/** pathname 是 href 本身或其子路由（/esign/forms 不會匹配 /esign/forms-x） */
 export function isRouteActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }

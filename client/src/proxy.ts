@@ -20,5 +20,5 @@ export async function proxy(request: NextRequest) {
 
 // 只涵蓋 (main) 底下的員工頁面；外部簽署頁、公開驗證頁、入口網嵌入頁與 /api 不經過
 export const config = {
-  matcher: ["/", "/forms/:path*", "/my-signature/:path*", "/export-history/:path*", "/travel/:path*"],
+  matcher: ["/", "/esign/:path*", "/travel/:path*"],
 };

@@ -21,7 +21,7 @@ export default function DocumentEditView({ documentId }: { documentId: string })
 
   const router = useRouter();
   useEffect(() => {
-    if (doc && !doc.isCreator) router.replace(`/forms/${doc.id}`);
+    if (doc && !doc.isCreator) router.replace(`/esign/forms/${doc.id}`);
   }, [doc, router]);
 
   if (isPending) {
@@ -49,7 +49,7 @@ export default function DocumentEditView({ documentId }: { documentId: string })
   if (!doc.isCreator) return <Alert severity="info">正在前往文件檢視頁…</Alert>;
   if (doc.status !== 'draft') {
     return (
-      <Alert severity="info" action={<Button href={`/forms/${doc.id}`}>檢視簽署進度</Button>}>
+      <Alert severity="info" action={<Button href={`/esign/forms/${doc.id}`}>檢視簽署進度</Button>}>
         「{doc.title}」已發起簽署，無法再修改文件內容。
       </Alert>
     );

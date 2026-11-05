@@ -144,5 +144,5 @@ export function exportPageHref(documentId: string, query: ExportQuery, page = 1)
   if (query.fields.join(',') !== DEFAULT_FIELDS.join(',')) qs.set('fields', query.fields.join(','));
   if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
-  return s ? `/forms/${documentId}/export?${s}` : `/forms/${documentId}/export`;
+  return s ? `/esign/forms/${documentId}/export?${s}` : `/esign/forms/${documentId}/export`;
 }

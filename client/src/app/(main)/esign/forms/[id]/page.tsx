@@ -50,14 +50,14 @@ function Kpi({ label, value, color }: { label: string; value: number; color?: st
   );
 }
 
-export default async function FormDetailPage({ params, searchParams }: PageProps<'/forms/[id]'>) {
+export default async function FormDetailPage({ params, searchParams }: PageProps<'/esign/forms/[id]'>) {
   const { id } = await params;
   // 後端建立的文件（數字 id）：在瀏覽器端以使用者的 session 讀取詳情與歷程
   if (/^\d+$/.test(id)) {
     return (
       <>
         <Box>
-          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/forms">
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
             返回電子簽列表
           </Button>
         </Box>
@@ -73,7 +73,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
   const stored = getForm(id);
   if (!stored || stored.docType !== 'sheet') notFound();
   // 草稿尚無簽署進度，請改用「編輯」或「發起簽署」
-  if (stored.status === 'draft') redirect('/forms');
+  if (stored.status === 'draft') redirect('/esign/forms');
 
   // 建立人檢視：簽名圖檔不需要傳給畫面
   const form = toClientForm(stored);
@@ -92,7 +92,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
   return (
     <>
       <Box>
-        <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/forms">
+        <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
           返回電子簽列表
         </Button>
       </Box>
@@ -115,7 +115,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
               size="large"
               variant="outlined"
               startIcon={<EditRoundedIcon />}
-              href={`/forms/${id}/edit`}
+              href={`/esign/forms/${id}/edit`}
               disabled={!canEdit}
             >
               編輯

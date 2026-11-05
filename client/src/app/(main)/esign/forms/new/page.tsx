@@ -14,14 +14,14 @@ export const metadata: Metadata = { title: "新增電子簽文件" };
 const SHEET_ENABLED = false;
 
 const TYPES = [
-  { value: "upload", label: "一般文件（上傳）", href: "/forms/new" },
+  { value: "upload", label: "一般文件（上傳）", href: "/esign/forms/new" },
   // 後端尚未支援簽到表，先隱藏此分頁
-  ...(SHEET_ENABLED ? [{ value: "sheet", label: "簽到表（尚未完成）", href: "/forms/new?type=sheet" }] : []),
+  ...(SHEET_ENABLED ? [{ value: "sheet", label: "簽到表（尚未完成）", href: "/esign/forms/new?type=sheet" }] : []),
 ];
 
 export default async function NewFormPage({
   searchParams,
-}: PageProps<"/forms/new">) {
+}: PageProps<"/esign/forms/new">) {
   // 隱藏期間直接輸入 ?type=sheet 也顯示一般文件
   const isSheet = SHEET_ENABLED && (await searchParams).type === "sheet";
 
@@ -32,7 +32,7 @@ export default async function NewFormPage({
         <Button
           variant="text"
           startIcon={<ArrowBackRoundedIcon />}
-          href="/forms"
+          href="/esign/forms"
         >
           返回電子簽列表
         </Button>

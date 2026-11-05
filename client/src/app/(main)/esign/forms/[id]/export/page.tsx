@@ -35,14 +35,14 @@ import { Suspense } from 'react';
 export const metadata: Metadata = { title: '匯出簽署紀錄' };
 export const dynamic = 'force-dynamic';
 
-export default async function FormExportPage({ params, searchParams }: PageProps<'/forms/[id]/export'>) {
+export default async function FormExportPage({ params, searchParams }: PageProps<'/esign/forms/[id]/export'>) {
   const { id } = await params;
   // 後端建立的文件（數字 id）：在瀏覽器端讀取簽署人並產生 Excel（後端沒有匯出 API）
   if (/^\d+$/.test(id)) {
     return (
       <>
         <Box>
-          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/forms">
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
             返回電子簽列表
           </Button>
         </Box>
@@ -58,7 +58,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
   const form = getForm(id);
   if (!form || form.docType !== 'sheet') notFound();
   // 草稿尚無簽署資料可匯出
-  if (form.status === 'draft') redirect('/forms');
+  if (form.status === 'draft') redirect('/esign/forms');
 
   const search = await searchParams;
   const query = parseExportQuery(search);
@@ -76,7 +76,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
   return (
     <>
       <Box>
-        <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/forms">
+        <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
           返回電子簽列表
         </Button>
       </Box>
@@ -146,7 +146,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
       </Stack>
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        <Button size="large" variant="outlined" href="/forms">
+        <Button size="large" variant="outlined" href="/esign/forms">
           取消
         </Button>
         {/* 檔案下載用一般連結（不經 Next.js 前端路由） */}

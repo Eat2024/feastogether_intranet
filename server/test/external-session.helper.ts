@@ -5,8 +5,7 @@ import { mailFixture, type SecurityE2eContext } from './security-e2e.helper';
 import { randomClientIp } from './signature-verification.helper';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
+import { employeeSessionCookie } from './employee-session.helper';
 
 /**
  * 外部簽署人開啟文件的兩個表單端點都依 client IP 限流，計數存 Redis 且跨測試回合存活；
@@ -81,6 +80,5 @@ export async function openInternalEmployeeSession(
     .findByPublicId(signerPublicId, ctx.app.get(MysqlService).getManager());
   if (signer?.signerType !== 'user' || !signer.userId)
     throw new Error('合成指派不是內部員工');
-  const session = await ctx.app.get(AuthService).issueSession(signer.userId);
-  return `${AUTH_COOKIE_NAME}=${session.token}`;
+  return employeeSessionCookie(ctx.app, signer.userId);
 }

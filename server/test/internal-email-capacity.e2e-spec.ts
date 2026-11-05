@@ -21,8 +21,6 @@ import { performance } from 'node:perf_hooks';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { In } from 'typeorm';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { ESIGN_EXTERNAL_INVITATION_QUEUE } from '#app/features/esign/esign-queue.constants';
@@ -39,6 +37,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合成來源）', () => {
   let ctx: SecurityE2eContext;
@@ -154,7 +153,7 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
     });
     expect(users).toHaveLength(5001);
     mailFixture(ctx).allowEmails(users.map((user) => email(user.empid)));
-    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
+    cookie = await employeeSessionCookie(ctx.app, users[0].id);
     const pdf = await PDFDocument.create();
     pdf.addPage();
     documentId = apiData<{ id: string }>(

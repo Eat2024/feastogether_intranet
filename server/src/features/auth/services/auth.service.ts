@@ -10,16 +10,12 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { EntityManager } from 'typeorm';
 import { AppException } from '#app/common/errors/app.exception';
-import {
-  AUTH_SESSION_STATUS,
-  type AuthSession as AuthSessionEntity,
-} from '#app/features/auth/entities/auth-session.entity';
+import type { AuthSession as AuthSessionEntity } from '#app/features/auth/entities/auth-session.entity';
 import { AuthSessionRepository } from '#app/features/auth/repositories/auth-session.repository';
 import { isDuplicateEntryError } from '#app/features/auth/repositories/oauth-identity.repository';
 import { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
-import { FeastogetherAuthService } from '#app/infrastructure/http-client/feastogether/services/feastogether-auth.service';
 import type { StaffLookupDto } from '../dto/staff-lookup.dto';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import {
@@ -27,12 +23,7 @@ import {
   WEBVIEW_JWT_MAX_TTL_SECONDS,
   WEBVIEW_JWT_TYPE,
   WEBVIEW_LAUNCH_TTL_SECONDS,
-  WEBVIEW_SESSION_TTL_SECONDS,
 } from '../auth.constants';
-import {
-  toEmployeeSessionView,
-  type EmployeeSessionView,
-} from '../dto/session-view.dto';
 import { WebviewLaunchView } from '../dto/webview-launch.dto';
 import { EligibleStaffService } from './eligible-staff.service';
 
@@ -61,38 +52,12 @@ export class AuthService {
     private readonly mysql: MysqlService,
     private readonly eligibleStaff: EligibleStaffService,
     private readonly logger: AppLoggerService,
-    private readonly passwordAuth: FeastogetherAuthService,
   ) {
     const webviewConfig = this.getConfig(config);
     this.issuer = webviewConfig.iss;
     this.audience = webviewConfig.aud;
     this.publicKey = this.readPublicKey(webviewConfig.key);
     this.launchOrigin = webviewConfig.launch;
-  }
-
-  /** 帳密驗證後沿用 WebView 的員工資格與本地帳號規則，再發本系統 session。 */
-  async login(
-    empId: string,
-    password: string,
-  ): Promise<{ token: string; session: EmployeeSessionView }> {
-    await this.passwordAuth.authenticate(empId, password);
-    const staff = await this.eligibleStaff.lookupEligibleStaff(empId);
-    const saveUser = () =>
-      this.mysql.transaction((manager) =>
-        this.findOrCreateUser(empId, staff, new Date(), manager),
-      );
-    let user: User;
-    try {
-      user = await saveUser();
-    } catch (error) {
-      if (!this.isUserCreationRace(error)) throw error;
-      user = await saveUser();
-    }
-    const issued = await this.issueSession(Number(user.id));
-    return {
-      token: issued.token,
-      session: this.buildSession(user, issued.expiresAt),
-    };
   }
 
   async createWebviewLaunch(token: string): Promise<WebviewLaunchView> {
@@ -129,72 +94,6 @@ export class AuthService {
       if (error instanceof AppException) throw error;
       throw this.databaseUnavailable();
     }
-  }
-
-  async activateWebviewSession(code: string): Promise<string> {
-    if (!this.isOpaqueCredential(code)) throw this.exchangeFailed();
-    const token = this.createCredential();
-    const now = new Date();
-    try {
-      await this.mysql.transaction(async (manager) => {
-        const session = await this.sessions.findPendingForUpdate(
-          this.digest(code),
-          now,
-          manager,
-        );
-        if (!session || !session.userId) {
-          this.audit('auth.launch_code_rejected');
-          throw this.exchangeFailed();
-        }
-        session.status = AUTH_SESSION_STATUS.ACTIVE;
-        session.sessionTokenHash = this.digest(token);
-        session.activatedAt = now;
-        session.expiresAt = new Date(
-          now.getTime() + WEBVIEW_SESSION_TTL_SECONDS * 1000,
-        );
-        await this.sessions.save(session, manager);
-      });
-    } catch (error) {
-      if (error instanceof AppException) throw error;
-      throw this.databaseUnavailable();
-    }
-    this.audit('auth.session_created');
-    return token;
-  }
-
-  /** 供 OAuth 登入共用同一 MySQL session；開發登入仍未註冊於 runtime。 */
-  async issueSession(
-    userId: number,
-  ): Promise<{ token: string; expiresAt: Date }> {
-    const token = this.createCredential();
-    const now = new Date();
-    const expiresAt = new Date(
-      now.getTime() + WEBVIEW_SESSION_TTL_SECONDS * 1000,
-    );
-    try {
-      await this.mysql.transaction((manager) =>
-        this.sessions.createActive(
-          {
-            actorKind: 'employee',
-            userId,
-            source: 'webview',
-            credentialGeneration: null,
-            sourceJtiHash: this.digest(`local\0${this.createCredential()}`),
-            sessionTokenHash: this.digest(token),
-            activatedAt: now,
-            expiresAt,
-          },
-          manager,
-        ),
-      );
-    } catch {
-      throw this.databaseUnavailable();
-    }
-    return { token, expiresAt };
-  }
-
-  buildSession(user: User, expiresAt: Date): EmployeeSessionView {
-    return toEmployeeSessionView(user, expiresAt);
   }
 
   private getConfig(config: ConfigService) {
@@ -394,10 +293,6 @@ export class AuthService {
 
   private createCredential(): string {
     return randomBytes(32).toString('base64url');
-  }
-
-  private isOpaqueCredential(value: string): boolean {
-    return /^[A-Za-z0-9_-]{43}$/.test(value);
   }
 
   private digest(value: string): string {

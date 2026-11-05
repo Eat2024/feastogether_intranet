@@ -12,8 +12,6 @@ import {
 import { In } from 'typeorm';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
@@ -37,6 +35,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('022 完整名單背景發起容量與原子性', () => {
   jest.setTimeout(60000);
@@ -71,7 +70,7 @@ describe('022 完整名單背景發起容量與原子性', () => {
     users = await mysql
       .getManager()
       .find(User, { where: { empid: In(empids) }, order: { empid: 'ASC' } });
-    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
+    cookie = await employeeSessionCookie(ctx.app, users[0].id);
     const source = await PDFDocument.create();
     source.addPage();
     pdf = Buffer.from(await source.save());
@@ -311,9 +310,9 @@ describe('022 完整名單背景發起容量與原子性', () => {
         errorCode: 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE',
       });
       expect(await detail(documentId)).toMatchObject({
-      status: 'draft',
-      signers: [],
-    });
+        status: 'draft',
+        signers: [],
+      });
     },
   );
 

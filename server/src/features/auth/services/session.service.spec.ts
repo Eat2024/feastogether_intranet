@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import type { AuthSecurityEvent } from '../entities/auth-security-event.entity';
@@ -80,6 +81,18 @@ function setup() {
           null,
       );
     },
+    findPendingForUpdate: (hash: string, now: Date) => {
+      locks.push('pending');
+      return Promise.resolve(
+        state.sessions.find(
+          (session) =>
+            session.launchCodeHash === hash &&
+            session.status === 'pending' &&
+            session.launchExpiresAt! > now,
+        ) ?? null,
+      );
+    },
+    save: (row: AuthSession) => Promise.resolve(row),
     createActive: (fields: Partial<AuthSession>) => {
       locks.push('insert');
       const row = {
@@ -135,11 +148,30 @@ function setup() {
     { fingerprint: FINGERPRINT } as never,
     events,
   );
+  /** launch 時建立的待啟用 WebView 列（員工 7、60 秒內有效）。 */
+  const addPendingLaunch = (code: string) => {
+    state.sessions.push({
+      id: state.sessions.length + 1,
+      actorKind: 'employee',
+      userId: 7,
+      source: 'webview',
+      credentialGeneration: null,
+      status: 'pending',
+      launchCodeHash: createHash('sha256').update(code).digest('hex'),
+      launchExpiresAt: new Date(Date.now() + 60_000),
+      sessionTokenHash: null,
+      activatedAt: null,
+      expiresAt: null,
+      revokedAt: null,
+      replacementSessionId: null,
+    } as AuthSession);
+  };
   return {
     service,
     users,
     locks,
     failures,
+    addPendingLaunch,
     get state() {
       return state;
     },
@@ -359,6 +391,84 @@ describe('SessionService', () => {
       ['active', null],
       ['active', null],
     ]);
+  });
+
+  it('WebView 啟動碼把待啟用列轉為 active 並替換舊會話；鎖序為舊會話 → 待啟用列', async () => {
+    const context = setup();
+    const old = await context.service.replace(null, superUser);
+    const code = 'L'.repeat(43);
+    context.addPendingLaunch(code);
+    context.locks.length = 0;
+
+    const next = await context.service.replace(old.token, {
+      kind: 'webview_launch',
+      launchCode: code,
+    });
+
+    expect(context.locks).toEqual(['session', 'pending']);
+    expect(next.expiresAt).toEqual(new Date(T0.getTime() + EIGHT_HOURS_MS));
+    await expect(context.service.authenticate(old.token)).resolves.toBeNull();
+    await expect(
+      context.service.authenticate(next.token),
+    ).resolves.toMatchObject({ actor: { kind: 'employee', userId: 7 } });
+    expect(context.state.sessions).toHaveLength(2);
+    expect(context.state.sessions[1]).toMatchObject({
+      source: 'webview',
+      status: 'active',
+      activatedAt: T0,
+    });
+    expect(context.state.sessions[0]).toMatchObject({
+      status: 'revoked',
+      replacementSessionId: 2,
+    });
+    expect(context.state.events.at(-1)).toMatchObject({
+      eventType: 'login.succeeded',
+      actorKind: 'employee',
+      actorUserId: 7,
+      sessionId: 2,
+    });
+  });
+
+  it('WebView 啟動碼無效、過期或已用過回 401，原會話不動', async () => {
+    const context = setup();
+    const old = await context.service.replace(null, employee);
+    const code = 'L'.repeat(43);
+    context.addPendingLaunch(code);
+    const invalid = {
+      code: AppErrorCode.AUTH_EXCHANGE_FAILED,
+      status: HttpStatus.UNAUTHORIZED,
+    };
+
+    await expect(
+      context.service.replace(old.token, {
+        kind: 'webview_launch',
+        launchCode: 'X'.repeat(43),
+      }),
+    ).rejects.toMatchObject(invalid);
+    await context.service.replace(null, {
+      kind: 'webview_launch',
+      launchCode: code,
+    });
+    await expect(
+      context.service.replace(old.token, {
+        kind: 'webview_launch',
+        launchCode: code,
+      }),
+    ).rejects.toMatchObject(invalid);
+    const expired = 'Y'.repeat(43);
+    context.addPendingLaunch(expired);
+    jest.setSystemTime(T0.getTime() + 60_000);
+    await expect(
+      context.service.replace(old.token, {
+        kind: 'webview_launch',
+        launchCode: expired,
+      }),
+    ).rejects.toMatchObject(invalid);
+
+    await expect(
+      context.service.authenticate(old.token),
+    ).resolves.toMatchObject({ actor: { kind: 'employee', userId: 7 } });
+    expect(context.state.sessions[0].replacementSessionId).toBeNull();
   });
 
   it('DB 查詢失敗明確回 503，不當成未登入', async () => {

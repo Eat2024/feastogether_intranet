@@ -26,11 +26,14 @@ export type AuthenticatedSession =
   | { actor: SuperUserActor; user: null; expiresAt: Date };
 
 /**
- * 登入成功後要簽發的新會話主體。Super user 帶本次請求的入口值，
- * 交易鎖定 singleton 後重驗，避免與入口輪換競爭時用舊入口簽出會話。
+ * 登入成功後要成為瀏覽器目前會話的主體。
+ * - employee：已驗證的員工，簽發新列（OAuth callback 用 source=oauth）。
+ * - webview_launch：以一次性啟動碼把 launch 時建立的待啟用列轉為 active，員工取自該列。
+ * - super_user：帶本次請求的入口值，交易鎖定 singleton 後重驗，避免與入口輪換競爭時用舊入口簽出會話。
  */
 export type SessionTarget =
   | { kind: 'employee'; userId: number; source: EmployeeSessionSource }
+  | { kind: 'webview_launch'; launchCode: string }
   | { kind: 'super_user'; entryKey: string };
 
 /** 交易 commit 後才交給呼叫端的新會話；token 原值只用於設定 cookie。 */

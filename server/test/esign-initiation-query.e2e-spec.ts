@@ -11,8 +11,6 @@ import {
 } from '#app/infrastructure/mail/invitation-mail-sender.port';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { EsignInitiationService } from '#app/features/esign/services/esign-initiation.service';
@@ -35,6 +33,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('022 背景發起只讀查詢', () => {
   jest.setTimeout(60000);
@@ -71,7 +70,7 @@ describe('022 背景發起只讀查詢', () => {
     pdf = Buffer.from(await source.save());
   });
   async function session(userId: number) {
-    return `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(userId)).token}`;
+    return await employeeSessionCookie(ctx.app, userId);
   }
   async function newDoc() {
     const id = apiData<{ id: string }>(
@@ -406,9 +405,9 @@ describe('022 背景發起只讀查詢', () => {
       return row;
     }
     expect(await item()).toMatchObject({
-          status: 'initiating',
-          initiation: { totalCount: 1 },
-        });
+      status: 'initiating',
+      initiation: { totalCount: 1 },
+    });
     const core = ctx.app.get(EsignInitiationService);
     const execute = core.initiateInTransaction.bind(
       core,

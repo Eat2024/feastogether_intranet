@@ -1,15 +1,19 @@
 import { HttpStatus } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { AUTH_COOKIE_NAME } from '../auth.constants';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
+import { AUTH_COOKIE_NAME, OAUTH_TX_COOKIE_NAME } from '../auth.constants';
 import { AuthController } from './auth.controller';
 
 describe('AuthController WebView boundary', () => {
   const setup = (env: Record<string, string> = {}) => {
     const auth = {
       createWebviewLaunch: jest.fn().mockResolvedValue({ launchUrl: 'url' }),
-      activateWebviewSession: jest.fn().mockResolvedValue('s'.repeat(43)),
     };
-    const sessions = { revoke: jest.fn().mockResolvedValue(undefined) };
+    const sessions = {
+      replace: jest.fn().mockResolvedValue({ token: 's'.repeat(43) }),
+      revoke: jest.fn().mockResolvedValue(undefined),
+    };
     const config = {
       get: jest.fn((key: string) =>
         key === 'NODE_ENV' ? 'development' : env[key],
@@ -55,14 +59,14 @@ describe('AuthController WebView boundary', () => {
   });
 
   it('GET bridge 不碰 service，固定同源 action 且保留手動按鈕', () => {
-    const { controller, auth } = setup();
+    const { controller, auth, sessions } = setup();
     const response = reply();
     controller.getWebviewBridge(
       { code: 'a'.repeat(43) },
       response as unknown as FastifyReply,
     );
     expect(auth.createWebviewLaunch).not.toHaveBeenCalled();
-    expect(auth.activateWebviewSession).not.toHaveBeenCalled();
+    expect(sessions.replace).not.toHaveBeenCalled();
     expect(response.header).toHaveBeenCalledWith('Cache-Control', 'no-store');
     expect(response.header).toHaveBeenCalledWith(
       'Referrer-Policy',
@@ -75,14 +79,23 @@ describe('AuthController WebView boundary', () => {
     expect(html).not.toContain('https://');
   });
 
-  it('POST session 只接受單一 code 欄位並回固定 303', async () => {
-    const { controller, auth } = setup();
+  const withCookie = (token?: string) =>
+    ({
+      cookies: token ? { [AUTH_COOKIE_NAME]: token } : {},
+    }) as unknown as FastifyRequest;
+
+  it('POST session 以啟動碼替換瀏覽器目前會話，回固定 303', async () => {
+    const { controller, sessions } = setup();
     const response = reply();
     await controller.createSession(
       { code: 'a'.repeat(43) },
+      withCookie('o'.repeat(43)),
       response as unknown as FastifyReply,
     );
-    expect(auth.activateWebviewSession).toHaveBeenCalledWith('a'.repeat(43));
+    expect(sessions.replace).toHaveBeenCalledWith('o'.repeat(43), {
+      kind: 'webview_launch',
+      launchCode: 'a'.repeat(43),
+    });
     expect(response.setCookie).toHaveBeenCalledWith(
       AUTH_COOKIE_NAME,
       's'.repeat(43),
@@ -90,6 +103,42 @@ describe('AuthController WebView boundary', () => {
     );
     expect(response.redirect).toHaveBeenCalledWith('/', HttpStatus.SEE_OTHER);
   });
+
+  it.each([
+    {
+      case: '舊會話已被取代（409）',
+      error: AppErrors.AUTH_SESSION_REPLACED,
+      message: AppErrors.AUTH_SESSION_REPLACED[1],
+    },
+    {
+      case: '啟動碼無效（401）',
+      error: AppErrors.AUTH_EXCHANGE_FAILED,
+      message: AppErrors.AUTH_LAUNCH_INVALID[1],
+    },
+    {
+      case: 'DB 不可用（503）',
+      error: AppErrors.AUTH_DB_UNAVAILABLE,
+      message: AppErrors.AUTH_DB_UNAVAILABLE[1],
+    },
+  ])(
+    'POST session $case 回固定 HTML 文案且不設 cookie',
+    async ({ error, message }) => {
+      const { controller, sessions } = setup();
+      sessions.replace.mockRejectedValue(new AppException(...error));
+      const response = reply();
+      await controller.createSession(
+        { code: 'a'.repeat(43) },
+        withCookie(),
+        response as unknown as FastifyReply,
+      );
+      expect(response.status).toHaveBeenCalledWith(error[2]);
+      expect(response.send).toHaveBeenCalledWith(
+        expect.stringContaining(message),
+      );
+      expect(response.setCookie).not.toHaveBeenCalled();
+      expect(response.redirect).not.toHaveBeenCalled();
+    },
+  );
 
   it('embed-origins 回傳 AUTH_TRUSTED_ORIGINS 設定的 origin', () => {
     const { controller } = setup({
@@ -121,21 +170,46 @@ describe('AuthController WebView boundary', () => {
     expect(csp).toContain("frame-ancestors 'self' http://localhost:8080");
   });
 
-  it('DELETE session 先清 cookie，再由 SessionService 冪等撤銷', async () => {
+  it('DELETE session 先由 SessionService 撤銷，成功後以寫入時屬性清除兩把 cookie', async () => {
     const { controller, sessions } = setup();
     const response = reply();
     await expect(
       controller.deleteSession(
-        { cookies: { [AUTH_COOKIE_NAME]: 'a'.repeat(43) } } as FastifyRequest,
+        withCookie('a'.repeat(43)),
         response as unknown as FastifyReply,
       ),
     ).resolves.toEqual({ localLogout: 'completed' });
-    expect(response.clearCookie).toHaveBeenCalledWith(AUTH_COOKIE_NAME, {
+    expect(sessions.revoke).toHaveBeenCalledWith('a'.repeat(43));
+    const attributes = {
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
       path: '/',
-    });
-    expect(sessions.revoke).toHaveBeenCalledWith('a'.repeat(43));
+    };
+    expect(response.clearCookie).toHaveBeenCalledWith(
+      AUTH_COOKIE_NAME,
+      attributes,
+    );
+    expect(response.clearCookie).toHaveBeenCalledWith(
+      OAUTH_TX_COOKIE_NAME,
+      attributes,
+    );
+    expect(sessions.revoke.mock.invocationCallOrder[0]).toBeLessThan(
+      response.clearCookie.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('DELETE session 撤銷失敗時不清 cookie，交給全域錯誤處理', async () => {
+    const { controller, sessions } = setup();
+    const failure = new AppException(...AppErrors.AUTH_DB_UNAVAILABLE);
+    sessions.revoke.mockRejectedValue(failure);
+    const response = reply();
+    await expect(
+      controller.deleteSession(
+        withCookie('a'.repeat(43)),
+        response as unknown as FastifyReply,
+      ),
+    ).rejects.toBe(failure);
+    expect(response.clearCookie).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { DataSource, In } from 'typeorm';
-import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { User } from '#app/features/users/entities/user.entity';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
@@ -27,8 +26,6 @@ describe('OAuth 登入 HTTP 整合', () => {
   let portal: SyntheticPortal;
   const otherEmpids: string[] = [];
   const documentIds: number[] = [];
-  // 饗賓人 hr/staff_lookup 不得再被呼叫。
-  const feastogether = { get: jest.fn(), post: jest.fn() };
 
   const setStaff = (fields: Partial<SyntheticPerson>) =>
     portal.query('UPDATE sys_person SET ? WHERE person_empid = ?', [
@@ -72,38 +69,31 @@ describe('OAuth 登入 HTTP 整合', () => {
       },
     ]);
     ctx = await createSecurityE2eApp((builder) =>
-      builder
-        .overrideProvider(OauthClient)
-        .useValue({
-          createLoginChallenge: () => ({
-            state: randomUUID(),
-            nonce: randomUUID(),
+      builder.overrideProvider(OauthClient).useValue({
+        createLoginChallenge: () => ({
+          state: randomUUID(),
+          nonce: randomUUID(),
+        }),
+        buildAuthorizationUrl: ({ state }: { state: string }) =>
+          Promise.resolve(`https://auth.example.test/authorize?state=${state}`),
+        exchangeCode: () =>
+          Promise.resolve({
+            accessToken: 'synthetic-provider-token',
+            sub: 'synthetic-sub',
           }),
-          buildAuthorizationUrl: ({ state }: { state: string }) =>
-            Promise.resolve(
-              `https://auth.example.test/authorize?state=${state}`,
-            ),
-          exchangeCode: () =>
-            Promise.resolve({
-              accessToken: 'synthetic-provider-token',
-              sub: 'synthetic-sub',
-            }),
-          fetchUserInfo: () =>
-            Promise.resolve({
-              sub: 'synthetic-sub',
-              userNumber,
-              name: '登入測試員工',
-            }),
-        })
-        .overrideProvider(FeastogetherClient)
-        .useValue(feastogether),
+        fetchUserInfo: () =>
+          Promise.resolve({
+            sub: 'synthetic-sub',
+            userNumber,
+            name: '登入測試員工',
+          }),
+      }),
     );
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
   });
 
   afterEach(() => {
     userNumber = empid;
-    expect(feastogether.get).not.toHaveBeenCalled();
   });
 
   afterAll(async () => {
@@ -111,10 +101,19 @@ describe('OAuth 登入 HTTP 整合', () => {
       if (documentIds.length)
         await db.manager.delete(EsignDocument, { id: In(documentIds) });
       const empids = [empid, ...otherEmpids];
+      // 安全事件與替換連結以 FK 指向會話／員工：先刪事件、解除連結，再刪會話與員工。
+      const users = 'SELECT id FROM users WHERE empid IN (?)';
       await db.query(
-        'DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE empid IN (?))',
+        `DELETE FROM auth_security_events WHERE actor_user_id IN (${users})`,
         [empids],
       );
+      await db.query(
+        `UPDATE auth_sessions SET replacement_session_id = NULL WHERE user_id IN (${users})`,
+        [empids],
+      );
+      await db.query(`DELETE FROM auth_sessions WHERE user_id IN (${users})`, [
+        empids,
+      ]);
       await db.query('DELETE FROM users WHERE empid IN (?)', [empids]);
       await closeSecurityE2eApp(ctx);
     }
@@ -159,10 +158,30 @@ describe('OAuth 登入 HTTP 整合', () => {
     );
     if (typeof cookie !== 'string') throw new Error('缺少登入 cookie');
     expect(cookie).toContain('HttpOnly');
+    // 交易 cookie 以寫入時的屬性清除。
+    expect(
+      cookies.find(
+        (value: unknown) =>
+          typeof value === 'string' && value.startsWith('FT_ESIGN_OAUTH_TX=;'),
+      ),
+    ).toEqual(
+      expect.stringMatching(/Max-Age=0.*Path=\/.*HttpOnly.*SameSite=Lax/),
+    );
     await request(ctx.server)
       .get('/api/auth/session')
       .set('Cookie', cookie.split(';')[0])
       .expect(200);
+    const [row] = await db.query<Array<{ id: number; source: string }>>(
+      'SELECT id, source FROM auth_sessions WHERE session_token_hash = SHA2(?, 256)',
+      [cookie.split(';')[0].split('=')[1]],
+    );
+    expect(row.source).toBe('oauth');
+    expect(
+      await db.query(
+        'SELECT event_type, outcome_code FROM auth_security_events WHERE session_id = ?',
+        [row.id],
+      ),
+    ).toEqual([{ event_type: 'login.succeeded', outcome_code: 'succeeded' }]);
     await request(ctx.server)
       .post('/api/auth/oauth/callback')
       .set('Origin', 'http://localhost:3000')

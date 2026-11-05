@@ -14,7 +14,10 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import configPath from '#app/config/config.path';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
-import { OAUTH_TX_COOKIE_NAME } from '#app/features/auth/auth.constants';
+import {
+  AUTH_COOKIE_NAME,
+  OAUTH_TX_COOKIE_NAME,
+} from '#app/features/auth/auth.constants';
 import { OauthCallbackDto } from '#app/features/auth/dto/oauth-callback.dto';
 import { OauthStartDto } from '#app/features/auth/dto/oauth-start.dto';
 import {
@@ -59,7 +62,7 @@ export class OauthController {
     return { authorizationUrl };
   }
 
-  // 驗證統一登入回呼並設定本系統登入 cookie。
+  // 驗證統一登入回呼，原子替換瀏覽器目前的會話後設定本系統登入 cookie。
   @Public()
   @UseGuards(OriginGuard, AuthThrottlerGuard)
   @Post(configPath.AUTH_OAUTH_CALLBACK)
@@ -77,8 +80,13 @@ export class OauthController {
     const browserToken = cookieTokenFromMap(req.cookies, OAUTH_TX_COOKIE_NAME);
     // 那code去換access token
     const { accessToken, session, redirectTo } =
-      await this.login.getAccessTokenAndUserInfo(dto, browserToken);
-    clearOauthTxCookie(reply);
+      await this.login.getAccessTokenAndUserInfo(
+        dto,
+        browserToken,
+        cookieTokenFromMap(req.cookies, AUTH_COOKIE_NAME),
+      );
+    // 替換交易 commit 後才改 cookie；失敗時兩把 cookie 都不動。
+    clearOauthTxCookie(reply, this.config);
     setAuthCookie(reply, this.config, accessToken);
     return { session, redirectTo };
   }

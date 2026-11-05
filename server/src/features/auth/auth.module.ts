@@ -23,7 +23,6 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from '#app/framework/guards/auth.guard';
 import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
-import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { PortalModule } from '#app/infrastructure/portal/portal.module';
 import { AuthController } from './controllers/auth.controller';
 import { SuperUserAccessController } from './controllers/super-user-access.controller';
@@ -39,7 +38,6 @@ import { SuperUserAccessModule } from './super-user-access.module';
   imports: [
     MysqlModule,
     SuperUserAccessModule,
-    FeastogetherModule,
     PortalModule,
     OauthModule,
     RedisModule,
@@ -79,6 +77,5 @@ import { SuperUserAccessModule } from './super-user-access.module';
     AuthGuard,
     { provide: APP_GUARD, useExisting: AuthGuard },
   ],
-  exports: [AuthService],
 })
 export class AuthModule {}

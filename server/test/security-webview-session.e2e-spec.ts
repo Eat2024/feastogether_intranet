@@ -8,7 +8,6 @@ import {
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { PortalDirectoryService } from '#app/infrastructure/portal/portal-directory.service';
 import { apiData, apiError } from './api-response.helper';
 import {
@@ -29,8 +28,6 @@ describe('WebView session security', () => {
   let ctx: SecurityE2eContext;
   let db: DataSource;
   let portal: SyntheticPortal;
-  // 員工資料來自合成 Portal；饗賓人 hr/staff_lookup 不得再被呼叫。
-  const feastogether = { get: jest.fn(), post: jest.fn() };
 
   beforeAll(async () => {
     portal = await createSyntheticPortal();
@@ -48,20 +45,21 @@ describe('WebView session security', () => {
         person_status: 1,
       })),
     );
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherClient).useValue(feastogether),
-    );
+    ctx = await createSecurityE2eApp();
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
   });
 
-  afterEach(() => expect(feastogether.get).not.toHaveBeenCalled());
-
   afterAll(async () => {
     if (ctx) {
+      // activation 寫入的 login.succeeded 事件以 FK 指向會話與員工，須先刪。
+      await db.query(
+        `DELETE e FROM auth_security_events e JOIN users u ON u.id = e.actor_user_id
+          WHERE u.empid LIKE 'SEC002%'`,
+      );
       await db.query(
         `DELETE a FROM auth_sessions a
           LEFT JOIN users u ON u.id = a.user_id
-          WHERE u.empid LIKE 'SEC002%' OR a.user_id IS NULL`,
+          WHERE u.empid LIKE 'SEC002%' OR (a.actor_kind = 'employee' AND a.user_id IS NULL)`,
       );
       await db.query("DELETE FROM users WHERE empid LIKE 'SEC002%'");
       await closeSecurityE2eApp(ctx);

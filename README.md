@@ -15,7 +15,7 @@
 └── AGENTS.md               # repository 開發規範
 ```
 
-電子簽前端位於 `client/`；本 PR 不包含前端串接，畫面仍沿用 server-memory mock 資料，API 串接由前端工程師處理。認證提供員工帳密登入與 WebView SSO，共用 MySQL 員工 session；認證限流與預留的 OAuth 交易使用 Redis。登入模組啟用不代表種子專案的 RBAC 或所有電子簽業務均已完成。
+電子簽前端位於 `client/`；本 PR 不包含前端串接，畫面仍沿用 server-memory mock 資料，API 串接由前端工程師處理。員工經 OAuth 或主平台 WebView 登入，與 Super user 維護入口共用同一個 MySQL 會話，同一瀏覽器只保留最後一次成功登入的身分；OAuth 交易與認證限流使用 Redis。登入模組啟用不代表種子專案的 RBAC 或所有電子簽業務均已完成。
 
 ## 環境需求
 
@@ -62,9 +62,9 @@ client 請求 `/api/*` 時，`client/next.config.ts` 會代理到 `API_PROXY_TAR
 
 ## 電子簽後端登入
 
-後端提供 `POST /api/auth/login`，以既有 `FEASTOGETHER_BASE_URL`、`FEASTOGETHER_API_KEY` 呼叫饗賓 `/api/v1/staff/login`，核對員編後直接查 Portal 的員工資料做在職資格檢查，沿用本地帳號停用規則，再建立 MySQL session 並下發 `FT_ESIGN_SESSION` HttpOnly cookie。密碼僅即時轉送，上游 token 不入庫、不回傳瀏覽器，也不記錄登入 request/response body。
+員工只能經 OAuth（`POST /api/auth/oauth/start`、`POST /api/auth/oauth/callback`）或主平台 WebView（`POST /api/auth/webview-launches` → `GET /api/auth/webview` → `POST /api/auth/session`）登入。兩者都直接查 Portal 的員工資料做在職資格檢查、沿用本地帳號停用規則，驗證成功後在同一交易撤銷瀏覽器原本的會話並建立新的 MySQL session，再下發 `FT_ESIGN_SESSION` HttpOnly cookie；失敗時不動原本的會話。上游 token 不入庫、不回傳瀏覽器。一般員工帳密登入（原 `POST /api/auth/login`）與開發替代登入已移除，舊路徑回 404。
 
-依 `server/.env.example` 設定饗賓 API 與 Portal（`PORTAL_MYSQL_*`）連線資訊；`AUTH_TRUSTED_ORIGINS` 須包含實際前端 origin。帳密登入不依賴 OAuth，不新增資料表或 migration；既有 WebView SSO 與外部簽署驗證保留。
+依 `server/.env.example` 設定 Portal（`PORTAL_MYSQL_*`）、WebView 與 OAuth 連線資訊；`AUTH_TRUSTED_ORIGINS` 須包含實際前端 origin。外部簽署驗證不受影響。
 
 OAuth 後端入口保留供後續串接，啟用時須完整設定 `OAUTH_*` 並向上游註冊回呼網址。登入頁、OAuth 前端回呼、session 過期導向及電子簽畫面 API 串接均由前端工程師另行實作，本 PR 不包含這些前端變更。
 

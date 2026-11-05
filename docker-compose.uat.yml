@@ -17,7 +17,6 @@ x-backend: &backend
   environment:
     NODE_ENV: staging
     PORT: "3000"
-    DEVMOD: "false"
     REDIS_HOST: redis
     REDIS_PORT: "6379"
     REDIS_PASSWORD: ""

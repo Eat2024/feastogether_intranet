@@ -5,8 +5,6 @@ import { of } from 'rxjs';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import type { Job } from 'bullmq';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
@@ -22,6 +20,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('Spec016 內部 BCC 催簽與補簽', () => {
   let ctx: SecurityE2eContext;
@@ -63,7 +62,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
     mailFixture(ctx).allowEmails(
       users.map((user) => `${user.empid.toLowerCase()}@example.test`),
     );
-    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
+    cookie = await employeeSessionCookie(ctx.app, users[0].id);
     http.post.mockImplementation(
       (_url: string, body: { person_empids: string[] }) =>
         of({
@@ -319,7 +318,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
     // 使用下一個午夜邊界，避免 fake Date 落在真 DB deadline 時鐘之前。
     if (clock.getTime() < Date.now()) clock.setUTCDate(clock.getUTCDate() + 1);
     at(clock);
-    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
+    cookie = await employeeSessionCookie(ctx.app, users[0].id);
     const { documentId } = await initiate(2);
     const firstRequestId = randomUUID();
     const first = apiData<Batch>(
@@ -515,7 +514,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
     // 使用下一個午夜邊界，避免 fake Date 落在真 DB deadline 時鐘之前。
     if (clock.getTime() < Date.now()) clock.setUTCDate(clock.getUTCDate() + 1);
     at(clock);
-    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
+    cookie = await employeeSessionCookie(ctx.app, users[0].id);
     const { documentId } = await initiate(2);
     const batch = apiData<Batch>(
       await remind(documentId, randomUUID()).expect(202),

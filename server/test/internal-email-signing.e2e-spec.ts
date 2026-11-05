@@ -4,8 +4,6 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { of } from 'rxjs';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
@@ -23,6 +21,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
   let ctx: SecurityE2eContext;
@@ -66,10 +65,7 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
       ),
     );
     cookies = await Promise.all(
-      users.map(
-        async (user) =>
-          `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(user.id)).token}`,
-      ),
+      users.map(async (user) => await employeeSessionCookie(ctx.app, user.id)),
     );
   });
   afterAll(async () => {

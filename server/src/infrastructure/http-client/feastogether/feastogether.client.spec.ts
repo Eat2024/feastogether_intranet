@@ -1,4 +1,4 @@
-import { of, throwError } from 'rxjs';
+import { throwError } from 'rxjs';
 import {
   FeastogetherApiError,
   FeastogetherClient,
@@ -6,7 +6,7 @@ import {
 
 describe('FeastogetherClient logging', () => {
   const build = () => {
-    const http = { get: jest.fn(), post: jest.fn() };
+    const http = { get: jest.fn() };
     const config = {
       baseUrl: 'https://upstream.example.com',
       apiKey: 'secret-api-key',
@@ -22,47 +22,6 @@ describe('FeastogetherClient logging', () => {
       logger,
     };
   };
-
-  it('登入 HTTP 失敗不記錄 request／response body', async () => {
-    const { client, http, logger } = build();
-    const requestBody = {
-      account_id: 'test-user',
-      password: 'secret-password',
-      verification_code: 'secret-code',
-    };
-    const upstreamBody = {
-      accessToken: 'secret-response-token',
-      password: 'secret-password',
-    };
-    http.post.mockReturnValue(
-      throwError(() => ({
-        isAxiosError: true,
-        name: 'AxiosError',
-        message: 'request failed with secret-response-token',
-        response: { status: 503, data: upstreamBody },
-      })),
-    );
-
-    await expect(
-      client.post('/api/v1/staff/login', requestBody),
-    ).rejects.toMatchObject({
-      name: 'FeastogetherApiError',
-      status: 503,
-      body: upstreamBody,
-    });
-
-    expect(logger.warn).toHaveBeenCalledWith({
-      event: 'feastogether.request_failed',
-      message: '饗賓 API POST /api/v1/staff/login 失敗',
-      context: FeastogetherClient.name,
-      metadata: {
-        method: 'post',
-        path: '/api/v1/staff/login',
-        status: 503,
-        errorType: 'AxiosError',
-      },
-    });
-  });
 
   it('logger 失敗時仍拋出原本的饗賓 API 錯誤', async () => {
     const { client, http, logger } = build();
@@ -80,55 +39,6 @@ describe('FeastogetherClient logging', () => {
 
     await expect(client.get('/api/v1/staff/card')).rejects.toBeInstanceOf(
       FeastogetherApiError,
-    );
-  });
-
-  it('登入 success=false 只記錄 upstream code，不記錄 body', async () => {
-    const { client, http, logger } = build();
-    const upstreamBody = {
-      success: false,
-      code: 'INVALID_CREDENTIALS',
-      message: '帳號或密碼錯誤',
-      data: null,
-    };
-    http.get.mockReturnValue(of({ data: upstreamBody }));
-
-    await expect(client.get('/api/v1/staff/login')).rejects.toMatchObject({
-      name: 'FeastogetherApiError',
-      body: upstreamBody,
-    });
-
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn).toHaveBeenCalledWith({
-      event: 'feastogether.request_failed',
-      message: '饗賓 API GET /api/v1/staff/login 回傳 success=false',
-      context: FeastogetherClient.name,
-      metadata: {
-        method: 'get',
-        path: '/api/v1/staff/login',
-        upstreamCode: 'INVALID_CREDENTIALS',
-      },
-    });
-  });
-
-  it('登入使用既有 API Key 與指定 timeout，不傳使用者 Bearer', async () => {
-    const { client, http } = build();
-    const requestBody = { account_id: '00123', password: 'secret-password' };
-    const data = { token: 'upstream-token', user: { person_empid: '00123' } };
-    http.post.mockReturnValue(of({ data: { success: true, data } }));
-    await expect(
-      client.post('/api/v1/staff/login', requestBody, { timeoutMs: 10_000 }),
-    ).resolves.toEqual(data);
-    expect(http.post).toHaveBeenCalledWith(
-      'https://upstream.example.com/api/v1/staff/login',
-      requestBody,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-KEY': 'secret-api-key',
-        },
-        timeout: 10_000,
-      },
     );
   });
 });

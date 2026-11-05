@@ -5,7 +5,6 @@ import { DataSource } from 'typeorm';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { AuthSecurityEventService } from '#app/features/auth/services/auth-security-event.service';
-import { AuthService } from '#app/features/auth/services/auth.service';
 import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { OauthIdentityService } from '#app/features/auth/services/oauth-identity.service';
 import { OauthLoginService } from '#app/features/auth/services/oauth-login.service';
@@ -14,19 +13,13 @@ import { SessionService } from '#app/features/auth/services/session.service';
 import { SuperUserConfigService } from '#app/features/auth/services/super-user-config.service';
 import { InfrastructureModule } from '#app/infrastructure/infrastructure.module';
 import { OauthModule } from '#app/infrastructure/http-client/oauth/oauth.module';
-import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import { FrameworkModule } from '#app/framework/framework.module';
 import * as oidcStub from './stubs/openid-client.stub';
 
 @Module({
-  imports: [
-    FrameworkModule,
-    InfrastructureModule,
-    OauthModule,
-    FeastogetherModule,
-  ],
+  imports: [FrameworkModule, InfrastructureModule, OauthModule],
   providers: [
     EligibleStaffService,
     OauthIdentityService,
@@ -45,7 +38,6 @@ import * as oidcStub from './stubs/openid-client.stub';
         },
       },
     },
-    AuthService,
     SessionService,
     SuperUserConfigService,
     AuthSecurityEventService,
@@ -111,6 +103,7 @@ describe('dormant SSO/session testing module', () => {
       const completed = await login.getAccessTokenAndUserInfo(
         { code: 'synthetic-code', state: state! },
         started.browserToken,
+        null,
       );
       expect(completed.session.user.empId).toBe(empid);
       await expect(
@@ -123,6 +116,7 @@ describe('dormant SSO/session testing module', () => {
         login.getAccessTokenAndUserInfo(
           { code: 'synthetic-code', state: state! },
           started.browserToken,
+          null,
         ),
       ).rejects.toMatchObject({ code: AppErrorCode.OAUTH_TRANSACTION_INVALID });
 

@@ -10,13 +10,9 @@ import { getErrorType } from '#app/infrastructure/logging/logHelper/error-type';
 import { maskSensitive } from '#app/infrastructure/logging/logHelper/log-masker';
 import { FeastogetherConfig } from './feastogether.config';
 
-type FeastogetherMethod = 'get' | 'post';
-
 export interface FeastogetherRequestOptions {
   /** 帶上使用者的饗賓 access_token 做 Bearer（per-user 端點用）。 */
   token?: string;
-  /** 個別端點的連線逾時，避免登入請求無限等待。 */
-  timeoutMs?: number;
 }
 
 /** 饗賓固定回應格式；實際 payload 在 `data`。 */
@@ -57,26 +53,9 @@ export class FeastogetherClient {
     private readonly logger: AppLoggerService,
   ) {}
 
-  get<T = unknown>(
+  async get<T = unknown>(
     path: string,
     options: FeastogetherRequestOptions = {},
-  ): Promise<T> {
-    return this.request<T>('get', path, undefined, options);
-  }
-
-  post<T = unknown>(
-    path: string,
-    body: unknown,
-    options: FeastogetherRequestOptions = {},
-  ): Promise<T> {
-    return this.request<T>('post', path, body, options);
-  }
-
-  private async request<T>(
-    method: FeastogetherMethod,
-    path: string,
-    body: unknown,
-    options: FeastogetherRequestOptions,
   ): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -86,27 +65,11 @@ export class FeastogetherClient {
 
     const url = `${this.config.baseUrl}${path}`;
     const safePath = path.split('?', 1)[0];
-    const omitBody = safePath === '/api/v1/staff/login';
     try {
-      const response =
-        method === 'get'
-          ? await firstValueFrom(
-              this.http.get<FeastogetherEnvelope<T>>(url, {
-                headers,
-                ...(options.timeoutMs !== undefined
-                  ? { timeout: options.timeoutMs }
-                  : {}),
-              }),
-            )
-          : await firstValueFrom(
-              this.http.post<FeastogetherEnvelope<T>>(url, body, {
-                headers,
-                ...(options.timeoutMs !== undefined
-                  ? { timeout: options.timeoutMs }
-                  : {}),
-              }),
-            );
-      return this.unwrap<T>(response.data, method, path, body);
+      const response = await firstValueFrom(
+        this.http.get<FeastogetherEnvelope<T>>(url, { headers }),
+      );
+      return this.unwrap<T>(response.data, safePath);
     } catch (error: unknown) {
       if (error instanceof FeastogetherApiError) throw error;
 
@@ -117,58 +80,45 @@ export class FeastogetherClient {
         ? (error.response?.data ?? null)
         : null;
       // 集中記錄上游失敗：AppException(502) 是 HttpException，ExceptionHandler 不記，
-      // 故保留可觀測欄位，但不得寫入可能含 token、密碼或個資的原始 body/message。
+      // 故保留可觀測欄位，但不得寫入可能含 token 或個資的原始 body/message。
       this.safeWarn({
         event: 'feastogether.request_failed',
-        message: `饗賓 API ${method.toUpperCase()} ${safePath} 失敗`,
+        message: `饗賓 API GET ${safePath} 失敗`,
         context: FeastogetherClient.name,
         metadata: {
-          method,
+          method: 'get',
           path: safePath,
           status,
           errorType: getErrorType(error),
-          ...(!omitBody && body !== undefined
-            ? { requestBody: maskSensitive(body) }
-            : {}),
-          ...(!omitBody ? { responseBody: maskSensitive(responseBody) } : {}),
+          responseBody: maskSensitive(responseBody),
         },
       });
       throw new FeastogetherApiError(
         status,
         responseBody,
-        `饗賓 API ${method.toUpperCase()} ${safePath} ${status ? '失敗' : '連線失敗'}`,
+        `饗賓 API GET ${safePath} ${status ? '失敗' : '連線失敗'}`,
       );
     }
   }
 
-  private unwrap<T>(
-    payload: FeastogetherEnvelope<T>,
-    method: FeastogetherMethod,
-    path: string,
-    requestBody: unknown,
-  ): T {
-    const safePath = path.split('?', 1)[0];
-    const omitBody = safePath === '/api/v1/staff/login';
+  private unwrap<T>(payload: FeastogetherEnvelope<T>, safePath: string): T {
     if (payload && typeof payload === 'object' && 'success' in payload) {
       if (payload.success === false) {
         this.safeWarn({
           event: 'feastogether.request_failed',
-          message: `饗賓 API ${method.toUpperCase()} ${safePath} 回傳 success=false`,
+          message: `饗賓 API GET ${safePath} 回傳 success=false`,
           context: FeastogetherClient.name,
           metadata: {
-            method,
+            method: 'get',
             path: safePath,
             upstreamCode: payload.code,
-            ...(!omitBody && requestBody !== undefined
-              ? { requestBody: maskSensitive(requestBody) }
-              : {}),
-            ...(!omitBody ? { responseBody: maskSensitive(payload) } : {}),
+            responseBody: maskSensitive(payload),
           },
         });
         throw new FeastogetherApiError(
           null,
           payload,
-          `饗賓 API ${method.toUpperCase()} ${safePath} 回傳 success=false`,
+          `饗賓 API GET ${safePath} 回傳 success=false`,
         );
       }
       return payload.data;

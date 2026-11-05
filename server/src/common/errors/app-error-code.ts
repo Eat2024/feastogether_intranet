@@ -31,8 +31,6 @@ export const AppErrorCode = {
   NOT_FOUND: 'NOT_FOUND',
   /** 員工查詢或匯入失敗，不透露上游員工狀態。 */
   STAFF_LOOKUP_FAILED: 'STAFF_LOOKUP_FAILED',
-  /** 登入身分無效（使用者不存在、已停用或 session 已失效） */
-  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
   /** 帳號已停用（P2） */
   ACCOUNT_DISABLED: 'ACCOUNT_DISABLED',
   /** 請求過於頻繁（認證端點速率限制） */

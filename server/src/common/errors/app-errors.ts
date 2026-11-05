@@ -206,11 +206,6 @@ export const AppErrors = {
     '帳號已停用',
     HttpStatus.FORBIDDEN,
   ],
-  ACCOUNT_DISABLED_CONTACT_IT: [
-    AppErrorCode.ACCOUNT_DISABLED,
-    '帳號已停用，請聯絡資訊人員',
-    HttpStatus.FORBIDDEN,
-  ],
   AUTH_ACTOR_NOT_ALLOWED: [
     AppErrorCode.AUTH_ACTOR_NOT_ALLOWED,
     '目前身分無法使用此功能',
@@ -280,11 +275,6 @@ export const AppErrors = {
     AppErrorCode.CSRF_ORIGIN_REJECTED,
     '請求來源不允許',
     HttpStatus.FORBIDDEN,
-  ],
-  EMPLOYEE_ID_INVALID: [
-    AppErrorCode.INVALID_REQUEST,
-    '請輸入有效的員工編號',
-    HttpStatus.BAD_REQUEST,
   ],
   ESIGN_COMPLETED_DOCUMENT_NOT_READY: [
     AppErrorCode.ESIGN_STATE_CONFLICT,
@@ -577,20 +567,10 @@ export const AppErrors = {
     '饗賓服務暫時無法使用',
     HttpStatus.BAD_GATEWAY,
   ],
-  INVALID_CREDENTIALS: [
-    AppErrorCode.INVALID_CREDENTIALS,
-    '員工編號或密碼錯誤',
-    HttpStatus.UNAUTHORIZED,
-  ],
   LOGIN_REQUIRED: [
     AppErrorCode.UNAUTHORIZED,
     '需登入才能操作',
     HttpStatus.UNAUTHORIZED,
-  ],
-  LOGIN_UNAVAILABLE: [
-    AppErrorCode.EXTERNAL_AUTH_UNAVAILABLE,
-    '登入服務暫時無法使用，請稍後再試',
-    HttpStatus.BAD_GATEWAY,
   ],
   NOT_FOUND: [AppErrorCode.NOT_FOUND, '找不到資源', HttpStatus.NOT_FOUND],
   OAUTH_CODE_MISSING: [
@@ -632,11 +612,6 @@ export const AppErrors = {
     AppErrorCode.OAUTH_UNAVAILABLE,
     '登入服務暫時無法使用，請稍後再試',
     HttpStatus.SERVICE_UNAVAILABLE,
-  ],
-  PASSWORD_REQUIRED: [
-    AppErrorCode.INVALID_REQUEST,
-    '請輸入密碼',
-    HttpStatus.BAD_REQUEST,
   ],
   REQUEST_FORMAT_INVALID: [
     AppErrorCode.INVALID_REQUEST,

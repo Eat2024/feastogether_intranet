@@ -6,9 +6,6 @@ export default {
   AUTH_OAUTH: 'auth/oauth',
   AUTH_OAUTH_START: 'start',
   AUTH_OAUTH_CALLBACK: 'callback',
-  // GET /auth/login-options：登入頁依設定顯示可用入口；POST /auth/dev-login：DEVMOD 開發者登入
-  AUTH_LOGIN_OPTIONS: 'login-options',
-  AUTH_DEV_LOGIN: 'dev-login',
   AUTH_WEBVIEW_LAUNCHES: 'webview-launches',
   AUTH_WEBVIEW: 'webview',
   AUTH_SESSION: 'session',

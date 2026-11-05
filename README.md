@@ -31,6 +31,7 @@ cp server/.env.test.example server/.env.test
 cp client/.env.example client/.env.local
 
 pnpm install
+pnpm -s -C server super-user:hash-password   # 輸出填入 server/.env 的 SUPER_USER_PASSWORD_HASH，並設定 SUPER_USER_ACCOUNT
 docker compose up -d mysql redis
 pnpm -C server db:setup
 pnpm dev
@@ -69,6 +70,25 @@ client 請求 `/api/*` 時，`client/next.config.ts` 會代理到 `API_PROXY_TAR
 OAuth 後端入口保留供後續串接，啟用時須完整設定 `OAUTH_*` 並向上游註冊回呼網址。登入頁、OAuth 前端回呼、session 過期導向及電子簽畫面 API 串接均由前端工程師另行實作，本 PR 不包含這些前端變更。
 
 Swagger 的前端用途為串接參考，不代表目前 client 已完成對應功能。
+
+### Super user 維護登入（Spec 027）
+
+唯一的 Super user 從隱藏入口 `/ops-access/<入口>` 以 `SUPER_USER_*` 帳密登入。HTTP server 與 worker 都需要這兩項設定，缺漏時拒絕啟動。入口存在 DB、每週一台北 04:00 由 worker 輪換，只能用 REPL 查詢：
+
+```bash
+pnpm -C server repl:dev   # 開發；建置後用 pnpm -C server repl，容器內用 node dist/console/repl.js
+```
+
+在 REPL 一次輸入一行，等結果出來再輸入下一行，`.exit` 結束：
+
+```js
+await auth.initialize()   // 套用 migration 後執行一次，建立入口與第 1 版帳密
+await auth.currentEntry() // 取得 path，以前端 origin＋path 在瀏覽器開啟
+```
+
+REPL 只載入設定、logging 與 MySQL，不啟動 HTTP 或 queue consumer。入口原值與帳密不寫進 Git、ticket、PR 或 log。
+
+Spec 028 接入業務授權前，Super user 只能讀取目前身分與登出；登入後落在 `/forms` 並顯示「目前身分無法使用此功能」。部署順序、輪換、換帳密與部署阻擋見 [UAT CI/CD 操作文件](docs/deployment/uat-cicd.md)的「Super user 維護登入」。
 
 ## UAT CI/CD
 

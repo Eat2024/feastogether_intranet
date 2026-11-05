@@ -71,7 +71,7 @@ export class SigningTasksController {
   @ApiOperation({
     summary: '列出本人的簽署任務',
     description:
-      '查詢指派給目前員工的非草稿簽署任務，可依狀態篩選。\n\n前端串接參考：/my-signature 列表透過 listSigningTasks() 讀取；/my-signature/[id] 也從此列表找出指定 signerPublicId 的任務。',
+      '查詢指派給目前員工的非草稿簽署任務，可依狀態篩選。\n\n前端串接參考：/esign/my-signature 列表透過 listSigningTasks() 讀取；/esign/my-signature/[id] 也從此列表找出指定 signerPublicId 的任務。',
   })
   @Get()
   list(

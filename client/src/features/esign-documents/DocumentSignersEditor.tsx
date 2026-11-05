@@ -174,7 +174,7 @@ export default function DocumentSignersEditor({
   } = useGetDocumentQuery(documentId);
   const router = useRouter();
   useEffect(() => {
-    if (doc && !doc.isCreator) router.replace(`/forms/${doc.id}`);
+    if (doc && !doc.isCreator) router.replace(`/esign/forms/${doc.id}`);
   }, [doc, router]);
 
   if (isPending) {
@@ -215,7 +215,7 @@ export default function DocumentSignersEditor({
   if (!doc.isCreator) return <Alert severity="info">正在前往文件檢視頁…</Alert>;
   if (doc.status !== "draft") {
     return (
-      <Alert severity="info" action={<Button href="/forms">返回列表</Button>}>
+      <Alert severity="info" action={<Button href="/esign/forms">返回列表</Button>}>
         「{doc.title}」已發起簽署，無法再修改簽署設定。
       </Alert>
     );
@@ -365,7 +365,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
       void queryClient.invalidateQueries({
         queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id],
       });
-      router.push(`/forms?flash=initiating&count=${job.totalCount}`);
+      router.push(`/esign/forms?flash=initiating&count=${job.totalCount}`);
     },
     // 查無員工帳號時是自訂的 Error，其餘為後端回應
     onError: (err) =>
@@ -395,7 +395,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
       void queryClient.invalidateQueries({
         queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id],
       });
-      router.push("/forms?flash=draftSaved");
+      router.push("/esign/forms?flash=draftSaved");
     },
     onError: (err) =>
       setSubmitError(
@@ -570,7 +570,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
         <Button
           size="large"
           variant="outlined"
-          href={`/forms/${doc.id}/edit`}
+          href={`/esign/forms/${doc.id}/edit`}
           disabled={busy}
         >
           上一步，回到上傳文件
@@ -590,7 +590,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
           </span>
         </Tooltip>
         <Box sx={{ display: "flex", gap: 1, ml: "auto" }}>
-          <Button size="large" variant="outlined" href="/forms" disabled={busy}>
+          <Button size="large" variant="outlined" href="/esign/forms" disabled={busy}>
             取消
           </Button>
           <Button

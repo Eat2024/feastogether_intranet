@@ -113,7 +113,7 @@ export default function SigningTasksTable({
             label="前往簽署"
             icon={<VisibilityRoundedIcon />}
             color="info"
-            href={`/my-signature/${task.signerPublicId}`}
+            href={`/esign/my-signature/${task.signerPublicId}`}
           />
         ),
       },
@@ -143,7 +143,7 @@ export default function SigningTasksTable({
             label="檢視"
             icon={<VisibilityRoundedIcon />}
             color="info"
-            href={`/my-signature/${task.signerPublicId}`}
+            href={`/esign/my-signature/${task.signerPublicId}`}
           />
         ),
       },
@@ -177,7 +177,7 @@ export default function SigningTasksTable({
             label="檢視"
             icon={<VisibilityRoundedIcon />}
             color="info"
-            href={`/my-signature/${task.signerPublicId}`}
+            href={`/esign/my-signature/${task.signerPublicId}`}
           />
         ),
       },

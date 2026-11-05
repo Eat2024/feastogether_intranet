@@ -58,7 +58,7 @@ export default function SigningTaskView({ signerPublicId }: { signerPublicId: st
   if (isError) {
     return (
       <>
-        <BackButton href="/my-signature" />
+        <BackButton href="/esign/my-signature" />
         <Alert
           severity="error"
           action={
@@ -77,7 +77,7 @@ export default function SigningTaskView({ signerPublicId }: { signerPublicId: st
     // 不是本人的任務就當作不存在，不透露文件資訊
     return (
       <>
-        <BackButton href="/my-signature" />
+        <BackButton href="/esign/my-signature" />
         <Alert severity="warning" variant="outlined">
           找不到此簽署任務，可能是連結有誤，或你不是此文件的簽署人。
         </Alert>
@@ -131,7 +131,7 @@ function Task({ task: listedTask }: { task: EsignSigningTask }) {
 
   return (
     <>
-      <BackButton href={signedAt ? '/my-signature?tab=signed' : rejectedAt ? '/my-signature?tab=rejected' : backHref(task)} />
+      <BackButton href={signedAt ? '/esign/my-signature?tab=signed' : rejectedAt ? '/esign/my-signature?tab=rejected' : backHref(task)} />
       {/* 與電子簽列表的檢視頁相同：不顯示大標題，文件資訊逐行列出（說明在 Typography 內，每項以區塊 span 分行） */}
       <PageHeader
         description={[
@@ -187,7 +187,7 @@ function Task({ task: listedTask }: { task: EsignSigningTask }) {
         <>
           <SignSteps activeIndex={0} />
           <TermsStep kind="consent" docName={doc.title} terms={[task.consent.text]} version={task.consent.version}
-            backHref="/my-signature" onAgree={() => { setConsented(true); window.scrollTo({ top: 0 }); }} />
+            backHref="/esign/my-signature" onAgree={() => { setConsented(true); window.scrollTo({ top: 0 }); }} />
         </>
       ) : pdf.error ? (
         <Alert severity="error">文件載入失敗，請重新整理頁面；若登入已過期，請從入口網重新進入。</Alert>

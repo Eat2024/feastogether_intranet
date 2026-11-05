@@ -136,7 +136,7 @@ const historyHref = (
   }
   if (page > 1) qs.set("page", String(page));
   const s = qs.toString();
-  return s ? `/export-history?${s}` : "/export-history";
+  return s ? `/esign/export-history?${s}` : "/esign/export-history";
 };
 
 const ZIP_STATUS_META: Record<

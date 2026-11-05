@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 function BackToList() {
   return (
     <Box>
-      <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/forms">
+      <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
         返回電子簽列表
       </Button>
     </Box>
@@ -25,7 +25,7 @@ function BackToList() {
 
 export default async function FormSignersPage({
   params,
-}: PageProps<'/forms/[id]/signers'>) {
+}: PageProps<'/esign/forms/[id]/signers'>) {
   const { id } = await params;
   // 後端建立的文件（數字 id）：在瀏覽器端以使用者的 session 讀取草稿並發起
   if (/^\d+$/.test(id)) {
@@ -43,7 +43,7 @@ export default async function FormSignersPage({
   const form = getForm(id);
   if (!form || form.docType !== 'sheet') notFound();
   // 已發起的文件不能再改簽署設定
-  if (form.status !== 'draft') redirect('/forms');
+  if (form.status !== 'draft') redirect('/esign/forms');
 
   return (
     <>

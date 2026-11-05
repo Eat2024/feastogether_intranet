@@ -15,14 +15,14 @@ export const dynamic = 'force-dynamic';
 
 export default async function EditFormPage({
   params,
-}: PageProps<'/forms/[id]/edit'>) {
+}: PageProps<'/esign/forms/[id]/edit'>) {
   const { id } = await params;
   // 後端建立的文件（數字 id）：在瀏覽器端讀取草稿並修改
   if (/^\d+$/.test(id)) {
     return (
       <>
         <Box>
-          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/forms">
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
             返回電子簽列表
           </Button>
         </Box>
@@ -44,7 +44,7 @@ export default async function EditFormPage({
         <Button
           variant="text"
           startIcon={<ArrowBackRoundedIcon />}
-          href="/forms"
+          href="/esign/forms"
         >
           返回電子簽列表
         </Button>

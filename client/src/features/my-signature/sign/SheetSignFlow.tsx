@@ -63,7 +63,7 @@ export default function SheetSignFlow({
           docName={form.name}
           terms={SIGN_TERMS}
           version={SIGN_TERMS_VERSION}
-          backHref="/my-signature"
+          backHref="/esign/my-signature"
           onAgree={() => {
             setConsent({ version: SIGN_TERMS_VERSION, agreedAt: nowStr() });
             window.scrollTo({ top: 0 });
@@ -136,7 +136,7 @@ export default function SheetSignFlow({
       </Typography>
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        <Button size="large" variant="outlined" href="/my-signature" disabled={pending}>
+        <Button size="large" variant="outlined" href="/esign/my-signature" disabled={pending}>
           取消
         </Button>
         <Button

@@ -22,7 +22,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function SignDocumentPage({
   params,
-}: PageProps<'/my-signature/[id]'>) {
+}: PageProps<'/esign/my-signature/[id]'>) {
   const { id } = await params;
   // 後端簽署任務：在瀏覽器端以使用者的 session 讀取任務並簽署
   if (UUID.test(id)) return <SigningTaskView signerPublicId={id} />;
@@ -44,7 +44,7 @@ export default async function SignDocumentPage({
 
   // 返回時停在這份文件所屬的分頁（待簽署／已簽署／已拒絕）
   const backHref =
-    me.status === 'signed' ? '/my-signature?tab=signed' : me.status === 'rejected' ? '/my-signature?tab=rejected' : '/my-signature';
+    me.status === 'signed' ? '/esign/my-signature?tab=signed' : me.status === 'rejected' ? '/esign/my-signature?tab=rejected' : '/esign/my-signature';
 
   return (
     <>

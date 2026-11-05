@@ -11,10 +11,10 @@
 
 /** 入口網以 esign:navigate 指定頁面時可用的代碼白名單（須與入口網 controllers/hr/Esign.php 的 $page_target 一致）。 */
 export const EMBED_TARGET_PATHS = {
-  "forms-new": "/forms/new",
-  forms: "/forms",
-  "my-signature": "/my-signature",
-  "export-history": "/export-history",
+  "forms-new": "/esign/forms/new",
+  forms: "/esign/forms",
+  "my-signature": "/esign/my-signature",
+  "export-history": "/esign/export-history",
 } as const;
 
 export type EmbedTarget = keyof typeof EMBED_TARGET_PATHS;

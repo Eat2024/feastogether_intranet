@@ -241,14 +241,14 @@ same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟�
 **排程註冊方式（對齊 [operations](contracts/operations.md)）**
 
 - 只有 `WorkerModule` 載入 `SuperUserAccessWorkerModule`：queue `auth-access-maintenance`、scheduler `super-user-entry-weekly`、job `rotate-entry-if-due`、`0 4 * * 1`／`Asia/Taipei`、空 payload、`attempts: 3`、exponential backoff 5000ms、`removeOnComplete: 100`、`removeOnFail: 100`。
-- worker 啟動時先以 DB 補做（直接執行與 job 相同的 processor），再看 Redis：已到期未執行的 job 保留不覆寫，否則 upsert。補做失敗讓 worker 啟動失敗。
+- worker 啟動時先以 DB 補做（直接執行與 job 相同的 processor），再看 Redis：已到期未執行的 job 保留不覆寫，否則 upsert。補做失敗只記 `auth.entry_rotation_failed`，worker 照常啟動並註冊排程（使用者決定，不擋電子簽與 Portal processor）。
 - 輪換鎖 singleton，DB 已處理週期早於最近到期週期才換入口；結果為 `rotated`／`not_due`／`uninitialized`，也是 job 回傳值。失敗原因只帶錯誤代碼。
 
 **自動測試**
 
 - 新增：
   - `super-user-access.service.spec.ts`：8 tests。以 fake timers 驗證週一 03:59:59.999 no-op、04:00 輪換、同週再執行 no-op、跨年、停機多週只補一次、初始化後同週不輪換、未初始化不建列、寫入失敗 rollback。
-  - `super-user-access.scheduler.spec.ts` 4 tests、`super-user-access.processor.spec.ts` 4 tests：排程參數、補做先於排程、過期 job 不覆寫、補做失敗不註冊、未初始化結果與警告、失敗原因與 log 不含原始訊息。
+  - `super-user-access.scheduler.spec.ts` 4 tests、`super-user-access.processor.spec.ts` 4 tests：排程參數、補做先於排程、過期 job 不覆寫、補做失敗仍啟動並註冊、未初始化結果與警告、失敗原因與 log 不含原始訊息。
   - `test/super-user-entry-rotation.e2e-spec.ts`：10 tests，正式 `WorkerModule`（Portal 匯入換成替身）＋正式 `AppModule`，測試庫 `feastogether_intranet_test_b`、`REDIS_DB=10`。
 - e2e 涵蓋：
   - HTTP app 沒有維護 queue、scheduler、processor，也不在 Redis 建排程。

@@ -1,4 +1,5 @@
 import { SUPER_USER_ENTRY_ROTATION_JOB } from './super-user-access.constants';
+import { SuperUserEntryRotationError } from './super-user-access.processor';
 import { SuperUserAccessScheduler } from './super-user-access.scheduler';
 
 function setup(next: number | null) {
@@ -73,13 +74,13 @@ describe('SuperUserAccessScheduler', () => {
     expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(1);
   });
 
-  it('補做失敗（DB 不可用）讓 worker 啟動失敗，不註冊排程', async () => {
+  it('補做失敗時 worker 照常啟動並註冊排程，等下次排程或 REPL 補做', async () => {
     const { scheduler, queue, rotation } = setup(null);
-    const failure = new Error('維護入口輪換失敗（ECONNREFUSED）');
-    rotation.process.mockRejectedValueOnce(failure);
+    rotation.process.mockRejectedValueOnce(
+      new SuperUserEntryRotationError('ER_NO_SUCH_TABLE'),
+    );
 
-    await expect(scheduler.onModuleInit()).rejects.toBe(failure);
-    expect(queue.getJobScheduler).not.toHaveBeenCalled();
-    expect(queue.upsertJobScheduler).not.toHaveBeenCalled();
+    await expect(scheduler.onModuleInit()).resolves.toBeUndefined();
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(1);
   });
 });

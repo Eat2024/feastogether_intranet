@@ -61,7 +61,7 @@
 - 停機情境都是模擬（DB 已處理週期往前推、刪 Redis key、注入 DB 錯誤），沒有在 UAT 實際停機跨過週一 04:00，也沒有測 Redis 故障切換或多台主機。
 - 每個 worker 用自己的時鐘判斷到期，主機需 NTP 對時。
 - 週一 04:00 DB 不可用超過重試窗（約 5＋10 秒）時，job 最終失敗後不再自動嘗試，要等下次 cron 或 worker 重啟補做；可從 failed job 與 log 看到，維護者可用 REPL `rotateEntryIfDue()` 補做。這是契約既定的 3 次重試與「不增加掃描排程」。
-- 啟動補做失敗會讓整個 worker（含電子簽與 Portal processor）無法啟動。DB 不可用時 TypeORM 初始化本來就會讓 worker 起不來，所以實際差異只在輪換專屬的故障（例如未套 migration）。規格沒寫這點，採 fail-fast，待使用者確認。
+- 啟動補做失敗會讓整個 worker（含電子簽與 Portal processor）無法啟動。DB 不可用時 TypeORM 初始化本來就會讓 worker 起不來，所以實際差異只在輪換專屬的故障（例如未套 migration）。規格沒寫這點，原採 fail-fast；使用者決定改成記 log 後照常啟動（見下方「後續」）。
 - 非 TTY 一次輸入多行時，REPL 不等前一行 `await` 完成就執行下一行，`.exit` 可能在查詢完成前關閉連線池（027-03 既有行為，未修改）；逐行執行沒有此問題。
 - `nextScheduledAt` 語意未改（仍為已處理週期＋7 天）。
 
@@ -71,3 +71,10 @@
 - 部署順序沿用 operations：migration → REPL `initialize()` → 新 HTTP／worker。worker 若先於 `initialize()` 啟動，只記 `auth.entry_rotation_uninitialized` 警告；初始化後要等下次 cron 或重啟才會再檢查，初始化本身已把當週設為已處理，不影響結果。
 - 文件要寫：需要立即補做時用 REPL `await auth.rotateEntryIfDue()`，不要用 BullMQ `promote()` 提前執行排程 job（BullMQ 會從原排定時間算下一次，等於跳過一週）。REPL 指令要逐行執行、等結果出來再輸入下一行。
 - 觀測：輪換結果在 `auth_security_events`（`entry.rotated`，actor `system`／`operator`）、singleton 的 `rotated_at` 與 `period_start_at` 差即排程延遲；Redis 保留最近 100 筆成功／失敗 job；失敗 log 為 `auth.entry_rotation_failed`（只有錯誤代碼）。
+
+### 後續（使用者決定）
+
+- 2026-11-05 使用者決定：啟動補做失敗時記 log 後照常啟動，不採 fail-fast。
+- `SuperUserAccessScheduler.onModuleInit` 改為忽略補做的失敗（processor 已記 `auth.entry_rotation_failed`，只帶錯誤代碼），照常查 Redis 並註冊排程。電子簽與 Portal processor 不再因輪換專屬故障（例如未套 migration）停擺；輪換等下次 cron，或由維護者以 REPL `auth.rotateEntryIfDue()` 補做。DB 不可用時 TypeORM 初始化仍會讓 worker 起不來，與原本相同。
+- 部署檢查因此要看 worker log 有沒有 `auth.entry_rotation_failed`，不能只看 worker 是否啟動。
+- 測試：`super-user-access.scheduler.spec.ts` 的補做失敗案例改為驗證照常啟動並註冊排程。

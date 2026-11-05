@@ -22,8 +22,9 @@ export class SuperUserAccessScheduler implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    // 先以 DB 補做停機期間錯過的週期（停機多週也只換一次）；DB 不可用時讓 worker 啟動失敗。
-    await this.rotation.process();
+    // 先以 DB 補做停機期間錯過的週期（停機多週也只換一次）。補做失敗時 processor 已記
+    // auth.entry_rotation_failed；照常註冊排程，不擋同一 worker 的電子簽與 Portal processor 啟動。
+    await this.rotation.process().catch(() => undefined);
     // 已到期但尚未執行的那一次不覆寫（BullMQ 覆寫會刪掉它、改排下一次），與 Portal 每日匯入相同；
     // 它執行時由 DB 週期判定為 no-op，job 紀錄仍保留錯過的觸發與延遲。
     const next = (await this.queue.getJobScheduler(SCHEDULER_ID))?.next;

@@ -85,6 +85,8 @@ export const AppErrorCode = {
   AUTH_SUPER_USER_UNAVAILABLE: 'AUTH_SUPER_USER_UNAVAILABLE',
   /** Super user 帳號或密碼錯誤（統一回應，不透露帳號是否存在）。 */
   AUTH_SUPER_USER_CREDENTIALS_INVALID: 'AUTH_SUPER_USER_CREDENTIALS_INVALID',
+  /** 啟用帳密時提供的 expectedGeneration 不是目前啟用版本（REPL）。 */
+  AUTH_SUPER_USER_GENERATION_CONFLICT: 'AUTH_SUPER_USER_GENERATION_CONFLICT',
   /** 目前身分不能使用此端點（例如 Super user 存取尚未接入授權的員工業務）；不是登入過期。 */
   AUTH_ACTOR_NOT_ALLOWED: 'AUTH_ACTOR_NOT_ALLOWED',
   /** 未預期錯誤（既有 handler 預設） */

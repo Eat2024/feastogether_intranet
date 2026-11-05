@@ -256,6 +256,11 @@ export const AppErrors = {
     '帳號或密碼錯誤',
     HttpStatus.UNAUTHORIZED,
   ],
+  AUTH_SUPER_USER_GENERATION_CONFLICT: [
+    AppErrorCode.AUTH_SUPER_USER_GENERATION_CONFLICT,
+    'expectedGeneration 不是目前的帳密啟用版本，請以 credentialStatus() 確認後再啟用',
+    HttpStatus.CONFLICT,
+  ],
   AUTH_SUPER_USER_UNAVAILABLE: [
     AppErrorCode.AUTH_SUPER_USER_UNAVAILABLE,
     '維護登入暫時無法使用',

@@ -3,6 +3,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AuthSecurityEventService } from '#app/features/auth/services/auth-security-event.service';
 import { SuperUserAccessService } from '#app/features/auth/services/super-user-access.service';
+import { SuperUserCredentialsService } from '#app/features/auth/services/super-user-credentials.service';
 import { ConsoleModule } from './console.module';
 
 /**
@@ -12,6 +13,7 @@ import { ConsoleModule } from './console.module';
 export function createAuthConsole(app: INestApplicationContext) {
   const access = app.get(SuperUserAccessService);
   const events = app.get(AuthSecurityEventService);
+  const credentials = app.get(SuperUserCredentialsService);
   return {
     initialize: () => access.initialize(),
     currentEntry: () => access.currentEntry(),
@@ -20,6 +22,9 @@ export function createAuthConsole(app: INestApplicationContext) {
     rotateEntryIfDue: () => access.rotateEntryIfDue({ kind: 'operator' }),
     securityEvents: (options: { limit?: number; beforeId?: number } = {}) =>
       events.list(options),
+    /** 只啟用本機已驗格式的設定；不接受帳密參數，expectedGeneration 取自 credentialStatus()。 */
+    activateCredentials: (input: { expectedGeneration: number }) =>
+      credentials.activate(input),
   };
 }
 

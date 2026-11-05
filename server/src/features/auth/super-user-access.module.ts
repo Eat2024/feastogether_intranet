@@ -3,6 +3,7 @@ import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
 import { AuthSecurityEventService } from './services/auth-security-event.service';
 import { SuperUserAccessService } from './services/super-user-access.service';
 import { SuperUserConfigService } from './services/super-user-config.service';
+import { SuperUserCredentialsService } from './services/super-user-credentials.service';
 
 /**
  * Super user 帳密設定、維護入口與安全事件的窄組合，HTTP AuthModule、維護 worker 與維運 REPL 共用。
@@ -14,6 +15,7 @@ import { SuperUserConfigService } from './services/super-user-config.service';
     SuperUserConfigService,
     AuthSecurityEventService,
     SuperUserAccessService,
+    SuperUserCredentialsService,
   ],
   exports: [
     SuperUserConfigService,

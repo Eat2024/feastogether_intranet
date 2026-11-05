@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { join } from 'node:path';
+import { createHash, randomBytes } from 'node:crypto';
 import type { INestApplicationContext } from '@nestjs/common';
 import { ModulesContainer, NestFactory } from '@nestjs/core';
 import type { DataSource } from 'typeorm';
 import { AppModule } from '#app/app.module';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
+import type { AppException } from '#app/common/errors/app.exception';
 import { ConsoleModule } from '#app/console/console.module';
 import { createAuthConsole } from '#app/console/repl';
 import { AuthModule } from '#app/features/auth/auth.module';
@@ -108,6 +110,7 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
       'credentialStatus',
       'rotateEntryIfDue',
       'securityEvents',
+      'activateCredentials',
     ]);
   });
 
@@ -397,6 +400,264 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
         for (const repl of repls) repl.kill();
       }
     }, 120_000);
+  });
+
+  /**
+   * 027-07：明確啟用本機帳密設定。測試程序只載入一組設定，因此先把 DB 已啟用指紋改成另一個值，
+   * 代表「目前啟用的是別組設定」；跨實例、不同設定的行為由 security-super-user-credentials 驗證。
+   */
+  describe('activateCredentials', () => {
+    const OTHER_FINGERPRINT = '0'.repeat(64);
+    let userId: number;
+
+    const sha256 = (value: string) =>
+      createHash('sha256').update(value).digest('hex');
+    const insertSession = async (
+      actor: 'super_user' | 'employee',
+      status: 'active' | 'revoked',
+    ) => {
+      const tokenHash = sha256(randomBytes(32).toString('base64url'));
+      const result = await db.query<{ insertId: number }>(
+        `INSERT INTO auth_sessions (actor_kind, user_id, source, credential_generation, status,
+          source_jti_hash, session_token_hash, assertion_expires_at, verified_at, activated_at,
+          expires_at, revoked_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3), NOW(3), NOW(3) + INTERVAL 8 HOUR, ?)`,
+        [
+          actor,
+          actor === 'employee' ? userId : null,
+          actor === 'employee' ? 'webview' : 'super_user',
+          actor === 'employee' ? null : 1,
+          status,
+          sha256(randomBytes(32).toString('base64url')),
+          tokenHash,
+          status === 'revoked' ? new Date(Date.now() - 60_000) : null,
+        ],
+      );
+      return { id: result.insertId, tokenHash };
+    };
+    const sessionRows = (ids: number[]) =>
+      db.query<
+        Array<{
+          id: number;
+          status: string;
+          revoked_at: Date | null;
+          replacement_session_id: number | null;
+        }>
+      >(
+        'SELECT id, status, revoked_at, replacement_session_id FROM auth_sessions WHERE id IN (?) ORDER BY id',
+        [ids],
+      );
+    /** 已初始化，且 DB 啟用的是另一組設定（第 1 版）。 */
+    const initializeWithOtherConfigActive = async () => {
+      await auth.initialize();
+      await db.query(
+        'UPDATE super_user_access SET active_credential_fingerprint = ?',
+        [OTHER_FINGERPRINT],
+      );
+    };
+
+    beforeAll(async () => {
+      const result = await db.query<{ insertId: number }>(
+        "INSERT INTO users (empid, name) VALUES ('SUC001', '合成員工')",
+      );
+      userId = result.insertId;
+    });
+
+    afterEach(async () => {
+      const owned = "actor_kind = 'super_user' OR user_id = ?";
+      await db.query(
+        `UPDATE auth_sessions SET replacement_session_id = NULL WHERE ${owned}`,
+        [userId],
+      );
+      await db.query(`DELETE FROM auth_sessions WHERE ${owned}`, [userId]);
+    });
+
+    afterAll(async () => {
+      await db.query("DELETE FROM users WHERE empid = 'SUC001'");
+    });
+
+    it('CAS 啟用本機設定：只撤銷 active 維護會話，入口不變，員工會話與已撤銷列不動，事件同交易', async () => {
+      await initializeWithOtherConfigActive();
+      const [before] = await accessRows();
+      const live = [
+        await insertSession('super_user', 'active'),
+        await insertSession('super_user', 'active'),
+      ];
+      const revoked = await insertSession('super_user', 'revoked');
+      const employee = await insertSession('employee', 'active');
+      const [revokedBefore, employeeBefore] = await sessionRows([
+        revoked.id,
+        employee.id,
+      ]);
+
+      expect(await auth.activateCredentials({ expectedGeneration: 1 })).toEqual(
+        { activated: true },
+      );
+
+      const [after] = await accessRows();
+      expect(after).toMatchObject({
+        entry_key: before.entry_key,
+        entry_generation: before.entry_generation,
+        rotated_at: before.rotated_at,
+        period_start_at: before.period_start_at,
+        active_credential_fingerprint: app.get(SuperUserConfigService)
+          .fingerprint,
+        credential_generation: 2,
+      });
+      expect(after.credential_activated_at.getTime()).toBeGreaterThan(
+        before.credential_activated_at.getTime(),
+      );
+      expect(
+        (await sessionRows(live.map(({ id }) => id))).map((row) => [
+          row.status,
+          row.revoked_at instanceof Date,
+          row.replacement_session_id,
+        ]),
+      ).toEqual([
+        ['revoked', true, null],
+        ['revoked', true, null],
+      ]);
+      expect(await sessionRows([revoked.id, employee.id])).toEqual([
+        revokedBefore,
+        employeeBefore,
+      ]);
+      expect((await operatorEvents()).at(-1)).toEqual({
+        event_type: 'credentials.activated',
+        actor_kind: 'operator',
+        actor_user_id: null,
+        session_id: null,
+        outcome_code: 'succeeded',
+        credential_generation: 2,
+        entry_generation: null,
+        request_id: null,
+      });
+      expect(await auth.credentialStatus()).toEqual({
+        generation: 2,
+        localConfigMatches: true,
+        activatedAt: after.credential_activated_at,
+      });
+    });
+
+    it('並發啟用同一個 expectedGeneration：singleton 鎖讓只有一次生效，另一次回版本衝突', async () => {
+      await initializeWithOtherConfigActive();
+      const real = new SuperUserAccessRepository();
+      // 測試連線池上限為 2（.env.test），兩個交易同時持有連線並在鎖定 singleton 前會合。
+      const callers = 2;
+      let arrived = 0;
+      let release!: () => void;
+      const allArrived = new Promise<void>((resolve) => (release = resolve));
+      jest
+        .spyOn(app.get(SuperUserAccessRepository), 'findForUpdate')
+        .mockImplementation(async (manager) => {
+          if (++arrived === callers) release();
+          await allArrived;
+          return real.findForUpdate(manager);
+        });
+
+      const outcomes = await Promise.all(
+        Array.from({ length: callers }, () =>
+          auth
+            .activateCredentials({ expectedGeneration: 1 })
+            .catch((error: AppException) => error.code),
+        ),
+      );
+
+      expect(outcomes).toHaveLength(callers);
+      expect(outcomes).toContainEqual({ activated: true });
+      expect(outcomes).toContain(
+        AppErrorCode.AUTH_SUPER_USER_GENERATION_CONFLICT,
+      );
+      expect((await accessRows())[0].credential_generation).toBe(2);
+      expect(
+        (await operatorEvents()).filter(
+          (event) => event.event_type === 'credentials.activated',
+        ),
+      ).toHaveLength(2);
+    });
+
+    it('事件寫入失敗時整筆 rollback：版本、指紋與維護會話都不變', async () => {
+      await initializeWithOtherConfigActive();
+      const live = await insertSession('super_user', 'active');
+      const before = {
+        ...(await snapshot()),
+        sessions: await sessionRows([live.id]),
+      };
+      jest
+        .spyOn(app.get(AuthSecurityEventRepository), 'append')
+        .mockRejectedValueOnce(new Error('合成事件寫入失敗'));
+
+      await expect(
+        auth.activateCredentials({ expectedGeneration: 1 }),
+      ).rejects.toThrow('合成事件寫入失敗');
+      expect({
+        ...(await snapshot()),
+        sessions: await sessionRows([live.id]),
+      }).toEqual(before);
+    });
+
+    it('與「Super user → 員工」身分切換交錯時不 deadlock：切換先撤的會話不重複撤銷', async () => {
+      await initializeWithOtherConfigActive();
+      const live = await insertSession('super_user', 'active');
+      // 依 SessionService.replace 的員工目標交易：READ COMMITTED、不鎖 singleton，先鎖舊會話，再插入新員工會話並撤舊。
+      // 登出（SessionService.revoke）同樣是先鎖會話再改 status，等待關係相同。
+      const runner = db.createQueryRunner();
+      await runner.connect();
+      let pending: Promise<unknown> | undefined;
+      try {
+        await runner.startTransaction('READ COMMITTED');
+        await runner.query(
+          'SELECT id FROM auth_sessions WHERE session_token_hash = ? FOR UPDATE',
+          [live.tokenHash],
+        );
+        pending = auth.activateCredentials({ expectedGeneration: 1 });
+        // 以真 MySQL 鎖等待作同步點：啟用交易已鎖 singleton，正等待這筆維護會話。
+        let waiting = false;
+        for (let attempt = 0; attempt < 100 && !waiting; attempt++) {
+          const [{ count }] = (await runner.query(
+            "SELECT COUNT(*) AS count FROM performance_schema.data_lock_waits w JOIN performance_schema.data_locks l ON w.REQUESTING_ENGINE_LOCK_ID=l.ENGINE_LOCK_ID WHERE l.OBJECT_SCHEMA=DATABASE() AND l.OBJECT_NAME='auth_sessions'",
+          )) as Array<{ count: string }>;
+          waiting = Number(count) > 0;
+          if (!waiting) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(waiting).toBe(true);
+        const created = (await runner.query(
+          `INSERT INTO auth_sessions (actor_kind, user_id, source, status, source_jti_hash,
+            session_token_hash, assertion_expires_at, verified_at, activated_at, expires_at)
+            VALUES ('employee', ?, 'webview', 'active', ?, ?, NOW(3), NOW(3), NOW(3), NOW(3) + INTERVAL 8 HOUR)`,
+          [
+            userId,
+            sha256(randomBytes(32).toString('base64url')),
+            sha256(randomBytes(32).toString('base64url')),
+          ],
+        )) as { insertId: number };
+        const switchedAt = new Date(Date.now() - 1000);
+        await runner.query(
+          "UPDATE auth_sessions SET status = 'revoked', revoked_at = ?, replacement_session_id = ? WHERE id = ?",
+          [switchedAt, created.insertId, live.id],
+        );
+        await runner.commitTransaction();
+
+        await expect(pending).resolves.toEqual({ activated: true });
+        expect(await sessionRows([live.id, created.insertId])).toEqual([
+          {
+            id: live.id,
+            status: 'revoked',
+            revoked_at: switchedAt,
+            replacement_session_id: created.insertId,
+          },
+          {
+            id: created.insertId,
+            status: 'active',
+            revoked_at: null,
+            replacement_session_id: null,
+          },
+        ]);
+      } finally {
+        if (runner.isTransactionActive) await runner.rollbackTransaction();
+        await pending?.catch(() => undefined);
+        await runner.release();
+      }
+    });
   });
 });
 

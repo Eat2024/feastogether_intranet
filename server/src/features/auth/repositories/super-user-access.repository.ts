@@ -43,7 +43,7 @@ export class SuperUserAccessRepository {
     }
   }
 
-  /** 更新已鎖定的 singleton；save 一併維護 updated_at。 */
+  /** 更新已鎖定的 singleton（呼叫端須在同一交易先以 findForUpdate 取得）；save 一併維護 updated_at。 */
   async save(access: SuperUserAccess, manager: EntityManager): Promise<void> {
     await manager.save(access);
   }

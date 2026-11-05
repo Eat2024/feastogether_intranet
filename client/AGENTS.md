@@ -33,6 +33,7 @@ pnpm start
 - `src/features/my-signature/`：目前使用者的待簽／已簽流程與簽名處理。
 - `src/api/`：呼叫 NestJS 後端（`server/`）的 API 層，見下方「呼叫後端 API」。
 - `src/components/`：跨 feature 共用的 UI 元件；`src/components/providers/` 放全站 Provider（TanStack Query、Snackbar）。
+- `src/components/sidebar/`：`(main)` 的側邊欄（版型移植自 CKS_Acceptance_System，可收合為圖示模式）。頂端切換服務，選單依網址前綴判斷目前服務；新增服務或選單項目只改 `services.ts` 的 `SERVICES`。電子簽路由沒有共同前綴，`pathPrefixes` 要列出每個頂層路由。旅遊平台（`/travel`）目前只有權限管理的佔位頁。
 - `src/lib/`：無 feature 歸屬的純工具函式。
 - `src/theme/tokens.ts`：唯一的 design token 來源。
 - `src/theme/theme.ts`：唯一的 MUI theme 與全域 component overrides。

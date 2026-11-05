@@ -221,3 +221,121 @@ same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟�
 - 每個 worker 以自己的時鐘判斷到期，主機需 NTP 對時。
 - 週一 04:00 DB 不可用超過重試窗（約 5＋10 秒）時，job 失敗後不會再自動嘗試，要等下次 cron 或 worker 重啟補做；失敗可從 failed job 與 `auth.entry_rotation_failed` log 看到，維護者可用 REPL `rotateEntryIfDue()` 補做。這是契約既定的重試次數與「不增加掃描排程」。
 - 非 TTY 一次輸入多行時，REPL 不等前一行的 `await` 完成就執行下一行，`.exit` 可能在查詢完成前關閉連線池（027-03 既有行為）；逐行執行沒有此問題。
+
+### 027-07 帳密啟用與跨實例撤銷（T045～T049）
+
+範圍是 4 節。網址輪換（3 節）與 OAuth／WebView 身分切換不在本張。
+
+**生效點與部署條件**
+
+- 生效點是 `await auth.activateCredentials({ expectedGeneration })` 的交易 commit。同一交易內：
+  - DB 啟用指紋換成 REPL 本機設定，`credential_generation` 加 1，`credential_activated_at` 更新。
+  - 全部 active 維護會話改為 revoked。
+  - 寫入一筆 `credentials.activated` 事件。
+  - 入口與 `entry_generation` 不變。
+- commit 前，已換新設定的實例：維護登入與既有維護會話都回 503（`AUTH_SUPER_USER_UNAVAILABLE`），員工照常。
+- commit 後：
+  - 舊維護會話在所有實例都回 401，因為已撤銷。
+  - 仍是舊設定的實例：維護登入與新維護會話都回 503，直到改成新設定並重啟。
+  - 已換新設定的實例可以登入維護身分。
+  - 員工會話在新、舊設定的實例都有效。
+- 混跑期間，負載平衡後面只要還有舊設定實例，維護操作就可能間歇 503，所以不能宣稱維護登入零中斷。
+- 完成條件：所有 HTTP 與 worker 都換成新設定並重啟，每個執行環境的 REPL `credentialStatus()` 都回 `localConfigMatches: true`，並在實際入口完成一次維護登入驗證。只更新部分實例不算完成。
+- 任何實例啟動都不會寫 DB 版本。舊設定實例重啟也改不回去。要回復舊設定，必須在舊設定的 REPL 明確 activate，得到更高的 generation；先前的會話不會復活。
+
+**自動測試**
+
+- `src/features/auth/services/super-user-credentials.service.spec.ts`（9 tests，記憶體替身）：
+  - 新設定使 generation 加 1，同時更新指紋、生效時間、撤銷與事件。
+  - 再啟用先前的設定時 generation 仍會增加（1→2→3）。
+  - 相同指紋為 no-op。
+  - expectedGeneration 為 0、2 或字串 `'1'` 時，以及相同設定但版本不符時，一律回 409 `AUTH_SUPER_USER_GENERATION_CONFLICT` 且不寫入。
+  - 事件寫入失敗時整筆 rollback。
+  - 未初始化時回 503。
+- `test/super-user-console.e2e-spec.ts` 新增 4 tests（真實 MySQL，`feastogether_intranet_test_c`）：
+  - 只撤 active 維護會話；入口欄位、員工會話與已撤銷的列都不變；寫入一筆 operator 事件。
+  - 兩個交易在鎖 singleton 前會合，再並發用同一個 expectedGeneration 啟用：一筆 `{activated:true}`，另一筆回版本衝突。
+  - 事件寫入失敗時，版本、指紋與會話都不變。
+  - 與「Super user → 員工」切換交錯：測試照 `SessionService.replace` 的 SQL 順序，以 READ COMMITTED 先鎖舊會話，等啟用交易進入鎖等待後，再插入員工會話並撤舊。結果不 deadlock，切換寫入的 `revoked_at` 與 replacement 也不會被覆寫。
+  - 連跑 5 次都是 14 passed。
+- `test/security-super-user-credentials.e2e-spec.ts`（6 tests，約 8 秒）：
+  - 用 `node --conditions=development -r ts-node/register src/main.ts` 啟動兩個獨立 HTTP 程序：A 是舊設定（port 3030），B 是新設定（port 3031），共用 `feastogether_intranet_test_c` 與 Redis DB 11。
+  - 每次 REPL 操作都另起一個程序，執行 `test/helpers/run-auth-console.ts`，載入指定設定並呼叫 `createAuthConsole`。
+  - 依序驗證：
+    1. B 啟動不改 DB。B 的登入與 A 簽出的會話在 B 都回 503；新設定 REPL 的 `credentialStatus()` 回 `localConfigMatches:false`。員工在兩側都是 200。
+    2. A 以相同設定重啟，會話仍有效，DB 不變。
+    3. expectedGeneration=2 回 409，不撤銷。
+    4. 新設定 activate(1)：舊會話在兩側都回 401，A 登入回 503。A 重啟後 generation 仍是 2，登入仍回 503。B 可以登入；B 簽出的會話在 A 回 503。員工在兩側都是 200。
+    5. 再 activate(2) 為 no-op，B 會話仍有效。
+    6. 舊設定 activate(2)：generation 變成 3，先前兩個會話在兩側都回 401；A 可以重新登入，B 登入回 503。員工在兩側都是 200。operator 事件的 generation 依序是 1、2、3。
+  - 結束後兩個程序都已停止、port 都已釋放，測試庫沒有殘留列。
+- 先寫測試：實作前 unit spec 因找不到模組而失敗。只還原 `repl.ts`／module 時，console e2e 5 failed，雙實例 e2e 4 failed（啟用前的 2 步是既有行為，通過）。
+- Mutation 檢查（都已還原）：
+  - 改回單一條件 UPDATE：死鎖競態 2/2 次出現 `Deadlock found`（REPEATABLE READ）。第一版實作是 READ COMMITTED 加單一條件 UPDATE，同樣 deadlock。
+  - 拿掉撤銷：console e2e 2 failed，雙實例 e2e 3 failed。
+  - 事件改用非交易 manager：console e2e 3 failed。
+  - UPDATE 拿掉 `status='active'` 重驗：死鎖競態 1 failed（`revoked_at` 被覆寫）。
+
+**REPL 實際展示（開發庫 `feastogether_intranet_027c`、Redis `127.0.0.1:16321` DB 3，只經 `server/.env`）**
+
+- 準備：
+  - 對空庫跑 `pnpm -C server migration:run`，套用 21 支。
+  - 隨機產生兩組合成密碼 A、B（放在 repo 外的暫存檔），以 `hashSuperUserPassword` 產生 hash。
+  - REPL 以 Python `pty` 操作；入口原值與 hash 在輸出中遮罩。
+- 開發模式 `pnpm -C server repl:dev`，`.env` 為設定 A：
+  - `Object.keys(auth)` 是 4 個 helper。
+  - 未初始化時 `activateCredentials({expectedGeneration:1})` 回 503 `AUTH_SUPER_USER_UNAVAILABLE`。
+  - `initialize()` → `{initialized:true}`；`credentialStatus()` → `{generation:1, localConfigMatches:true}`；`currentEntry()` 回遮罩後的 path。
+  - `.exit` 結束，exit 0。
+- HTTP 實例：以 `node --conditions=development -r ts-node/register src/main.ts` 啟動，`NODE_ENV=test`。
+  - 開機必填但 `.env` 沒有的 OAuth／WebView／邀請金鑰用合成值。
+  - Portal 指向不存在的庫，避免碰到真實 Portal。
+  - 實例 A（設定 A，3030）以 curl 登入：201，GET session 200 super_user。
+- 把 `.env` 換成設定 B 後，以 `pnpm -C server repl:dev` 操作：
+  - `credentialStatus()` → `{generation:1, localConfigMatches:false}`。
+  - `activateCredentials({expectedGeneration:2})` → 409 `AUTH_SUPER_USER_GENERATION_CONFLICT`，訊息「expectedGeneration 不是目前的帳密啟用版本，請以 credentialStatus() 確認後再啟用」。
+  - `activateCredentials({expectedGeneration:1})` → `{activated:true}`；`credentialStatus()` → `{generation:2, localConfigMatches:true}`。
+  - `activateCredentials({expectedGeneration:2})` → `{activated:false}`。
+- 啟用後的 HTTP 結果：
+  - A：舊會話 401 `UNAUTHORIZED`；設定 A 的密碼登入回 503。
+  - 啟動實例 B（設定 B，3031）：舊會話 401；舊密碼 401 `AUTH_SUPER_USER_CREDENTIALS_INVALID`；新密碼 201；新會話在 B 回 200，在 A 回 503。
+- 建置模式 `pnpm -C server repl`，以環境變數覆寫回設定 A：
+  - `[typeof get, typeof $, typeof select]` 全為 `'undefined'`。
+  - `credentialStatus()` → `{generation:2, localConfigMatches:false}`。
+  - `activateCredentials({expectedGeneration:2})` → `{activated:true}`；`credentialStatus()` → `{generation:3, localConfigMatches:true}`。
+  - 之後 B 的會話 401，最早的會話仍是 401（沒有復活）。A 以設定 A 重新登入 201，B 登入 503。
+- 重啟：
+  - A 以設定 A 重啟後，第 3 版會話仍是 200；同一會話在設定 B 的 B 回 503。
+  - 展示中曾讓 A 讀到已改成 B 的 `.env` 重啟，結果該會話回 503，正好就是「只更新部分實例」的狀態。
+  - DB 始終是 generation 3，沒有被任何啟動改寫。
+- DB 事件依序為：
+  1. `entry.initialized`
+  2. `credentials.activated`(1)
+  3. `login.succeeded`(1)
+  4. `credentials.activated`(2)
+  5. `login.rejected`（舊密碼打 B）
+  6. `login.succeeded`(2)
+  7. `credentials.activated`(3)
+  8. `login.succeeded`(3)
+- 收尾：
+  - 兩種 REPL 都設定 `NODE_REPL_HISTORY` 指向暫存路徑，結束後該檔不存在。
+  - 展示後已停止兩個 HTTP 程序，刪除開發庫的 singleton、事件與會話（migration 保留），也刪除暫存密碼、hash 與 cookie。
+  - `server/.env` 留下設定 B 的 hash，對應密碼已丟棄。
+- 最後一個改動是把啟用時間改成取得 singleton 鎖之後才取，以上展示在這個改動之前執行。改動後重新 build，以建置模式 REPL 在同一開發庫重跑一次：
+  - `initialize()` → `credentialStatus()`，結果為 generation 1、相符。
+  - 以另一組合成 hash 覆寫環境變數後，`credentialStatus()` 回不相符；`activateCredentials({expectedGeneration:1})` → `{activated:true}`；`credentialStatus()` → generation 2、相符。
+  - 結束後刪除產生的列。
+
+**回歸**
+
+- `pnpm -C server test`：127 suites／1279 tests 通過。
+- `pnpm -C server test:e2e:security`：17 suites／123 tests 通過。
+- `pnpm -C server test:e2e`：556 passed、1 skipped、1 failed。失敗為既有 `api-coverage` 的 history 路由，同 027-02。
+- `pnpm -C server lint:check`：0 errors、276 warnings，與本張前相同。
+- `pnpm -C server build`：成功。
+
+**未執行**
+
+- `test:schema`：本張沒有 migration 或 entity 變更。
+- client 與 root build／lint：本張沒有改 client。
+- 正式／UAT 的多實例與負載平衡實測。

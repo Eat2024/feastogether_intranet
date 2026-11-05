@@ -97,11 +97,11 @@
 
 **Independent Test**: 共享DB的兩個不同設定實例，activate後舊session／帳密拒絕、新設定可用、員工不受影響；同設定重啟不撤會話。
 
-- [ ] T045 [P] [US4] 先在 `server/test/security-super-user-credentials.e2e-spec.ts` 建共享DB/Redis且載不同設定的兩實例：新設定未active時503，activate後舊session兩端拒絕、舊實例不能新登入、員工session不受影響、同設定重啟有效；不能用單實例改env假裝雙實例。
-- [ ] T046 [P] [US4] 先在 `server/src/features/auth/services/super-user-credentials.service.spec.ts` 驗expectedGeneration CAS衝突、同fingerprint no-op、再啟用舊設定仍加generation、撤銷／事件同交易與故障rollback，啟動不得自動activate。
-- [ ] T047 [US4] 建立 `server/src/features/auth/services/super-user-credentials.service.ts` 並接 `super-user-access.module.ts`，依singleton→session鎖序驗CAS，異fingerprint時generation+1、activatedAt更新、撤銷全部active super_user及credentials.activated同交易；不撤employee、不輸出fingerprint、不允許startup覆寫。
-- [ ] T048 [US4] 在 `server/src/console/auth-console.service.ts` 提供activateCredentials({expectedGeneration})，只啟用已驗格式的本機env，不接受任意帳密參數；沿 `server/src/features/auth/services/session.service.ts` 與super-user-login既有local/active/session三方版本檢查，不另加快取或版本來源。
-- [ ] T049 [US4] 執行雙實例、rollback、重啟及再啟用舊設定驗收，於 `specs/027-super-user-access/quickstart.md` 記錄commit生效點與混跑期間維護503限制；不宣稱零中斷或只更新部分實例就完成。
+- [X] T045 [P] [US4] 先在 `server/test/security-super-user-credentials.e2e-spec.ts` 建共享DB/Redis且載不同設定的兩實例：新設定未active時503，activate後舊session兩端拒絕、舊實例不能新登入、員工session不受影響、同設定重啟有效；不能用單實例改env假裝雙實例。（027-07：兩實例是以 `src/main.ts` 啟動的兩個獨立 Node 程序（port 3030／3031），維運 REPL 是另以 `test/helpers/run-auth-console.ts` 啟動、載入指定設定的程序，呼叫同一個 `createAuthConsole`。員工會話以 SQL 建立合成列：員工登入需要 Portal／OAuth 上游，本測試只驗證既有員工會話不受影響。）
+- [X] T046 [P] [US4] 先在 `server/src/features/auth/services/super-user-credentials.service.spec.ts` 驗expectedGeneration CAS衝突、同fingerprint no-op、再啟用舊設定仍加generation、撤銷／事件同交易與故障rollback，啟動不得自動activate。（027-07：「啟動不得自動 activate」沒有可單元測試的啟動程式碼，改由 T045 驗證：新設定實例啟動、舊設定實例重啟後 DB 版本都不變。只靠記憶體替身看不出誤用非交易 manager，所以真實 MySQL 的 rollback、並發 CAS 與死鎖競態另寫在 `test/super-user-console.e2e-spec.ts`。）
+- [X] T047 [US4] 建立 `server/src/features/auth/services/super-user-credentials.service.ts` 並接 `super-user-access.module.ts`，依singleton→session鎖序驗CAS，異fingerprint時generation+1、activatedAt更新、撤銷全部active super_user及credentials.activated同交易；不撤employee、不輸出fingerprint、不允許startup覆寫。（027-07：撤銷時先以非鎖定讀取取得 active 維護會話 id，再依主鍵更新。若直接用 `actor_kind／status` 條件 UPDATE，InnoDB 會經含 status 的次要索引先鎖索引列再等主鍵，與「Super user → 員工」切換或登出互相等待而 deadlock：這兩條路徑不鎖 singleton，會先鎖舊會話主鍵再改 status。這個 deadlock 在 REPEATABLE READ 與 READ COMMITTED 都能重現。交易維持預設隔離等級。新增 `AUTH_SUPER_USER_GENERATION_CONFLICT`（409）。）
+- [X] T048 [US4] 在 `server/src/console/auth-console.service.ts` 提供activateCredentials({expectedGeneration})，只啟用已驗格式的本機env，不接受任意帳密參數；沿 `server/src/features/auth/services/session.service.ts` 與super-user-login既有local/active/session三方版本檢查，不另加快取或版本來源。（027-07：依 T016 的決定，helper 加在 `server/src/console/repl.ts` 的 `createAuthConsole`，沒有建立 `auth-console.service.ts`。回傳 `{activated}`，no-op 時為 false。`session.service.ts` 的三方版本檢查原樣沿用，沒有修改。）
+- [X] T049 [US4] 執行雙實例、rollback、重啟及再啟用舊設定驗收，於 `specs/027-super-user-access/quickstart.md` 記錄commit生效點與混跑期間維護503限制；不宣稱零中斷或只更新部分實例就完成。（027-07：記錄於 quickstart「027-07」小節。）
 
 **Checkpoint**: 跨實例撤銷與部署啟用邊界可證明，原員工會話保持。
 

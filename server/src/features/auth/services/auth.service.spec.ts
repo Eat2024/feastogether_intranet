@@ -35,7 +35,6 @@ describe('AuthService WebView SSO', () => {
       markFailed: jest.fn().mockResolvedValue(undefined),
       findPendingForUpdate: jest.fn().mockResolvedValue(pendingSession),
       save: jest.fn().mockImplementation((value) => Promise.resolve(value)),
-      findActive: jest.fn(),
       revoke: jest.fn().mockResolvedValue(undefined),
       createActive: jest.fn().mockResolvedValue({ id: 2 }),
     };
@@ -75,6 +74,7 @@ describe('AuthService WebView SSO', () => {
     const passwordAuth = {
       authenticate: jest.fn().mockResolvedValue(undefined),
     };
+    const sessionService = { authenticate: jest.fn() };
     return {
       service: new AuthService(
         config as never,
@@ -84,9 +84,11 @@ describe('AuthService WebView SSO', () => {
         eligibleStaff as never,
         logger as never,
         passwordAuth as never,
+        sessionService as never,
       ),
       config,
       passwordAuth,
+      sessionService,
       sessions,
       users,
       mysql,
@@ -244,6 +246,7 @@ describe('AuthService WebView SSO', () => {
           dependencies.eligibleStaff as never,
           { info: jest.fn() } as never,
           dependencies.passwordAuth as never,
+          dependencies.sessionService as never,
         ),
     ).toThrow('WEBVIEW_JWT_PUBLIC_KEY_B64 必須是有效 RSA 公鑰 PEM');
   });
@@ -378,11 +381,16 @@ describe('AuthService WebView SSO', () => {
     );
   });
 
-  it('有效 DB session 回傳白名單 User 與固定 expiresAt', async () => {
-    const { service, sessions, user } = setup();
+  it('有效 DB session 回傳白名單 User 與固定 expiresAt，並帶員工 actor', async () => {
+    const { service, sessionService, user } = setup();
     const expiresAt = new Date(Date.now() + 60_000);
-    sessions.findActive.mockResolvedValue({ userId: 7, expiresAt, user });
+    sessionService.authenticate.mockResolvedValue({
+      actor: { kind: 'employee', userId: 7 },
+      user,
+      expiresAt,
+    });
     await expect(service.getMe(7, 'a'.repeat(43))).resolves.toEqual({
+      actor: { kind: 'employee', userId: 7 },
       user: {
         id: 7,
         empId: '00123',
@@ -456,14 +464,18 @@ describe('AuthService WebView SSO', () => {
     expect(sessions.markFailed).toHaveBeenCalled();
   });
 
-  it('DB session 查詢失敗明確回 503', async () => {
-    const { service, sessions } = setup();
-    sessions.findActive.mockRejectedValue(new Error('db down'));
+  it('Super user 會話在員工 guard 不視為員工', async () => {
+    const { service, sessionService } = setup();
+    sessionService.authenticate.mockResolvedValue({
+      actor: { kind: 'super_user' },
+      user: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
     await expect(
       service.verifySessionToken('a'.repeat(43)),
-    ).rejects.toMatchObject({
-      code: AppErrorCode.AUTH_DB_UNAVAILABLE,
-      status: HttpStatus.SERVICE_UNAVAILABLE,
+    ).resolves.toBeNull();
+    await expect(service.getMe(7, 'a'.repeat(43))).rejects.toMatchObject({
+      status: HttpStatus.UNAUTHORIZED,
     });
   });
 });

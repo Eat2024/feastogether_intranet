@@ -1,4 +1,5 @@
 import { RetireSigningAudit1793836801000 } from '../migrations/1793836801000-RetireSigningAudit';
+import { SuperUserAccess1793836802000 } from '../migrations/1793836802000-SuperUserAccess';
 import { ExportDownloadFileName1793836800000 } from '../migrations/1793836800000-ExportDownloadFileName';
 import { BackgroundSignatureInitiation1793750401000 } from '../migrations/1793750401000-BackgroundSignatureInitiation';
 import { EsignInitiationJob } from '#app/features/esign/entities/esign-initiation-job.entity';
@@ -22,6 +23,8 @@ import type { DataSourceOptions } from 'typeorm';
 import { Department } from '#app/features/users/entities/department.entity';
 import { User } from '#app/features/users/entities/user.entity';
 import { AuthSession } from '#app/features/auth/entities/auth-session.entity';
+import { AuthSecurityEvent } from '#app/features/auth/entities/auth-security-event.entity';
+import { SuperUserAccess } from '#app/features/auth/entities/super-user-access.entity';
 import { EsignDocumentField } from '#app/features/esign/entities/esign-document-field.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { EsignExportJob } from '#app/features/esign/entities/esign-export-job.entity';
@@ -88,6 +91,8 @@ export function buildMysqlOptions(
       Department,
       User,
       AuthSession,
+      SuperUserAccess,
+      AuthSecurityEvent,
       EsignDocument,
       EsignDocumentField,
       EsignSigner,
@@ -122,6 +127,7 @@ export function buildMysqlOptions(
       BackgroundSignatureInitiation1793750401000,
       ExportDownloadFileName1793836800000,
       RetireSigningAudit1793836801000,
+      SuperUserAccess1793836802000,
     ],
 
     extra: {

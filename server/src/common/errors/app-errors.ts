@@ -246,6 +246,16 @@ export const AppErrors = {
     '登入狀態無效或已到期',
     HttpStatus.UNAUTHORIZED,
   ],
+  AUTH_SESSION_REPLACED: [
+    AppErrorCode.AUTH_SESSION_REPLACED,
+    '登入身分已更新，請重新整理',
+    HttpStatus.CONFLICT,
+  ],
+  AUTH_SUPER_USER_UNAVAILABLE: [
+    AppErrorCode.AUTH_SUPER_USER_UNAVAILABLE,
+    '維護登入暫時無法使用',
+    HttpStatus.SERVICE_UNAVAILABLE,
+  ],
   AUTH_TOKEN_INVALID: [
     AppErrorCode.UNAUTHORIZED,
     '登入已失效，請重新登入',

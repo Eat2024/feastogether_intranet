@@ -29,8 +29,13 @@ import {
   WEBVIEW_LAUNCH_TTL_SECONDS,
   WEBVIEW_SESSION_TTL_SECONDS,
 } from '../auth.constants';
+import {
+  toEmployeeSessionView,
+  type EmployeeSessionView,
+} from '../dto/session-view.dto';
 import { WebviewLaunchView } from '../dto/webview-launch.dto';
 import { EligibleStaffService } from './eligible-staff.service';
+import { SessionService } from './session.service';
 
 interface LaunchClaims {
   iss: string;
@@ -41,18 +46,6 @@ interface LaunchClaims {
   nbf: number;
   exp: number;
   name?: string;
-}
-
-export interface AuthSession {
-  user: {
-    id: number;
-    empId: string;
-    name: string;
-    departmentName: string | null;
-    titleName: string | null;
-    lastLoginAt: Date | null;
-  };
-  expiresAt: Date;
 }
 
 export interface VerifiedIdentity {
@@ -75,6 +68,7 @@ export class AuthService {
     private readonly eligibleStaff: EligibleStaffService,
     private readonly logger: AppLoggerService,
     private readonly passwordAuth: FeastogetherAuthService,
+    private readonly sessionService: SessionService,
   ) {
     const webviewConfig = this.getConfig(config);
     this.issuer = webviewConfig.iss;
@@ -87,7 +81,7 @@ export class AuthService {
   async login(
     empId: string,
     password: string,
-  ): Promise<{ token: string; session: AuthSession }> {
+  ): Promise<{ token: string; session: EmployeeSessionView }> {
     await this.passwordAuth.authenticate(empId, password);
     const staff = await this.eligibleStaff.lookupEligibleStaff(empId);
     const saveUser = () =>
@@ -175,35 +169,20 @@ export class AuthService {
     return token;
   }
 
+  /** 員工 guard 的 adapter：共用 SessionService 驗證，Super user 會話在接入 actor-aware guard 前不視為員工。 */
   async verifySessionToken(token: string): Promise<VerifiedIdentity | null> {
-    if (!this.isOpaqueCredential(token)) return null;
-    try {
-      const session = await this.sessions.findActive(
-        this.digest(token),
-        new Date(),
-        this.mysql.getManager(),
-      );
-      const user = session?.user;
-      if (
-        !session?.userId ||
-        !session.expiresAt ||
-        !user ||
-        !user.isActive ||
-        user.deletedAt
-      ) {
-        this.audit('auth.session_rejected');
-        return null;
-      }
-      return { userId: Number(session.userId), expiresAt: session.expiresAt };
-    } catch {
-      throw this.databaseUnavailable();
+    const session = await this.sessionService.authenticate(token);
+    if (session?.actor.kind !== 'employee') {
+      this.audit('auth.session_rejected');
+      return null;
     }
+    return { userId: session.actor.userId, expiresAt: session.expiresAt };
   }
 
   async getMe(
     userId: number,
     cookieToken: string | null,
-  ): Promise<AuthSession> {
+  ): Promise<EmployeeSessionView> {
     if (!Number.isInteger(userId) || !cookieToken) {
       throw this.unauthorized();
     }
@@ -248,11 +227,16 @@ export class AuthService {
     try {
       await this.mysql.transaction((manager) =>
         this.sessions.createActive(
-          userId,
-          this.digest(`local\0${this.createCredential()}`),
-          this.digest(token),
-          now,
-          expiresAt,
+          {
+            actorKind: 'employee',
+            userId,
+            source: 'webview',
+            credentialGeneration: null,
+            sourceJtiHash: this.digest(`local\0${this.createCredential()}`),
+            sessionTokenHash: this.digest(token),
+            activatedAt: now,
+            expiresAt,
+          },
           manager,
         ),
       );
@@ -262,18 +246,8 @@ export class AuthService {
     return { token, expiresAt };
   }
 
-  buildSession(user: User, expiresAt: Date): AuthSession {
-    return {
-      user: {
-        id: Number(user.id),
-        empId: user.empid,
-        name: user.name,
-        departmentName: user.departmentName ?? null,
-        titleName: user.titleName ?? null,
-        lastLoginAt: user.lastLoginAt ?? null,
-      },
-      expiresAt,
-    };
+  buildSession(user: User, expiresAt: Date): EmployeeSessionView {
+    return toEmployeeSessionView(user, expiresAt);
   }
 
   private getConfig(config: ConfigService) {

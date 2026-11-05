@@ -13,13 +13,42 @@
 /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
 /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+DROP TABLE IF EXISTS `auth_security_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `auth_security_events` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '事件流水號',
+  `event_type` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '事件種類',
+  `actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作身分類型',
+  `actor_user_id` bigint DEFAULT NULL COMMENT '員工 ID（僅員工事件）',
+  `session_id` bigint unsigned DEFAULT NULL COMMENT '關聯會話 ID',
+  `outcome_code` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '白名單結果碼',
+  `credential_generation` bigint unsigned DEFAULT NULL COMMENT '相關帳密啟用版本',
+  `entry_generation` bigint unsigned DEFAULT NULL COMMENT '相關入口輪換版本',
+  `request_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '請求追蹤 ID',
+  `occurred_at` datetime(6) NOT NULL COMMENT '事件發生時間',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  PRIMARY KEY (`id`),
+  KEY `idx_auth_security_events_occurred_at` (`occurred_at`),
+  KEY `idx_auth_security_events_created_at` (`created_at`),
+  KEY `fk_auth_security_events_actor_user` (`actor_user_id`),
+  KEY `fk_auth_security_events_session` (`session_id`),
+  CONSTRAINT `fk_auth_security_events_actor_user` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_auth_security_events_session` FOREIGN KEY (`session_id`) REFERENCES `auth_sessions` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_auth_security_events_actor_kind` CHECK ((`actor_kind` in (_utf8mb4'employee',_utf8mb4'super_user',_utf8mb4'operator',_utf8mb4'system',_utf8mb4'anonymous'))),
+  CONSTRAINT `chk_auth_security_events_actor_user` CHECK ((((`actor_kind` = _utf8mb4'employee') and (`actor_user_id` is not null)) or ((`actor_kind` <> _utf8mb4'employee') and (`actor_user_id` is null)))),
+  CONSTRAINT `chk_auth_security_events_event_type` CHECK ((`event_type` in (_utf8mb4'login.succeeded',_utf8mb4'login.rejected',_utf8mb4'session.replaced',_utf8mb4'session.revoked',_utf8mb4'credentials.activated',_utf8mb4'entry.initialized',_utf8mb4'entry.rotated')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='登入與維護安全事件（append-only）';
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `auth_sessions`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `auth_sessions` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '認證流程流水號',
+  `actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'employee' COMMENT '操作者類型',
   `user_id` bigint DEFAULT NULL COMMENT '員工 ID',
   `source` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '認證來源',
+  `credential_generation` bigint unsigned DEFAULT NULL COMMENT 'Super user 帳密啟用版本',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '認證狀態',
   `source_jti_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '來源 JWT jti SHA-256',
   `launch_code_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '啟動碼 SHA-256',
@@ -30,6 +59,7 @@ CREATE TABLE `auth_sessions` (
   `activated_at` datetime(3) DEFAULT NULL COMMENT 'Session 啟用時間',
   `expires_at` datetime(3) DEFAULT NULL COMMENT 'Session 到期時間',
   `revoked_at` datetime(3) DEFAULT NULL COMMENT 'Session 撤銷時間',
+  `replacement_session_id` bigint unsigned DEFAULT NULL COMMENT '取代本會話的新會話 ID',
   `failure_code` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '失敗分類',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
@@ -38,11 +68,16 @@ CREATE TABLE `auth_sessions` (
   UNIQUE KEY `uq_auth_sessions_source_jti_hash` (`source_jti_hash`),
   UNIQUE KEY `uq_auth_sessions_launch_code_hash` (`launch_code_hash`),
   UNIQUE KEY `uq_auth_sessions_session_token_hash` (`session_token_hash`),
+  UNIQUE KEY `uq_auth_sessions_replacement_session_id` (`replacement_session_id`),
   KEY `idx_auth_sessions_status_launch_expires_at` (`status`,`launch_expires_at`),
   KEY `idx_auth_sessions_status_expires_at` (`status`,`expires_at`),
   KEY `idx_auth_sessions_user_created_at` (`user_id`,`created_at`),
   KEY `idx_auth_sessions_deleted_at` (`deleted_at`),
+  KEY `idx_auth_sessions_actor_generation_status` (`actor_kind`,`credential_generation`,`status`),
+  CONSTRAINT `fk_auth_sessions_replacement` FOREIGN KEY (`replacement_session_id`) REFERENCES `auth_sessions` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_auth_sessions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_auth_sessions_active_session` CHECK (((`status` <> _utf8mb4'active') or ((`session_token_hash` is not null) and (`activated_at` is not null) and (`expires_at` is not null)))),
+  CONSTRAINT `chk_auth_sessions_actor` CHECK ((((`actor_kind` = _utf8mb4'employee') and (`credential_generation` is null) and (`source` in (_utf8mb4'webview',_utf8mb4'oauth')) and ((`status` in (_utf8mb4'validating',_utf8mb4'failed')) or (`user_id` is not null))) or ((`actor_kind` = _utf8mb4'super_user') and (`user_id` is null) and (`credential_generation` is not null) and (`source` = _utf8mb4'super_user') and (`status` not in (_utf8mb4'validating',_utf8mb4'pending'))))),
   CONSTRAINT `chk_auth_sessions_status` CHECK ((`status` in (_utf8mb4'validating',_utf8mb4'pending',_utf8mb4'active',_utf8mb4'failed',_utf8mb4'revoked')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='WebView 啟動與員工登入 Session';
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -124,7 +159,6 @@ DROP TABLE IF EXISTS `esign_export_jobs`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `esign_export_jobs` (
-  `download_file_name` varchar(1024) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '首次下載提供的檔名快照，NULL 為尚未記錄',
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '匯出工作流水號',
   `export_type` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '匯出類型',
   `document_id` bigint DEFAULT NULL COMMENT '文件 ID',
@@ -151,6 +185,7 @@ CREATE TABLE `esign_export_jobs` (
   `attempt_count` int unsigned DEFAULT NULL COMMENT '嘗試次數',
   `next_attempt_at` datetime(6) DEFAULT NULL COMMENT '再次排入時間',
   `staging_json` json DEFAULT NULL COMMENT '暫存成果位置',
+  `download_file_name` varchar(1024) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '首次下載提供的檔名快照，NULL 為尚未記錄',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_export_jobs_public_id` (`public_id`),
   KEY `idx_esign_export_jobs_document_id` (`document_id`),
@@ -220,6 +255,64 @@ CREATE TABLE `esign_file_objects` (
   CONSTRAINT `chk_esign_file_objects_source_owner` CHECK (((`file_purpose` <> _utf8mb4'source_pdf') or ((`document_id` is not null) and (`signature_record_id` is null) and (`document_field_id` is null) and (`verification_record_id` is null) and (`export_job_id` is null)))),
   CONSTRAINT `chk_esign_files_export_owner` CHECK (((`file_purpose` <> _utf8mb4'signed_copies_zip') or ((`export_job_id` is not null) and (`document_id` is null) and (`signature_record_id` is null) and (`verification_record_id` is null) and (`mime_type` = _utf8mb4'application/zip'))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='私有物件儲存 metadata';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `esign_initiation_jobs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `esign_initiation_jobs` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '工作流水號',
+  `public_id` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '工作公開 UUID',
+  `document_id` bigint NOT NULL COMMENT '文件 ID',
+  `created_by_user_id` bigint NOT NULL COMMENT '原發起者 ID',
+  `request_key` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '冪等請求 UUID',
+  `request_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '正規化請求 SHA256',
+  `parent_job_id` bigint DEFAULT NULL COMMENT '人工重試來源工作 ID',
+  `input_json` json DEFAULT NULL COMMENT '本次確認的完整輸入',
+  `document_version_json` json DEFAULT NULL COMMENT '受理時文件與原檔版本',
+  `status` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'queued' COMMENT '工作狀態',
+  `stage` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'queued' COMMENT '工作階段',
+  `total_count` int NOT NULL COMMENT '本次名單總人數',
+  `processed_count` int NOT NULL DEFAULT '0' COMMENT '本輪已查核人數',
+  `attempt_count` int NOT NULL DEFAULT '0' COMMENT '已取得執行權次數',
+  `next_attempt_at` datetime(6) DEFAULT NULL COMMENT '下次允許執行時間',
+  `lease_token` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '本輪租約 UUID',
+  `lease_expires_at` datetime(6) DEFAULT NULL COMMENT '本輪租約截止時間',
+  `accepted_at` datetime(6) NOT NULL COMMENT '可靠受理時間',
+  `deadline_at` datetime(6) NOT NULL COMMENT '整份工作的最晚提交時間',
+  `last_progress_at` datetime(6) DEFAULT NULL COMMENT '最新進度時間',
+  `started_at` datetime(6) DEFAULT NULL COMMENT '首次執行時間',
+  `completed_at` datetime(6) DEFAULT NULL COMMENT '終態時間',
+  `error_code` varchar(80) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '穩定分類錯誤碼',
+  `retryable` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否可人工重試',
+  `issue_count` int NOT NULL DEFAULT '0' COMMENT '人員問題總數',
+  `issues_json` json DEFAULT NULL COMMENT '人員問題分類清單',
+  `input_purged_at` datetime(6) DEFAULT NULL COMMENT '終態敏感明細清理時間',
+  `active_document_id` bigint GENERATED ALWAYS AS ((case when (`status` in (_utf8mb4'queued',_utf8mb4'processing')) then `document_id` else NULL end)) STORED COMMENT '每份文件唯一非終態工作',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_esign_initiation_jobs_public` (`public_id`),
+  UNIQUE KEY `uq_esign_initiation_jobs_request` (`document_id`,`request_key`),
+  UNIQUE KEY `uq_esign_initiation_jobs_active` (`active_document_id`),
+  KEY `idx_esign_initiation_jobs_document` (`document_id`,`id`),
+  KEY `idx_esign_initiation_jobs_retry` (`status`,`next_attempt_at`,`id`),
+  KEY `idx_esign_initiation_jobs_lease` (`status`,`lease_expires_at`,`id`),
+  KEY `idx_esign_initiation_jobs_completed` (`status`,`completed_at`,`id`),
+  KEY `fk_esign_initiation_jobs_creator` (`created_by_user_id`),
+  KEY `fk_esign_initiation_jobs_parent` (`parent_job_id`),
+  CONSTRAINT `fk_esign_initiation_jobs_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_esign_initiation_jobs_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_esign_initiation_jobs_parent` FOREIGN KEY (`parent_job_id`) REFERENCES `esign_initiation_jobs` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_initiation_jobs_completion` CHECK ((((`status` in (_utf8mb4'queued',_utf8mb4'processing')) and (`completed_at` is null)) or ((`status` in (_utf8mb4'succeeded',_utf8mb4'failed')) and (`completed_at` is not null)))),
+  CONSTRAINT `chk_esign_initiation_jobs_counts` CHECK (((`total_count` > 0) and (`processed_count` >= 0) and (`processed_count` <= `total_count`) and (`attempt_count` between 0 and 3) and (`issue_count` >= 0))),
+  CONSTRAINT `chk_esign_initiation_jobs_deadline` CHECK ((`deadline_at` > `accepted_at`)),
+  CONSTRAINT `chk_esign_initiation_jobs_input` CHECK (((`status` not in (_utf8mb4'queued',_utf8mb4'processing')) or ((`input_json` is not null) and (`document_version_json` is not null) and (`input_purged_at` is null)))),
+  CONSTRAINT `chk_esign_initiation_jobs_lease` CHECK ((((`status` = _utf8mb4'processing') and (`lease_token` is not null) and (`lease_expires_at` is not null)) or ((`status` <> _utf8mb4'processing') and (`lease_token` is null) and (`lease_expires_at` is null)))),
+  CONSTRAINT `chk_esign_initiation_jobs_result` CHECK ((((`status` = _utf8mb4'succeeded') and (`stage` = _utf8mb4'completed') and (`error_code` is null)) or ((`status` = _utf8mb4'failed') and (`stage` = _utf8mb4'failed') and (`error_code` is not null)) or ((`status` = _utf8mb4'queued') and (`stage` = _utf8mb4'queued')) or ((`status` = _utf8mb4'processing') and (`stage` in (_utf8mb4'resolving',_utf8mb4'validating',_utf8mb4'committing'))))),
+  CONSTRAINT `chk_esign_initiation_jobs_stage` CHECK ((`stage` in (_utf8mb4'queued',_utf8mb4'resolving',_utf8mb4'validating',_utf8mb4'committing',_utf8mb4'completed',_utf8mb4'failed'))),
+  CONSTRAINT `chk_esign_initiation_jobs_status` CHECK ((`status` in (_utf8mb4'queued',_utf8mb4'processing',_utf8mb4'succeeded',_utf8mb4'failed')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='背景發起簽署工作';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_notification_batches`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -450,6 +543,33 @@ CREATE TABLE `mail_recipient_whitelist` (
   CONSTRAINT `chk_mail_recipient_whitelist_value` CHECK ((((`type` = _utf8mb4'department') and (char_length(`value`) between 1 and 50) and (not(regexp_like(`value`,_utf8mb4'[^A-Za-z0-9_-]',_utf8mb4'c')))) or ((`type` = _utf8mb4'employee') and (char_length(`value`) between 1 and 20) and (not(regexp_like(`value`,_utf8mb4'[^A-Za-z0-9]',_utf8mb4'c')))) or ((`type` = _utf8mb4'email') and (`value` = lower(`value`)) and regexp_like(`value`,_utf8mb4'^[^@[:space:][:cntrl:]]+@[^@[:space:][:cntrl:]]+\\z',_utf8mb4'c'))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='非正式環境寄信收件人白名單';
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `super_user_access`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `super_user_access` (
+  `id` tinyint unsigned NOT NULL COMMENT '固定單列識別（恆為 1，不是員工 ID）',
+  `entry_key` char(43) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '目前隱藏入口識別（base64url）',
+  `entry_generation` bigint unsigned NOT NULL COMMENT '入口輪換版本',
+  `rotated_at` datetime(6) NOT NULL COMMENT '目前入口生效時間',
+  `period_start_at` datetime(6) NOT NULL COMMENT '最近已處理的輪換週期起點',
+  `active_credential_fingerprint` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '目前啟用的帳密設定指紋',
+  `credential_generation` bigint unsigned NOT NULL COMMENT '帳密啟用版本',
+  `credential_activated_at` datetime(6) NOT NULL COMMENT '帳密啟用時間',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  KEY `idx_super_user_access_rotated_at` (`rotated_at`),
+  KEY `idx_super_user_access_period_start_at` (`period_start_at`),
+  KEY `idx_super_user_access_credential_activated_at` (`credential_activated_at`),
+  KEY `idx_super_user_access_created_at` (`created_at`),
+  KEY `idx_super_user_access_updated_at` (`updated_at`),
+  KEY `idx_super_user_access_deleted_at` (`deleted_at`),
+  CONSTRAINT `chk_super_user_access_credential_generation` CHECK ((`credential_generation` >= 1)),
+  CONSTRAINT `chk_super_user_access_entry_generation` CHECK ((`entry_generation` >= 1)),
+  CONSTRAINT `chk_super_user_access_singleton` CHECK ((`id` = 1))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Super user 維護入口與帳密啟用版本（單列）';
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `users`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -457,7 +577,6 @@ CREATE TABLE `users` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '員工流水號',
   `empid` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '公司員工編號',
   `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '員工姓名',
-  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Portal 匯入的員工通知信箱',
   `person_status` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '上游人員狀態',
   `is_active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否可登入',
   `department_id` bigint DEFAULT NULL COMMENT '所屬部門 ID',
@@ -468,6 +587,7 @@ CREATE TABLE `users` (
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
   `department_code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin DEFAULT NULL COMMENT '可信上游部門代碼',
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Portal 匯入的員工通知信箱',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_empid` (`empid`),
   KEY `idx_users_person_status` (`person_status`),
@@ -480,59 +600,6 @@ CREATE TABLE `users` (
   CONSTRAINT `fk_users_department` FOREIGN KEY (`department_id`) REFERENCES `hr_departments` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='員工與登入主體';
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `esign_initiation_jobs`;
-CREATE TABLE `esign_initiation_jobs` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '工作流水號',
-  `public_id` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '工作公開 UUID',
-  `document_id` bigint NOT NULL COMMENT '文件 ID',
-  `created_by_user_id` bigint NOT NULL COMMENT '原發起者 ID',
-  `request_key` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '冪等請求 UUID',
-  `request_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '正規化請求 SHA256',
-  `parent_job_id` bigint NULL COMMENT '人工重試來源工作 ID',
-  `input_json` json NULL COMMENT '本次確認的完整輸入',
-  `document_version_json` json NULL COMMENT '受理時文件與原檔版本',
-  `status` varchar(16) NOT NULL DEFAULT 'queued' COMMENT '工作狀態',
-  `stage` varchar(16) NOT NULL DEFAULT 'queued' COMMENT '工作階段',
-  `total_count` int NOT NULL COMMENT '本次名單總人數',
-  `processed_count` int NOT NULL DEFAULT 0 COMMENT '本輪已查核人數',
-  `attempt_count` int NOT NULL DEFAULT 0 COMMENT '已取得執行權次數',
-  `next_attempt_at` datetime(6) NULL COMMENT '下次允許執行時間',
-  `lease_token` char(36) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT '本輪租約 UUID',
-  `lease_expires_at` datetime(6) NULL COMMENT '本輪租約截止時間',
-  `accepted_at` datetime(6) NOT NULL COMMENT '可靠受理時間',
-  `deadline_at` datetime(6) NOT NULL COMMENT '整份工作的最晚提交時間',
-  `last_progress_at` datetime(6) NULL COMMENT '最新進度時間',
-  `started_at` datetime(6) NULL COMMENT '首次執行時間',
-  `completed_at` datetime(6) NULL COMMENT '終態時間',
-  `error_code` varchar(80) NULL COMMENT '穩定分類錯誤碼',
-  `retryable` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否可人工重試',
-  `issue_count` int NOT NULL DEFAULT 0 COMMENT '人員問題總數',
-  `issues_json` json NULL COMMENT '人員問題分類清單',
-  `input_purged_at` datetime(6) NULL COMMENT '終態敏感明細清理時間',
-  `active_document_id` bigint GENERATED ALWAYS AS (CASE WHEN `status` IN ('queued','processing') THEN `document_id` ELSE NULL END) STORED COMMENT '每份文件唯一非終態工作',
-  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
-  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
-  `deleted_at` datetime(6) NULL COMMENT '軟刪除時間',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_esign_initiation_jobs_public` (`public_id`),
-  UNIQUE KEY `uq_esign_initiation_jobs_request` (`document_id`,`request_key`),
-  UNIQUE KEY `uq_esign_initiation_jobs_active` (`active_document_id`),
-  KEY `idx_esign_initiation_jobs_document` (`document_id`,`id`),
-  KEY `idx_esign_initiation_jobs_retry` (`status`,`next_attempt_at`,`id`),
-  KEY `idx_esign_initiation_jobs_lease` (`status`,`lease_expires_at`,`id`),
-  KEY `idx_esign_initiation_jobs_completed` (`status`,`completed_at`,`id`),
-  CONSTRAINT `chk_esign_initiation_jobs_status` CHECK (`status` IN ('queued','processing','succeeded','failed')),
-  CONSTRAINT `chk_esign_initiation_jobs_stage` CHECK (`stage` IN ('queued','resolving','validating','committing','completed','failed')),
-  CONSTRAINT `chk_esign_initiation_jobs_counts` CHECK (`total_count` > 0 AND `processed_count` >= 0 AND `processed_count` <= `total_count` AND `attempt_count` BETWEEN 0 AND 3 AND `issue_count` >= 0),
-  CONSTRAINT `chk_esign_initiation_jobs_input` CHECK (`status` NOT IN ('queued','processing') OR (`input_json` IS NOT NULL AND `document_version_json` IS NOT NULL AND `input_purged_at` IS NULL)),
-  CONSTRAINT `chk_esign_initiation_jobs_lease` CHECK ((`status` = 'processing' AND `lease_token` IS NOT NULL AND `lease_expires_at` IS NOT NULL) OR (`status` <> 'processing' AND `lease_token` IS NULL AND `lease_expires_at` IS NULL)),
-  CONSTRAINT `chk_esign_initiation_jobs_completion` CHECK ((`status` IN ('queued','processing') AND `completed_at` IS NULL) OR (`status` IN ('succeeded','failed') AND `completed_at` IS NOT NULL)),
-  CONSTRAINT `chk_esign_initiation_jobs_result` CHECK ((`status` = 'succeeded' AND `stage` = 'completed' AND `error_code` IS NULL) OR (`status` = 'failed' AND `stage` = 'failed' AND `error_code` IS NOT NULL) OR (`status` = 'queued' AND `stage` = 'queued') OR (`status` = 'processing' AND `stage` IN ('resolving','validating','committing'))),
-  CONSTRAINT `chk_esign_initiation_jobs_deadline` CHECK (`deadline_at` > `accepted_at`),
-  CONSTRAINT `fk_esign_initiation_jobs_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_esign_initiation_jobs_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_esign_initiation_jobs_parent` FOREIGN KEY (`parent_job_id`) REFERENCES `esign_initiation_jobs` (`id`) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='背景發起簽署工作';
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;

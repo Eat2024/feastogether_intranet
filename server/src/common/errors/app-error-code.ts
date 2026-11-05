@@ -79,6 +79,10 @@ export const AppErrorCode = {
   AUTH_EXCHANGE_FAILED: 'AUTH_EXCHANGE_FAILED',
   /** MySQL 無法安全建立或驗證認證狀態。 */
   AUTH_DB_UNAVAILABLE: 'AUTH_DB_UNAVAILABLE',
+  /** 同一瀏覽器的舊會話已被另一次登入取代。 */
+  AUTH_SESSION_REPLACED: 'AUTH_SESSION_REPLACED',
+  /** Super user 入口尚未初始化，或本機帳密設定不是目前啟用的版本。 */
+  AUTH_SUPER_USER_UNAVAILABLE: 'AUTH_SUPER_USER_UNAVAILABLE',
   /** 未預期錯誤（既有 handler 預設） */
   ESIGN_EXPORT_SOURCE_FAILED: 'ESIGN_EXPORT_SOURCE_FAILED',
   ESIGN_EXPORT_EMPTY: 'ESIGN_EXPORT_EMPTY',

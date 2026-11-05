@@ -3,7 +3,8 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import type { OauthCallbackDto } from '#app/features/auth/dto/oauth-callback.dto';
 import { OauthClient } from '#app/infrastructure/http-client/oauth/oauth.client';
-import { AuthService, type AuthSession } from './auth.service';
+import type { EmployeeSessionView } from '../dto/session-view.dto';
+import { AuthService } from './auth.service';
 import { safeLoginReturnPath } from '../helpers/login-return-path';
 import { OauthIdentityService } from './oauth-identity.service';
 import { OauthTransactionService } from './oauth-transaction.service';
@@ -16,7 +17,7 @@ export interface OauthStartResult {
 
 export interface OauthCallbackResult {
   accessToken: string;
-  session: AuthSession;
+  session: EmployeeSessionView;
   redirectTo: string;
 }
 

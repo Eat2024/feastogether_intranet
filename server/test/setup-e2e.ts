@@ -69,6 +69,12 @@ process.env.PORTAL_MYSQL_USER = process.env.DB_MYSQL_USER ?? 'root';
 process.env.PORTAL_MYSQL_PASS = process.env.DB_MYSQL_PASS ?? '';
 process.env.PORTAL_MYSQL_DB = `${process.env.DB_MYSQL_DB ?? ''}_portal_${randomUUID().slice(0, 8)}`;
 
+// Spec 027：Super user 帳密一律用合成值無條件覆寫（理由同上，避免 e2e 讀到 server/.env 的部署設定）。
+// 雜湊由 hashSuperUserPassword('e2e-synthetic-super-user-password') 預先產生，省去每個測試檔的 scrypt。
+process.env.SUPER_USER_ACCOUNT = 'e2e-super-user';
+process.env.SUPER_USER_PASSWORD_HASH =
+  'scrypt:32768:8:1:Qoiw1lp7rrqrAsxJvF0Sng:RS3An7MhDJuWOkZ84pECGYfX6DGzyCVDYfCq-M533MmnvmVcjLIJOejPr2L_TprI_Zz7WhYPKMg5g53kH3s5BA';
+
 const originalServerAddress = SupertestTest.prototype.serverAddress;
 SupertestTest.prototype.serverAddress = function serverAddressV6Loopback(
   app: any,

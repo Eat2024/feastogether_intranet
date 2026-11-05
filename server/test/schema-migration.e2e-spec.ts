@@ -10,6 +10,8 @@ const BUSINESS_TABLES = [
   'mail_recipient_whitelist',
   'users',
   'auth_sessions',
+  'auth_security_events',
+  'super_user_access',
   'esign_documents',
   'esign_document_fields',
   'esign_signers',
@@ -35,7 +37,7 @@ describe('e-sign schema migrations', () => {
       const ds = await new DataSource(optionsFor(database)).initialize();
       try {
         await ds.runMigrations();
-        await ds.undoLastMigration();
+        await revertAfter(ds, 'ExportDownloadFileName1793836800000');
         await seedExportDocument(ds);
         await ds.query(
           "INSERT INTO esign_audit_events(document_id,event_type,occurred_at,event_hash) VALUES(1,'document.created',NOW(6),?)",
@@ -59,6 +61,7 @@ describe('e-sign schema migrations', () => {
         expect(await ds.query('SELECT * FROM esign_documents')).toEqual(
           document,
         );
+        await revertAfter(ds, 'RetireSigningAudit1793836801000');
         await expect(ds.undoLastMigration()).rejects.toThrow(
           '無法還原已刪除的稽核鏈',
         );
@@ -551,7 +554,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(72);
+        expect(first.timeColumns).toHaveLength(80);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(
@@ -559,13 +562,16 @@ describe('e-sign schema migrations', () => {
             'uq_auth_sessions_source_jti_hash',
             'uq_auth_sessions_launch_code_hash',
             'uq_auth_sessions_session_token_hash',
+            'uq_auth_sessions_replacement_session_id',
             'idx_auth_sessions_status_launch_expires_at',
             'idx_auth_sessions_status_expires_at',
             'idx_auth_sessions_user_created_at',
+            'idx_auth_sessions_actor_generation_status',
             'idx_auth_sessions_deleted_at',
           ]),
         );
         expect(await authSessionForeignKeys(dataSource, database)).toEqual([
+          'fk_auth_sessions_replacement',
           'fk_auth_sessions_user',
         ]);
         expect(
@@ -574,16 +580,14 @@ describe('e-sign schema migrations', () => {
 
         await dataSource.undoLastMigration();
         expect(await listBusinessTables(dataSource, database)).toEqual(
-          [...BUSINESS_TABLES, 'esign_audit_events'].sort(),
+          BUSINESS_TABLES.filter(
+            (table) =>
+              !['auth_security_events', 'super_user_access'].includes(table),
+          ),
         );
         expect(
-          await hasColumn(
-            dataSource,
-            database,
-            'esign_signers',
-            'completion_status',
-          ),
-        ).toBe(true);
+          await hasColumn(dataSource, database, 'auth_sessions', 'actor_kind'),
+        ).toBe(false);
 
         await dataSource.runMigrations();
         expect(await schemaSnapshot(dataSource, database)).toEqual(first);
@@ -651,7 +655,7 @@ async function schemaSnapshot(dataSource: DataSource, database: string) {
   const legacyRows = await dataSource.query<Array<{ TABLE_NAME: string }>>(
     `SELECT TABLE_NAME FROM information_schema.tables
       WHERE table_schema = ? AND (
-        (TABLE_NAME LIKE 'auth\\_%' AND TABLE_NAME <> 'auth_sessions') OR TABLE_NAME IN ('roles','permissions','audit_logs','audit_log_targets')
+        (TABLE_NAME LIKE 'auth\\_%' AND TABLE_NAME NOT IN ('auth_sessions','auth_security_events')) OR TABLE_NAME IN ('roles','permissions','audit_logs','audit_log_targets')
       ) ORDER BY TABLE_NAME`,
     [database],
   );

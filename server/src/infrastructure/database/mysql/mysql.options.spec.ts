@@ -40,7 +40,7 @@ describe('buildMysqlOptions', () => {
   it('明確註冊電子簽 entities、AuthSession 與拒簽 migration', () => {
     const options = buildMysqlOptions(readEnv);
 
-    expect(options.entities).toHaveLength(14);
+    expect(options.entities).toHaveLength(16);
     expect(
       (options.migrations as Array<{ name: string }>).map(
         (migration) => migration.name,
@@ -55,6 +55,8 @@ describe('buildMysqlOptions', () => {
         'Department',
         'User',
         'AuthSession',
+        'SuperUserAccess',
+        'AuthSecurityEvent',
         'EsignDocument',
         'MailRecipientWhitelist',
         'EsignInitiationJob',
@@ -85,6 +87,7 @@ describe('buildMysqlOptions', () => {
       'BackgroundSignatureInitiation1793750401000',
       'ExportDownloadFileName1793836800000',
       'RetireSigningAudit1793836801000',
+      'SuperUserAccess1793836802000',
     ]);
   });
 

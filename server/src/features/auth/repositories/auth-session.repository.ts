@@ -8,24 +8,23 @@ import {
 @Injectable()
 export class AuthSessionRepository {
   createActive(
-    userId: number,
-    sourceJtiHash: string,
-    sessionTokenHash: string,
-    activatedAt: Date,
-    expiresAt: Date,
+    fields: Pick<
+      AuthSession,
+      | 'actorKind'
+      | 'userId'
+      | 'source'
+      | 'credentialGeneration'
+      | 'sourceJtiHash'
+      | 'sessionTokenHash'
+    > & { activatedAt: Date; expiresAt: Date },
     manager: EntityManager,
   ): Promise<AuthSession> {
     return manager.save(
       manager.create(AuthSession, {
-        userId,
-        source: 'webview',
+        ...fields,
         status: AUTH_SESSION_STATUS.ACTIVE,
-        sourceJtiHash,
-        assertionExpiresAt: activatedAt,
-        verifiedAt: activatedAt,
-        activatedAt,
-        expiresAt,
-        sessionTokenHash,
+        assertionExpiresAt: fields.activatedAt,
+        verifiedAt: fields.activatedAt,
       }),
     );
   }
@@ -101,6 +100,7 @@ export class AuthSessionRepository {
     return manager.save(session);
   }
 
+  /** LEFT JOIN users：Super user 會話沒有員工列，員工狀態由呼叫端依 actorKind 判斷。 */
   findActive(
     sessionTokenHash: string,
     now: Date,
@@ -108,7 +108,7 @@ export class AuthSessionRepository {
   ): Promise<AuthSession | null> {
     return manager
       .createQueryBuilder(AuthSession, 'session')
-      .innerJoinAndSelect('session.user', 'user')
+      .leftJoinAndSelect('session.user', 'user')
       .where('session.session_token_hash = :sessionTokenHash', {
         sessionTokenHash,
       })
@@ -118,9 +118,35 @@ export class AuthSessionRepository {
       .andWhere('session.revoked_at IS NULL')
       .andWhere('session.expires_at > :now', { now })
       .andWhere('session.deleted_at IS NULL')
-      .andWhere('user.deleted_at IS NULL')
-      .andWhere('user.is_active = :isActive', { isActive: true })
       .getOne();
+  }
+
+  /** 鎖定瀏覽器帶來的舊會話（任何狀態），供替換或登出判斷。 */
+  findByTokenHashForUpdate(
+    sessionTokenHash: string,
+    manager: EntityManager,
+  ): Promise<AuthSession | null> {
+    return manager
+      .createQueryBuilder(AuthSession, 'session')
+      .setLock('pessimistic_write')
+      .where('session.session_token_hash = :sessionTokenHash', {
+        sessionTokenHash,
+      })
+      .getOne();
+  }
+
+  /** 撤銷已鎖定的會話；被新登入取代時同時記下 replacement。 */
+  async revokeById(
+    id: number,
+    revokedAt: Date,
+    replacementSessionId: number | null,
+    manager: EntityManager,
+  ): Promise<void> {
+    await manager.update(
+      AuthSession,
+      { id },
+      { status: AUTH_SESSION_STATUS.REVOKED, revokedAt, replacementSessionId },
+    );
   }
 
   async revoke(

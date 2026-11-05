@@ -1,6 +1,6 @@
 # Quickstart：Spec 027 實作後驗證指南
 
-本文件描述實作完成後要執行的流程；目前只有計畫，新增指令／端點尚未實作，以下不是已通過的測試紀錄。
+本文件描述實作完成後要執行的流程。各 ticket 實際執行的驗證只記在文末「驗收記錄」；1～6 節仍是待執行流程，不是已通過的測試紀錄。
 
 ## 前置
 
@@ -76,4 +76,15 @@ same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟�
 
 ## 驗收記錄
 
-後續實作者逐項記錄：實際指令與結果、未跑原因、schema變化、兩實例測試、iframe瀏覽器結果、代理遮罩證據（不得包含敏感值）。目前狀態：僅靜態計畫／契約檢查完成，以上功能驗收全部尚未執行。
+各 ticket 實作者以獨立小節記錄：實際指令與結果、未跑原因、schema 變化、兩實例測試、iframe 瀏覽器結果、代理遮罩證據（不得包含敏感值）。未列出的 1～6 節項目尚未執行。
+
+### 027-02 共用會話與 schema（T001～T014、T053）
+
+範圍只有持久約束、repository、SessionService 與員工相容；隱藏登入頁、REPL、週排程與前端尚未存在，1、3～5 節不適用。
+
+- schema（6 節）：`pnpm -C server test:schema` 6 suites／39 tests 通過，其中 `test/super-user-schema.e2e-spec.ts` 7 tests 在 `feastogether_intranet_test_a_<hex>` 臨時庫驗證：空庫 apply 後欄位型別／NULL／CHECK／FK／unique／索引與 entity 無 drift；既有員工 session（validating、failed、pending、active、revoked）回填 `employee`、其他欄位與 users／文件關聯不變；空維護資料 down 後 `SHOW CREATE TABLE auth_sessions` 與原定義相同，再 apply 無 drift；歷史 active 列缺 `expires_at` 時整個 ALTER 失敗、不留新欄位或新表；有安全事件、維護入口或 Super user 會話時 down 拒絕且資料不變。結束後無殘留臨時庫。
+- 開發庫 `feastogether_intranet_027a`（只經 `server/.env`）：空庫 `pnpm -C server migration:run` 全部 21 支成功 → `migration:revert` 撤 `SuperUserAccess1793836802000` 成功（兩表與三欄消失）→ 寫入一筆合成員工 active session 後 `migration:run`，該列回填 `employee`／generation NULL／replacement NULL → 再寫入一筆合成 Super user 會話，`migration:revert` 以「無法回滾…」拒絕，migration 紀錄仍在 → 刪除合成列，保留已套用狀態。`pnpm -C server schema:dump` 更新 `server/src/infrastructure/database/schema.sql`：新增 `auth_security_events`、`super_user_access` 與 `auth_sessions` 三欄／兩索引／一 FK／兩 CHECK；`users`、`esign_export_jobs` 僅欄位順序與實際 migration 結果對齊，`esign_initiation_jobs` 由手寫格式改為 mysqldump 正規格式，結構相同。
+- 會話（2 節中可在本張驗證的部分）：`test/security-actor-session.e2e-spec.ts` 7 tests 對真實 MySQL 驗證員工回應保留原 user 並新增 actor、Super user 會話 `user_id` NULL 且員工 guard 回 401、停用／soft-deleted 員工拒絕、DB 版本失配拒絕、本機 fingerprint 不符或入口 soft-delete 回 503、同一舊 token 並行替換一筆成功另一筆 409、替換中途失敗 rollback 保留舊會話、登出撤銷與事件倒序分頁。「兩個帶不存在 cookie 的登入都鎖定後才插入」一案在 REPEATABLE READ 下 2/2 次重現 deadlock，改用 READ COMMITTED 後通過。八小時不滑動、過期與撤銷另由 `session.service.spec.ts` 驗證。
+- 員工回歸：`pnpm -C server test` 122 suites／1238 tests、`pnpm -C server test:e2e:security` 15 suites／91 tests、`pnpm -C server build`、`pnpm -C server lint:check`（0 errors；新檔無 warning）。
+- `pnpm -C server test:e2e`：542 passed／1 skipped／1 failed；失敗為 `api-coverage` 的 `GET /api/esign/documents/{id}/history`（路由已在本張前由 `9344734` 移除，但 003 openapi 仍列出），與本張無關。`webview-session`、`oauth-login`、`password-login` 3 suites／36 tests 通過。
+- 未執行：client lint／build 與 root build／lint（本張未改 client）；兩實例、iframe 瀏覽器、代理遮罩（尚無對應功能）。

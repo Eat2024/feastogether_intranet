@@ -12,11 +12,12 @@ import { isDuplicateEntryError } from '#app/features/auth/repositories/oauth-ide
 import { assertDevModeSafe, isDevLoginAllowed } from '#app/framework/auth-mode';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
-import { AuthService, type AuthSession } from './auth.service';
+import type { EmployeeSessionView } from '../dto/session-view.dto';
+import { AuthService } from './auth.service';
 
 export interface DevLoginResult {
   accessToken: string;
-  session: AuthSession;
+  session: EmployeeSessionView;
 }
 
 @Injectable()

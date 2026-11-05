@@ -4,11 +4,14 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
+import { AuthSecurityEventService } from '#app/features/auth/services/auth-security-event.service';
 import { AuthService } from '#app/features/auth/services/auth.service';
 import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { OauthIdentityService } from '#app/features/auth/services/oauth-identity.service';
 import { OauthLoginService } from '#app/features/auth/services/oauth-login.service';
 import { OauthTransactionService } from '#app/features/auth/services/oauth-transaction.service';
+import { SessionService } from '#app/features/auth/services/session.service';
+import { SuperUserConfigService } from '#app/features/auth/services/super-user-config.service';
 import { InfrastructureModule } from '#app/infrastructure/infrastructure.module';
 import { OauthModule } from '#app/infrastructure/http-client/oauth/oauth.module';
 import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
@@ -43,6 +46,9 @@ import * as oidcStub from './stubs/openid-client.stub';
       },
     },
     AuthService,
+    SessionService,
+    SuperUserConfigService,
+    AuthSecurityEventService,
     OauthLoginService,
   ],
 })

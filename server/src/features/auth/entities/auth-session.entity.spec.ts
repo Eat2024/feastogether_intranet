@@ -22,6 +22,7 @@ describe('AuthSession entity metadata', () => {
     expect(names).toEqual(
       expect.arrayContaining([
         'id',
+        'actor_kind',
         'user_id',
         'source',
         'status',
@@ -35,6 +36,8 @@ describe('AuthSession entity metadata', () => {
         'expires_at',
         'revoked_at',
         'failure_code',
+        'credential_generation',
+        'replacement_session_id',
       ]),
     );
     expect(
@@ -45,7 +48,7 @@ describe('AuthSession entity metadata', () => {
     ).toBeUndefined();
   });
 
-  it('具三個 unique 與 lifecycle 複合索引', () => {
+  it('具四個 unique 與 lifecycle／actor 複合索引', () => {
     const indexes = getMetadataArgsStorage().indices.filter(
       (index) => index.target === AuthSession,
     );
@@ -54,12 +57,14 @@ describe('AuthSession entity metadata', () => {
         'uq_auth_sessions_source_jti_hash',
         'uq_auth_sessions_launch_code_hash',
         'uq_auth_sessions_session_token_hash',
+        'uq_auth_sessions_replacement_session_id',
         'idx_auth_sessions_status_launch_expires_at',
         'idx_auth_sessions_status_expires_at',
         'idx_auth_sessions_user_created_at',
+        'idx_auth_sessions_actor_generation_status',
         'idx_auth_sessions_deleted_at',
       ]),
     );
-    expect(indexes.filter((index) => index.unique)).toHaveLength(3);
+    expect(indexes.filter((index) => index.unique)).toHaveLength(4);
   });
 });

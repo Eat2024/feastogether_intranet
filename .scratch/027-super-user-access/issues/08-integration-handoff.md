@@ -2,7 +2,7 @@
 
 **What to build:** 將已完成的登入、員工相容、網址輪換與憑證撤銷整合為可部署交付，讓維護者有明確首次部署、變更帳密及回復操作與實測證據。
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Blocked by:** [05-shared-identity-switching](05-shared-identity-switching.md)、[06-weekly-entry-rotation](06-weekly-entry-rotation.md)、[07-credential-activation](07-credential-activation.md)
 
@@ -12,12 +12,52 @@
 
 ## Acceptance Criteria
 
-- [ ] 設定範例及維運文件說明兩項 server-only 設定、hash／REPL、首次部署停舊版再 migration／初始化／開流量、帳密版本啟用與回復；不寫實際 secret，不因回退重新開放員工密碼入口。
-- [ ] 文件及必要 agent 指引反映 actor 邊界及 028 前業務 403；修改 agent 文件前使用適用技能，不描述不存在的授權功能。
-- [ ] 執行適用 server lint:check、unit、build、e2e、security、schema，以及 client lint/build 與 root build/lint；記錄實際結果與未執行原因，不宣稱不存在的 client 自動測試。
-- [ ] 最終驗收涵蓋八小時 cookie、iframe、無效 HTML／RSC、所有一般 log 遮罩、雙實例撤銷、REPL 副作用及三入口切換；倉庫外代理部署阻擋必須解除或明列未完成，不能誤報可正式交付。
-- [ ] 實作與 API／維運契約逐項核對，交付摘要分列前端、後端、migration/config、限制與證據；沒有角色表、管理 UI、OAuth 前端、029 選單或提前 028 業務放行。
+- [x] 設定範例及維運文件說明兩項 server-only 設定、hash／REPL、首次部署停舊版再 migration／初始化／開流量、帳密版本啟用與回復；不寫實際 secret，不因回退重新開放員工密碼入口。
+- [x] 文件及必要 agent 指引反映 actor 邊界及 028 前業務 403；修改 agent 文件前使用適用技能，不描述不存在的授權功能。
+- [x] 執行適用 server lint:check、unit、build、e2e、security、schema，以及 client lint/build 與 root build/lint；記錄實際結果與未執行原因，不宣稱不存在的 client 自動測試。
+- [x] 最終驗收涵蓋八小時 cookie、iframe、無效 HTML／RSC、所有一般 log 遮罩、雙實例撤銷、REPL 副作用及三入口切換；倉庫外代理部署阻擋必須解除或明列未完成，不能誤報可正式交付。
+- [x] 實作與 API／維運契約逐項核對，交付摘要分列前端、後端、migration/config、限制與證據；沒有角色表、管理 UI、OAuth 前端、029 選單或提前 028 業務放行。
 
 ## Comments & Implementation Results
 
-（尚未開始）
+### 2026-11-05 實作結果（分支 `027-08-integration-handoff`，自 `027-super-user-access` `19633f8`）
+
+**部署阻擋：未解除。** Nginx 8080／ALB 會記錄完整入口 URL，遮罩設定在 repo 外，需主機管理員／SRE 完成並留下驗證證據。解除前 027 **不能宣稱可正式交付**，UAT／正式環境不得執行 `initialize()` 或提供入口。本張只在 `docs/deployment/uat-cicd.md` 與 quickstart 標明狀態，未連 UAT 主機。
+
+**變更摘要（只有文件與 `server/.env.example`，沒有程式、migration 或 schema 變更）**
+
+- T052：
+  - `server/.env.example` 新增 `SUPER_USER_ACCOUNT`、`SUPER_USER_PASSWORD_HASH`（空值、說明產生方式與啟用流程）。
+  - root `README.md`：快速開始加 hash 步驟；新增「Super user 維護登入」，含 REPL 指令（`repl:dev`／`repl`／容器 `node dist/console/repl.js`）、一次一行、028 前的 403。repo 沒有 `server/README.md`，不另建檔。
+  - `client/README.md`：隱藏入口不在 `(main)`、proxy 渲染前驗證、client 不需設定。
+  - `docs/deployment/uat-cicd.md` 新增「Super user 維護登入（Spec 027）」：設定與 server.env 跳脫、hash（含 `docker run -it`）、容器內 REPL、首次部署 7 步與 UAT 對應、部署後檢查 `auth.entry_rotation_(failed|uninitialized)`、每週輪換（NTP、重試、不用 `promote()`）、換帳密與回復（commit 生效、混跑 503、完成條件）、身分邊界、回退。log 遮罩一節加「狀態：未解除」。
+  - `server/AGENTS.md`（依 writing-for-agents）：guard 改寫為只放行員工、Super user 只進 `@AllowSuperUser()`；補 REPL 入口；log 禁止項加隱藏入口。`client/AGENTS.md` 已有隱藏入口說明，未改。
+- T055：
+  - `contracts/openapi.json`：刪 GET 429；錯誤碼範例改為實際值（`NOT_FOUND`、`REFUSE_SERVICE`、`INVALID_REQUEST`、`UNAUTHORIZED`、DELETE 503 `AUTH_DB_UNAVAILABLE`）；guard 與框架層錯誤移除 `Cache-Control` 宣告。
+  - `contracts/api-behavior.md`、`contracts/operations.md`：同步錯誤碼；補 REPL 回傳值（`{initialized}`、`{activated}`、409 `AUTH_SUPER_USER_GENERATION_CONFLICT`）、單筆 `credentials.activated`、容器指令、NTP／`promote()`、UAT 部署後 initialize、換帳密完成條件、回退不得重開員工帳密登入。
+  - `tasks.md`：更新 T032／T033／T040 的過期附註，勾選 T052～T055，狀態列改為已實作並指向阻擋。
+  - `quickstart.md` 新增「027-08 整合驗收與交付摘要」：前端、後端、migration／config、契約校正、驗證證據、限制。
+  - 範圍核對：沒有角色表、管理 UI、OAuth 前端、029 選單或提前放行的 028 業務 API。
+
+**驗證（實際指令與結果，細節見 quickstart「027-08」）**
+
+- `pnpm -C server lint:check` 0 errors／271 warnings；`test --runInBand` 123 suites／1265 tests；`build` 成功；`test:e2e` 559 passed、1 skipped、1 failed（既有 `api-coverage` history 路由，未修）；`test:e2e:security` 19 suites／157 tests；`test:schema` 6 suites／39 tests。
+- `pnpm -C client lint` 0 problems、`build` 成功；root `pnpm build` 成功、`pnpm lint` 0 errors（dry-run，沒有修檔）。client 沒有 test script。
+- 手動整合（開發庫 `feastogether_intranet_027a`／Redis DB 9、合成 Portal 庫、server 3011、client 3010）：
+  - REPL 副作用：未初始化與初始化後的查詢 helper 前後 checksum 不變，沒有 LISTEN、沒有連 Redis、沒有 history 檔；建置版 `pnpm repl` 與 server image 內 `node dist/console/repl.js` 結果相同。image 沒有 pnpm，hash 工具與 migration 在 image 內可執行。
+  - API 契約逐項 curl：狀態、錯誤碼、訊息、`Cache-Control`、`Retry-After` 與 Set-Cookie 屬性都與校正後的契約一致。
+  - 八小時：Set-Cookie `Max-Age=28800`、瀏覽器 cookie 剩 8.000 小時、DB 期限 28800 秒，過期後 401／員工頁 404。
+  - 無效入口 HTML 與 RSC 都是 404 且沒有表單（curl 與瀏覽器，dev 與 standalone）。
+  - 瀏覽器 14 項（iframe WebView、employee↔Super user 雙向切換與重放 401、EmbedBridge mismatch、登出不恢復、過期）：`next dev` 14/14、standalone 14/14。
+  - OAuth 切換與雙實例撤銷：`security-session-replacement` 與 `security-super-user-credentials` 單獨重跑 2 suites／20 tests 通過。
+  - 一般 log：Nest、`next dev`、Next dev log 檔、standalone 輸出對入口、密碼、hash 與 25 個 cookie／啟動碼／JWT 的命中都是 0。
+
+**未驗證／限制**
+
+- UAT compose 的 `run`／`exec` 需要主機路徑，以本機 `docker run -it` 驗證同一 image 指令。正式 HTTPS 下 `SameSite=None; Secure` 未在瀏覽器實測（本機為 Lax）。
+- Super user 在 028 前落在 `/forms` 看到業務 403、過期對話框是員工文案；OAuth 瀏覽器入口不在 027。
+- commit 後回應遺失需重新登入；兩分頁無舊 cookie 並發登入時，另一筆會話留到 8 小時到期。
+- 輪換需 NTP；3 次重試後等下次排程、worker 重啟或 REPL 補做。REPL 一次貼多行不等 `await`。
+- 員工 e2e 在測試庫累積 `login.succeeded`，該庫的 down 會被拒絕。
+- UAT 自動部署無法在 migration 與啟動之間暫停，`initialize()` 改在部署成功後執行。
+- 範圍外觀察：Next 404 頁在 standalone 帶 `s-maxage=31536000`（既有 not-found 行為，未處理）。

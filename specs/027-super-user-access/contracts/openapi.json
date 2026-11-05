@@ -3,7 +3,7 @@
   "info": {
     "title": "Intranet Spec 027 維護登入與會話增量契約",
     "version": "0.1.0",
-    "description": "設計契約，尚未實作；僅列新增與修改操作。OAuth／WebView路徑沿原契約，POST /api/auth/login移除回404。完整行為見api-behavior.md。"
+    "description": "已依 027 實作校正（027-08）；僅列新增與修改操作。OAuth／WebView路徑沿原契約，POST /api/auth/login移除回404。Cache-Control: no-store 由 handler 設定，只出現在成功回應與 handler 內的錯誤；guard 與框架層提前拒絕的回應（Origin、限流、入口、會話驗證、body 上限）不帶 Cache-Control。完整行為見api-behavior.md。"
   },
   "servers": [
     {
@@ -75,15 +75,7 @@
             }
           },
           "404": {
-            "description": "找不到資源",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              }
-            },
+            "description": "入口不存在、已輪換或格式不符",
             "content": {
               "application/json": {
                 "schema": {
@@ -92,41 +84,8 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "HTTP_NOT_FOUND",
-                    "message": "找不到資源"
-                  },
-                  "timestamp": "2026-11-04T00:00:00Z"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "請求過於頻繁",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              },
-              "Retry-After": {
-                "schema": {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                "description": "等待秒數"
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                },
-                "example": {
-                  "success": false,
-                  "error": {
-                    "code": "AUTH_RATE_LIMITED",
-                    "message": "請求過於頻繁"
+                    "code": "NOT_FOUND",
+                    "message": "找不到請求的資源"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
                 }
@@ -134,15 +93,7 @@
             }
           },
           "503": {
-            "description": "維護登入暫時無法使用",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              }
-            },
+            "description": "尚未初始化或入口已停用回 AUTH_SUPER_USER_UNAVAILABLE；DB 不可用回 AUTH_DB_UNAVAILABLE（登入服務暫時無法使用）",
             "content": {
               "application/json": {
                 "schema": {
@@ -242,7 +193,7 @@
             }
           },
           "400": {
-            "description": "輸入格式不合法",
+            "description": "已知入口的輸入不合法；message 為欄位驗證訊息",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -259,8 +210,8 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "REQUEST_FORMAT_INVALID",
-                    "message": "輸入格式不合法"
+                    "code": "INVALID_REQUEST",
+                    "message": "帳號須為 1～128 字元"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
                 }
@@ -295,14 +246,6 @@
           },
           "403": {
             "description": "請求來源不允許",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -320,15 +263,7 @@
             }
           },
           "404": {
-            "description": "找不到資源",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              }
-            },
+            "description": "入口不存在、已輪換或格式不符；早於 body 驗證",
             "content": {
               "application/json": {
                 "schema": {
@@ -337,8 +272,8 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "HTTP_NOT_FOUND",
-                    "message": "找不到資源"
+                    "code": "NOT_FOUND",
+                    "message": "找不到請求的資源"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
                 }
@@ -372,15 +307,7 @@
             }
           },
           "413": {
-            "description": "請求內容過大",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              }
-            },
+            "description": "body 超過 8 KiB",
             "content": {
               "application/json": {
                 "schema": {
@@ -389,8 +316,8 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "HTTP_PAYLOAD_TOO_LARGE",
-                    "message": "請求內容過大"
+                    "code": "INVALID_REQUEST",
+                    "message": "請求內容超過大小限制"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
                 }
@@ -398,14 +325,8 @@
             }
           },
           "429": {
-            "description": "請求過於頻繁",
+            "description": "同一 IP 60 秒 10 次或 300 秒 50 次；不隨 entryKey 變動，早於入口檢查",
             "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              },
               "Retry-After": {
                 "schema": {
                   "type": "integer",
@@ -422,8 +343,8 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_RATE_LIMITED",
-                    "message": "請求過於頻繁"
+                    "code": "REFUSE_SERVICE",
+                    "message": "系統拒絕服務，請聯絡IT人員"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
                 }
@@ -431,15 +352,7 @@
             }
           },
           "503": {
-            "description": "維護登入暫時無法使用",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              }
-            },
+            "description": "尚未初始化、本機帳密設定不是啟用版本、無法取得 client IP 或限流儲存不可用回 AUTH_SUPER_USER_UNAVAILABLE；DB 不可用回 AUTH_DB_UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -505,15 +418,7 @@
             }
           },
           "401": {
-            "description": "登入憑證無效",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              }
-            },
+            "description": "沒有 cookie 時 message 為「請先登入」；會話不存在、過期、已撤銷或已被替換時為「登入已失效，請重新登入」",
             "content": {
               "application/json": {
                 "schema": {
@@ -522,8 +427,8 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
-                    "message": "登入憑證無效"
+                    "code": "UNAUTHORIZED",
+                    "message": "登入已失效，請重新登入"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
                 }
@@ -531,15 +436,7 @@
             }
           },
           "503": {
-            "description": "維護登入暫時無法使用",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              }
-            },
+            "description": "Super user 會話：本機帳密設定不是啟用版本或入口已停用回 AUTH_SUPER_USER_UNAVAILABLE；DB 不可用回 AUTH_DB_UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {
@@ -615,14 +512,6 @@
           },
           "403": {
             "description": "請求來源不允許",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "固定no-store"
-              }
-            },
             "content": {
               "application/json": {
                 "schema": {
@@ -640,7 +529,7 @@
             }
           },
           "503": {
-            "description": "維護登入暫時無法使用",
+            "description": "撤銷失敗；不清 cookie，會話仍有效，可重試",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -657,8 +546,8 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_SUPER_USER_UNAVAILABLE",
-                    "message": "維護登入暫時無法使用"
+                    "code": "AUTH_DB_UNAVAILABLE",
+                    "message": "登入服務暫時無法使用"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
                 }

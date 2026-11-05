@@ -80,14 +80,14 @@
 
 **Independent Test**: 控制時間、並發worker與Redis遺失，當週只產一個入口；舊GET/POST404、原session有效，REPL查詢無寫入或背景工作。
 
-- [ ] T037 [P] [US3] 先在 `server/src/features/auth/helpers/rotation-period.spec.ts`、`services/super-user-access.service.spec.ts` 驗台北週一03:59:59/04:00、跨年、最近到期週期、初始化、同週no-op及多週停機只補一次；用測試注入clock，不新增production時間env。
-- [ ] T038 [P] [US3] 先在 `server/test/super-user-entry-rotation.e2e-spec.ts`、`server/test/super-user-console.e2e-spec.ts` 驗多worker/startup/job只換一次、DB失敗保留舊key、舊GET/POST404、登入/輪換競態與session仍有效；REPL唯讀且不啟動HTTP/worker/Portal/mail/storage。
-- [ ] T039 [US3] 重用T015的 `server/src/features/auth/helpers/rotation-period.ts`，在 `server/src/features/auth/services/super-user-access.service.ts` 實作rotateEntryIfDue：鎖singleton、最新週期大於storedPeriod才產新key及entryGeneration+1並同交易append事件；credentialGeneration不變、不撤session，缺row不偷初始化。
-- [ ] T040 [US3] 新增 `server/src/worker/auth/super-user-access.constants.ts`、`super-user-access.scheduler.ts`、`super-user-access.processor.ts`、`super-user-access-worker.module.ts` 並只接 `server/src/worker.module.ts`；固定queue auth-access-maintenance、scheduler super-user-entry-weekly、job rotate-entry-if-due，cron `0 4 * * 1`/Asia/Taipei、空payload、attempts3/exponential5000ms、保留最近100成功/失敗；startup先DB catch-up，再保留overdue job或upsert。
-- [ ] T041 [US3] 在 `server/src/worker/auth/super-user-access.scheduler.spec.ts`、`super-user-access.processor.spec.ts` 驗Redis排程遺失／過期job／重啟／retry仍由DB週期裁決，HTTP/Console不註冊queue，不新增掃描排程；DB不可用job失敗，未初始化只回明確結果。
-- [ ] T042 [US3] 擴充 `server/src/console/auth-console.service.ts` 的rotateEntryIfDue/securityEvents，limit預設20最大100、beforeId倒序與operator身分；`server/src/console/repl.ts` 只由currentEntry明確回原path，不保留history或一般log，不提供任意強制輪換或token查詢。
-- [ ] T043 [US3] 在 `server/test/super-user-console.e2e-spec.ts` 驗初始化並發仲裁、重複initialize不覆寫、唯讀helpers不寫入、結束關閉pool及repl/repl:dev import/env模式一致；入口原值只在受控currentEntry結果。
-- [ ] T044 [US3] 完成週期／並發／故障／Redis遺失驗收，將worker/console副作用檢查記入 `specs/027-super-user-access/quickstart.md`，對齊 `contracts/operations.md` 實際排程註冊方式，不把未跑的停機情境標成通過。
+- [X] T037 [P] [US3] 先在 `server/src/features/auth/helpers/rotation-period.spec.ts`、`services/super-user-access.service.spec.ts` 驗台北週一03:59:59/04:00、跨年、最近到期週期、初始化、同週no-op及多週停機只補一次；用測試注入clock，不新增production時間env。（027-06：`rotation-period.spec.ts` 已由 027-03 涵蓋 03:59:59.999／04:00 與跨年，本張未改；service 測試以 `jest.useFakeTimers({ now })` 注入時間。）
+- [X] T038 [P] [US3] 先在 `server/test/super-user-entry-rotation.e2e-spec.ts`、`server/test/super-user-console.e2e-spec.ts` 驗多worker/startup/job只換一次、DB失敗保留舊key、舊GET/POST404、登入/輪換競態與session仍有效；REPL唯讀且不啟動HTTP/worker/Portal/mail/storage。（027-06：停機以「DB 已處理週期往前推」模擬，不改系統時間。）
+- [X] T039 [US3] 重用T015的 `server/src/features/auth/helpers/rotation-period.ts`，在 `server/src/features/auth/services/super-user-access.service.ts` 實作rotateEntryIfDue：鎖singleton、最新週期大於storedPeriod才產新key及entryGeneration+1並同交易append事件；credentialGeneration不變、不撤session，缺row不偷初始化。
+- [X] T040 [US3] 新增 `server/src/worker/auth/super-user-access.constants.ts`、`super-user-access.scheduler.ts`、`super-user-access.processor.ts`、`super-user-access-worker.module.ts` 並只接 `server/src/worker.module.ts`；固定queue auth-access-maintenance、scheduler super-user-entry-weekly、job rotate-entry-if-due，cron `0 4 * * 1`/Asia/Taipei、空payload、attempts3/exponential5000ms、保留最近100成功/失敗；startup先DB catch-up，再保留overdue job或upsert。（027-06：啟動補做直接執行與 job 相同的 processor；補做失敗讓 worker 啟動失敗，job 與啟動的失敗原因只帶錯誤類型，不含原始 DB 訊息。）
+- [X] T041 [US3] 在 `server/src/worker/auth/super-user-access.scheduler.spec.ts`、`super-user-access.processor.spec.ts` 驗Redis排程遺失／過期job／重啟／retry仍由DB週期裁決，HTTP/Console不註冊queue，不新增掃描排程；DB不可用job失敗，未初始化只回明確結果。（027-06：單元測試驗排程參數、啟動順序、過期 job 不覆寫、錯誤轉換與未初始化；Redis 排程遺失、重啟、retry 與 HTTP／Console 不註冊 queue 需要真實 Redis／模組圖，放在 T038 的兩個 e2e。）
+- [X] T042 [US3] 擴充 `server/src/console/auth-console.service.ts` 的rotateEntryIfDue/securityEvents，limit預設20最大100、beforeId倒序與operator身分；`server/src/console/repl.ts` 只由currentEntry明確回原path，不保留history或一般log，不提供任意強制輪換或token查詢。（027-06：沿用 027-03 的決定，helper 加在 `repl.ts` 的 `createAuthConsole` 閉包，沒有 `auth-console.service.ts`；事件查詢經 `AuthSecurityEventService.list`。）
+- [X] T043 [US3] 在 `server/test/super-user-console.e2e-spec.ts` 驗初始化並發仲裁、重複initialize不覆寫、唯讀helpers不寫入、結束關閉pool及repl/repl:dev import/env模式一致；入口原值只在受控currentEntry結果。（027-06：自動測試以 `pnpm -s repl:dev` 啟動兩個真正 REPL 程序；建置模式 `pnpm repl` 需要先 build，改以手動驗證並記在 quickstart「027-06」。）
+- [X] T044 [US3] 完成週期／並發／故障／Redis遺失驗收，將worker/console副作用檢查記入 `specs/027-super-user-access/quickstart.md`，對齊 `contracts/operations.md` 實際排程註冊方式，不把未跑的停機情境標成通過。
 
 **Checkpoint**: 排程、停機補做與REPL維運可獨立驗收，網址輪換不撤session。
 

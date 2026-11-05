@@ -173,3 +173,51 @@ same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟�
   - Nest access log 只有 `/api/auth/super-user-entries/:entryKey` 與 `…/:entryKey/sessions`。
   - `next dev` 的 `.next/dev/trace` 會記錄含入口的 request URL。這是本機開發的 trace 檔，不在正式環境產生，驗證後已刪除。
 - 倉庫外代理：Nginx／ALB 的 access／error log 尚未遮罩，已在 `docs/deployment/uat-cicd.md` 列為部署阻擋；本節不代表全鏈 log 已驗收。
+
+### 027-06 每週輪換與停機補做（T037～T044）
+
+範圍是 3 節的入口輪換、並發與 REPL 副作用；帳密輪換（4 節）與 OAuth／WebView 身分切換不在本張。
+
+**排程註冊方式（對齊 [operations](contracts/operations.md)）**
+
+- 只有 `WorkerModule` 載入 `SuperUserAccessWorkerModule`：queue `auth-access-maintenance`、scheduler `super-user-entry-weekly`、job `rotate-entry-if-due`、`0 4 * * 1`／`Asia/Taipei`、空 payload、`attempts: 3`、exponential backoff 5000ms、`removeOnComplete: 100`、`removeOnFail: 100`。
+- worker 啟動時先以 DB 補做（直接執行與 job 相同的 processor），再看 Redis：已到期未執行的 job 保留不覆寫，否則 upsert。補做失敗讓 worker 啟動失敗。
+- 輪換鎖 singleton，DB 已處理週期早於最近到期週期才換入口；結果為 `rotated`／`not_due`／`uninitialized`，也是 job 回傳值。失敗原因只帶錯誤代碼。
+
+**自動測試**
+
+- 新增：
+  - `super-user-access.service.spec.ts`：8 tests。以 fake timers 驗證週一 03:59:59.999 no-op、04:00 輪換、同週再執行 no-op、跨年、停機多週只補一次、初始化後同週不輪換、未初始化不建列、寫入失敗 rollback。
+  - `super-user-access.scheduler.spec.ts` 4 tests、`super-user-access.processor.spec.ts` 4 tests：排程參數、補做先於排程、過期 job 不覆寫、補做失敗不註冊、未初始化結果與警告、失敗原因與 log 不含原始訊息。
+  - `test/super-user-entry-rotation.e2e-spec.ts`：10 tests，正式 `WorkerModule`（Portal 匯入換成替身）＋正式 `AppModule`，測試庫 `feastogether_intranet_test_b`、`REDIS_DB=10`。
+- e2e 涵蓋：
+  - HTTP app 沒有維護 queue、scheduler、processor，也不在 Redis 建排程。
+  - 停機三週後兩個 worker 同時啟動：只換一次（entry generation 2、一筆 `system` 事件），帳密版本不變，Redis 只有一份排程，下次為下週一台北 04:00。
+  - 同週重啟兩次不換；清掉 Redis 排程並落後一週後重啟：補做一次並重建排程。
+  - 錯過的 job 仍在 Redis 時啟動：補做與該 job 合計只換一次，下次排程回到下週一。
+  - job 第一次寫入失敗：失敗原因為「維護入口輪換失敗（ER_LOCK_WAIT_TIMEOUT）」、stacktrace 不含原始訊息、舊入口仍 200；5 秒後重試成功，只換一次，舊入口 404。
+  - 未初始化：worker 照常啟動，job 回 `uninitialized`，不建列。
+  - 輪換後舊入口 GET／POST 404（含輪換前已開的表單），新入口 200，輪換前登入的 Super user 會話仍 200。
+  - 兩個執行者同時輪換：一個 `rotated`、一個 `not_due`。
+  - KDF 期間輪換先 commit：舊入口登入 404，不簽發會話。
+  - 登入交易先鎖 singleton：輪換等到登入 commit 後才完成，該會話仍有效。
+- `test/super-user-console.e2e-spec.ts`：14 tests（原 10 個）。新增 REPL 未初始化時輪換回 `uninitialized`；未到期 no-op、到期以 `operator` 輪換一次且帳密版本不變；`securityEvents` 預設 20 筆、`limit` 0／101 拒絕、`beforeId` 倒序、只回白名單欄位且不寫入；以 `pnpm -s repl:dev` 同時啟動兩個真正 REPL：初始化只成功一次、重複不覆寫、查詢不寫入、`currentEntry` 之前輸出不含入口、`.exit` 後 exit 0。模組圖另確認不含 `SuperUserAccessWorkerModule`。
+- Mutation 檢查：把輪換的 `findForUpdate` 改成 `find`，e2e 有 3 tests 失敗（兩 worker 同時啟動、錯過的 job、兩執行者同時輪換）；已還原。
+- 回歸：`pnpm -C server test` 129 suites／1286 tests；`test:e2e` 566 passed、1 skipped、1 failed（51 suites passed；唯一失敗是既有 `api-coverage` history 路由，同 027-02）；`test:e2e:security` 16 suites／117 tests；`test:schema` 6 suites／39 tests（無臨時庫殘留）；`lint:check` 0 errors、276 warnings（與 027-04 相同，新檔與改動檔 0 warning）；`build` 成功。
+
+**實際 worker／REPL／HTTP（開發庫 `feastogether_intranet_027b`、Redis `127.0.0.1:16321` DB 2，HTTP `PORT=3021`）**
+
+- 空庫 `migration:run` 21 支；`pnpm -C server repl:dev` 逐行執行：`rotateEntryIfDue()` 回 `uninitialized` → `initialize()` true → `credentialStatus()` generation 1、`localConfigMatches:true` → `rotateEntryIfDue()` `not_due` → `initialize()` false。
+- 把已處理週期往前推兩週後 `pnpm -C server worker:dev`：啟動補做一次（entry generation 2、`system` 事件），period 回到 2026-11-02 04:00（台北）；Redis 排程 pattern `0 4 * * 1`、tz `Asia/Taipei`、opts 同上，下次 2026-11-09 04:00（台北）。Portal 每日匯入排程下次為 2026-11-06 04:00，未到期、未查 Portal。
+- 建置後 `node dist/worker`（`NODE_ENV=development`）：同週重啟不換；刪除該 queue 的 Redis key 並落後一週後重啟，補做一次並重建排程。
+- 以 BullMQ `promote()` 提前執行排程 job：`attemptsMade` 1、回傳 `rotated`、`system` 事件。提前執行會讓 BullMQ 從原排定時間算下一次（跳過一週），只用於驗證；需要立即補做請用 REPL `rotateEntryIfDue()`。
+- HTTP（`node dist/main`）啟動後 Redis 沒有 `bull:auth-access-maintenance:*` key。舊入口 GET 200 → REPL `rotateEntryIfDue()`（`rotated`，再執行為 `not_due`）→ 舊入口 GET／POST 404、新入口 GET 200。HTTP 與 worker log 中含入口值的路徑 0 筆，access log 只有 `:entryKey` 模板。
+- 建置後 `pnpm -C server repl`（設定 `NODE_REPL_HISTORY`）：`initialize()` false、`currentEntry()` path 格式正確、`rotateEntryIfDue()` `not_due`、`securityEvents({limit:3})` 倒序、`beforeId` 翻頁、`limit:101` 回 RangeError、`get`／`$` 不存在；`.exit` 後 exit 0、該庫連線 0 條、沒有 history 檔。
+- 驗證後已刪除開發庫的 singleton 與事件（會話 0 筆），並清空 Redis DB 2（驗證前為空）。
+
+**未執行／限制**
+
+- 停機情境以「DB 已處理週期落後」「刪除 Redis key」「注入 DB 錯誤」模擬；沒有在 UAT 實際停機跨過週一 04:00、Redis 故障切換或多台主機的 worker 上執行。
+- 每個 worker 以自己的時鐘判斷到期，主機需 NTP 對時。
+- 週一 04:00 DB 不可用超過重試窗（約 5＋10 秒）時，job 失敗後不會再自動嘗試，要等下次 cron 或 worker 重啟補做；失敗可從 failed job 與 `auth.entry_rotation_failed` log 看到，維護者可用 REPL `rotateEntryIfDue()` 補做。這是契約既定的重試次數與「不增加掃描排程」。
+- 非 TTY 一次輸入多行時，REPL 不等前一行的 `await` 完成就執行下一行，`.exit` 可能在查詢完成前關閉連線池（027-03 既有行為）；逐行執行沒有此問題。

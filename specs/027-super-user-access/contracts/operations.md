@@ -33,6 +33,8 @@ fingerprint固定為 SHA-256(`super-user-credentials-v1` + NUL + UTF-8 JSON.stri
 
 Job不帶entryKey或帳密，僅空payload；attempts=3，exponential backoff初始5000ms，保留最近100筆成功／失敗metadata。失敗保留原入口並記白名單故障；重試仍以目前週期處理，不重複生成已commit週期。不另增加掃描排程。未初始化回明確未初始化結果且不創建身分；DB不可用讓job失敗。
 
+027-06 實作：startup補做直接執行與job相同的processor，補做失敗（如DB不可用）讓worker啟動失敗。job回傳值與REPL `rotateEntryIfDue` 相同：`{status:'rotated',entryGeneration}`、`{status:'not_due'}` 或 `{status:'uninitialized'}`（另記 `auth.entry_rotation_uninitialized` 警告）。失敗原因固定為「維護入口輪換失敗（<錯誤代碼>）」，log `auth.entry_rotation_failed` 只帶錯誤代碼，不含原始DB訊息或SQL。
+
 ## 明確生效與部署順序
 
 首次：準備兩設定 → 停止舊HTTP／worker並備份 → 套增量migration → 新REPL initialize → 新HTTP／worker → REPL查入口與身分驗證 → 開流量。Portal／OAuth設定維持，移除員工密碼登入依賴，但不得誤刪其他仍用到的上游HTTP client。

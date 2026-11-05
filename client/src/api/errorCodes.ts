@@ -8,7 +8,6 @@ export const ERROR_CODE_MAP: Record<string, string> = {
 
   // --- Auth ---
   UNAUTHORIZED: '登入已過期，請從入口網重新進入電子簽',
-  INVALID_CREDENTIALS: '員工編號或密碼錯誤，或登入已失效',
   ACCOUNT_DISABLED: '帳號已停用，請聯繫管理員',
   REFUSE_SERVICE: '操作過於頻繁，請稍後再試',
   CSRF_ORIGIN_REJECTED: '請求來源不允許，請重新整理頁面後再試',

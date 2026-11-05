@@ -26,7 +26,7 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
     @Inject(getOptionsToken()) options: ThrottlerModuleOptions,
     @Inject(getStorageToken()) storageService: ThrottlerStorage,
     reflector: Reflector,
-    private readonly appLogger: AppLoggerService,
+    protected readonly appLogger: AppLoggerService,
   ) {
     super(options, storageService, reflector);
   }

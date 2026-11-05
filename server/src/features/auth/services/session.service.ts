@@ -18,6 +18,7 @@ import {
 import type { SuperUserAccess } from '../entities/super-user-access.entity';
 import { AuthSessionRepository } from '../repositories/auth-session.repository';
 import { SuperUserAccessRepository } from '../repositories/super-user-access.repository';
+import { isCurrentSuperUserEntry } from '../helpers/super-user-entry';
 import { AuthSecurityEventService } from './auth-security-event.service';
 import { SuperUserConfigService } from './super-user-config.service';
 
@@ -63,7 +64,7 @@ export class SessionService {
   /**
    * 簽發新會話，並在同一交易撤銷瀏覽器帶來的仍有效舊會話。鎖序固定為
    * 維護 singleton（新身分是 Super user 時）→ 舊會話 → 新會話。失敗整筆 rollback、保留舊會話；
-   * 舊會話已被其他登入取代時回 409。token 原值只在 commit 後回傳。
+   * 入口已在鎖定前輪換時回 404；舊會話已被其他登入取代時回 409。token 原值只在 commit 後回傳。
    */
   async replace(
     currentToken: string | null,
@@ -77,8 +78,9 @@ export class SessionService {
     await this.inTransaction(async (manager) => {
       const credentialGeneration =
         target.kind === 'super_user'
-          ? this.activeCredentialGeneration(
+          ? this.lockSuperUserGeneration(
               await this.access.findForUpdate(manager),
+              target.entryKey,
             )
           : null;
       const previous =
@@ -158,6 +160,17 @@ export class SessionService {
         manager,
       );
     });
+  }
+
+  private lockSuperUserGeneration(
+    access: SuperUserAccess | null,
+    entryKey: string,
+  ): number {
+    const generation = this.activeCredentialGeneration(access);
+    if (!isCurrentSuperUserEntry(entryKey, access!.entryKey)) {
+      throw new AppException(...AppErrors.HTTP_NOT_FOUND);
+    }
+    return generation;
   }
 
   /** 本機設定須等於 DB 已啟用版本；入口未初始化或設定不符時維護身分暫停，不揭露差異。 */

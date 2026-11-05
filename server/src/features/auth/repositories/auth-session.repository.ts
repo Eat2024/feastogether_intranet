@@ -148,21 +148,4 @@ export class AuthSessionRepository {
       { status: AUTH_SESSION_STATUS.REVOKED, revokedAt, replacementSessionId },
     );
   }
-
-  async revoke(
-    sessionTokenHash: string,
-    now: Date,
-    manager: EntityManager,
-  ): Promise<boolean> {
-    const result = await manager
-      .createQueryBuilder()
-      .update(AuthSession)
-      .set({ status: AUTH_SESSION_STATUS.REVOKED, revokedAt: now })
-      .where('session_token_hash = :sessionTokenHash', { sessionTokenHash })
-      .andWhere('status = :status', { status: AUTH_SESSION_STATUS.ACTIVE })
-      .andWhere('revoked_at IS NULL')
-      .andWhere('expires_at > :now', { now })
-      .execute();
-    return result.affected === 1;
-  }
 }

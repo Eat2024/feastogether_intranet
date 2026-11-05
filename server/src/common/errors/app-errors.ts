@@ -211,6 +211,11 @@ export const AppErrors = {
     '帳號已停用，請聯絡資訊人員',
     HttpStatus.FORBIDDEN,
   ],
+  AUTH_ACTOR_NOT_ALLOWED: [
+    AppErrorCode.AUTH_ACTOR_NOT_ALLOWED,
+    '目前身分無法使用此功能',
+    HttpStatus.FORBIDDEN,
+  ],
   AUTH_DB_UNAVAILABLE: [
     AppErrorCode.AUTH_DB_UNAVAILABLE,
     '登入服務暫時無法使用',
@@ -241,15 +246,15 @@ export const AppErrors = {
     '系統拒絕服務，請聯絡IT人員',
     HttpStatus.TOO_MANY_REQUESTS,
   ],
-  AUTH_SESSION_INVALID: [
-    AppErrorCode.UNAUTHORIZED,
-    '登入狀態無效或已到期',
-    HttpStatus.UNAUTHORIZED,
-  ],
   AUTH_SESSION_REPLACED: [
     AppErrorCode.AUTH_SESSION_REPLACED,
     '登入身分已更新，請重新整理',
     HttpStatus.CONFLICT,
+  ],
+  AUTH_SUPER_USER_CREDENTIALS_INVALID: [
+    AppErrorCode.AUTH_SUPER_USER_CREDENTIALS_INVALID,
+    '帳號或密碼錯誤',
+    HttpStatus.UNAUTHORIZED,
   ],
   AUTH_SUPER_USER_UNAVAILABLE: [
     AppErrorCode.AUTH_SUPER_USER_UNAVAILABLE,

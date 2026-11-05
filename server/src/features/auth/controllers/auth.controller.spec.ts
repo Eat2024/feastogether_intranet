@@ -8,17 +8,21 @@ describe('AuthController WebView boundary', () => {
     const auth = {
       createWebviewLaunch: jest.fn().mockResolvedValue({ launchUrl: 'url' }),
       activateWebviewSession: jest.fn().mockResolvedValue('s'.repeat(43)),
-      getMe: jest.fn().mockResolvedValue({ user: { id: 7 } }),
-      logout: jest.fn().mockResolvedValue({ localLogout: 'completed' }),
     };
+    const sessions = { revoke: jest.fn().mockResolvedValue(undefined) };
     const config = {
       get: jest.fn((key: string) =>
         key === 'NODE_ENV' ? 'development' : env[key],
       ),
     };
     return {
-      controller: new AuthController(auth as never, config as never),
+      controller: new AuthController(
+        auth as never,
+        sessions as never,
+        config as never,
+      ),
       auth,
+      sessions,
     };
   };
 
@@ -117,8 +121,8 @@ describe('AuthController WebView boundary', () => {
     expect(csp).toContain("frame-ancestors 'self' http://localhost:8080");
   });
 
-  it('DELETE session 先清 cookie，再由 AuthService 冪等撤銷', async () => {
-    const { controller, auth } = setup();
+  it('DELETE session 先清 cookie，再由 SessionService 冪等撤銷', async () => {
+    const { controller, sessions } = setup();
     const response = reply();
     await expect(
       controller.deleteSession(
@@ -132,6 +136,6 @@ describe('AuthController WebView boundary', () => {
       sameSite: 'lax',
       path: '/',
     });
-    expect(auth.logout).toHaveBeenCalledWith('a'.repeat(43));
+    expect(sessions.revoke).toHaveBeenCalledWith('a'.repeat(43));
   });
 });

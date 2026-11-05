@@ -7,6 +7,7 @@ import { SessionService } from './session.service';
 
 const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
 const FINGERPRINT = 'f'.repeat(64);
+const ENTRY = 'E'.repeat(43);
 const T0 = new Date('2026-11-02T01:00:00Z');
 
 interface FakeUser {
@@ -25,9 +26,11 @@ function setup() {
     sessions: [] as AuthSession[],
     access: {
       id: 1,
+      entryKey: ENTRY,
       activeCredentialFingerprint: FINGERPRINT,
       credentialGeneration: 1,
     } as {
+      entryKey: string;
       activeCredentialFingerprint: string;
       credentialGeneration: number;
     } | null,
@@ -144,7 +147,7 @@ function setup() {
 }
 
 const employee = { kind: 'employee', userId: 7, source: 'webview' } as const;
-const superUser = { kind: 'super_user' } as const;
+const superUser = { kind: 'super_user', entryKey: ENTRY } as const;
 
 describe('SessionService', () => {
   beforeEach(() => {
@@ -257,6 +260,23 @@ describe('SessionService', () => {
       context.service.replace(null, superUser),
     ).rejects.toMatchObject(unavailable);
     expect(context.state.sessions).toHaveLength(1);
+  });
+
+  it('Super user 在鎖定 singleton 後重驗入口：輪換已先 commit 時舊入口回 404，原會話不動', async () => {
+    const context = setup();
+    const old = await context.service.replace(null, employee);
+    context.state.access!.entryKey = 'N'.repeat(43);
+
+    await expect(
+      context.service.replace(old.token, superUser),
+    ).rejects.toMatchObject({
+      code: AppErrorCode.NOT_FOUND,
+      status: HttpStatus.NOT_FOUND,
+    });
+    expect(context.state.sessions).toHaveLength(1);
+    await expect(
+      context.service.authenticate(old.token),
+    ).resolves.toMatchObject({ actor: { kind: 'employee', userId: 7 } });
   });
 
   it('替換時同交易撤舊、連結 replacement 並記事件；鎖序為 singleton → 舊會話 → 新會話', async () => {

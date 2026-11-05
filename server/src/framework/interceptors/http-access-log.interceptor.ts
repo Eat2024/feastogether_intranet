@@ -46,6 +46,9 @@ const BODY_EXCLUDED_PATHS = [
   '/api/external-signing-task/signatures',
 ];
 
+/** 027 隱藏維護入口：路徑已由 getRequestPath 遮罩；query 與 body（帳密）一律不記。 */
+const SUPER_USER_ENTRY_PATH = /^(\/api)?\/auth\/super-user-entries(?:\/|$)/;
+
 const QUERY_EXCLUDED_PATHS = [
   '/auth/webview',
   '/api/auth/webview',
@@ -121,6 +124,7 @@ export class HttpAccessLogInterceptor implements NestInterceptor {
       !/^(\/api)?\/external-(?:signing-task|signature-(?:otps|session|invitations))(?:\/|$)/.test(
         path,
       ) &&
+      !SUPER_USER_ENTRY_PATH.test(path) &&
       !QUERY_EXCLUDED_PATHS.includes(path)
     );
   }
@@ -140,6 +144,7 @@ export class HttpAccessLogInterceptor implements NestInterceptor {
       )
     )
       return false;
+    if (SUPER_USER_ENTRY_PATH.test(getRequestPath(request))) return false;
     const body = request.body;
     if (!body || typeof body !== 'object') return false;
     if (Object.keys(body).length === 0) return false;

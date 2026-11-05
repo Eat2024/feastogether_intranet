@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { REDIS_MAIN } from '#app/infrastructure/database/redis/redis.provider';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import { EsignSignerCandidateService } from '#app/features/esign/services/esign-signer-candidate.service';
-import { AuthService } from '#app/features/auth/services/auth.service';
+import { SessionService } from '#app/features/auth/services/session.service';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
@@ -120,11 +120,13 @@ describe('組織樹 API（合成 Portal）', () => {
       builder
         .overrideProvider(FeastogetherClient)
         .useValue(feastogether)
-        .overrideProvider(AuthService)
+        .overrideProvider(SessionService)
         .useValue({
-          verifySessionToken: (token: string) =>
+          authenticate: (token: string) =>
             Promise.resolve(
-              token === 'synthetic-session' ? { userId: 1 } : null,
+              token === 'synthetic-session'
+                ? { actor: { kind: 'employee', userId: 1 }, user: {} }
+                : null,
             ),
         });
       return config
@@ -392,10 +394,10 @@ describe('組織樹 API（合成 Portal）', () => {
         1800,
       );
     const response = await ctx.app.inject({
-        method: 'GET',
-        url: route,
-        headers,
-      });
+      method: 'GET',
+      url: route,
+      headers,
+    });
     expect(response.statusCode).toBe(200);
     expect(response.json<{ data: unknown }>().data).toEqual(expectedTree);
     expect(sourceCalls()).toBe(1);
@@ -530,9 +532,9 @@ describe('組織樹 API（合成 Portal）', () => {
       });
       expect(response.statusCode).toBe(502);
       expect(response.json<unknown>()).toMatchObject({
-      success: false,
-      error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
-    });
+        success: false,
+        error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
+      });
       expect(await client.get(key)).toBeNull();
     } finally {
       await portal.query(
@@ -555,11 +557,11 @@ describe('組織樹 API（合成 Portal）', () => {
       for (const response of responses) {
         expect(response.statusCode).toBe(502);
         expect(response.json<unknown>()).toMatchObject({
-      success: false,
-      error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
-    });
+          success: false,
+          error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
+        });
         for (const value of [config.host, config.user, config.database])
-      expect(response.body).not.toContain(value);
+          expect(response.body).not.toContain(value);
         expect(response.body).not.toContain('chi_department');
       }
       expect(sourceCalls()).toBe(50);

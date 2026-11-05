@@ -14,4 +14,6 @@ export default {
   AUTH_SESSION: 'session',
   // GET /auth/embed-origins：可嵌入電子簽並以 postMessage 溝通的主平台 origin（取自 AUTH_TRUSTED_ORIGINS）
   AUTH_EMBED_ORIGINS: 'embed-origins',
+  // 027 隱藏維護入口：GET /auth/super-user-entries/:entryKey、POST /auth/super-user-entries/:entryKey/sessions
+  AUTH_SUPER_USER_ENTRIES: 'auth/super-user-entries',
 } as const;

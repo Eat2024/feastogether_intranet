@@ -27,7 +27,8 @@ interface SessionRow {
 
 const employee = (userId: number) =>
   ({ kind: 'employee', userId, source: 'webview' }) as const;
-const superUser = { kind: 'super_user' } as const;
+const entryKey = randomBytes(32).toString('base64url');
+const superUser = { kind: 'super_user', entryKey } as const;
 const staleToken = () => randomBytes(32).toString('base64url');
 
 /** 共用會話對真實 MySQL 的 LEFT JOIN、鎖序、rollback 與並行替換行為。 */
@@ -73,10 +74,7 @@ describe('Actor-aware shared session', () => {
       `INSERT INTO super_user_access (id, entry_key, entry_generation, rotated_at, period_start_at,
         active_credential_fingerprint, credential_generation, credential_activated_at)
         VALUES (1, ?, 1, NOW(6), NOW(6), ?, 1, NOW(6))`,
-      [
-        randomBytes(32).toString('base64url'),
-        ctx.app.get(SuperUserConfigService).fingerprint,
-      ],
+      [entryKey, ctx.app.get(SuperUserConfigService).fingerprint],
     );
   });
 
@@ -127,7 +125,7 @@ describe('Actor-aware shared session', () => {
     ]);
   });
 
-  it('員工會話沿用原 user 回應並新增 actor；Super user 會話不帶員工 FK，也不進員工 guard', async () => {
+  it('員工會話沿用原 user 回應並新增 actor；Super user 會話不帶員工 FK，目前身分回固定顯示名稱', async () => {
     const employeeSession = await sessions.replace(
       null,
       employee(userIds.SAS001),
@@ -153,8 +151,11 @@ describe('Actor-aware shared session', () => {
       user: null,
       expiresAt: superSession.expiresAt,
     });
-    // 員工 guard 尚未開放 Super user（後續 ticket 以明確 allow metadata 接入）。
-    await getSession(superSession.token).expect(401);
+    expect(apiData(await getSession(superSession.token).expect(200))).toEqual({
+      actor: { kind: 'super_user', displayName: 'Super user' },
+      user: null,
+      expiresAt: superSession.expiresAt.toISOString(),
+    });
   });
 
   it('停用或 soft-deleted 員工的會話以 LEFT JOIN 查出後拒絕', async () => {

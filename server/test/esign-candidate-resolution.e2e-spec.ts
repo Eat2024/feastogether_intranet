@@ -1,6 +1,6 @@
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { randomUUID } from 'node:crypto';
-import { AuthService } from '#app/features/auth/services/auth.service';
+import { SessionService } from '#app/features/auth/services/session.service';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
@@ -35,11 +35,13 @@ describe('員工解析 HTTP', () => {
       builder
         .overrideProvider(FeastogetherClient)
         .useValue(source)
-        .overrideProvider(AuthService)
+        .overrideProvider(SessionService)
         .useValue({
-          verifySessionToken: (token: string) =>
+          authenticate: (token: string) =>
             Promise.resolve(
-              token === 'synthetic-resolution-session' ? { userId: 1 } : null,
+              token === 'synthetic-resolution-session'
+                ? { actor: { kind: 'employee', userId: 1 }, user: {} }
+                : null,
             ),
         }),
     );

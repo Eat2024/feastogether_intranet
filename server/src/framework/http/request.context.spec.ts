@@ -16,6 +16,31 @@ describe('getRequestPath', () => {
     },
   );
 
+  it.each([
+    [
+      '/api/auth/super-user-entries/ENTRY-KEY',
+      '/api/auth/super-user-entries/:entryKey',
+    ],
+    [
+      '/api/auth/super-user-entries/ENTRY-KEY?x=ENTRY-KEY',
+      '/api/auth/super-user-entries/:entryKey',
+    ],
+    [
+      '/api/auth/super-user-entries/ENTRY-KEY/sessions',
+      '/api/auth/super-user-entries/:entryKey/sessions',
+    ],
+    [
+      '/auth/super-user-entries/ENTRY-KEY/sessions',
+      '/auth/super-user-entries/:entryKey/sessions',
+    ],
+    [
+      '/api/auth/super-user-entries//ENTRY-KEY/other',
+      '/api/auth/super-user-entries/:entryKey',
+    ],
+  ])('維護入口 %s 只留路由模板', (url, expected) => {
+    expect(getRequestPath({ url })).toBe(expected);
+  });
+
   it('一般 path 只移除 query', () => {
     expect(getRequestPath({ url: '/api/esign/documents/1?q=x' })).toBe(
       '/api/esign/documents/1',

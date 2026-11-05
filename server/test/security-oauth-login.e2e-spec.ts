@@ -98,7 +98,7 @@ describe('dormant SSO/session testing module', () => {
     const dataSource = testingModule.get<DataSource>(MYSQL_MAIN);
     try {
       const login = testingModule.get(OauthLoginService);
-      const auth = testingModule.get(AuthService);
+      const sessions = testingModule.get(SessionService);
       const userRepository = testingModule.get(UserRepository);
 
       const started = await login.start('/documents');
@@ -114,8 +114,10 @@ describe('dormant SSO/session testing module', () => {
       );
       expect(completed.session.user.empId).toBe(empid);
       await expect(
-        auth.verifySessionToken(completed.accessToken),
-      ).resolves.toMatchObject({ userId: completed.session.user.id });
+        sessions.authenticate(completed.accessToken),
+      ).resolves.toMatchObject({
+        actor: { kind: 'employee', userId: completed.session.user.id },
+      });
 
       await expect(
         login.getAccessTokenAndUserInfo(
@@ -124,16 +126,18 @@ describe('dormant SSO/session testing module', () => {
         ),
       ).rejects.toMatchObject({ code: AppErrorCode.OAUTH_TRANSACTION_INVALID });
 
-      await expect(auth.logout(completed.accessToken)).resolves.toMatchObject({
-        localLogout: 'completed',
-      });
+      await sessions.revoke(completed.accessToken);
       await expect(
-        auth.verifySessionToken(completed.accessToken),
+        sessions.authenticate(completed.accessToken),
       ).resolves.toBeNull();
 
       const user = await userRepository.findByEmpid(empid, dataSource.manager);
       expect(user).toMatchObject({ empid, isActive: true });
     } finally {
+      await dataSource.query(
+        'DELETE FROM auth_security_events WHERE actor_user_id = (SELECT id FROM users WHERE empid = ?)',
+        [empid],
+      );
       await dataSource.query(
         'DELETE FROM auth_sessions WHERE user_id = (SELECT id FROM users WHERE empid = ?)',
         [empid],

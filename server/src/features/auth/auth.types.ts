@@ -25,10 +25,13 @@ export type AuthenticatedSession =
   | { actor: EmployeeActor; user: User; expiresAt: Date }
   | { actor: SuperUserActor; user: null; expiresAt: Date };
 
-/** 登入成功後要簽發的新會話主體。 */
+/**
+ * 登入成功後要簽發的新會話主體。Super user 帶本次請求的入口值，
+ * 交易鎖定 singleton 後重驗，避免與入口輪換競爭時用舊入口簽出會話。
+ */
 export type SessionTarget =
   | { kind: 'employee'; userId: number; source: EmployeeSessionSource }
-  | { kind: 'super_user' };
+  | { kind: 'super_user'; entryKey: string };
 
 /** 交易 commit 後才交給呼叫端的新會話；token 原值只用於設定 cookie。 */
 export interface IssuedSession {

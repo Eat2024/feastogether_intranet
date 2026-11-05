@@ -32,7 +32,9 @@ import {
   clearAuthCookie,
   setAuthCookie,
 } from '#app/features/auth/helpers/auth-cookie';
+import { AllowSuperUser } from '#app/framework/decorators/allow-super-user.decorator';
 import { Public } from '#app/framework/decorators/public.decorator';
+import type { AuthenticatedRequest } from '#app/framework/guards/auth.guard';
 import { LoginDto } from '../dto/login.dto';
 import { AuthThrottlerGuard } from '#app/framework/guards/auth-throttler.guard';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
@@ -41,15 +43,16 @@ import {
   WebviewLaunchView,
   WebviewSessionDto,
 } from '../dto/webview-launch.dto';
+import { toSessionView, type SessionView } from '../dto/session-view.dto';
 import { AuthService } from '../services/auth.service';
-
-type AuthedRequest = FastifyRequest & { user?: { id: string } };
+import { SessionService } from '../services/session.service';
 
 @ApiTags('auth')
 @Controller(configPath.AUTH)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
+    private readonly sessions: SessionService,
     private readonly config: ConfigService,
   ) {}
 
@@ -176,19 +179,17 @@ export class AuthController {
     }
   }
 
-  // 取得目前登入員工的 session 資訊。
+  // 取得目前身分（員工或 Super user）；會話已由 AuthGuard 驗證。
+  @AllowSuperUser()
   @Get(configPath.AUTH_SESSION)
   @Header('Cache-Control', 'no-store')
   @ApiCookieAuth('sessionCookie')
-  @ApiOperation({ summary: '取得目前電子簽員工 Session' })
-  getSession(@Req() request: AuthedRequest) {
-    return this.authService.getMe(
-      Number(request.user?.id),
-      cookieTokenFromMap(request.cookies, AUTH_COOKIE_NAME),
-    );
+  @ApiOperation({ summary: '取得目前電子簽 Session（員工或 Super user）' })
+  getSession(@Req() request: AuthenticatedRequest): SessionView {
+    return toSessionView(request.authSession!);
   }
 
-  // 撤銷目前員工 session 並清除登入 cookie。
+  // 撤銷目前 session（員工或 Super user）並清除登入 cookie。
   @Public()
   @UseGuards(OriginGuard)
   @Delete(configPath.AUTH_SESSION)
@@ -201,7 +202,8 @@ export class AuthController {
   ) {
     const token = cookieTokenFromMap(request.cookies, AUTH_COOKIE_NAME);
     clearAuthCookie(reply, this.config);
-    return this.authService.logout(token);
+    await this.sessions.revoke(token);
+    return { localLogout: 'completed' as const };
   }
 
   private credentialFromObject(value: unknown): string | null {

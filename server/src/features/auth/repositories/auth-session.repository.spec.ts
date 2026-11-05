@@ -43,26 +43,4 @@ describe('AuthSessionRepository', () => {
       expect.objectContaining({ status: AUTH_SESSION_STATUS.PENDING }),
     );
   });
-
-  it('revoke 只在成功撤銷一筆有效 session 時回傳 true', async () => {
-    const execute = jest
-      .fn()
-      .mockResolvedValueOnce({ affected: 1 })
-      .mockResolvedValueOnce({ affected: 0 });
-    const builder = {
-      update: jest.fn().mockReturnThis(),
-      set: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      execute,
-    };
-    const manager = { createQueryBuilder: jest.fn().mockReturnValue(builder) };
-
-    await expect(
-      repository.revoke('c'.repeat(64), new Date(), manager as never),
-    ).resolves.toBe(true);
-    await expect(
-      repository.revoke('c'.repeat(64), new Date(), manager as never),
-    ).resolves.toBe(false);
-  });
 });

@@ -47,6 +47,7 @@ export class OriginGuard implements CanActivate {
     return (
       path === '/api/auth/login' ||
       path === '/auth/login' ||
+      path.startsWith('/api/auth/super-user-entries/') ||
       path.startsWith('/api/esign/') ||
       path === '/api/esign' ||
       path.startsWith('/api/external-signature') ||

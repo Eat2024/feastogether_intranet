@@ -6,6 +6,7 @@ import { REDIS_MAIN } from '#app/infrastructure/database/redis/redis.provider';
 import { OauthModule } from '#app/infrastructure/http-client/oauth/oauth.module';
 import { AuthThrottlerGuard } from '#app/framework/guards/auth-throttler.guard';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
+import { SuperUserThrottlerGuard } from '#app/framework/guards/super-user-throttler.guard';
 import { OauthController } from './controllers/oauth.controller';
 import { OauthLoginService } from './services/oauth-login.service';
 import { OauthIdentityService } from './services/oauth-identity.service';
@@ -25,9 +26,12 @@ import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
 import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { PortalModule } from '#app/infrastructure/portal/portal.module';
 import { AuthController } from './controllers/auth.controller';
+import { SuperUserAccessController } from './controllers/super-user-access.controller';
+import { SuperUserEntryGuard } from './guards/super-user-entry.guard';
 import { AuthService } from './services/auth.service';
 import { EligibleStaffService } from './services/eligible-staff.service';
 import { SessionService } from './services/session.service';
+import { SuperUserLoginService } from './services/super-user-login.service';
 import { SuperUserAccessModule } from './super-user-access.module';
 
 /** WebView SSO、OAuth 統一登入與 Super user 共用 MySQL opaque session。 */
@@ -59,7 +63,7 @@ import { SuperUserAccessModule } from './super-user-access.module';
       }),
     }),
   ],
-  controllers: [AuthController, OauthController],
+  controllers: [AuthController, OauthController, SuperUserAccessController],
   providers: [
     AuthService,
     SessionService,
@@ -67,7 +71,10 @@ import { SuperUserAccessModule } from './super-user-access.module';
     OauthLoginService,
     OauthIdentityService,
     OauthTransactionService,
+    SuperUserLoginService,
     AuthThrottlerGuard,
+    SuperUserThrottlerGuard,
+    SuperUserEntryGuard,
     OriginGuard,
     AuthGuard,
     { provide: APP_GUARD, useExisting: AuthGuard },

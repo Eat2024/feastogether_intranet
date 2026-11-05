@@ -1,4 +1,5 @@
 import type { User } from '#app/features/users/entities/user.entity';
+import type { AuthenticatedSession } from '../auth.types';
 
 /** 員工會話回應：保留既有 user／expiresAt 形狀，actor 為新增欄位。 */
 export interface EmployeeSessionView {
@@ -31,4 +32,27 @@ export function toEmployeeSessionView(
     },
     expiresAt,
   };
+}
+
+/** Super user 會話回應：只有固定顯示名稱；不回部署帳號、假員編、入口、fingerprint、版本或 token。 */
+export interface SuperUserSessionView {
+  actor: { kind: 'super_user'; displayName: 'Super user' };
+  user: null;
+  expiresAt: Date;
+}
+
+export type SessionView = EmployeeSessionView | SuperUserSessionView;
+
+export function toSuperUserSessionView(expiresAt: Date): SuperUserSessionView {
+  return {
+    actor: { kind: 'super_user', displayName: 'Super user' },
+    user: null,
+    expiresAt,
+  };
+}
+
+export function toSessionView(session: AuthenticatedSession): SessionView {
+  return session.actor.kind === 'employee'
+    ? toEmployeeSessionView(session.user!, session.expiresAt)
+    : toSuperUserSessionView(session.expiresAt);
 }

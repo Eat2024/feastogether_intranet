@@ -35,7 +35,6 @@ import {
 } from '../dto/session-view.dto';
 import { WebviewLaunchView } from '../dto/webview-launch.dto';
 import { EligibleStaffService } from './eligible-staff.service';
-import { SessionService } from './session.service';
 
 interface LaunchClaims {
   iss: string;
@@ -46,11 +45,6 @@ interface LaunchClaims {
   nbf: number;
   exp: number;
   name?: string;
-}
-
-export interface VerifiedIdentity {
-  userId: number;
-  expiresAt: Date;
 }
 
 @Injectable()
@@ -68,7 +62,6 @@ export class AuthService {
     private readonly eligibleStaff: EligibleStaffService,
     private readonly logger: AppLoggerService,
     private readonly passwordAuth: FeastogetherAuthService,
-    private readonly sessionService: SessionService,
   ) {
     const webviewConfig = this.getConfig(config);
     this.issuer = webviewConfig.iss;
@@ -167,52 +160,6 @@ export class AuthService {
     }
     this.audit('auth.session_created');
     return token;
-  }
-
-  /** 員工 guard 的 adapter：共用 SessionService 驗證，Super user 會話在接入 actor-aware guard 前不視為員工。 */
-  async verifySessionToken(token: string): Promise<VerifiedIdentity | null> {
-    const session = await this.sessionService.authenticate(token);
-    if (session?.actor.kind !== 'employee') {
-      this.audit('auth.session_rejected');
-      return null;
-    }
-    return { userId: session.actor.userId, expiresAt: session.expiresAt };
-  }
-
-  async getMe(
-    userId: number,
-    cookieToken: string | null,
-  ): Promise<EmployeeSessionView> {
-    if (!Number.isInteger(userId) || !cookieToken) {
-      throw this.unauthorized();
-    }
-    const identity = await this.verifySessionToken(cookieToken);
-    if (!identity || identity.userId !== userId) throw this.unauthorized();
-    let user: User | null;
-    try {
-      user = await this.users.findById(userId, this.mysql.getManager());
-    } catch {
-      throw this.databaseUnavailable();
-    }
-    if (!user?.isActive || user.deletedAt) throw this.unauthorized();
-    return this.buildSession(user, identity.expiresAt);
-  }
-
-  async logout(
-    cookieToken: string | null,
-  ): Promise<{ localLogout: 'completed' }> {
-    if (!cookieToken || !this.isOpaqueCredential(cookieToken)) {
-      return { localLogout: 'completed' };
-    }
-    try {
-      const revoked = await this.mysql.transaction((manager) =>
-        this.sessions.revoke(this.digest(cookieToken), new Date(), manager),
-      );
-      if (revoked) this.audit('auth.session_revoked');
-    } catch {
-      throw this.databaseUnavailable();
-    }
-    return { localLogout: 'completed' };
   }
 
   /** 供 OAuth 登入共用同一 MySQL session；開發登入仍未註冊於 runtime。 */
@@ -486,10 +433,6 @@ export class AuthService {
 
   private exchangeFailed(): AppException {
     return new AppException(...AppErrors.AUTH_EXCHANGE_FAILED);
-  }
-
-  private unauthorized(): AppException {
-    return new AppException(...AppErrors.AUTH_SESSION_INVALID);
   }
 
   private databaseUnavailable(): AppException {

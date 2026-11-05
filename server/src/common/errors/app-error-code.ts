@@ -37,10 +37,6 @@ export const AppErrorCode = {
   REFUSE_SERVICE: 'REFUSE_SERVICE',
   /** 請求 Origin 不在允許清單（跨站請求防護） */
   CSRF_ORIGIN_REJECTED: 'CSRF_ORIGIN_REJECTED',
-  /** 饗賓 API 連線設定未就緒（缺 FEASTOGETHER_* 環境變數） */
-  EXTERNAL_AUTH_UNAVAILABLE: 'EXTERNAL_AUTH_UNAVAILABLE',
-  /** 外部資料服務（饗賓 brand/department/hr/字典）不可用（003） */
-  EATOGETHER_API_SERVICE_UNAVAILABLE: 'EATOGETHER_API_SERVICE_UNAVAILABLE',
   /** 電子簽 PDF 格式、大小、加密或頁數不符合規格。 */
   ESIGN_INVALID_PDF: 'ESIGN_INVALID_PDF',
   /** 電子簽資源不存在或目前身分無權存取。 */

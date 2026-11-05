@@ -6,7 +6,6 @@ import {
 } from './helpers/await-initiation';
 import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import type { SendInternalGroupMailInput } from '#app/infrastructure/mail/invitation-mail-sender.port';
-import { HttpService } from '@nestjs/axios';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { In } from 'typeorm';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
@@ -37,7 +36,6 @@ describe('Spec016 內部發起與邀請', () => {
   let users: User[];
   let documentId: string;
   const origin = 'http://localhost:3000';
-  const http = { get: jest.fn(), post: jest.fn() };
   const detail = async () =>
     apiData<{
       status: string;
@@ -91,9 +89,7 @@ describe('Spec016 內部發起與邀請', () => {
       email: `external${index}@example.test`,
     }));
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(HttpService).useValue(http),
-    );
+    ctx = await createSecurityE2eApp();
     mailFixture(ctx).allowEmails([
       'external0@example.test',
       'external1@example.test',
@@ -119,9 +115,6 @@ describe('Spec016 內部發起與邀請', () => {
     cookie = await employeeSessionCookie(ctx.app, users[0].id);
   });
   beforeEach(async () => {
-    http.post.mockReset().mockImplementation(() => {
-      throw new Error('本機發起流程不得呼叫人資來源');
-    });
     await ctx.app
       .get(MysqlService)
       .getManager()
@@ -242,9 +235,7 @@ describe('Spec016 內部發起與邀請', () => {
         await ctx.app
           .get(EsignExpiryService)
           .expireByDeadline(Number(documentId));
-      http.post.mockClear();
       await reopen(end).expect(201);
-      expect(http.post).not.toHaveBeenCalled();
       expect((await detail()).signers.map((s) => s.invitationDelivery)).toEqual(
         ['pending', 'pending', 'pending'],
       );
@@ -588,7 +579,6 @@ describe('Spec016 內部發起與邀請', () => {
         errorCode: 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE',
       });
       expect(await detail()).toEqual(before);
-      expect(http.post).not.toHaveBeenCalled();
     } finally {
       read.mockRestore();
       await ctx.app
@@ -803,7 +793,6 @@ describe('Spec016 內部發起與邀請', () => {
           email: null,
           invitationDelivery: 'skipped',
         });
-        expect(http.post).not.toHaveBeenCalled();
         const mailer = new FakeInvitationMailSender();
         const worker = new ExternalInvitationProcessor(
           ctx.app.get(MysqlService),
@@ -881,7 +870,6 @@ describe('Spec016 內部發起與邀請', () => {
       });
     try {
       await completeInitiation(ctx, initiate().expect(202), cookie);
-      expect(http.post).not.toHaveBeenCalled();
     } finally {
       read.mockRestore();
       await other.query('SET SESSION innodb_lock_wait_timeout=DEFAULT');
@@ -1019,7 +1007,6 @@ describe('Spec016 內部發起與邀請', () => {
           (row) => row.status === 'active' && Number(row.signers) === 2,
         ),
       ).toBe(true);
-      expect(http.post).not.toHaveBeenCalled();
     } finally {
       documentId = firstId;
     }
@@ -1033,7 +1020,6 @@ describe('Spec016 內部發起與邀請', () => {
     } finally {
       cookie = saved;
     }
-    expect(http.post).not.toHaveBeenCalled();
     await completeInitiation(
       ctx,
       initiate([
@@ -1041,7 +1027,6 @@ describe('Spec016 內部發起與邀請', () => {
       ]).expect(202),
       cookie,
     );
-    expect(http.post).not.toHaveBeenCalled();
   });
   it('內部SMTP結果不明公開unknown，不誤顯示為pending', async () => {
     await completeInitiation(ctx, initiate().expect(202), cookie);
@@ -1167,9 +1152,7 @@ describe('Spec016 內部發起與邀請', () => {
       })
       .expect(201);
     atDeadline(new Date(initiated.signEndAt));
-    http.post.mockClear();
     await reopen(new Date(initiated.signEndAt)).expect(201);
-    expect(http.post).not.toHaveBeenCalled();
     const [after] = await manager.query<Array<{ payload: string | object }>>(
       'SELECT signing_payload_json payload FROM esign_documents WHERE id=?',
       [documentId],

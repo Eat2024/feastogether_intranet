@@ -57,3 +57,32 @@
 - 業務 e2e 只需要員工 cookie 時用 `employeeSessionCookie(ctx.app, userId)`（`test/employee-session.helper.ts`），不寫事件，清理不受影響。
 - `security-session-replacement.e2e-spec.ts` 直接 INSERT `super_user_access` 的 singleton（欄位同 `security-super-user-access`），06／07 若改 singleton 欄位要一併調整。
 - 本機以 iframe 驗證時，合成入口網要用真的 loopback HTTP server；Playwright `route.fulfill` 的頁面會被 Chrome Local Network Access 擋下。
+
+### 後續（使用者決定）
+
+決定：（1）員工入口登入失敗要寫安全事件；（2）`FeastogetherModule` 整組刪除。
+
+員工登入拒絕紀錄（commit `2d70ce2`）：
+
+- 寫 `login.rejected`（`anonymous`／`employee_ineligible`，無 `session_id`）：上游身分已驗證、被本系統規則拒絕。OAuth 是 token 交換與 UserInfo 成功後缺員編、Portal 判定不可登入、本機帳號停用或已刪除，在 `OauthIdentityService.resolve` 外層（員工列交易 rollback 後）記；WebView launch 是 JWT 與 jti 都通過後 Portal 判定不可登入、本機帳號停用或已刪除，在 `failClaim` 之後記。兩者都用 `recordRejection` 獨立短交易，寫入失敗回 503 `AUTH_DB_UNAVAILABLE`；以 4xx `AppException` 判定為規則拒絕。
+- 不寫事件：Portal 查詢失敗（502）、DB 故障與 OAuth 上游故障維持原行為。`AuthSecurityOutcome` 新增 `employee_ineligible`；`outcome_code` 沒有 DB CHECK，不需 migration。
+- 只記 log：activation 啟動碼無效、過期或已用過恢復 `auth.launch_code_rejected`（info，不含啟動碼、cookie、token、員編）；launch 的 `auth.webview_launch_rejected`／`auth.webview_launch_replayed` 不變；OAuth token／UserInfo 驗證失敗沿用 `oauth.code_exchange_failed`／`oauth.userinfo_failed`；OAuth 取消、缺 code、state 或交易無效沒有語意 log，只有 http_access。
+- 測試：新增 `security-employee-login-rejection.e2e-spec.ts`（20 tests：A 類 7 種各一筆事件、事件寫入失敗 503 兩入口各一、B 類與系統故障 8 種不寫事件、啟動碼三種只記 log），都驗證不發 cookie、不撤原會話。`oauth-login`、`webview-session` 清理會留下的匿名拒絕事件。data-model §3 與 api-behavior 補結果碼白名單與分類。
+
+移除 FeastogetherModule（本 commit）：
+
+- 刪 `server/src/infrastructure/http-client/feastogether/` 整個目錄（client、config、error util、brand／department／hr service、型別與 4 個 spec）、錯誤定義 `FEASTOGETHER_CONFIG_MISSING`／`FEASTOGETHER_UNAUTHORIZED`／`FEASTOGETHER_UNAVAILABLE`，以及只供它們使用的 `EXTERNAL_AUTH_UNAVAILABLE`、`EATOGETHER_API_SERVICE_UNAVAILABLE`（client 對照一併移除）。
+- 刪 `FEASTOGETHER_*`：`.env.example`、`.env.test.example`、`docs/deployment/uat-cicd.md`。config 驗證與 docker-compose 原本就沒有這組設定。
+- 只有本模組 import `HttpModule`，一併移除 `@nestjs/axios` dependency（lockfile 只少這個套件）。
+- e2e：移除 `mail-whitelist-runtime`、`mail-whitelist-otp`、`esign-candidate-resolution`、`org-chart` 的 `FeastogetherClient` 替身，以及 8 個 `internal-*` e2e 已不生效的 `HttpService` 替身與「未呼叫」斷言；`esign-candidate-resolution` 刪掉只在變換來源資料的案例（剩下的斷言已由「缺帳號不建帳」涵蓋）；`org-chart` 舊快取命名空間改用合成網址，不再讀已移除的設定。
+- `portal.config.ts` 只刪掉引用 `FeastogetherConfig` 的註解；`client/src/app/not-found.tsx` 的 Feastogether 是品牌文字，保留。`specs/` 內的歷史規格仍提到這個模組，屬歷史紀錄，不改。
+- UAT `server.env` 若還有 `FEASTOGETHER_*`：`validateAppEnvironment` 只驗指定欄位並原樣保留其他值，沒有程式讀它們，不會讓開機失敗；由 ticket 08 清掉。
+
+驗證：
+
+- `pnpm -C server lint:check`：0 errors、271 warnings（兩個 commit 都沒有新增）。
+- `pnpm -C server test`：第一個 commit 127 suites／1275 tests；本 commit 123 suites／1265 tests（刪掉 4 個 spec 檔）。
+- `pnpm -C server build`：成功。
+- `pnpm -C server test:e2e:security`：兩個 commit 都是 19 suites／157 tests 通過（含新檔 20 tests）。
+- `pnpm -C server test:e2e`：第一個 commit 562 tests 中 560 passed、1 skipped、1 failed（跑完後才補 `oauth-login`、`webview-session` 的清理語句，兩檔重跑 22 tests 通過）；本 commit 561 tests 中 559 passed、1 skipped、1 failed（刪掉 1 個案例）；唯一失敗是既有 `api-coverage` 的 history 路由。
+- `pnpm -C client lint`、`pnpm -C client build`：成功。

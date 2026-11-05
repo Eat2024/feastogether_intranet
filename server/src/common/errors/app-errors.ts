@@ -552,21 +552,6 @@ export const AppErrors = {
     '查無此簽章或驗證碼無效',
     HttpStatus.NOT_FOUND,
   ],
-  FEASTOGETHER_CONFIG_MISSING: [
-    AppErrorCode.EXTERNAL_AUTH_UNAVAILABLE,
-    '饗賓 API 未設定（缺少連線環境變數）',
-    HttpStatus.BAD_GATEWAY,
-  ],
-  FEASTOGETHER_UNAUTHORIZED: [
-    AppErrorCode.UNAUTHORIZED,
-    '饗賓授權已失效，請重新登入',
-    HttpStatus.UNAUTHORIZED,
-  ],
-  FEASTOGETHER_UNAVAILABLE: [
-    AppErrorCode.EATOGETHER_API_SERVICE_UNAVAILABLE,
-    '饗賓服務暫時無法使用',
-    HttpStatus.BAD_GATEWAY,
-  ],
   LOGIN_REQUIRED: [
     AppErrorCode.UNAUTHORIZED,
     '需登入才能操作',

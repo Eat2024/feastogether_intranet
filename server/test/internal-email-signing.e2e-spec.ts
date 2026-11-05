@@ -1,7 +1,5 @@
 import { completeInitiation } from './helpers/await-initiation';
-import { HttpService } from '@nestjs/axios';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { of } from 'rxjs';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { User } from '#app/features/users/entities/user.entity';
@@ -28,23 +26,8 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
   let users: User[];
   let cookies: string[];
   const origin = 'http://localhost:3000';
-  const http = {
-    get: jest.fn(),
-    post: (_url: string, body: { person_empids: string[] }) =>
-      of({
-        data: {
-          success: true,
-          data: body.person_empids.map((person_empid) => ({
-            person_empid,
-            email: 'shared@example.test',
-          })),
-        },
-      }),
-  };
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(HttpService).useValue(http),
-    );
+    ctx = await createSecurityE2eApp();
     mailFixture(ctx).allowEmails([
       'shared@example.test',
       'shared0@example.test',

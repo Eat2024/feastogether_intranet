@@ -27,7 +27,7 @@ hooks 不修改 staged 檔案、不自動 format；檢查 working tree。GitHub 
 
 固定部署目錄為 `/home/feasteng/deploy/intranet-uat`，目錄權限 700，以下兩份機密檔案權限 600，不提交 Git：
 
-1. `server.env`：SMTP、饗賓 API、Portal 唯讀連線（`PORTAL_MYSQL_*`）、WebView 公鑰、HTTPS origins 與邀請加密金鑰，欄位與 Portal 帳號所需權限見 `server/.env.example`。
+1. `server.env`：SMTP、Portal 唯讀連線（`PORTAL_MYSQL_*`）、WebView 公鑰、HTTPS origins 與邀請加密金鑰，欄位與 Portal 帳號所需權限見 `server/.env.example`。
 2. `migration.env`：沿用這次手動 RDS 切換成功的檔案，現在由 server、worker、migration 及備份共用資料庫連線設定。包含 `DB_MYSQL_HOST`、`DB_MYSQL_PORT`、`DB_MYSQL_DB`、`DB_MYSQL_USER`、`DB_MYSQL_PASS`、`DB_MYSQL_SSL_CA_B64`；不要放 SMTP 等非資料庫設定。
 
 Compose 先讀 server.env，再以 `format: raw` 讀 migration.env 覆蓋 DB 設定，保留密碼中的 `$`／`#`。後者密碼不加引號；若加引號，引號會成為密碼的一部分。不得再加入 Compose environment 的本機 MySQL 覆寫。需要 Docker Compose 2.30.0 以上；目前 UAT 是 2.40.3。

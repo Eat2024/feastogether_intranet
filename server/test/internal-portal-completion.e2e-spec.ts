@@ -9,9 +9,7 @@ import {
   ESIGN_EXTERNAL_INVITATION_QUEUE,
   ESIGN_MAINTENANCE_QUEUE,
 } from '#app/features/esign/esign-queue.constants';
-import { HttpService } from '@nestjs/axios';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { of } from 'rxjs';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { User } from '#app/features/users/entities/user.entity';
@@ -38,23 +36,8 @@ describe('Spec016 員工拒簽與本人副本', () => {
   let users: User[];
   let cookies: string[];
   const origin = 'http://localhost:3000';
-  const http = {
-    get: jest.fn(),
-    post: (_url: string, body: { person_empids: string[] }) =>
-      of({
-        data: {
-          success: true,
-          data: body.person_empids.map((person_empid) => ({
-            person_empid,
-            email: 'shared@example.test',
-          })),
-        },
-      }),
-  };
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(HttpService).useValue(http),
-    );
+    ctx = await createSecurityE2eApp();
     for (const name of [
       ESIGN_DOCUMENT_INITIATION_QUEUE,
       ESIGN_DOCUMENT_FINALIZATION_QUEUE,

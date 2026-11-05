@@ -11,7 +11,6 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   ACCOUNT_DISABLED: '帳號已停用，請聯繫管理員',
   REFUSE_SERVICE: '操作過於頻繁，請稍後再試',
   CSRF_ORIGIN_REJECTED: '請求來源不允許，請重新整理頁面後再試',
-  EXTERNAL_AUTH_UNAVAILABLE: '登入服務暫時無法使用，請稍後再試',
   AUTH_EXCHANGE_FAILED: '登入驗證失敗，請重新登入',
   AUTH_DB_UNAVAILABLE: '登入服務暫時無法使用，請稍後再試',
   AUTH_SUPER_USER_CREDENTIALS_INVALID: '帳號或密碼錯誤',
@@ -41,7 +40,6 @@ export const ERROR_CODE_MAP: Record<string, string> = {
 
   // --- 外部服務 ---
   STAFF_LOOKUP_FAILED: '查詢員工資料失敗，請稍後再試',
-  EATOGETHER_API_SERVICE_UNAVAILABLE: '外部服務暫時無法使用，請稍後再試',
 
   // --- Server ---
   INTERNAL_ERROR: '伺服器發生錯誤，請稍後再試',

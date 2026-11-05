@@ -12,7 +12,6 @@ import { NotificationRepository } from '#app/features/esign/repositories/notific
 import { SignerRepository } from '#app/features/esign/repositories/signer.repository';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
-import { HttpService } from '@nestjs/axios';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue, Job } from 'bullmq';
@@ -48,7 +47,6 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
   const peak = 0;
   let batches: number[] = [];
   const origin = 'http://localhost:3000';
-  const http = { get: jest.fn(), post: jest.fn() };
   let accessLog: jest.SpyInstance;
   let warn: jest.SpyInstance;
   let error: jest.SpyInstance;
@@ -126,9 +124,7 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
     );
   };
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(HttpService).useValue(http),
-    );
+    ctx = await createSecurityE2eApp();
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = `C${randomBytes(4).toString('hex')}`;
     const employeeNos = Array.from(
@@ -171,9 +167,6 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
     accessLog = jest.spyOn(ctx.app.get(HttpAccessLoggerService), 'write');
     warn = jest.spyOn(ctx.app.get(AppLoggerService), 'warn');
     error = jest.spyOn(ctx.app.get(AppLoggerService), 'error');
-    http.post.mockImplementation(() => {
-      throw new Error('不應呼叫人資信箱');
-    });
   }, 60000);
   afterAll(async () => {
     if (!ctx) return;
@@ -279,12 +272,10 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
     await closeSecurityE2eApp(ctx);
   }, 60000);
 
-  it('已移除的信箱預檢回404且不呼叫來源，OpenAPI不再發布此功能', async () => {
-    const previousRequests = http.post.mock.calls.length;
+  it('已移除的信箱預檢回404，OpenAPI不再發布此功能', async () => {
     await post(`/api/esign/documents/${documentId}/employee-email-checks`, {
       userIds: [String(users[0].id)],
     }).expect(404);
-    expect(http.post.mock.calls.length).toBe(previousRequests);
     const api = SwaggerModule.createDocument(
       ctx.app,
       new DocumentBuilder().build(),
@@ -321,7 +312,6 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
         expect(
           items.map((item) => [item.employeeNo, item.userId, item.status]),
         ).toEqual(selected.map((u) => [u.empid, String(u.id), 'resolved']));
-        expect(http.get).not.toHaveBeenCalled();
       });
       await measure('initiation-email-resolution', count, async () => {
         // 發起仍使用同一信箱解析服務；以真實帳號資料確認批次及員工對應。
@@ -336,7 +326,6 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
         expect(selected.map((u) => map.get(u.id)?.email)).toEqual(
           selected.map((u) => email(u.empid).toLowerCase()),
         );
-        expect(http.post).not.toHaveBeenCalled();
         expect(batches).toEqual([]);
         expect(active).toBe(0);
       });
@@ -396,7 +385,6 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
           >("SELECT (SELECT COUNT(*) FROM esign_notification_batches WHERE document_id=?) batches,(SELECT COUNT(*) FROM esign_documents WHERE id=? AND status='active') initiated", [documentId, documentId]);
         expect(Number(counts.batches)).toBe(0);
         expect(Number(counts.initiated)).toBe(0);
-        expect(http.post).not.toHaveBeenCalled();
       });
       fault.mockRestore();
     },
@@ -559,7 +547,6 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
       expect(result.signers.map((s) => [s.type, s.email])).toEqual(
         users.map((u) => ['user', email(u.empid).toLowerCase()]),
       );
-      expect(http.post).not.toHaveBeenCalled();
       expect(batches).toEqual([]);
       const manager = ctx.app.get(MysqlService).getManager();
       const logs = await manager.query<

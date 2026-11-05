@@ -1,12 +1,10 @@
 import { completeInitiation } from './helpers/await-initiation';
-import { HttpService } from '@nestjs/axios';
 import { getQueueToken } from '@nestjs/bullmq';
 import { type INestApplicationContext } from '@nestjs/common';
 import { type Job, type Queue } from 'bullmq';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { PDFDocument } from 'pdf-lib';
-import { of } from 'rxjs';
 import request from 'supertest';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
@@ -60,20 +58,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
   const queues: Queue[] = [];
   const origin = 'http://localhost:3000';
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(HttpService).useValue({
-        post: (_url: string, body: { person_empids: string[] }) =>
-          of({
-            data: {
-              success: true,
-              data: body.person_empids.map((person_empid) => ({
-                person_empid,
-                email: 'copy@example.test',
-              })),
-            },
-          }),
-      }),
-    );
+    ctx = await createSecurityE2eApp();
     mailFixture(ctx).allowEmails([
       'copy@example.test',
       'copy0@example.test',

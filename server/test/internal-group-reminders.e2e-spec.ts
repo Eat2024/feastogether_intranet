@@ -1,7 +1,5 @@
 import { completeInitiation } from './helpers/await-initiation';
-import { HttpService } from '@nestjs/axios';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { of } from 'rxjs';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import type { Job } from 'bullmq';
@@ -27,7 +25,6 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
   let cookie: string;
   let users: User[];
   const origin = 'http://localhost:3000';
-  const http = { get: jest.fn(), post: jest.fn() };
   const jobs = {
     enqueueInitiation: jest.fn(),
     enqueueInvitations: jest.fn(),
@@ -35,11 +32,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
   };
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
-      builder
-        .overrideProvider(HttpService)
-        .useValue(http)
-        .overrideProvider(EsignJobProducerService)
-        .useValue(jobs),
+      builder.overrideProvider(EsignJobProducerService).useValue(jobs),
     );
     mailFixture(ctx).allowEmails([
       'shared@example.test',
@@ -63,18 +56,6 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
       users.map((user) => `${user.empid.toLowerCase()}@example.test`),
     );
     cookie = await employeeSessionCookie(ctx.app, users[0].id);
-    http.post.mockImplementation(
-      (_url: string, body: { person_empids: string[] }) =>
-        of({
-          data: {
-            success: true,
-            data: body.person_empids.map((person_empid) => ({
-              person_empid,
-              email: `${person_empid.toLowerCase()}@example.test`,
-            })),
-          },
-        }),
-    );
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);

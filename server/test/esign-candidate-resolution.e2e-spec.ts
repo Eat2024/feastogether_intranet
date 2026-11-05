@@ -2,7 +2,6 @@ import { UserRepository } from '#app/features/users/repositories/user.repository
 import { randomUUID } from 'node:crypto';
 import { SessionService } from '#app/features/auth/services/session.service';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
-import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { User } from '#app/features/users/entities/user.entity';
 import { In } from 'typeorm';
@@ -23,7 +22,6 @@ const headers = {
 describe('員工解析 HTTP', () => {
   let ctx: SecurityE2eContext;
   const employeeNos: string[] = [];
-  const source = { get: jest.fn() };
   const employeeNo = () => {
     const value = randomUUID().replaceAll('-', '').slice(0, 8);
     employeeNos.push(value);
@@ -32,21 +30,16 @@ describe('員工解析 HTTP', () => {
   beforeAll(async () => {
     assertTestRedisDb();
     ctx = await createSecurityE2eApp((builder) =>
-      builder
-        .overrideProvider(FeastogetherClient)
-        .useValue(source)
-        .overrideProvider(SessionService)
-        .useValue({
-          authenticate: (token: string) =>
-            Promise.resolve(
-              token === 'synthetic-resolution-session'
-                ? { actor: { kind: 'employee', userId: 1 }, user: {} }
-                : null,
-            ),
-        }),
+      builder.overrideProvider(SessionService).useValue({
+        authenticate: (token: string) =>
+          Promise.resolve(
+            token === 'synthetic-resolution-session'
+              ? { actor: { kind: 'employee', userId: 1 }, user: {} }
+              : null,
+          ),
+      }),
     );
   });
-  beforeEach(() => source.get.mockReset());
   afterEach(() => jest.restoreAllMocks());
   afterAll(async () => {
     if (ctx) {
@@ -59,17 +52,9 @@ describe('員工解析 HTTP', () => {
     }
   });
 
-  it('GET 查無完整員編仍為唯讀，不呼叫來源或匯入帳號', async () => {
+  it('GET 查無完整員編仍為唯讀，不匯入帳號', async () => {
     const empid = '0' + String(Date.now()).slice(-7);
     employeeNos.push(empid);
-    source.get.mockResolvedValue([
-      {
-        person_empid: empid,
-        person_name: '合成員工',
-        person_status: 1,
-        person_status_name: '正式',
-      },
-    ]);
     const response = await ctx.app.inject({
       method: 'GET',
       url: `${route}?q=${empid}`,
@@ -77,7 +62,6 @@ describe('員工解析 HTTP', () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json<{ data: unknown }>().data).toEqual([]);
-    expect(source.get).not.toHaveBeenCalled();
   });
 
   it('POST 解析完整員編並依首次順序去重，結果不含信箱', async () => {
@@ -122,7 +106,6 @@ describe('員工解析 HTTP', () => {
       headers,
     });
     expect(search.json<{ data: unknown[] }>().data).toHaveLength(1);
-    source.get.mockRejectedValue(new Error('來源不應再被查詢'));
     const repeat = await ctx.app.inject({
       method: 'POST',
       url: `${route}/resolutions`,
@@ -194,7 +177,6 @@ describe('員工解析 HTTP', () => {
       { employeeNo: 'short', status: 'unavailable' },
       { employeeNo: '1234', status: 'unavailable' },
     ]);
-    expect(source.get).not.toHaveBeenCalled();
   });
 
   it('並發解析同員編只回同一帳號，GET 也只看到一人', async () => {
@@ -250,10 +232,9 @@ describe('員工解析 HTTP', () => {
       payload,
     });
     expect(response.statusCode).toBe(400);
-    expect(source.get).not.toHaveBeenCalled();
   });
 
-  it('缺少 session、跨站或無 Origin 拒絕且不查來源', async () => {
+  it('缺少 session、跨站或無 Origin 拒絕', async () => {
     for (const [requestHeaders, status] of [
       [{ origin: headers.origin }, 401],
       [{ ...headers, origin: 'https://cross-site.invalid' }, 403],
@@ -267,55 +248,6 @@ describe('員工解析 HTTP', () => {
       });
       expect(response.statusCode).toBe(status);
     }
-    expect(source.get).not.toHaveBeenCalled();
-  });
-
-  it('來源非精確相符、資格不符或重複皆不建立帳號', async () => {
-    const empid = employeeNo();
-    for (const rows of [
-      [],
-      Array.from({ length: 2 }, () => ({
-        person_empid: empid,
-        person_name: '合成重複員工',
-        person_status: 1,
-        person_status_name: '正式',
-      })),
-      [
-        {
-          person_empid: 'other123',
-          person_name: '合成員工',
-          person_status: 1,
-          person_status_name: '正式',
-        },
-      ],
-      [
-        {
-          person_empid: empid,
-          person_name: '合成員工',
-          person_status: 3,
-          person_status_name: '離職',
-        },
-      ],
-    ]) {
-      source.get.mockResolvedValue(rows);
-      const response = await ctx.app.inject({
-        method: 'POST',
-        url: `${route}/resolutions`,
-        headers,
-        payload: { employeeNos: [empid] },
-      });
-      expect(response.statusCode).toBe(200);
-      expect(
-        response.json<{ data: { items: { status: string }[] } }>().data.items[0]
-          .status,
-      ).toBe('unavailable');
-    }
-    const search = await ctx.app.inject({
-      method: 'GET',
-      url: `${route}?q=${empid}`,
-      headers,
-    });
-    expect(search.json<{ data: unknown[] }>().data).toEqual([]);
   });
 
   it('可接受 100 個與 1／20 碼邊界，去重後保留完整字串', async () => {
@@ -334,7 +266,6 @@ describe('員工解析 HTTP', () => {
         .json<{ data: { items: { employeeNo: string }[] } }>()
         .data.items.map((item) => item.employeeNo),
     ).toEqual(['0', '00000000000000000001']);
-    expect(source.get).not.toHaveBeenCalled();
   });
 
   it('缺帳號不建帳，精確員編大小寫不匹配仍 unavailable', async () => {
@@ -364,7 +295,6 @@ describe('員工解析 HTTP', () => {
         .getManager()
         .findOneBy(User, { empid: missing }),
     ).toBeNull();
-    expect(source.get).not.toHaveBeenCalled();
   });
 
   it('Swagger 描述解析成功 envelope 與穩定錯誤', () => {

@@ -25,16 +25,16 @@ import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
 import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { PortalModule } from '#app/infrastructure/portal/portal.module';
 import { AuthController } from './controllers/auth.controller';
-import { AuthSecurityEventService } from './services/auth-security-event.service';
 import { AuthService } from './services/auth.service';
 import { EligibleStaffService } from './services/eligible-staff.service';
 import { SessionService } from './services/session.service';
-import { SuperUserConfigService } from './services/super-user-config.service';
+import { SuperUserAccessModule } from './super-user-access.module';
 
 /** WebView SSO、OAuth 統一登入與 Super user 共用 MySQL opaque session。 */
 @Module({
   imports: [
     MysqlModule,
+    SuperUserAccessModule,
     FeastogetherModule,
     PortalModule,
     OauthModule,
@@ -63,8 +63,6 @@ import { SuperUserConfigService } from './services/super-user-config.service';
   providers: [
     AuthService,
     SessionService,
-    SuperUserConfigService,
-    AuthSecurityEventService,
     EligibleStaffService,
     OauthLoginService,
     OauthIdentityService,

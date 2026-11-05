@@ -88,3 +88,24 @@ same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟�
 - 員工回歸：`pnpm -C server test` 122 suites／1238 tests、`pnpm -C server test:e2e:security` 15 suites／91 tests、`pnpm -C server build`、`pnpm -C server lint:check`（0 errors；新檔無 warning）。
 - `pnpm -C server test:e2e`：542 passed／1 skipped／1 failed；失敗為 `api-coverage` 的 `GET /api/esign/documents/{id}/history`（路由已在本張前由 `9344734` 移除，但 003 openapi 仍列出），與本張無關。`webview-session`、`oauth-login`、`password-login` 3 suites／36 tests 通過。
 - 未執行：client lint／build 與 root build／lint（本張未改 client）；兩實例、iframe 瀏覽器、代理遮罩（尚無對應功能）。
+
+### 027-03 窄 REPL 初始化與查詢（T015、T016）
+
+範圍只有 1、3 節中的 REPL 初始化與唯讀查詢；隱藏登入、週輪換與帳密啟用尚未存在。
+
+- 自動測試：`src/features/auth/helpers/rotation-period.spec.ts` 8 tests，涵蓋週一 03:59:59.999／04:00、週日深夜、UTC 與台北跨日、跨年；在 `TZ=UTC`／`America/New_York`／`Pacific/Chatham` 下結果相同。`test/super-user-console.e2e-spec.ts` 10 tests（`feastogether_intranet_test_a`），驗證：
+  - 窄模組圖不含 App／Worker／Framework／Infrastructure／Auth／BullRoot／Redis／Portal／Mail／FileStorage，啟動不寫入；`auth` 只有三個 helper。
+  - 未初始化時查詢回 503 且不寫入。
+  - 初始化欄位與兩筆 operator 事件；重複初始化不覆寫；兩交易並發只成功一次；事件失敗整筆 rollback。
+  - 查詢結果欄位完全等於契約且前後資料不變；fingerprint 不符時 `localConfigMatches=false`；`close()` 後連線池已銷毀。
+- 初始化交易沿用預設 REPEATABLE READ。若在 INSERT 前先做 `FOR UPDATE`，空表 gap lock 會讓並發初始化 2/2 次 deadlock；實作直接以 INSERT 競爭 PK=1，因此不需要 READ COMMITTED。
+- 開發庫 `feastogether_intranet_027a`：以 pty 操作 `pnpm -C server repl:dev`，依序 `currentEntry()`（503）→ `initialize()`（`initialized:true`）→ `credentialStatus()`（generation 1、`localConfigMatches:true`）→ `currentEntry()`（`/ops-access/<遮罩>`、entryGeneration 1、nextScheduledAt 台北下週一 04:00）→ `initialize()`（`initialized:false`）→ `.exit`（exit 0）。
+- 建置後 `pnpm -C server repl`：
+  - `initialize()` 回 false；`currentEntry()`／`credentialStatus()` 與開發模式一致。
+  - `get`／`$`／`select`／`debug`／`methods` 都不存在。
+  - session 中 DB 連線 1 條，`.exit` 後 0 條。
+  - 設定 `NODE_REPL_HISTORY` 也不會產生 history 檔。
+  - hash 格式錯誤時啟動 exit 1，訊息不含值。
+- 回歸：`pnpm -C server test` 123 suites／1246 tests；`test:e2e:security` 15 suites／91 tests；`test:schema` 6 suites／39 tests（無臨時庫殘留）；`test:e2e` 552 passed／1 skipped／1 failed（既有 `api-coverage` history 路由，同 027-02）；`lint:check` 0 errors；`build` 成功。
+- 展示後已刪除開發庫的 singleton 與兩筆 operator 事件。
+- 未執行：實際 spawn REPL 的自動化測試（留給 T043）；client 與 root build／lint（本張未改 client）。

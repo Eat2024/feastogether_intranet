@@ -27,9 +27,9 @@ function nowStr() {
 export type ActionResult = { error: string } | undefined;
 
 function revalidateLists() {
-  // 'layout'：連同 /forms/[id] 等子頁面一起更新
-  revalidatePath('/forms', 'layout');
-  revalidatePath('/my-signature');
+  // 'layout'：連同 /esign/forms/[id] 等子頁面一起更新
+  revalidatePath('/esign/forms', 'layout');
+  revalidatePath('/esign/my-signature');
 }
 
 /** 步驟二：儲存簽署人與簽署期間；publish 為 true 時同時發起簽署 */
@@ -83,7 +83,7 @@ export async function saveSigners(input: {
   if (!input.publish) {
     updateForm(form.id, { signers, options });
     revalidateLists();
-    redirect('/forms?flash=saved');
+    redirect('/esign/forms?flash=saved');
   }
 
   updateForm(form.id, {
@@ -94,7 +94,7 @@ export async function saveSigners(input: {
     endAt: input.deadline.end,
   });
   revalidateLists();
-  redirect(`/forms?flash=published&count=${signers.length}`);
+  redirect(`/esign/forms?flash=published&count=${signers.length}`);
 }
 
 /** 通知（提醒）簽署人；未指定 signerIds 時通知所有待簽署者。只會通知待簽署的人，回傳實際通知人數 */
@@ -180,8 +180,8 @@ export async function saveSheetDocument(input: {
     }
     updateForm(form.id, { name, sheet, docType: 'sheet', upload: undefined });
     revalidateLists();
-    if (form.status === 'draft') redirect(`/forms/${form.id}/signers`);
-    redirect('/forms?flash=updated');
+    if (form.status === 'draft') redirect(`/esign/forms/${form.id}/signers`);
+    redirect('/esign/forms?flash=updated');
   }
 
   const id = `f${Date.now()}`;
@@ -201,7 +201,7 @@ export async function saveSheetDocument(input: {
     options: { watermark: false, allowReject: false },
   });
   revalidateLists();
-  redirect(`/forms/${id}/signers`);
+  redirect(`/esign/forms/${id}/signers`);
 }
 
 /**

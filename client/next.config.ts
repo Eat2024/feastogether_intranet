@@ -44,6 +44,15 @@ const nextConfig: NextConfig = {
     ];
   },
 
+  // 電子簽頁面已移到 /esign 底下，舊網址（書籤、既有連結）轉到新位置；
+  // 不設為永久轉址，避免瀏覽器長期快取
+  async redirects() {
+    return ["forms", "my-signature", "export-history"].flatMap((page) => [
+      { source: `/${page}`, destination: `/esign/${page}`, permanent: false },
+      { source: `/${page}/:path*`, destination: `/esign/${page}/:path*`, permanent: false },
+    ]);
+  },
+
   async rewrites() {
     return [
       {

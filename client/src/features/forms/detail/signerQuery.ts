@@ -78,7 +78,7 @@ export function signerHref(formId: string, query: SignerQuery, change: Partial<S
   }
   if (next.page > 1) qs.set('page', String(next.page));
   const s = qs.toString();
-  return s ? `/forms/${formId}?${s}` : `/forms/${formId}`;
+  return s ? `/esign/forms/${formId}?${s}` : `/esign/forms/${formId}`;
 }
 
 export const nextSignerSort = nextSortState<SignerSortKey>;

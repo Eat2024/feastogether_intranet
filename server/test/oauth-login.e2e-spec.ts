@@ -126,7 +126,7 @@ describe('OAuth 登入 HTTP 整合', () => {
     const started = await request(ctx.server)
       .post('/api/auth/oauth/start')
       .set('Origin', 'http://localhost:3000')
-      .send({ redirectTo: '/forms/42' })
+      .send({ redirectTo: '/esign/forms/42' })
       .expect(200);
     const state = new URL(
       apiData<{ authorizationUrl: string }>(started).authorizationUrl,
@@ -149,7 +149,7 @@ describe('OAuth 登入 HTTP 整合', () => {
       .send(callback)
       .expect(200);
     expect(apiData<{ redirectTo: string }>(completed).redirectTo).toBe(
-      '/forms/42',
+      '/esign/forms/42',
     );
     expect(completed.text).not.toContain('synthetic-provider-token');
     const cookies: unknown = completed.headers['set-cookie'];

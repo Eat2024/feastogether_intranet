@@ -158,7 +158,7 @@ export default function SheetEditor({ form, locked = false }: { form?: EFormDoc;
       {error && <Alert severity="error">{error}</Alert>}
 
       <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-        <Button size="large" variant="outlined" href="/forms" disabled={pending}>
+        <Button size="large" variant="outlined" href="/esign/forms" disabled={pending}>
           取消
         </Button>
         {!locked && (

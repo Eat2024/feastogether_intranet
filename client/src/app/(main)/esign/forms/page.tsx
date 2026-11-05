@@ -31,7 +31,7 @@ export default function FormsPage() {
             size="large"
             variant="contained"
             startIcon={<AddRoundedIcon />}
-            href="/forms/new"
+            href="/esign/forms/new"
           >
             新增電子簽文件
           </Button>

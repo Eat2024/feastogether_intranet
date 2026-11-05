@@ -33,6 +33,7 @@ pnpm start
 - `src/features/my-signature/`：目前使用者的待簽／已簽流程與簽名處理。
 - `src/api/`：呼叫 NestJS 後端（`server/`）的 API 層，見下方「呼叫後端 API」。
 - `src/components/`：跨 feature 共用的 UI 元件；`src/components/providers/` 放全站 Provider（TanStack Query、Snackbar）。
+- `src/components/sidebar/`：`(main)` 的側邊欄（版型移植自 CKS_Acceptance_System，可收合為圖示模式；收合狀態存在 `sidebar_open` cookie，由 `(main)/layout.tsx` 在伺服器端讀取，避免重新整理時先展開再收合）。頂端切換服務，選單依網址前綴判斷目前服務；新增服務或選單項目只改 `services.ts` 的 `SERVICES`。每個服務的頁面放在 `(main)` 底下自己的網址前綴（電子簽 `/esign`、旅遊平台 `/travel`），新增服務時同步加進 proxy 的 `matcher`。電子簽舊網址（`/forms` 等）由 `next.config.ts` 的 `redirects` 轉到 `/esign`。旅遊平台目前只有權限管理的佔位頁。
 - `src/lib/`：無 feature 歸屬的純工具函式。
 - `src/theme/tokens.ts`：唯一的 design token 來源。
 - `src/theme/theme.ts`：唯一的 MUI theme 與全域 component overrides。
@@ -81,7 +82,7 @@ pnpm start
 - 日期使用 `YYYY/MM/DD`，時間使用 `YYYY/MM/DD HH:mm`；現有排序依賴此格式可直接做字串比較。若要改格式，必須同步檢查排序、期限與匯出邏輯。
 - 員工簽署人 ID 來自組織資料；外部 Email 簽署人 ID 使用 `emailSignerId()` 產生。Email 寫入前須 normalize 並驗證。
 - 文件已有簽署紀錄或已停止時，不得再修改受保護的文件／簽署設定，除非需求明確改變這項規則。
-- mutation 後要重新驗證 `/forms` 與 `/my-signature` 的相關畫面，避免列表與詳情狀態不同步。
+- mutation 後要重新驗證 `/esign/forms` 與 `/esign/my-signature` 的相關畫面，避免列表與詳情狀態不同步。
 - 簽到表原型的 mock store 會原地修改物件；新增排序／篩選時回傳新陣列，不要重排 store 內的原始陣列。
 
 ## 簽名與隱私

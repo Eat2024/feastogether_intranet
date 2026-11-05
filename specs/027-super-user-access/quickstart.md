@@ -480,7 +480,7 @@ client 沒有 test script，未宣稱跑過 client 自動測試。
 **限制與未完成**
 
 - 部署阻擋：Nginx 8080／ALB 完整入口 URL 遮罩在 repo 外，未解除。
-- Spec 028 之前：Super user 登入後落在 `/forms` 看到業務 403；會話過期對話框仍是員工版文案。
+- Spec 028 之前：Super user 登入後經 `/` 轉到 `/esign/forms`（dev 的 PR #59 把電子簽頁面移到 `/esign`）看到業務 403；會話過期對話框仍是員工版文案。
 - OAuth 瀏覽器入口（前端）不在 027，留待後續 spec。
 - 登入 commit 後回應遺失：新會話已生效、舊會話已撤銷，瀏覽器沒有拿到新 cookie，只能重新登入。兩個分頁在沒有舊 cookie 時同時登入，兩筆都成功，瀏覽器只留最後收到的 cookie，另一筆會話留到 8 小時到期。
 - 輪換依各 worker 主機時鐘，需 NTP。job 3 次重試（約 5＋10 秒）都失敗後，要等下週排程、worker 重啟或 REPL `rotateEntryIfDue()`。

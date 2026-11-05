@@ -36,8 +36,8 @@ function findMe(formId: string): { signer: Signer; form: NonNullable<ReturnType<
 }
 
 function revalidateLists() {
-  revalidatePath('/forms');
-  revalidatePath('/my-signature', 'layout');
+  revalidatePath('/esign/forms');
+  revalidatePath('/esign/my-signature', 'layout');
 }
 
 /** 送出簽署：每個簽名欄位都必須有手寫簽名 */
@@ -82,6 +82,6 @@ export async function signDocument(input: {
     ...(form.docType === 'sheet' && remark.remark ? { remark: remark.remark } : {}),
   } satisfies Partial<Signer>);
   revalidateLists();
-  redirect('/my-signature?tab=signed&flash=signed');
+  redirect('/esign/my-signature?tab=signed&flash=signed');
 }
 

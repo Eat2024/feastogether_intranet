@@ -344,7 +344,7 @@ export default function UploadEditor({
     meta: { suppressGlobalErrorToast: true },
     onSuccess: ({ id }) => {
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
-      router.push(`/forms/${id}/signers`);
+      router.push(`/esign/forms/${id}/signers`);
     },
     onError: (err) => setErrors({ submit: getErrorMessage(err, "建立文件失敗，請稍後再試") }),
   });
@@ -354,7 +354,7 @@ export default function UploadEditor({
     onSuccess: ({ id }) => {
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, id] });
-      router.push(`/forms/${id}/signers`);
+      router.push(`/esign/forms/${id}/signers`);
     },
     onError: (err) => setErrors({ submit: getErrorMessage(err, "儲存失敗，請稍後再試") }),
   });
@@ -975,7 +975,7 @@ export default function UploadEditor({
         <Button
           size="large"
           variant="outlined"
-          href="/forms"
+          href="/esign/forms"
           disabled={saving}
         >
           {locked ? "返回列表" : "取消"}

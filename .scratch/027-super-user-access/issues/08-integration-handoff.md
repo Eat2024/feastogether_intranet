@@ -55,11 +55,12 @@
 **未驗證／限制**
 
 - UAT compose 的 `run`／`exec` 需要主機路徑，以本機 `docker run -it` 驗證同一 image 指令。正式 HTTPS 下 `SameSite=None; Secure` 未在瀏覽器實測（本機為 Lax）。
-- Super user 在 028 前落在 `/forms` 看到業務 403、過期對話框是員工文案；OAuth 瀏覽器入口不在 027。
+- Super user 在 028 前經 `/` 轉到 `/esign/forms` 看到業務 403、過期對話框是員工文案；OAuth 瀏覽器入口不在 027。
 - commit 後回應遺失需重新登入；兩分頁無舊 cookie 並發登入時，另一筆會話留到 8 小時到期。
 - 輪換需 NTP；3 次重試後等下次排程、worker 重啟或 REPL 補做。REPL 一次貼多行不等 `await`。
 - 員工 e2e 在測試庫累積 `login.succeeded`，該庫的 down 會被拒絕。
-- UAT 自動部署無法在 migration 與啟動之間暫停，`initialize()` 改在部署成功後執行。
+- UAT 自動部署無法在 migration 與啟動之間暫停，`initialize()` 改在部署成功後執行（期間維護登入 503、員工不受影響）。使用者決定維持，不改 `deploy-uat.sh`。
+- guard 或框架層擋下的錯誤回應不帶 `Cache-Control: no-store`，契約已依實作描述。使用者決定維持（回應不含身分或入口資料）。
 - 範圍外觀察：Next 404 頁在 standalone 帶 `s-maxage=31536000`（既有 not-found 行為，未處理）。
 
 ### 整合紀錄

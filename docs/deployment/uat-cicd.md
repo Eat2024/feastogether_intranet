@@ -115,7 +115,7 @@ docker compose --env-file /dev/null -f docker-compose.uat.yml exec worker node d
 3. 套用 migration（`1793836802000-SuperUserAccess`）。
 4. 以新版 image 的 REPL 執行 `await auth.initialize()`。
 5. 啟動新版 HTTP／worker。
-6. REPL `await auth.credentialStatus()` 應為 `localConfigMatches: true`；`await auth.currentEntry()` 取得 path，在瀏覽器直接開啟「HTTPS 前端 origin＋path」（不放 iframe）並登入。看到「目前身分：Super user」後登出。登入後落在 `/forms` 並顯示「目前身分無法使用此功能」是 028 之前的預期結果。
+6. REPL `await auth.credentialStatus()` 應為 `localConfigMatches: true`；`await auth.currentEntry()` 取得 path，在瀏覽器直接開啟「HTTPS 前端 origin＋path」（不放 iframe）並登入。看到「目前身分：Super user」後登出。登入後經 `/` 轉到 `/esign/forms` 並顯示「目前身分無法使用此功能」是 028 之前的預期結果。
 7. 開流量。
 
 UAT 由 workflow 自動執行 2、3、5：有 pending migration 時依序停止服務、備份、migration、啟動新版並 smoke，中間不停下來讓人執行 REPL。所以 UAT 在部署成功後才做 4 與 6：
@@ -159,7 +159,7 @@ commit 之後、全部實例重啟之前：舊設定實例的維護登入與新�
 
 ### 身分邊界（Spec 028 之前）
 
-- Super user 只能讀取目前身分與登出（`GET`／`DELETE /api/auth/session`）；其他需要會話的 API 回 403 `AUTH_ACTOR_NOT_ALLOWED`。登入後落在 `/forms` 並顯示「目前身分無法使用此功能」，會話過期對話框仍是員工版文案；028 接入業務授權前維持現狀。
+- Super user 只能讀取目前身分與登出（`GET`／`DELETE /api/auth/session`）；其他需要會話的 API 回 403 `AUTH_ACTOR_NOT_ALLOWED`。登入後經 `/` 轉到 `/esign/forms` 並顯示「目前身分無法使用此功能」，會話過期對話框仍是員工版文案；028 接入業務授權前維持現狀。
 - 員工只能經 OAuth 或主平台 WebView 登入；一般員工帳密登入與開發替代入口已移除，舊路徑回 404。
 
 ### 回退

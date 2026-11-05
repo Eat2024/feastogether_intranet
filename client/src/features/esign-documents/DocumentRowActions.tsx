@@ -24,7 +24,7 @@ export default function DocumentRowActions({
         label="發起簽署"
         icon={<SendRoundedIcon />}
         color="info"
-        href={`/forms/${doc.id}/signers`}
+        href={`/esign/forms/${doc.id}/signers`}
         disabled={doc.status !== 'draft'}
       />
       {/* 檢視簽署進度與歷程（草稿尚無進度，停用） */}
@@ -32,7 +32,7 @@ export default function DocumentRowActions({
         label="檢視"
         icon={<VisibilityRoundedIcon />}
         color="info"
-        href={`/forms/${doc.id}`}
+        href={`/esign/forms/${doc.id}`}
         disabled={doc.status === 'draft' || doc.status === 'initiating'}
       />
       {/* 匯出簽署紀錄（草稿尚無簽署資料，停用） */}
@@ -40,7 +40,7 @@ export default function DocumentRowActions({
         label="匯出"
         icon={<FileDownloadRoundedIcon />}
         color="info"
-        href={`/forms/${doc.id}/export`}
+        href={`/esign/forms/${doc.id}/export`}
         disabled={doc.status === 'draft' || doc.status === 'initiating'}
       />
       {/* 後端只允許修改尚未發起的草稿 */}
@@ -48,7 +48,7 @@ export default function DocumentRowActions({
         label={doc.status === 'draft' ? '編輯' : '編輯（已發起的文件無法修改）'}
         icon={<EditRoundedIcon />}
         color="info"
-        href={`/forms/${doc.id}/edit`}
+        href={`/esign/forms/${doc.id}/edit`}
         disabled={doc.status !== 'draft'}
       />
       {/* 已到期且仍有人未簽署才能補簽 */}

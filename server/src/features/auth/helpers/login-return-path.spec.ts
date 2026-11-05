@@ -5,23 +5,24 @@ describe('登入返回位置', () => {
     undefined,
     'https://evil.test',
     '//evil.test/forms',
-    '/forms/../../api/auth/session',
-    '/forms/%2e%2e/api',
+    '/esign/forms/../../api/auth/session',
+    '/esign/forms/%2e%2e/api',
     '/login',
     '/oauth/callback',
     '/external-signatures/abc',
-    '/forms\\evil',
-    '/forms\n',
+    '/forms/42',
+    '/esign/forms\\evil',
+    '/esign/forms\n',
   ])('拒絕不安全位置 %s', (path) => {
-    expect(safeLoginReturnPath(path)).toBe('/forms');
+    expect(safeLoginReturnPath(path)).toBe('/esign/forms');
   });
 
   it.each([
-    '/forms/42/edit',
-    '/my-signature/task-id',
-    '/forms?page=2',
-    '/forms?q=%E7%B0%BD%E7%BD%B2',
-    '/export-history',
+    '/esign/forms/42/edit',
+    '/esign/my-signature/task-id',
+    '/esign/forms?page=2',
+    '/esign/forms?q=%E7%B0%BD%E7%BD%B2',
+    '/esign/export-history',
   ])('保留員工頁面 %s', (path) => {
     expect(safeLoginReturnPath(path)).toBe(path);
   });

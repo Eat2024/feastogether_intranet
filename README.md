@@ -88,7 +88,7 @@ await auth.currentEntry() // 取得 path，以前端 origin＋path 在瀏覽器�
 
 REPL 只載入設定、logging 與 MySQL，不啟動 HTTP 或 queue consumer。入口原值與帳密不寫進 Git、ticket、PR 或 log。
 
-Spec 028 接入業務授權前，Super user 只能讀取目前身分與登出；登入後落在 `/forms` 並顯示「目前身分無法使用此功能」。部署順序、輪換、換帳密與部署阻擋見 [UAT CI/CD 操作文件](docs/deployment/uat-cicd.md)的「Super user 維護登入」。
+Spec 028 接入業務授權前，Super user 只能讀取目前身分與登出；登入後經 `/` 轉到 `/esign/forms` 並顯示「目前身分無法使用此功能」。部署順序、輪換、換帳密與部署阻擋見 [UAT CI/CD 操作文件](docs/deployment/uat-cicd.md)的「Super user 維護登入」。
 
 ## UAT CI/CD
 

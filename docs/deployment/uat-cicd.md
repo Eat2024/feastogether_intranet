@@ -66,6 +66,35 @@ https://truststore.pki.rds.amazonaws.com/ap-east-2/ap-east-2-bundle.pem
 
 2 核／8 GB EC2 的建置與服務共用資源，migration 有停機窗口，不宣稱零停機。
 
+## Super user 隱藏入口的 log 遮罩（Spec 027，部署阻擋）
+
+隱藏維護入口的網址本身就是存取條件：前端 `/ops-access/<入口>`，後端 `/api/auth/super-user-entries/<入口>`、`/api/auth/super-user-entries/<入口>/sessions`（POST body 含帳密）。完整入口、query、body、Referer、Set-Cookie 不得出現在一般 log。
+
+倉庫內已處理（027-04）：
+
+- Nest：access log 的 `path`／`url` 只記 `/api/auth/super-user-entries/:entryKey[/sessions]`，不記 query 與 body；入口無效、限流（429）、限流儲存不可用的安全 log 與未預期例外 log 只含遮罩後的路由模板或不含路徑。
+- Next：正式環境（standalone `server.js`）本來就不記 incoming request；開發模式以 `next.config.ts` 的 `logging.incomingRequests.ignore` 略過這兩組路徑。proxy／頁面檢查失敗的錯誤訊息只含 HTTP 狀態，不含網址。
+- 維護頁回應帶 `Referrer-Policy: no-referrer`，瀏覽器送出登入請求時不帶含入口的 Referer。
+
+倉庫外尚未處理：Nginx 8080／ALB 不由此 repository 管理，預設 access log 會記錄完整 request line。**在主機管理員確認以下設定前，不得在 UAT／正式環境初始化或提供隱藏入口：**
+
+- Nginx 對這兩組路徑關閉 access log（或改用不含 `$request`／`$request_uri`／`$http_referer` 的 log_format）。示意（實際 upstream 依主機既有設定，未在 UAT 主機驗證）：
+
+  ```nginx
+  location ^~ /ops-access/ {
+      access_log off;
+      proxy_pass http://127.0.0.1:3000;
+  }
+  location ^~ /api/auth/super-user-entries/ {
+      access_log off;
+      proxy_pass http://127.0.0.1:3000;
+  }
+  ```
+
+  Nginx error log 遇到 upstream 錯誤時也會帶 request line；確認 error log 的保存與存取權限，或對這兩個 location 另設 error_log。
+- ALB 若啟用 access logs（寫入 S3），會記錄完整 URL 且無法逐路徑遮罩；需確認是否啟用、保存期限與存取權限，或由 SRE 決定關閉。
+- 本機驗證以 `http://localhost:3010` 前端呼叫後端，需把該 origin 加進 `server/.env` 的 `AUTH_TRUSTED_ORIGINS`；部署環境沿用 `server.env` 既有的 HTTPS 前端 origin，不需新增。
+
 ## 失敗處理與保留
 
 - build／migration 檢查失敗：不更新服務。

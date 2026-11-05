@@ -61,7 +61,7 @@ https://truststore.pki.rds.amazonaws.com/ap-east-2/ap-east-2-bundle.pem
 4. 使用候選 server image 檢查 RDS 目標、CA、連線及 pending migrations。連線／程式錯誤直接停止，不誤認為 pending。
 5. 無 pending 就略過備份。有 pending 時先拉取 `mysql:8.4` 工具 image，再停止 client/server/worker。一次性 `db-backup` 容器以同一組 raw RDS 帳密與 CA，對 `intranet_uat` 做加密連線的邏輯備份，gzip 完成後才執行 TypeORM migrations。
 6. 備份包含表、資料與 triggers；本專案沒有 stored routines／events，這些不在 dump 範圍。只備份 intranet_uat，不接觸帳號另外可存取的 oauth_uat。這是 schema 級備份，不呼叫 AWS snapshot，也不需要新增 AWS IAM 權限。
-7. server 更新後等待 HTTP healthy；worker/client 啟動後檢查前端、代理 `/api/health`、worker 啟動訊息及 restart count。worker 不使用 HTTP `--wait`。smoke 不等於完整業務驗收。
+7. server 更新後等待 HTTP healthy；worker/client 啟動後透過前端代理 `/api/health` 檢查服務，並檢查 worker 啟動訊息及 restart count。首頁未登入時預期回傳 404，不作為健康依據。worker 不使用 HTTP `--wait`。smoke 不等於完整業務驗收。
 8. 記錄 `releases/current.env`、`previous.env`、`before-last-deploy.env`。不自動 prune 或刪除 volumes。
 
 2 核／8 GB EC2 的建置與服務共用資源，migration 有停機窗口，不宣稱零停機。

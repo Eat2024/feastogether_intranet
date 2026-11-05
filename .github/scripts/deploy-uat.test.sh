@@ -34,6 +34,10 @@ esac
 MOCK
 cat > "$tmp/bin/curl" <<'MOCK'
 #!/usr/bin/env bash
+if [[ " $* " == *' http://127.0.0.1:3000/ '* ]]; then
+  echo 'curl: (22) 未登入首頁回傳 404' >&2
+  exit 22
+fi
 count_file="${TEST_LOG}.curl-count"
 count=0
 [[ ! -f "$count_file" ]] || count=$(cat "$count_file")

@@ -49,12 +49,11 @@ start_apps() {
 smoke() {
   # Docker Started 不代表 Next.js 已可接 HTTP；啟動期間可能 reset/empty reply。
   # GET 檢查有界重試，持續故障仍必須讓部署失敗，回復舊版也沿用此流程。
+  # 透過前端代理檢查後端 health；首頁未登入時預期回傳 404，不作為健康依據。
   local ready=false
   for attempt in {1..12}; do
     if curl --fail --silent --show-error --max-time 10 \
-      http://127.0.0.1:3000/api/health >/dev/null &&
-      curl --fail --silent --show-error --max-time 10 \
-      http://127.0.0.1:3000/ >/dev/null; then
+      http://127.0.0.1:3000/api/health >/dev/null; then
       ready=true
       break
     fi

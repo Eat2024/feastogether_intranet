@@ -54,9 +54,9 @@ pnpm start
 
 架構比照 CKS_Acceptance_System：`requests`（純函式）→ `queries`（TanStack Query hooks）→ 元件。除簽到表原型外，畫面都透過這一層呼叫後端。
 
-登入與 session 不在本專案處理：由外部流程建立 session（後端以 HttpOnly cookie 下發），這一層只負責帶著 cookie 呼叫其他 API。
+員工登入不在本專案處理：由外部流程建立 session（後端以 HttpOnly cookie 下發），這一層只負責帶著 cookie 呼叫其他 API。唯一例外是 Spec 027 的 Super user 隱藏維護入口 `src/app/ops-access/[entryKey]`（`features/super-user-login`）：帳密錯誤的 401 由表單就地顯示，`lib/apiError.ts` 的 `isSuperUserCredentialsInvalid` 讓它不觸發全站「登入已過期」提示。入口值就是存取條件：proxy 與頁面的錯誤訊息只帶 HTTP 狀態。
 
-例外：`src/proxy.ts` 在進入員工頁面（`src/app/(main)`）前，於伺服器端以 `API_PROXY_TARGET` 呼叫 `GET /api/auth/session`，401 時改寫成 404，顯示 `src/app/not-found.tsx`。不要改在 layout 判斷：layout 與頁面同時渲染，頁面內容仍會出現在 RSC 回應裡。`(main)` 新增頂層路由時要同步加進 proxy 的 `matcher`。這個 404 頁只放饗賓 LOGO 與「404 不好意思，系統找不到您需要的服務」（網頁標題「404 找不到網站」），不要加入系統名稱、登入提示或連結。
+例外：`src/proxy.ts` 在進入員工頁面（`src/app/(main)`）前，於伺服器端以 `API_PROXY_TARGET` 呼叫 `GET /api/auth/session`，401 時改寫成 404，顯示 `src/app/not-found.tsx`。不要改在 layout 判斷：layout 與頁面同時渲染，頁面內容仍會出現在 RSC 回應裡。`(main)` 新增頂層路由時要同步加進 proxy 的 `matcher`。proxy 也在渲染前以 `GET /api/auth/super-user-entries/:entryKey` 驗證隱藏維護入口，無效時同樣改寫成 404。這個 404 頁只放饗賓 LOGO 與「404 不好意思，系統找不到您需要的服務」（網頁標題「404 找不到網站」），不要加入系統名稱、登入提示或連結。
 
 | 檔案 | 用途 |
 |---|---|

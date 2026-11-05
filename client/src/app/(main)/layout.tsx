@@ -1,4 +1,5 @@
 import Box from "@mui/material/Box";
+import CurrentActorBanner from "@/components/CurrentActorBanner";
 import SideNav from "@/components/SideNav";
 
 export default function MainLayout({ children }: LayoutProps<"/">) {
@@ -9,6 +10,7 @@ export default function MainLayout({ children }: LayoutProps<"/">) {
         component="main"
         sx={{ flexGrow: 1, minWidth: 0, p: 3, display: "flex", flexDirection: "column", gap: 3 }}
       >
+        <CurrentActorBanner />
         {children}
       </Box>
     </Box>

@@ -174,6 +174,66 @@ same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟�
   - `next dev` 的 `.next/dev/trace` 會記錄含入口的 request URL。這是本機開發的 trace 檔，不在正式環境產生，驗證後已刪除。
 - 倉庫外代理：Nginx／ALB 的 access／error log 尚未遮罩，已在 `docs/deployment/uat-cicd.md` 列為部署阻擋；本節不代表全鏈 log 已驗收。
 
+### 027-05 OAuth／WebView 共用身分與移除員工帳密（T029～T036）
+
+範圍是 2 節的會話替換，以及移除 `POST auth/login` 與開發替代入口；週輪換（3 節）、帳密輪換（4 節）不在本張。
+
+**行為**
+
+- OAuth callback 與 WebView activation 都把瀏覽器目前的 `FT_ESIGN_SESSION` 交給 `SessionService.replace`，與 Super user 登入共用同一個交易：鎖舊會話 → 建新列（OAuth，`source=oauth`）或就地啟用 launch 時的 pending 列（WebView，`source=webview`）→ 撤舊會話並記 `replacement_session_id` → 寫 `session.replaced` 與 `login.succeeded`。commit 後才設 cookie。
+- WebView launch 與 GET bridge 不讀也不改瀏覽器會話；只有 `POST /api/auth/session` 會替換，成功仍 303 回 `/`。舊會話已被其他登入取代時，啟動頁顯示「登入身分已更新，請重新整理」（409），啟動碼不被消耗。
+- `DELETE /api/auth/session` 先撤銷目前會話，成功後才以寫入時的屬性清 `FT_ESIGN_SESSION` 與 `FT_ESIGN_OAUTH_TX`；撤銷失敗回 503 且不清 cookie，可重試。缺 cookie 或已撤銷仍回 200。
+- `POST /api/auth/login`、`/api/auth/dev-login`、`GET /api/auth/login-options` 回 404。
+- `EmbedBridge` 只有員工會話且員編相同才算同一人；Super user 一律 mismatch，走既有的撤銷與 launch-required。
+
+**自動測試**
+
+- 新增 `test/security-session-replacement.e2e-spec.ts`（14 tests，隔離庫 `feastogether_intranet_test_a`、`REDIS_DB=6`，上游 OIDC 以替身取代、員工資料來自合成 Portal）：
+  - OAuth 與 WebView 同員編得到同一個 actor，來源分別為 `oauth`／`webview`。
+  - webview→super→oauth→super→webview 連續切換：每個舊 cookie 重放 401、`replacement_session_id` 依序串起、事件依序為 `login.succeeded`／`session.replaced`；另一瀏覽器不受影響；已被取代的 cookie 再走 OAuth 或 WebView 回 409 且不設 cookie。
+  - 帶 Super user cookie 的 launch 與 GET bridge 不改瀏覽器會話，activation 才替換。
+  - 「WebView＋Super user」「OAuth＋WebView」各以同一舊 cookie 並發：一筆成功、另一筆 409 且沒有 Set-Cookie。
+  - 並發落敗或交易 rollback 時啟動碼仍為 pending、原會話有效，重試可成功。
+  - OAuth 上游交換失敗（401）、Portal 失敗（502）、替換交易失敗（503）、WebView 無效 code（401）、Super user 錯密碼（KDF 後 401）：都不設 cookie、不撤原會話。
+  - 過期或已登出的舊 cookie 不擋新登入，也不被標成已替換。
+  - 登出只撤目前會話、不恢復先前身分、不影響另一瀏覽器；兩把 cookie 以 `Max-Age=0; Path=/; HttpOnly; SameSite=Lax` 清除；缺 cookie 冪等。撤銷失敗回 503 時不清 cookie，會話仍可用。
+- 改寫或新增：
+  - `password-login.e2e-spec.ts`：`/api/auth/login`、`/auth/login`、`/api/auth/dev-login` 回 404 不設 cookie；Swagger 的 `/api/auth` 路由恰為 OAuth（2）、WebView（3）、`/session`（GET／DELETE）、`embed-origins` 與 Super user 入口（2）。
+  - `webview-session.e2e-spec.ts`：承接原帳密檔的 Portal 姓名 U+FFFD 與 Portal 不回應（15 秒內 502、不用本機舊資料、錯誤不含 Portal 連線資訊）。
+  - `oauth-login.e2e-spec.ts`：新會話 `source=oauth`、寫 `login.succeeded`、交易 cookie 以寫入時屬性清除。
+  - 單元：`session.service.spec.ts` 加 WebView activation（鎖序 `session → pending`、無效／過期／已用 code 回 401 且原會話不動）；`auth.controller.spec.ts` 驗 activation 失敗文案（409／401／503）與 DELETE 先撤銷後清兩把 cookie、撤銷失敗不清；`auth.service.spec.ts` 把資格與部門案例改用 `createWebviewLaunch`。
+- 回歸：
+  - server：`pnpm -C server test` 123 suites／1246 tests；`test:e2e:security` 17 suites／131 tests。
+  - `test:e2e`：542 passed、1 skipped、1 failed（50 suites passed）。唯一失敗是既有的 `api-coverage` history 路由，同 027-02。第一次跑時 `core-esign-flow*` 三個 suite 在 afterAll 刪會話時撞到 `login.succeeded` 事件的 FK（WebView activation 現在會寫事件），已改為先刪事件。
+  - `lint:check`：0 errors、271 warnings（027-04 為 276），新檔與本張改動的行 0 warning；`build` 成功。
+  - client：`pnpm -C client lint`、`pnpm -C client build` 成功。
+- 未執行：`test:schema`（本張沒有 migration 或 entity 變更）、root `pnpm build`。
+
+**瀏覽器回歸（開發庫 `feastogether_intranet_027a`、`REDIS_DB=9`，server `PORT=3011`，client `next dev -p 3010`）**
+
+- 環境：只用合成資料，以環境變數覆寫 `server/.env`，未修改 `.env`：
+  - `PORTAL_MYSQL_DB` 指向本機合成庫 `feastogether_intranet_027a_portal`（兩名在職合成員工）。
+  - WebView 使用臨時產生的 RSA 金鑰（`WEBVIEW_JWT_*`、`WEBVIEW_LAUNCH_ORIGIN=http://localhost:3010`）。
+  - `SUPER_USER_*` 使用隨機合成帳密；以 REPL 的 `initialize()`／`currentEntry()`／`credentialStatus()` 初始化入口（`localConfigMatches:true`）。
+  - `.env` 沒有 `OAUTH_*`，OAuth 回 503，沒有連任何真實 OAuth 或 Portal。
+- 合成入口網：本機 `http://localhost:8080` 的 HTTP server 以 iframe 嵌入電子簽並收發 postMessage。Playwright 1.63 驅動 Chromium for Testing（repo 外暫存目錄，`journey-05.js`），18 項全數通過：
+  - 舊帳密、dev 與 login-options 路徑皆 404，沒有 cookie。
+  - bridge 的 `frame-ancestors` 含合成入口網；iframe 內員工會話 cookie 為 HttpOnly、SameSite=Lax、Path=/、約 480 分鐘。
+  - 同員工 `esign:navigate` → `esign:navigated` 並換頁；不同員工 → 撤銷並 `esign:launch-required`。
+  - employee→super：在同一瀏覽器另一分頁以 Super user 登入後，舊員工 cookie 重放 401。
+  - iframe 再送員工甲的 navigate：Super user 會話視為 mismatch，撤銷後 launch-required。
+  - super→employee：WebView activation 取代 Super user，舊 Super user cookie 重放 401；分頁重整後不再顯示「目前身分：Super user」。
+  - 同一瀏覽器帶同一 cookie 同時送兩個 activation：一筆 303、一筆 409；cookie 為勝者，舊 cookie 失效。
+  - 登出 200、重複登出 200、之後 `GET /api/auth/session` 401；cookie 清除，先前各身分都不恢復。
+- 收尾：已停止 server／client（以 PID）、刪除合成 Portal 庫、開發庫的 singleton、會話、事件與兩名合成員工、暫存的密碼／私鑰／入口檔，以及 `next dev` 寫入含入口 URL 的 `client/.next/dev/trace`。`next dev` 啟動時改寫的 `client/AGENTS.md` 已還原。server／client log 中入口值 0 筆命中。
+- 本機 Chrome 的 Local Network Access 會擋下沒有網路位址的頁面（Playwright `route.fulfill`）嵌入 localhost，所以合成入口網改用真的 loopback HTTP server；與正式環境無關。
+
+**限制（不新增裝置 cookie）**
+
+- commit 後回應在網路上遺失：新會話已生效、舊會話已撤銷，但瀏覽器仍帶舊 cookie，下一個請求回 401，需重新登入；不回復舊 token。
+- 沒有舊 cookie 時（首次登入或已登出），同一瀏覽器兩個分頁同時登入無法辨識為同一瀏覽器：兩筆都成功，瀏覽器保留最後寫入的 cookie，另一筆會話留到八小時到期。
+- OAuth 只以 e2e 驗證（openid-client 替身、合成 Portal）；瀏覽器沒有走 OAuth，因為本機沒有合成 OIDC 提供者，且不得連真實 OAuth。
+
 ### 027-06 每週輪換與停機補做（T037～T044）
 
 範圍是 3 節的入口輪換、並發與 REPL 副作用；帳密輪換（4 節）與 OAuth／WebView 身分切換不在本張。

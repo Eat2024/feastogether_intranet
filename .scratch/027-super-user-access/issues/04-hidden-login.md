@@ -146,3 +146,9 @@ client：
   - T052 的 README／`.env.example` 尚未更新。
 - 展示後已刪除開發庫 `feastogether_intranet_027a` 的 singleton、安全事件與 Super user 會話，也刪除了暫存的合成密碼與入口。`server/.env` 仍留著合成 hash，但對應的密碼已不存在；之後要展示，需先用 `super-user:hash-password` 重新產生 hash，再以 REPL `initialize()`。
 
+### 整合紀錄
+
+已合入整合分支 `027-super-user-access`（2026-11-05，fast-forward）：
+- `415b3c9 feat(auth): Super user 隱藏入口登入，session 讀取與登出改走共用會話`
+- `7b8e7d0 feat(client): Super user 隱藏維護登入頁、身分標示與登出`
+- `68cfc21 docs(tickets): 記錄 027-04 實作結果、驗證與部署阻擋`

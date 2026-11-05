@@ -78,3 +78,12 @@
 - `SuperUserAccessScheduler.onModuleInit` 改為忽略補做的失敗（processor 已記 `auth.entry_rotation_failed`，只帶錯誤代碼），照常查 Redis 並註冊排程。電子簽與 Portal processor 不再因輪換專屬故障（例如未套 migration）停擺；輪換等下次 cron，或由維護者以 REPL `auth.rotateEntryIfDue()` 補做。DB 不可用時 TypeORM 初始化仍會讓 worker 起不來，與原本相同。
 - 部署檢查因此要看 worker log 有沒有 `auth.entry_rotation_failed`，不能只看 worker 是否啟動。
 - 測試：`super-user-access.scheduler.spec.ts` 的補做失敗案例改為驗證照常啟動並註冊排程。
+
+### 整合紀錄
+
+已合入整合分支 `027-super-user-access`（2026-11-05，fast-forward）：
+- `f924a9f feat(auth): 每週一台北 04:00 輪換維護入口，worker 啟動補做並由 DB 週期仲裁`
+- `875f47f docs(tickets): 記錄 027-06 週輪換實作結果、驗證與限制`
+- `7769e73 fix(worker): 維護入口啟動補做失敗時記 log 並照常啟動`
+
+7769e73 是使用者決定的後續：啟動補做失敗改為記 log 後照常啟動。

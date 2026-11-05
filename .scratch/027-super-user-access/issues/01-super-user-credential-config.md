@@ -62,3 +62,9 @@
 - `verify` 不檢查輸入長度。027-04 的登入 DTO 必須先限制帳號 1～128 字元、密碼 1～1024 UTF-8 bytes（可引用 `SUPER_USER_PASSWORD_MAX_BYTES`）與 body 8 KiB，再呼叫 `verify`。設定端的帳號只檢查非空，不檢查 128 字元上限。
 - hash 格式與 fingerprint 序列化都由測試的字面值固定；改動會讓 DB 已啟用的 fingerprint 失配，必須換 domain 版本並走明確啟用流程。
 - 027-08 寫文件時要注意：`pnpm` 不加 `-s` 會在 stdout 先印一行 `$ node ...` banner，要只取 hash 請用 `pnpm -s -C server super-user:hash-password`。這支指令從原始碼以 ts-node（devDependency）執行，建置後也可用 `node dist/console/hash-super-user-password.js`。hash 可在維護者本機離線產生。
+
+### 整合紀錄
+
+已合入整合分支 `027-super-user-access`（2026-11-05，fast-forward）：
+- `afe2b10 feat(auth): 驗證 Super user 專用帳密設定並提供離線 hash 工具`
+- `6b6360f docs(tickets): 記錄 027-01 實作結果與驗證`

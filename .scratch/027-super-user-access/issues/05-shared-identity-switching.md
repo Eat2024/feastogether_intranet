@@ -86,3 +86,14 @@
 - `pnpm -C server test:e2e:security`：兩個 commit 都是 19 suites／157 tests 通過（含新檔 20 tests）。
 - `pnpm -C server test:e2e`：第一個 commit 562 tests 中 560 passed、1 skipped、1 failed（跑完後才補 `oauth-login`、`webview-session` 的清理語句，兩檔重跑 22 tests 通過）；本 commit 561 tests 中 559 passed、1 skipped、1 failed（刪掉 1 個案例）；唯一失敗是既有 `api-coverage` 的 history 路由。
 - `pnpm -C client lint`、`pnpm -C client build`：成功。
+
+### 整合紀錄
+
+已合入整合分支 `027-super-user-access`（2026-11-05，fast-forward）：
+- `c8af097 feat(auth): OAuth 與 WebView 以目前 cookie 原子替換會話，移除員工帳密登入`
+- `3bdf183 fix(client): EmbedBridge 只把相同員編的員工會話視為同一人`
+- `050e951 docs(tickets): 記錄 027-05 實作結果、驗證與限制`
+- `51d685a feat(auth): 員工入口通過上游驗證後被拒時寫匿名 login.rejected`
+- `19633f8 refactor(server): 移除已無呼叫者的 FeastogetherModule 與 FEASTOGETHER_* 設定`
+
+c8af097～050e951 由 ticket 分支（24dfc1e、a911373、27ec1ad）rebase 到已含 06、07 的整合分支，只有 `quickstart.md` 段落衝突（依 ticket 順序排列）；51d685a、19633f8 是使用者決定的後續（見上方「後續」）。

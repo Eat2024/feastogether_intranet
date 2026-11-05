@@ -107,3 +107,8 @@
   - `.env.test` 的 `DB_MYSQL_POOL_MAX=2`，同一個 app 內的並發測試最多同時開 2 個交易，否則會卡在等連線。
 - 07 啟用帳密：`activateCredentials` 同樣加在 `createAuthConsole`；`credentialStatus().localConfigMatches` 就是啟用前的診斷值。generation 由 mysql2 以 number 回傳（`supportBigNumbers`＋`bigNumberStrings:false`）。
 - 事件：初始化的兩筆事件 outcome 都用既有的 `succeeded`，沒有新增結果碼；`AuthSecurityOutcome` 白名單仍是同一處型別。
+
+### 整合紀錄
+
+已合入整合分支 `027-super-user-access`（2026-11-05，fast-forward）：
+- `7182eec feat(auth): 以窄 REPL 初始化及查詢 Super user 維護入口`

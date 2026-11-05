@@ -61,3 +61,9 @@
 - 員工 e2e 在測試庫累積 `login.succeeded`，該庫的 down 會被拒絕。
 - UAT 自動部署無法在 migration 與啟動之間暫停，`initialize()` 改在部署成功後執行。
 - 範圍外觀察：Next 404 頁在 standalone 帶 `s-maxage=31536000`（既有 not-found 行為，未處理）。
+
+### 整合紀錄
+
+已合入整合分支 `027-super-user-access`（2026-11-05，fast-forward）：
+- `e1cb4cf docs: 補 Super user 設定、REPL、部署與回復操作文件`
+- `258089c docs(specs): 027 契約依實作校正，記錄 027-08 整合驗收與交付摘要`

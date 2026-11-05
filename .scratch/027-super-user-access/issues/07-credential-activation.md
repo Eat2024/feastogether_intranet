@@ -122,3 +122,11 @@
 - 目前 worker 沒有載入 `SuperUserAccessModule`。06 若讓 worker 載入，worker 也需要合法的 `SUPER_USER_*`。worker 的設定新舊不影響維護登入，但操作契約要求 HTTP 與 worker 都要更新。
 - `security-super-user-credentials` 會以 ts-node 啟動 `src/main.ts` 子程序並佔用 port 3030／3031，執行環境需要這兩個 port 可用；它只在 `test:e2e:security` 中執行。
 - `server/.env` 留下展示用的合成 hash，對應密碼已丟棄；開發庫 `feastogether_intranet_027c` 已套用 21 支 migration，沒有 singleton、會話或事件。
+
+### 整合紀錄
+
+已合入整合分支 `027-super-user-access`（2026-11-05，fast-forward）：
+- `51be9c9 feat(auth): 以 REPL 明確啟用 Super user 帳密並跨實例撤銷舊維護會話`
+- `0d27992 docs(tickets): 記錄 027-07 實作結果、雙實例驗證與帳密啟用部署條件`
+
+由 ticket 分支（ba59653、7cf40c4）rebase 到已含 06 的整合分支。衝突處理：`repl.ts` 兩邊 helper 都保留；`SuperUserAccessRepository.save` 兩邊重複新增，保留 06 的 `Promise<void>` 版本（呼叫端都不用回傳值）；`super-user-console.e2e-spec.ts` 保留兩邊的 import、helper 清單與測試區塊；`quickstart.md` 兩節都保留。合併後 lint、unit、build、security e2e 與相關 e2e 通過。

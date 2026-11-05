@@ -59,3 +59,8 @@
 - 03 REPL：用 `SuperUserAccessRepository.findForUpdate` 作為入口／啟用交易的第一把鎖；初始化／輪換／啟用的條件寫入（T015／T039／T047）尚未實作。`AuthSecurityEventRepository.list` 已檢查 limit 1～100，REPL 不需再驗一次。REPL 事件 actor 用 `operator`。
 - 04 隱藏登入：用 `SessionService.replace(cookieToken, {kind:'super_user'})` 簽發，commit 後拿到 `{token, expiresAt}` 才 Set-Cookie；帳密錯誤呼叫 `AuthSecurityEventService.recordRejection({type:'login.rejected', actor:{kind:'anonymous'}, outcome:'credentials_invalid'})`。`actor.context.ts`、`request.actor`、`AllowSuperUser` 與 Super user session view（`{actor:{kind:'super_user',displayName:'Super user'},user:null}`）未建立，留給 T022；目前 guard 只接受 `verifySessionToken` 回傳的員工，Super user 會話打員工路由得 401，fingerprint 不符時 503。
 - 05 三入口替換：OAuth／WebView／logout 仍走 `AuthService` 舊路徑（OAuth 仍寫 `source:'webview'`，不寫安全事件）。改走 `SessionService` 後會寫入參照 `auth_sessions`／`users` 的事件（FK RESTRICT），既有 e2e cleanup 的 `DELETE FROM auth_sessions／users` 必須先刪 `auth_security_events`，再把 `replacement_session_id` 設 NULL。
+
+### 整合紀錄
+
+已合入整合分支 `027-super-user-access`（2026-11-05，fast-forward）：
+- `49aaf98 feat(auth): 共用會話辨識 employee／super_user 並保持員工相容`

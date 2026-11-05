@@ -1,6 +1,7 @@
 import { start } from 'node:repl';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { AuthSecurityEventService } from '#app/features/auth/services/auth-security-event.service';
 import { SuperUserAccessService } from '#app/features/auth/services/super-user-access.service';
 import { ConsoleModule } from './console.module';
 
@@ -10,10 +11,15 @@ import { ConsoleModule } from './console.module';
  */
 export function createAuthConsole(app: INestApplicationContext) {
   const access = app.get(SuperUserAccessService);
+  const events = app.get(AuthSecurityEventService);
   return {
     initialize: () => access.initialize(),
     currentEntry: () => access.currentEntry(),
     credentialStatus: () => access.credentialStatus(),
+    // 與 worker 同一個到期判斷；不接受參數，沒有任意時間強制換網址。
+    rotateEntryIfDue: () => access.rotateEntryIfDue({ kind: 'operator' }),
+    securityEvents: (options: { limit?: number; beforeId?: number } = {}) =>
+      events.list(options),
   };
 }
 

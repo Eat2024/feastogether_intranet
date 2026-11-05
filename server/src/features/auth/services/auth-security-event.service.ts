@@ -8,6 +8,7 @@ import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.
 import { CLS_REQUEST_ID } from '#app/infrastructure/logging/requestId/request-id';
 import type { Actor } from '../auth.types';
 import type {
+  AuthSecurityEvent,
   AuthSecurityEventActorKind,
   AuthSecurityEventType,
   AuthSecurityOutcome,
@@ -52,6 +53,14 @@ export class AuthSecurityEventService {
       },
       manager,
     );
+  }
+
+  /** 唯讀，依 id 倒序分頁；筆數預設與上限由 repository 檢查。 */
+  list(options: {
+    limit?: number;
+    beforeId?: number;
+  }): Promise<AuthSecurityEvent[]> {
+    return this.events.list(options, this.mysql.getManager());
   }
 
   /**

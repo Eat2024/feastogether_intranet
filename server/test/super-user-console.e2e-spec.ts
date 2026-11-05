@@ -1,3 +1,6 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { join } from 'node:path';
 import type { INestApplicationContext } from '@nestjs/common';
 import { ModulesContainer, NestFactory } from '@nestjs/core';
 import type { DataSource } from 'typeorm';
@@ -22,6 +25,7 @@ import { InfrastructureModule } from '#app/infrastructure/infrastructure.module'
 import { MailModule } from '#app/infrastructure/mail/mail.module';
 import { PortalModule } from '#app/infrastructure/portal/portal.module';
 import { WorkerModule } from '#app/worker.module';
+import { SuperUserAccessWorkerModule } from '#app/worker/auth/super-user-access-worker.module';
 
 interface AccessRow {
   id: number;
@@ -82,6 +86,7 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
     for (const excluded of [
       AppModule,
       WorkerModule,
+      SuperUserAccessWorkerModule,
       FrameworkModule,
       InfrastructureModule,
       AuthModule,
@@ -96,11 +101,13 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
     expect(await snapshot()).toEqual({ access: [], events: [] });
   });
 
-  it('REPL 只拿到三個 auth helpers', () => {
+  it('REPL 只拿到受控 auth helpers，沒有任意強制輪換或 token 查詢', () => {
     expect(Object.keys(auth)).toEqual([
       'initialize',
       'currentEntry',
       'credentialStatus',
+      'rotateEntryIfDue',
+      'securityEvents',
     ]);
   });
 
@@ -111,6 +118,11 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
         status: 503,
       });
     }
+    expect(await snapshot()).toEqual({ access: [], events: [] });
+  });
+
+  it('未初始化時到期輪換回明確結果，不偷建入口或帳密版本', async () => {
+    expect(await auth.rotateEntryIfDue()).toEqual({ status: 'uninitialized' });
     expect(await snapshot()).toEqual({ access: [], events: [] });
   });
 
@@ -232,6 +244,103 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
     });
   });
 
+  it('rotateEntryIfDue 未到期 no-op；到期才以 operator 身分輪換一次，帳密版本不變', async () => {
+    await auth.initialize();
+    const initial = await snapshot();
+    expect(await auth.rotateEntryIfDue()).toEqual({ status: 'not_due' });
+    expect(await snapshot()).toEqual(initial);
+
+    const [row] = initial.access;
+    await db.query(
+      'UPDATE super_user_access SET period_start_at = ? WHERE id = 1',
+      [new Date(row.period_start_at.getTime() - 7 * 86_400_000)],
+    );
+    expect(await auth.rotateEntryIfDue()).toEqual({
+      status: 'rotated',
+      entryGeneration: 2,
+    });
+    expect(await auth.rotateEntryIfDue()).toEqual({ status: 'not_due' });
+
+    const [rotated] = await accessRows();
+    expect(rotated.entry_key).not.toBe(row.entry_key);
+    expect(rotated).toMatchObject({
+      entry_generation: 2,
+      period_start_at: row.period_start_at,
+      credential_generation: row.credential_generation,
+      active_credential_fingerprint: row.active_credential_fingerprint,
+      credential_activated_at: row.credential_activated_at,
+    });
+    expect((await operatorEvents()).slice(2)).toEqual([
+      {
+        event_type: 'entry.rotated',
+        actor_kind: 'operator',
+        actor_user_id: null,
+        session_id: null,
+        outcome_code: 'succeeded',
+        credential_generation: null,
+        entry_generation: 2,
+        request_id: null,
+      },
+    ]);
+  });
+
+  it('securityEvents 預設 20 筆、最多 100 筆，beforeId 倒序翻頁；只回白名單欄位且不寫入', async () => {
+    await auth.initialize();
+    for (let i = 0; i < 23; i++) {
+      await db.query(
+        `INSERT INTO auth_security_events (event_type, actor_kind, outcome_code, entry_generation, occurred_at)
+          VALUES ('entry.rotated', 'operator', 'succeeded', ?, NOW(6))`,
+        [i + 2],
+      );
+    }
+    const ids = (
+      await db.query<Array<{ id: number }>>(
+        "SELECT id FROM auth_security_events WHERE actor_kind = 'operator' ORDER BY id DESC",
+      )
+    ).map((row) => Number(row.id));
+    expect(ids).toHaveLength(25);
+    const before = await snapshot();
+
+    const first = await auth.securityEvents();
+    expect(first.map((event) => Number(event.id))).toEqual(ids.slice(0, 20));
+    const next = await auth.securityEvents({
+      limit: 3,
+      beforeId: first[first.length - 1].id,
+    });
+    expect(next.map((event) => Number(event.id))).toEqual(ids.slice(20, 23));
+    const all = await auth.securityEvents({ limit: 100 });
+    expect(all.map((event) => Number(event.id))).toEqual(
+      expect.arrayContaining(ids),
+    );
+    for (const limit of [0, 101]) {
+      await expect(auth.securityEvents({ limit })).rejects.toThrow(RangeError);
+    }
+
+    const [{ entry_key }] = before.access;
+    for (const event of all) {
+      const fields = Object.entries(event)
+        .filter(([, value]) => value !== undefined)
+        .map(([key]) => key);
+      expect(fields.sort()).toEqual(
+        [
+          'id',
+          'eventType',
+          'actorKind',
+          'actorUserId',
+          'sessionId',
+          'outcomeCode',
+          'credentialGeneration',
+          'entryGeneration',
+          'requestId',
+          'occurredAt',
+          'createdAt',
+        ].sort(),
+      );
+      expect(JSON.stringify(event)).not.toContain(entry_key);
+    }
+    expect(await snapshot()).toEqual(before);
+  });
+
   it('結束時關閉 DB 連線池', async () => {
     const other = await NestFactory.createApplicationContext(ConsoleModule, {
       logger: false,
@@ -242,4 +351,106 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
     await other.close();
     expect(pool.isInitialized).toBe(false);
   });
+
+  describe('真正的 REPL 程序（pnpm repl:dev）', () => {
+    it('兩個 REPL 同時初始化只成功一次、重複不覆寫；入口只出現在 currentEntry 結果，.exit 後關閉連線結束', async () => {
+      const repls = [startRepl(), startRepl()];
+      try {
+        await Promise.all(repls.map((repl) => repl.ready()));
+
+        const results = await Promise.all(
+          repls.map((repl) => repl.run('auth.initialize()')),
+        );
+        expect(results.map((result) => result.initialized).sort()).toEqual([
+          false,
+          true,
+        ]);
+        const initialized = await snapshot();
+        expect(initialized.access).toHaveLength(1);
+        expect(initialized.events).toHaveLength(2);
+
+        const [first] = repls;
+        expect(await first.run('auth.initialize()')).toEqual({
+          initialized: false,
+        });
+        expect(await first.run('auth.rotateEntryIfDue()')).toEqual({
+          status: 'not_due',
+        });
+        expect(await first.run('auth.credentialStatus()')).toMatchObject({
+          generation: 1,
+          localConfigMatches: true,
+        });
+        expect(await snapshot()).toEqual(initialized);
+
+        const [{ entry_key }] = initialized.access;
+        expect(repls.some((repl) => repl.output.includes(entry_key))).toBe(
+          false,
+        );
+        expect(await first.run('auth.currentEntry()')).toMatchObject({
+          path: `/ops-access/${entry_key}`,
+        });
+
+        expect(await Promise.all(repls.map((repl) => repl.exit()))).toEqual([
+          0, 0,
+        ]);
+      } finally {
+        for (const repl of repls) repl.kill();
+      }
+    }, 120_000);
+  });
 });
+
+const SERVER_ROOT = join(__dirname, '..');
+
+/**
+ * 以 package.json 的 `repl:dev` 啟動真正的 REPL 程序，環境變數沿用 .env.test（程序環境優先於 server/.env）。
+ * stdin 不是 TTY，REPL 不回顯輸入；每個指令以唯一標記印出 JSON 結果再解析。
+ */
+function startRepl() {
+  const child = spawn('pnpm', ['-s', 'repl:dev'], {
+    cwd: SERVER_ROOT,
+    env: process.env,
+    stdio: 'pipe',
+  });
+  let output = '';
+  let sequence = 0;
+  child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+    output += chunk;
+  });
+  child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+    output += chunk;
+  });
+  const waitForOutput = async (pattern: RegExp, timeoutMs = 60_000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const match = pattern.exec(output);
+      if (match) return match;
+      if (child.exitCode !== null) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`REPL 沒有輸出預期結果：${output}`);
+  };
+  return {
+    get output() {
+      return output;
+    },
+    ready: () => waitForOutput(/> $/m),
+    async run(expression: string): Promise<Record<string, unknown>> {
+      const marker = `@@result-${++sequence}@@`;
+      child.stdin.write(
+        `console.log('${marker}' + JSON.stringify(await ${expression}))\n`,
+      );
+      const match = await waitForOutput(new RegExp(`${marker}(.*)\n`));
+      return JSON.parse(match[1]) as Record<string, unknown>;
+    },
+    async exit(): Promise<number | null> {
+      const exited = once(child, 'exit');
+      child.stdin.write('.exit\n');
+      const [code] = (await exited) as [number | null];
+      return code;
+    },
+    kill: () => {
+      if (child.exitCode === null) child.kill();
+    },
+  };
+}

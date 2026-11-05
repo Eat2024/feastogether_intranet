@@ -42,4 +42,9 @@ export class SuperUserAccessRepository {
       throw error;
     }
   }
+
+  /** 更新已鎖定的 singleton；save 一併維護 updated_at。 */
+  async save(access: SuperUserAccess, manager: EntityManager): Promise<void> {
+    await manager.save(access);
+  }
 }

@@ -27,6 +27,12 @@ export interface CredentialStatus {
   activatedAt: Date;
 }
 
+/** 到期輪換的結果，也是 worker job 的回傳值；不含入口原值。 */
+export type EntryRotationResult =
+  | { status: 'rotated'; entryGeneration: number }
+  | { status: 'not_due' }
+  | { status: 'uninitialized' };
+
 /** REPL 寫入的操作身分：不是員工，也不是 Super user 會話。 */
 const OPERATOR = { kind: 'operator' } as const;
 
@@ -106,6 +112,39 @@ export class SuperUserAccessService {
         access.activeCredentialFingerprint === this.superUserConfig.fingerprint,
       activatedAt: access.credentialActivatedAt,
     };
+  }
+
+  /**
+   * 最近到期的週一台北 04:00 晚於 DB 已處理週期才換新入口；worker 排程、worker 啟動補做與 REPL 共用。
+   * 先鎖 singleton，與登入交易內的入口重驗及其他輪換排隊；同一週期再執行（重試、重啟、多 worker）都是 no-op，
+   * 停機錯過多週也只補一次。新入口、entry generation +1 與事件同交易 commit，失敗時整筆 rollback、保留舊入口。
+   * 不改帳密版本、不撤會話；未初始化不建立任何列。不回傳入口；入口只由 currentEntry 揭露。
+   */
+  async rotateEntryIfDue(actor: {
+    kind: 'operator' | 'system';
+  }): Promise<EntryRotationResult> {
+    const now = new Date();
+    const period = latestDueRotationPeriod(now);
+    return this.mysql.transaction(async (manager) => {
+      const access = await this.access.findForUpdate(manager);
+      if (!access) return { status: 'uninitialized' };
+      if (period <= access.periodStartAt) return { status: 'not_due' };
+      access.entryKey = randomBytes(32).toString('base64url');
+      access.entryGeneration += 1;
+      access.rotatedAt = now;
+      access.periodStartAt = period;
+      await this.access.save(access, manager);
+      await this.events.append(
+        {
+          type: 'entry.rotated',
+          actor,
+          outcome: 'succeeded',
+          entryGeneration: access.entryGeneration,
+        },
+        manager,
+      );
+      return { status: 'rotated', entryGeneration: access.entryGeneration };
+    });
   }
 
   /** 尚未初始化時明確回 503，查詢不隱式初始化。 */

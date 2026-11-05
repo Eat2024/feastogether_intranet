@@ -102,9 +102,11 @@ describe('OAuth 登入 HTTP 整合', () => {
         await db.manager.delete(EsignDocument, { id: In(documentIds) });
       const empids = [empid, ...otherEmpids];
       // 安全事件與替換連結以 FK 指向會話／員工：先刪事件、解除連結，再刪會話與員工。
+      // 資格拒絕寫的是匿名事件，不帶員工 ID，另外刪。
       const users = 'SELECT id FROM users WHERE empid IN (?)';
       await db.query(
-        `DELETE FROM auth_security_events WHERE actor_user_id IN (${users})`,
+        `DELETE FROM auth_security_events WHERE actor_user_id IN (${users})
+          OR (actor_kind = 'anonymous' AND outcome_code = 'employee_ineligible')`,
         [empids],
       );
       await db.query(

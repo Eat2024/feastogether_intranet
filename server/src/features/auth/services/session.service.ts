@@ -4,6 +4,7 @@ import type { EntityManager } from 'typeorm';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { WEBVIEW_SESSION_TTL_SECONDS } from '../auth.constants';
 import type {
   Actor,
@@ -34,6 +35,7 @@ export class SessionService {
     private readonly access: SuperUserAccessRepository,
     private readonly superUserConfig: SuperUserConfigService,
     private readonly events: AuthSecurityEventService,
+    private readonly logger: AppLoggerService,
   ) {}
 
   /** 回 null 代表會話不存在、過期、撤銷、員工停用或維護版本已失效。 */
@@ -171,7 +173,7 @@ export class SessionService {
 
   /**
    * 一次性啟動碼只能用一次：鎖定未過期的待啟用列並就地轉為 active（員工由 launch 時寫入）。
-   * 無效、過期或已用過都回 401。
+   * 無效、過期或已用過都回 401；此端點沒有限流，只記應用 log、不寫事件表，log 不含啟動碼。
    */
   private async activateLaunch(
     launchCode: string,
@@ -185,7 +187,14 @@ export class SessionService {
       now,
       manager,
     );
-    if (!pending) throw new AppException(...AppErrors.AUTH_EXCHANGE_FAILED);
+    if (!pending) {
+      this.logger.info({
+        context: SessionService.name,
+        event: 'auth.launch_code_rejected',
+        message: 'WebView 啟動碼無效、過期或已使用',
+      });
+      throw new AppException(...AppErrors.AUTH_EXCHANGE_FAILED);
+    }
     pending.status = AUTH_SESSION_STATUS.ACTIVE;
     pending.sessionTokenHash = digest(token);
     pending.activatedAt = now;

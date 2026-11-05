@@ -25,6 +25,10 @@ import {
   WEBVIEW_LAUNCH_TTL_SECONDS,
 } from '../auth.constants';
 import { WebviewLaunchView } from '../dto/webview-launch.dto';
+import {
+  AuthSecurityEventService,
+  EMPLOYEE_INELIGIBLE_EVENT,
+} from './auth-security-event.service';
 import { EligibleStaffService } from './eligible-staff.service';
 
 interface LaunchClaims {
@@ -52,6 +56,7 @@ export class AuthService {
     private readonly mysql: MysqlService,
     private readonly eligibleStaff: EligibleStaffService,
     private readonly logger: AppLoggerService,
+    private readonly events: AuthSecurityEventService,
   ) {
     const webviewConfig = this.getConfig(config);
     this.issuer = webviewConfig.iss;
@@ -91,8 +96,13 @@ export class AuthService {
       return issued;
     } catch (error) {
       await this.failClaim(Number(session.id), this.failureCode(error));
-      if (error instanceof AppException) throw error;
-      throw this.databaseUnavailable();
+      if (!(error instanceof AppException)) throw this.databaseUnavailable();
+      // JWT 與 jti 已通過：Portal 判定不可登入、本機帳號停用或已刪除（4xx）記匿名 login.rejected，
+      // 等 failClaim 之後、員工列鎖已釋放才寫；Portal 查詢失敗（502）是系統故障，不記。
+      if (error.getStatus() < 500) {
+        await this.events.recordRejection(EMPLOYEE_INELIGIBLE_EVENT);
+      }
+      throw error;
     }
   }
 

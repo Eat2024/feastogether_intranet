@@ -28,10 +28,14 @@ export type AuthSecurityEventActorKind =
   | 'system'
   | 'anonymous';
 
-/** 白名單結果碼；不保存任意例外訊息。 */
+/**
+ * 白名單結果碼；不保存任意例外訊息。employee_ineligible：OAuth／WebView 上游身分已驗證，
+ * 但缺員編、Portal 判定不可登入，或本機帳號停用／已刪除。
+ */
 export type AuthSecurityOutcome =
   | 'succeeded'
   | 'credentials_invalid'
+  | 'employee_ineligible'
   | 'replaced'
   | 'logout';
 

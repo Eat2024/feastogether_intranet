@@ -25,6 +25,16 @@ export interface AuthSecurityEventInput {
   entryGeneration?: number;
 }
 
+/**
+ * OAuth／WebView 上游身分已驗證、卻被本系統規則拒絕。記為匿名：員編屬帳號識別不入表，
+ * 被拒時也未必有員工列。
+ */
+export const EMPLOYEE_INELIGIBLE_EVENT: AuthSecurityEventInput = {
+  type: 'login.rejected',
+  actor: { kind: 'anonymous' },
+  outcome: 'employee_ineligible',
+};
+
 @Injectable()
 export class AuthSecurityEventService {
   constructor(
@@ -64,8 +74,8 @@ export class AuthSecurityEventService {
   }
 
   /**
-   * 帳密拒絕以獨立短交易記錄，不碰目前會話。DB 不可用時只記故障類別（requestId 由 logger 帶入），
-   * 回 503 而不假裝事件已保存。
+   * 登入拒絕以獨立短交易記錄，不碰目前會話；呼叫端不得持有其他交易的鎖。DB 不可用時只記故障類別
+   * （requestId 由 logger 帶入），回 503 而不假裝事件已保存。
    */
   async recordRejection(event: AuthSecurityEventInput): Promise<void> {
     try {

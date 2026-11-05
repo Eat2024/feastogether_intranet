@@ -25,6 +25,8 @@ Super data：`{actor:{kind:'super_user',displayName:'Super user'},user:null,expi
 
 OAuth start/callback、WebView launch/bridge/activation 路徑及輸入不改；callback session 使用上述 employee additive shape。OAuth／WebView 成功時傳入目前 cookie 給 SessionService 原子替換，WebView POST 仍303導向 `/`，不把 token 回 JSON。GET session／logout 不需知道隱藏入口。
 
+OAuth callback 與 WebView launch 在上游身分已驗證後被本系統規則拒絕（缺員編、Portal 判定不可登入、本機帳號停用或已刪除）時，回應狀態與錯誤碼不變，另寫匿名 `login.rejected`／`employee_ineligible`；事件寫不進去時改回 503 AUTH_DB_UNAVAILABLE。兩者都不設 cookie、不撤原會話。未通過信任關卡的失敗（無效啟動碼、JWT 無效或重放、OAuth 取消、state／交易無效、token 驗證失敗）與系統故障不寫事件，分類見 [data-model §3](../data-model.md)。
+
 移除 POST /api/auth/login；dev-login、forgot/reset/change-password 不新增替代路徑。舊帳密路徑404，不 redirect 到隱藏入口。
 
 ## 錯誤碼（新碼於 app-errors.ts 集中建立）
@@ -55,5 +57,7 @@ UI `/ops-access/[entryKey]` 不放 `(main)`；proxy 在RSC／HTML渲染前驗證
 ## Logging contract
 
 將前端 /ops-access/* 與後端 /api/auth/super-user-entries/* 正規化為路由模板；同時禁止原始url、query、body、Referer、Set-Cookie被一般log記錄。覆蓋正常、404、guard、429、exception及SSR錯誤。反向代理須使用遮罩後URI或為此路徑關閉raw access log；Next production及開發request log亦需檢查／關閉此類raw記錄，不僅修改Nest masker。
+
+WebView activation 啟動碼無效、過期或已用過只記 `auth.launch_code_rejected`（不含啟動碼、cookie、token 或員編），不寫安全事件；此端點沒有限流。
 
 REPL只在明確currentEntry呼叫回原路徑，不記history、不經application logger；不新增公開查當前入口的API。

@@ -1,6 +1,9 @@
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
+import { EMPLOYEE_INELIGIBLE_EVENT } from './auth-security-event.service';
 import { AuthService } from './auth.service';
 
 describe('AuthService WebView SSO', () => {
@@ -57,6 +60,7 @@ describe('AuthService WebView SSO', () => {
       lookupEligibleStaff: jest.fn().mockResolvedValue(staff),
     };
     const logger = { info: jest.fn() };
+    const events = { recordRejection: jest.fn() };
     return {
       service: new AuthService(
         config as never,
@@ -65,12 +69,14 @@ describe('AuthService WebView SSO', () => {
         mysql as never,
         eligibleStaff as never,
         logger as never,
+        events as never,
       ),
       config,
       sessions,
       users,
       mysql,
       eligibleStaff,
+      events,
       user,
     };
   };
@@ -119,6 +125,7 @@ describe('AuthService WebView SSO', () => {
           dependencies.mysql as never,
           dependencies.eligibleStaff as never,
           { info: jest.fn() } as never,
+          dependencies.events as never,
         ),
     ).toThrow('WEBVIEW_JWT_PUBLIC_KEY_B64 必須是有效 RSA 公鑰 PEM');
   });
@@ -299,16 +306,42 @@ describe('AuthService WebView SSO', () => {
     expect(saved).not.toHaveProperty('email');
   });
 
-  it('員工資料查詢失敗不寫入帳號，launch 標記失敗', async () => {
-    const { service, eligibleStaff, users, sessions } = setup();
-    const failure = new Error('合成上游失敗');
-    eligibleStaff.lookupEligibleStaff.mockRejectedValue(failure);
+  it.each([
+    [
+      'Portal 查詢失敗',
+      new AppException(...AppErrors.STAFF_LOOKUP_FAILED),
+      HttpStatus.BAD_GATEWAY,
+    ],
+    ['未預期錯誤', new Error('合成上游失敗'), HttpStatus.SERVICE_UNAVAILABLE],
+  ])(
+    '員工資料%s不寫入帳號，launch 標記失敗，不記拒絕事件',
+    async (_case, failure, status) => {
+      const { service, eligibleStaff, users, sessions, events } = setup();
+      eligibleStaff.lookupEligibleStaff.mockRejectedValue(failure);
+      await expect(service.createWebviewLaunch(jwt())).rejects.toMatchObject({
+        status,
+      });
+      expect(users.save).not.toHaveBeenCalled();
+      expect(sessions.markPending).not.toHaveBeenCalled();
+      expect(sessions.markFailed).toHaveBeenCalled();
+      expect(events.recordRejection).not.toHaveBeenCalled();
+    },
+  );
+
+  it('Portal 判定不可登入：launch 先標記失敗再記匿名拒絕事件', async () => {
+    const { service, eligibleStaff, sessions, events } = setup();
+    eligibleStaff.lookupEligibleStaff.mockRejectedValue(
+      new AppException(...AppErrors.AUTH_EXCHANGE_FAILED),
+    );
     await expect(service.createWebviewLaunch(jwt())).rejects.toMatchObject({
-      status: HttpStatus.SERVICE_UNAVAILABLE,
+      code: AppErrorCode.AUTH_EXCHANGE_FAILED,
     });
-    expect(users.save).not.toHaveBeenCalled();
-    expect(sessions.markPending).not.toHaveBeenCalled();
-    expect(sessions.markFailed).toHaveBeenCalled();
+    expect(events.recordRejection).toHaveBeenCalledWith(
+      EMPLOYEE_INELIGIBLE_EVENT,
+    );
+    expect(sessions.markFailed.mock.invocationCallOrder[0]).toBeLessThan(
+      events.recordRejection.mock.invocationCallOrder[0],
+    );
   });
 
   it('既有 User 只更新員工資料白名單欄位並保留 departmentId', async () => {
@@ -357,18 +390,24 @@ describe('AuthService WebView SSO', () => {
   it.each([
     { isActive: false, deletedAt: null },
     { isActive: true, deletedAt: new Date() },
-  ])('inactive／soft-deleted User fail closed：%p', async (state) => {
-    const { service, users, sessions } = setup();
-    users.findByEmpidForUpdate.mockResolvedValue({
-      id: 7,
-      empid: '00123',
-      name: '王小明',
-      ...state,
-    });
-    await expect(service.createWebviewLaunch(jwt())).rejects.toMatchObject({
-      code: AppErrorCode.AUTH_EXCHANGE_FAILED,
-    });
-    expect(sessions.markPending).not.toHaveBeenCalled();
-    expect(sessions.markFailed).toHaveBeenCalled();
-  });
+  ])(
+    'inactive／soft-deleted User fail closed 並記匿名拒絕事件：%p',
+    async (state) => {
+      const { service, users, sessions, events } = setup();
+      users.findByEmpidForUpdate.mockResolvedValue({
+        id: 7,
+        empid: '00123',
+        name: '王小明',
+        ...state,
+      });
+      await expect(service.createWebviewLaunch(jwt())).rejects.toMatchObject({
+        code: AppErrorCode.AUTH_EXCHANGE_FAILED,
+      });
+      expect(sessions.markPending).not.toHaveBeenCalled();
+      expect(sessions.markFailed).toHaveBeenCalled();
+      expect(events.recordRejection).toHaveBeenCalledWith(
+        EMPLOYEE_INELIGIBLE_EVENT,
+      );
+    },
+  );
 });

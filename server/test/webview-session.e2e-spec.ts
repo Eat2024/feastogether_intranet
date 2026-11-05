@@ -58,9 +58,10 @@ describe('WebView session happy path', () => {
     if (ctx) {
       if (documentIds.length)
         await db.manager.delete(EsignDocument, { id: In(documentIds) });
-      // 登出寫入的 session.revoked 事件以 FK 指向會話，須先刪。
+      // 登出寫入的 session.revoked 事件以 FK 指向會話，須先刪；資格拒絕的匿名事件不帶員工 ID，另外刪。
       await db.query(
-        'DELETE FROM auth_security_events WHERE actor_user_id = (SELECT id FROM users WHERE empid = ?)',
+        `DELETE FROM auth_security_events WHERE actor_user_id = (SELECT id FROM users WHERE empid = ?)
+          OR (actor_kind = 'anonymous' AND outcome_code = 'employee_ineligible')`,
         [empid],
       );
       await db.query(

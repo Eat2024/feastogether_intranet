@@ -58,11 +58,17 @@ activateCredentials：以本機已驗證設定算 fingerprint，鎖列並核對�
 | actor_user_id | nullable bigint FK users RESTRICT | 只有 employee 事件有值 |
 | session_id | nullable unsigned bigint FK auth_sessions RESTRICT | 成功登入／撤銷可關聯；不可包含 token |
 | occurred_at／created_at | datetime(6)，各單欄 index | 事件與建立時間 |
-| outcome_code | varchar(64) | 白名單結果碼，不存任意例外訊息 |
+| outcome_code | varchar(64) | 白名單結果碼：succeeded／credentials_invalid／employee_ineligible／replaced／logout；無 DB CHECK，由程式白名單限制；不存任意例外訊息 |
 | credential_generation／entry_generation | nullable unsigned bigint | 可追溯版本；不存 fingerprint／key |
 | request_id | nullable varchar(64) | 已正規化追蹤識別；REPL／worker 可無 |
 
 不得保存輸入帳號、密碼、IP、UA、任意 body、完整入口或文件資料。成功登入／登出／輪換與此表同交易；invalid login 的 rejected 事件另短交易，不影響原會話。若 DB 不可用則拒絕登入，既有結構化 logger 只記故障類別與 requestId，不假裝 DB 事件成功。限流／無效路徑避免每次猜測無限寫表，沿既有安全 log 記拒絕結果；登入已進入 credential 驗證才寫 login.rejected。
+
+員工入口（OAuth／WebView，027-05 後續）依上述規則分三類：
+
+- 寫 `login.rejected`（actor_kind=anonymous、outcome_code=employee_ineligible、無 session_id）：上游身分已驗證，卻被本系統規則拒絕。OAuth 是 token 交換與 UserInfo 都成功後，缺員編、Portal 判定不可登入、本機帳號停用或已刪除；WebView launch 是 JWT 格式、簽章、claims 都通過且 jti 未重放後，Portal 判定不可登入、本機帳號停用或已刪除。員編屬帳號識別不入表，被拒時也未必有員工列，所以不記 employee actor。持有員工列鎖的交易 rollback 後（WebView 在 jti 標記失敗後）才以獨立短交易寫入；寫入失敗回 503 AUTH_DB_UNAVAILABLE。原回應的狀態與錯誤碼不變，不設 cookie、不撤原會話。
+- 只記應用 log、不寫表：還沒通過信任關卡的失敗。WebView activation 的啟動碼無效、過期或已用過記 `auth.launch_code_rejected`；launch 的 JWT 無效或重放記 `auth.webview_launch_rejected`／`auth.webview_launch_replayed`；OAuth token 或 UserInfo 驗證失敗記 `oauth.code_exchange_failed`／`oauth.userinfo_failed`。OAuth 取消、缺 code、state 或交易無效沒有語意 log，只有 http_access 的狀態碼。log 不含啟動碼、cookie、token 或員編。
+- 都不寫：Portal 查詢失敗（STAFF_LOOKUP_FAILED）、DB 故障與 OAuth 上游故障是系統故障，不是拒絕，維持原回應。
 
 紀錄不提供任意 update/delete，不設新清理排程，不與已移除的 esign_audit_events 混用。028 的授權異動稽核另行設計，不預先擴充泛用 metadata。
 

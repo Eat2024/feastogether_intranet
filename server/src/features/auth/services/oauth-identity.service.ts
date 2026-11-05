@@ -6,6 +6,10 @@ import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { User } from '#app/features/users/entities/user.entity';
 import type { StaffLookupDto } from '../dto/staff-lookup.dto';
+import {
+  AuthSecurityEventService,
+  EMPLOYEE_INELIGIBLE_EVENT,
+} from './auth-security-event.service';
 import { EligibleStaffService } from './eligible-staff.service';
 import {
   isDuplicateEntryError,
@@ -28,6 +32,8 @@ const MAX_ATTEMPTS = 2;
  * 2. 找不到 → 建立一般 User。
  * 全程在同一 MySQL 交易內並鎖定員工列；並發建立由 empid 唯一約束仲裁，衝突重跑一次。
  * 同步 Portal 的可信部門與受信任姓名、最後登入時間，不保存 oauth_sub。
+ * 缺員編、Portal 判定不可登入、本機帳號停用或已刪除（皆 4xx）記匿名 login.rejected；
+ * Portal 查詢失敗（502）與 DB 故障是系統故障，不記。
  */
 @Injectable()
 export class OauthIdentityService {
@@ -36,9 +42,22 @@ export class OauthIdentityService {
     private readonly logger: AppLoggerService,
     private readonly mysql: MysqlService,
     private readonly eligibleStaff: EligibleStaffService,
+    private readonly events: AuthSecurityEventService,
   ) {}
 
   async resolve(profile: VerifiedOauthProfile): Promise<User> {
+    try {
+      return await this.resolveEligible(profile);
+    } catch (error) {
+      // 在交易外記錄：員工列鎖已隨 rollback 釋放。
+      if (error instanceof AppException && error.getStatus() < 500) {
+        await this.events.recordRejection(EMPLOYEE_INELIGIBLE_EVENT);
+      }
+      throw error;
+    }
+  }
+
+  private async resolveEligible(profile: VerifiedOauthProfile): Promise<User> {
     const empId = profile.userNumber;
     if (!empId) {
       throw new AppException(...AppErrors.OAUTH_EMPLOYEE_ID_MISSING);

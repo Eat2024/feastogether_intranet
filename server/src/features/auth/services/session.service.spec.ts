@@ -147,6 +147,7 @@ function setup() {
     access as never,
     { fingerprint: FINGERPRINT } as never,
     events,
+    { info: jest.fn() } as never,
   );
   /** launch 時建立的待啟用 WebView 列（員工 7、60 秒內有效）。 */
   const addPendingLaunch = (code: string) => {

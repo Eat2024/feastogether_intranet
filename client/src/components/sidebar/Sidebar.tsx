@@ -76,26 +76,18 @@ export default function Sidebar({ defaultOpen }: Props) {
       <Box
         sx={(theme) => ({
           display: "flex",
-          flexDirection: open ? "row" : "column",
           alignItems: "center",
-          gap: 1,
-          px: 1,
+          justifyContent: "space-between",
+          // 收合時兩顆圖示按鈕並排，縮小間距才放得進收合寬度
+          gap: open ? 1 : 0.5,
+          px: open ? 1 : 0.5,
           py: 1,
           borderBottom: "1px solid",
           borderBottomColor: alpha(theme.palette.common.white, 0.12),
         })}
       >
-        {open ? (
-          <>
-            <ServiceSwitcher current={service} compact={false} />
-            {toggle}
-          </>
-        ) : (
-          <>
-            {toggle}
-            <ServiceSwitcher current={service} compact />
-          </>
-        )}
+        <ServiceSwitcher current={service} compact={!open} />
+        {toggle}
       </Box>
       {open ? (
         <SidebarNavigation items={service.menu} pathname={pathname} />

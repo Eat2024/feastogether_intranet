@@ -27,3 +27,9 @@
 - 2026-11-06：T029–T031 完成；容量完整 1→6,000→6,001，新增大型快照排序兩處修正及 RED/GREEN，Chromium 跨故事 1/1、相關 e2e 119/119、unit 1204/1204、root lint 與兩端 build 通過。詳見 validation.md。T032 的預設 root build 留由 merger 在真整合工作區確認；本票維持 claimed，未整合前不 resolved。
 
 - 2026-11-06 merger：已將 impl/030-04 的 4c415c85 fast-forward 整合；核對容量來源程式 SHA-256 與本次候選完全相符，6,000／6,001 份 expected 名單 hash 與持久證據吻合。確認兩項大型 JSON 排序回歸、119 e2e、1204 unit、9 storage／5 S3 export、跨故事真瀏覽器日誌。整合工作區原預設 `pnpm build`（Nest + Next Turbopack，未傳 webpack）通過，T032 完成，本票 resolved。未部署或建立遠端 PR。
+
+## 2026-11-06 清理（追加驗收）
+
+使用者授權第 1、2 項清理，追加工作進行中（claimed），原 resolved 記錄保留。修正先前 Excel／PDF 共用 expired 的誤述：該前端狀態僅服務 ZIP。Ticket 01 負責 T033 型別／UI；Ticket 04 負責 T034 一次性工具退役及回歸。保留文件 expired、expires_at/index/API、completedAt、workNewSignatureCount；不新增 migration。驗證結果後續追加至 validation.md。
+
+- 2026-11-06：T033／T034 追加清理已於整合分支工作區完成並驗收：root lint/build、1,204 unit、111 匯出 e2e、5 S3 export 通過。Spec030 describe 逐字保留，文件 expired 與 schema/API 期限欄位未改。詳細指令及未重跑範圍見 validation.md「2026-11-06 清理」。追加變更尚未 commit／push，原票 resolved 是先前交付紀錄，不代表本輪已提交。

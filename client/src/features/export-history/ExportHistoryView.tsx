@@ -108,7 +108,6 @@ const ZIP_STATUS_ORDER: EsignExportStatus[] = [
   "processing",
   "completed",
   "failed",
-  "expired",
   "superseded",
 ];
 
@@ -153,7 +152,6 @@ const ZIP_STATUS_META: Record<
   processing: { label: "打包中", color: "info" },
   completed: { label: "可下載", color: "success" },
   failed: { label: "失敗", color: "error" },
-  expired: { label: "檔案已不可用", color: "default" },
   superseded: { label: "已被新版取代", color: "default" },
 };
 
@@ -295,9 +293,6 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
   }
   if (record.status === "superseded") {
     return <Typography variant="helper">已被新版取代</Typography>;
-  }
-  if (record.status === "expired") {
-    return <Typography variant="helper">檔案已不可用</Typography>;
   }
   return (
     <Typography variant="helper" component="span">

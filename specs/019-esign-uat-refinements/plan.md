@@ -75,3 +75,5 @@ server/test/
 ## Complexity Tracking
 
 無需例外。一次性資料工具是現存檔案與 DB 狀態必須共同核對的最小作法；不新增持續運行的框架、表或排程。
+
+> 2026-11-06 退役註記：上述 normalize-export-retention 一次性工具已於 Spec 030 後續清理移除，舊紀錄僅供追溯，不再作為操作入口。有效 ZIP 不依期限失效；新版取代與清理由 Spec 030 管理。

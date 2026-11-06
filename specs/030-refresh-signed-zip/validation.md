@@ -223,3 +223,32 @@ RSS 每 250 ms 取樣，只取 processing 至 completed 區間，包含 ts-node 
 - 合併後 root `pnpm build`（Nest／Next Turbopack）、client lint 通過。
 - 在隔離前端目錄重跑 Ticket 04 真 Chromium 整合場景，1/1 通過（15.259 秒）：失敗保留舊版、第三人簽署後重試仍兩份、雙 session 檔名獨立、舊 panel/history 真 409 刷新。
 - 補測初次因測試 origin 設定、既有 Next dev 工作目錄占用而未進入場景；改為明確設定測試 origin 與隔離目錄。冷啟動一輪保留舊頁時計的欄位等待逾時，同一場景重跑通過；未改產品行為或放寬斷言。臨時 harness 已移除。
+
+## 2026-11-06 清理
+
+使用者授權複查第 1、2 項。移除前端 ZIP expired 與 Spec 019 一次性保存政策工具／專屬測試；保留 Spec030 describe。上方歷次紀錄中的「為 Excel／PDF 保留共用 expired」為當時誤判，現修正：EsignExportStatus 僅服務 ZIP，Excel／PDF 歷史沒有 status。既有通過紀錄不視為本輪驗證。工具亦可清除 completed 工作舊期限，但目前正式流程不依該值判斷；本輪退役工具，不調整資料。文件 expired、expires_at/index/API、completedAt、workNewSignatureCount 與查詢條件均保留，無 migration。
+
+本輪僅使用既有本機隔離 MySQL／Redis 與 Moto；未連線 UAT 或外部環境。
+
+### 本輪實際驗證
+
+- `pnpm lint`：通過；實際依序執行 server `lint:check` 與 client `lint`，server 0 errors／310 既有 warnings。未另重複執行等價 package 命令。日誌 `/tmp/spec030-cleanup-lint.log`。
+- `pnpm -C server test --runInBand`：119 suites／1,204 tests 通過，日誌 `/tmp/spec030-cleanup-unit.log`。
+- `pnpm build`：Nest 與 Next Turbopack build 通過，包含 client TypeScript；未另重複執行等價 client build。日誌 `/tmp/spec030-cleanup-build.log`。
+- 下列本機環境包裝命令執行匯出／歷史／取代清理：3 suites／111 tests 通過，日誌 `/tmp/spec030-cleanup-e2e.log`。相較之前 119 項僅減少 019 工具的 8 項測試；Spec030 describe 與 HEAD 逐字相同，沒有刪減其斷言。
+
+```bash
+node --env-file=/tmp/spec030-test.env -e 'const {spawnSync}=require("node:child_process"); const r=spawnSync("pnpm",["-C","server","test:e2e","--runTestsByPath","test/esign-export.e2e-spec.ts","test/esign-export-history.e2e-spec.ts","test/export-retention.e2e-spec.ts"],{stdio:"inherit"});process.exit(r.status??1)'
+```
+
+- S3 匯出另用專用 Jest 設定：1 suite／5 tests 通過，日誌 `/tmp/spec030-cleanup-s3.log`；本機 Moto、合成 credential，非正式 S3。
+
+```bash
+PATH=/tmp/esign019-moto/bin:$PATH node --env-file=/tmp/spec030-test.env -e 'const {spawnSync}=require("node:child_process"); const r=spawnSync("pnpm",["-C","server","test:s3:e2e","--runTestsByPath","test/s3-export.e2e-spec.ts"],{stdio:"inherit"});process.exit(r.status??1)'
+```
+
+執行前已檢查 env 指向 loopback MySQL／Redis 與 feastogether_intranet_test 前綴測試 DB；未修改 repository 環境檔。預期故障注入會輸出 cleanup_failed，測試結果仍全數通過，未隱藏錯誤或放寬斷言。
+
+`git diff --check` 通過；server／CI／部署文件沒有殘留工具呼叫。文件 expired 相關原始碼、expires_at/index/API、completedAt、workNewSignatureCount 與 repository 查詢均無 diff。既有未追蹤研究文件與 travel 目錄保持原狀。
+
+未執行：完整非匯出 e2e、瀏覽器重驗、6,000 份容量重跑及 migration（本輪沒有新增 migration，亦未改匯出執行期／容量流程）。本輪變更尚未 commit／push，未部署；不把先前 PR 的驗證或瀏覽器證據視為本輪已重跑。

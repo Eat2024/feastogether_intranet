@@ -53,7 +53,7 @@
 ## 2026-11-06 狀態邊界補充
 
 - 文件 expired 仍代表「已超過簽署期限且尚有人未簽」，完全保留文件 DTO、查詢推導與 client esignDocuments 的此狀態。
-- 只清 ZIP 匯出 service／repository 的 expired 判斷與未使用 archiveFile()；未確認其他匯出類型資料前，共用 EsignExportStatus 與歷史頁保留 Excel／PDF 的 expired 相容，不能用 ZIP 查詢結果推論全部。
+- 移除 ZIP 匯出 service／repository 及前端型別／歷史頁的 expired 相容處理。EsignExportStatus 實際僅用於 ZIP；Excel／PDF 歷史項目沒有 status，不需為其保留此前端分支。使用者已確認 ZIP 工作與 ZIP 檔案均無 expired 資料；不推論其他檔案用途的 archive 狀態。
 - 保留 expires_at、idx_esign_export_jobs_expires_at、idx_esign_exports_reuse 中原欄位及 API expiresAt（新 ZIP 仍為 null），不做 schema migration。本輪未查驗所有 export_type 的非 null expires_at，亦未查驗全部檔案 archive_status 分布，不能宣稱可全域刪除。
 - 若另案要移除所有匯出 expired／expires_at，需先唯讀盤點全部 export_type/status、file_purpose/archive_status 及非 null expires_at，再明確規劃 migration 與相容切換；不納入 030。
 
@@ -63,3 +63,7 @@
 - 決策：current 以 MAX(id) 選最新成功；work 以 COALESCE(進行中 MAX(id), 較目前成果新且未成功的 failed MAX(id)) 選 ID，再依主鍵讀摘要。申請／重試沿用原文件鎖與同交易；不調 sort_buffer、不新增索引、不加入重試掩蓋。
 - 另以 6,000→6,001 驗到 supersedeOlder 的全 entity ORDER BY 同樣失敗。改為只選 ID、不 SQL 排序，在應用程式依數字 ID 排序後逐筆鎖讀並核對 completed。既有文件鎖、發布同交易及清理交易外的邊界不變。
 - maintain 只需要候選 ID，改為投影 ID 後逐筆鎖讀；pendingCleanup 已採 ID 投影及 50 筆有界排序。大型 metadata 的公開 API／processor 回歸先 RED 後 GREEN；完整容量原流程必須重跑，不用縮小快照或增大 DB sort buffer 充當修正。
+
+## 2026-11-06 清理
+
+本輪僅執行複查第 1、2 項：移除前端 ZIP expired 型別、歷史排序／標籤／操作分支，以及 Spec 019 一次性保存政策工具、專屬設定與測試。工具除恢復 expired 外也會清空舊期限，但目前有效 ZIP 已不依期限判斷；不再保留舊政策轉換入口。保留 Spec030 取代與補清理測試。文件 expired、completedAt 防線、workNewSignatureCount、簽署人查詢及 expires_at/index/API 均不改；無 migration 或資料回填。

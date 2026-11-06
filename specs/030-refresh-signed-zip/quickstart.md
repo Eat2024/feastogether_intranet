@@ -70,7 +70,7 @@ storage 測試須覆蓋 local 及 S3 真實刪除語意：S3 以完整版本 ref
 ## 2026-11-06 狀態邊界補充
 
 - 文件 expired 仍代表「已超過簽署期限且尚有人未簽」，完全保留文件 DTO、查詢推導與 client esignDocuments 的此狀態。
-- 只清 ZIP 匯出 service／repository 的 expired 判斷與未使用 archiveFile()；未確認其他匯出類型資料前，共用 EsignExportStatus 與歷史頁保留 Excel／PDF 的 expired 相容，不能用 ZIP 查詢結果推論全部。
+- 移除 ZIP 匯出 service／repository 及前端型別／歷史頁的 expired 相容處理。EsignExportStatus 實際僅用於 ZIP；Excel／PDF 歷史項目沒有 status，不需為其保留此前端分支。使用者已確認 ZIP 工作與 ZIP 檔案均無 expired 資料；不推論其他檔案用途的 archive 狀態。
 - 保留 expires_at、idx_esign_export_jobs_expires_at、idx_esign_exports_reuse 中原欄位及 API expiresAt（新 ZIP 仍為 null），不做 schema migration。本輪未查驗所有 export_type 的非 null expires_at，亦未查驗全部檔案 archive_status 分布，不能宣稱可全域刪除。
 - 若另案要移除所有匯出 expired／expires_at，需先唯讀盤點全部 export_type/status、file_purpose/archive_status 及非 null expires_at，再明確規劃 migration 與相容切換；不納入 030。
 
@@ -78,3 +78,7 @@ storage 測試須覆蓋 local 及 S3 真實刪除語意：S3 以完整版本 ref
 ## Ticket 04 容量重跑
 
 使用 [容量 README](../../server/test/performance/README.md#spec030既有-zip-的按需更新) 的 `esign-zip-refresh-benchmark.ts`，不是 Spec009 的首次匯出 benchmark。流程涵蓋 1→6,000，處理中新增第 6,001 而不自動重包；最後再明確更新 6,001 驗證大型舊版清理。每次都必須使用新隔離 DB、storage 與 output，並獨占測試 Redis。失敗即停止，保留證據；不得調大 sort buffer、手刪產品 ZIP 或只跑小檔就標示通過。
+
+## 2026-11-06 清理
+
+本輪僅執行複查第 1、2 項：移除前端 ZIP expired 型別、歷史排序／標籤／操作分支，以及 Spec 019 一次性保存政策工具、專屬設定與測試。工具除恢復 expired 外也會清空舊期限，但目前有效 ZIP 已不依期限判斷；不再保留舊政策轉換入口。保留 Spec030 取代與補清理測試。文件 expired、completedAt 防線、workNewSignatureCount、簽署人查詢及 expires_at/index/API 均不改；無 migration 或資料回填。

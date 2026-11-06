@@ -48,3 +48,5 @@ key：`esign:org-chart:v2:<原環境與上游hash>`；值仍 `{version:1,data}`�
 EsignHistoryItem 增加 `label: string`（必填）；保留 type、occurredAt、actor、reason。actor 一律 `{kind,name,signerPublicId?}`。補簽保留 signEndAt；previousSignEndAt/reason 與既有 actorUserId 的相容資料依原授權提供，不對同部門瀏覽者或本人簽署視角新增揭露。
 
 此 label 不持久化，不加入 audit hash 計算。中文映射見 history-event-inventory.md，27 種已知事件；未知回中性中文。不存在翻譯表 migration。
+
+> 2026-11-06 退役註記：上述 normalize-export-retention 一次性工具已於 Spec 030 後續清理移除，舊紀錄僅供追溯，不再作為操作入口。有效 ZIP 不依期限失效；新版取代與清理由 Spec 030 管理。

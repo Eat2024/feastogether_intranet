@@ -27,7 +27,7 @@
 
 - [x] T003 在 server/src/features/esign/entities/esign-export-job.entity.ts、server/src/features/esign/entities/esign-file-object.entity.ts 定義／說明新狀態並移除 ZIP expired 相容分支；遵守「status/archiveStatus 既有 varchar 足夠」、「受理後不可變；重試不擴大名單」及「保留完整 reference，deleted 後也不硬刪 metadata」；不新增欄位或 migration。
 - [x] T004 在 server/src/features/esign/dto/export.dto.ts、server/src/features/esign/dto/esign-common.dto.ts 定義 exportState 的 current/work（ExportJobView 或 null）、兩個非負新增數（對應 null 時為 0）及 superseded 投影；保持 exportSummary 相容且不暴露快照。
-- [x] T005 [P] 在 client/src/api/types/esignExports.ts、client/src/api/types/esignDocuments.ts 同步 exportState 與 superseded 型別；共用 EsignExportStatus／歷史頁保留其他類型的 expired，相容清理限 ZIP 專用分支，保持既有下載及名稱欄位，不新增 force／名單輸入。
+- [x] T005 [P] 在 client/src/api/types/esignExports.ts、client/src/api/types/esignDocuments.ts 同步 exportState 與 superseded 型別；EsignExportStatus 僅用於 ZIP，移除型別／歷史頁的 expired 分支（2026-11-06 複查修正），Excel／PDF 歷史無 status，保持既有下載及名稱欄位，不新增 force／名單輸入。
 
 ## Phase 3: User Story 1 — 有需求才更新 ZIP（P1）
 
@@ -128,3 +128,8 @@ Setup T001–T002
 3. US3 完成安全切換、舊檔清理及補償，才能滿足完整使用者需求。
 4. 三個故事皆 P1，實際發布的最小範圍必須包含 US1+US2+US3 與最終驗證；不能只發布按需更新而遺漏清理保護。
 5. 若拆成本機 tickets，可跨任務分組形成垂直可驗收切片；以 ticket Blocked by 為領取依據，所有功能先整合再發布。未通過的項目保持未勾選並記錄原因。
+
+## 2026-11-06 清理
+
+- [x] T033 移除前端 ZIP expired 型別與歷史頁分支，修正文檔中 Excel／PDF 共用狀態的誤述（Ticket 01）。
+- [x] T034 移除 Spec 019 保存政策工具、專屬 tsconfig/README、019 describe 與未使用 import；保留 Spec030 describe，完成回歸並記錄結果（Ticket 04）。

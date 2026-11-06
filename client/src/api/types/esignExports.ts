@@ -3,9 +3,9 @@ import type { EsignDocumentStatus, EsignSignerStatus } from './esignDocuments';
 
 /**
  * 匯出工作狀態：pending 排隊中；waiting 仍有個人副本產製中，等待完成；processing 打包中；
- * completed 可下載；failed 失敗（可重試）；expired 保留供共用匯出型別相容
+ * completed 可下載；failed 失敗（可重試）；superseded 已被新版取代
  */
-export type EsignExportStatus = 'pending' | 'waiting' | 'processing' | 'completed' | 'failed' | 'expired' | 'superseded';
+export type EsignExportStatus = 'pending' | 'waiting' | 'processing' | 'completed' | 'failed' | 'superseded';
 
 /** 一次 ZIP 匯出工作；範圍固定為受理當下所有已簽署的個人副本 */
 export interface EsignExportJob {

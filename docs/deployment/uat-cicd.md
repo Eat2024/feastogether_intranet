@@ -68,7 +68,7 @@ https://truststore.pki.rds.amazonaws.com/ap-east-2/ap-east-2-bundle.pem
 
 ## Spec 030：ZIP 按需更新的版本切換
 
-本節是發布操作要求，不代表已在 UAT 執行。Spec 030 沒有新增 schema、migration、環境變數或排程；保留 `expires_at`、既有索引與 API `expiresAt`。文件的 `expired`（超過簽署期限且仍有人未簽）維持原規則，共用匯出歷史也保留非 ZIP 類型的 `expired` 相容處理。
+本節是發布操作要求，不代表已在 UAT 執行。Spec 030 沒有新增 schema、migration、環境變數或排程；保留 `expires_at`、既有索引與 API `expiresAt`。文件的 `expired`（超過簽署期限且仍有人未簽）維持原規則，前端 ZIP 型別／歷史頁已移除 `expired`；Excel／PDF 歷史沒有 status。Spec 019 一次性保存政策工具已退役，不作為本次部署步驟。
 
 client、API 與 worker 必須使用同一個發布 commit；API 與 worker 使用相同 server digest。新版會將被取代的 ZIP 工作記為 `superseded`，檔案依序記為 `delete_pending`、`deleted`。舊程式不認識這些狀態，不能混跑，也不能因這次沒有 migration 就推論可直接回退舊映像。
 

@@ -150,3 +150,5 @@
 ## 執行紀錄（2026-11-02）
 
 功能實作、工具、必要測試與review修正已整合至 `impl/019-uat-refinements`；實測與限制見 quickstart.md、code-review.md。本檔已依實際執行結果更新，T042 已在 PR40 與 dev 的整合中補驗完成；沿用 dev 既有 Spec017 實作。UAT切換是另行操作，不因工具完成而視為已部署。
+
+> 2026-11-06 退役註記：上述 normalize-export-retention 一次性工具已於 Spec 030 後續清理移除，舊紀錄僅供追溯，不再作為操作入口。有效 ZIP 不依期限失效；新版取代與清理由 Spec 030 管理。

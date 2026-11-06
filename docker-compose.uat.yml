@@ -30,6 +30,9 @@ services:
   client:
     image: ${CLIENT_IMAGE:?必須提供 CLIENT_IMAGE}
     restart: unless-stopped
+    # 隱藏維護登入的來源網路 SUPER_USER_ALLOWED_CIDRS；檔案缺漏時 compose config 失敗、部署不開始（見 docs/deployment/uat-cicd.md）
+    env_file:
+      - path: /home/feasteng/deploy/intranet-uat/client.env
     environment:
       NODE_ENV: production
       HOSTNAME: 0.0.0.0

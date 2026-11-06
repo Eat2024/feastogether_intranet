@@ -25,3 +25,9 @@
 - 2026-11-06：T014–T019 實作與驗證完成：修正較舊 failed 重試及重開頁面的固定工作追蹤；真實 10 session、13→14、等待 PDF、queue 恢復、固定範圍重試及雙瀏覽器 session 通過。詳見 specs/030-refresh-signed-zip/validation.md；保持 claimed，待 merger 驗收整合後 resolved。
 
 - 2026-11-06 merger：已以 fast-forward 將 impl/030-02 的 6cf5b47 整合至 impl/030-integration。核對 10 session 共用、13→14 真 ZIP 固定範圍、來源等待、enqueue 復原、14→15 失敗後同快照重試、雙 session／reload／返回瀏覽器證據；8/8 e2e、119 suites／1204 tests、lint/build 與 hook 通過。read-ahead 測試僅以本案例來源 key 排除其他工作，保留兩 worker、慢目的端及 <64 原門檻，未改正式串流。US2 已完成，US3 取代及清理待下一票。
+
+## 2026-11-06 單一下載操作
+
+追加 T035（claimed）：使用者要求只保留下載 ZIP，顯示所有已簽署份數，打包完成自動下載。取代原雙按鈕及匯出頁舊版入口驗收；固定快照與後端保留舊成果不變。實測結果追加至 validation.md。
+
+- T035 已於整合工作區完成，真瀏覽器驗證單擊自動下載、僅一次、固定快照／檔名、重用、重試及離頁返回通過。詳細證據見 validation.md 的單一下載章節；追加變更尚未 commit／push。

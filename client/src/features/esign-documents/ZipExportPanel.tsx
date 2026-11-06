@@ -2,7 +2,7 @@
 
 // 匯出頁的「已簽署文件 ZIP」：POST /api/esign/documents/:id/exports 受理後由後端背景打包，
 // 以 GET .../exports/:exportId 查詢進度，完成後以瀏覽器直接下載（檔案可能很大，不先讀進記憶體）。
-// 目前成果與進行中的工作分開；只有明確要求更新才申請新工作。
+// 每次明確點擊下載才確認最新範圍；受理後固定追蹤該工作，完成即下載一次。
 import { useGetDocumentExportQuery } from '@/api/queries';
 import { queryKeys } from '@/api/query-keys';
 import { prepareExportDownload, preparedExportFileUrl, requestDocumentExport, retryDocumentExport } from '@/api/requests';
@@ -10,7 +10,6 @@ import type { EsignExportJob, EsignExportState } from '@/api/types';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
 import { getErrorCode, getErrorMessage } from '@/lib/apiError';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
-import FolderZipRoundedIcon from '@mui/icons-material/FolderZipRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -20,7 +19,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDateTime } from './listQuery';
 
 /** 檔案大小：KB／MB 顯示 */
@@ -38,6 +37,8 @@ export function useZipExport(documentId: string, exportState: EsignExportState) 
   const exportSummary = exportState.work ?? exportState.current;
   // 使用者受理的工作固定追蹤，不因新增簽署自動重做。
   const [requestedId, setRequestedId] = useState<string | null>(() => exportState.work?.id ?? null);
+  const [downloadIntent, setDownloadIntent] = useState<{ exportId: string; fileName: string } | null>(null);
+  const consumedIntent = useRef<typeof downloadIntent>(null);
   const exportId = requestedId ?? exportSummary?.id ?? null;
   const job = useGetDocumentExportQuery(documentId, exportId);
 
@@ -51,24 +52,22 @@ export function useZipExport(documentId: string, exportState: EsignExportState) 
     refreshSummary();
   };
 
-  const onJob = (next: EsignExportJob) => {
+  const onJob = (next: EsignExportJob, fileName: string) => {
+    setDownloadIntent(next.status === 'failed' || next.status === 'superseded' ? null : { exportId: next.id, fileName });
     setRequestedId(next.id);
     queryClient.setQueryData([queryKeys.ESIGN_DOCUMENT_EXPORT, documentId, next.id], next);
     void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_EXPORT_HISTORY] });
   };
   const request = useMutation({
-    mutationFn: requestDocumentExport,
+    mutationFn: (input: { id: string; fileName: string }) => requestDocumentExport(input.id),
     meta: { suppressGlobalErrorToast: true },
-    onSuccess: (result) => {
-      onJob(result);
-      if (result.reused && result.status === 'completed') showSnackbar('已有可下載的 ZIP，沿用上次產生的檔案', 'info');
-    },
+    onSuccess: (result, input) => onJob(result, input.fileName),
     onError: (err) => showSnackbar(getErrorMessage(err, '產生 ZIP 失敗，請稍後再試'), 'error'),
   });
   const retry = useMutation({
-    mutationFn: retryDocumentExport,
+    mutationFn: (input: { id: string; exportId: string; fileName: string }) => retryDocumentExport({ id: input.id, exportId: input.exportId }),
     meta: { suppressGlobalErrorToast: true },
-    onSuccess: onJob,
+    onSuccess: (result, input) => onJob(result, input.fileName),
     onError: (err) => showSnackbar(getErrorMessage(err, '重試失敗，請稍後再試'), 'error'),
   });
 
@@ -78,11 +77,13 @@ export function useZipExport(documentId: string, exportState: EsignExportState) 
       const link = document.createElement('a');
       link.href = preparedExportFileUrl(prepared.downloadPath);
       link.download = prepared.fileName;
-      link.target = '_blank';
-      link.rel = 'noopener';
+      // 使用同源下載連結，背景完成後不另開可能被瀏覽器阻擋的視窗。
+      document.body.appendChild(link);
       link.click();
+      link.remove();
     },
     meta: { suppressGlobalErrorToast: true },
+    onSettled: () => setDownloadIntent(null),
     onError: (err, input) => {
       showSnackbar(getErrorMessage(err, '準備下載失敗，請稍後再試'), 'error');
       if (getErrorCode(err) !== 'ESIGN_EXPORT_SUPERSEDED') return;
@@ -105,41 +106,43 @@ export function useZipExport(documentId: string, exportState: EsignExportState) 
     if (!status || IN_PROGRESS.includes(status)) return;
     refreshSummary();
   }, [status, exportId, refreshSummary]);
-  const busy = request.isPending || retry.isPending || download.isPending;
-  const oldAvailable = current?.status === 'completed' && data?.id !== current.id && !!data &&
-    (IN_PROGRESS.includes(data.status) || data.status === 'failed');
-  return { documentId, exportId, job, data, current, newCount, requestedId, request, retry, download, busy, showLatest, oldAvailable, exportState };
+  const downloadFile = download.mutate;
+  useEffect(() => {
+    if (!downloadIntent || consumedIntent.current === downloadIntent || data?.id !== downloadIntent.exportId) return;
+    if (data.status === 'failed' || data.status === 'superseded') {
+      // 終止本次自動下載；之後重試必須由使用者再次操作。
+      consumedIntent.current = downloadIntent;
+      return;
+    }
+    if (data.status !== 'completed') return;
+    const file = data.files[0];
+    if (!file) return;
+    // 先消耗意圖，避免輪詢、重繪或 StrictMode 重複觸發下載。
+    consumedIntent.current = downloadIntent;
+    downloadFile({ exportId: data.id, fileId: file.id, fileName: downloadIntent.fileName });
+  }, [data, downloadIntent, downloadFile]);
+  const waitingForDownload = !!downloadIntent && data?.id === downloadIntent.exportId && IN_PROGRESS.includes(data.status);
+  const busy = request.isPending || retry.isPending || download.isPending || waitingForDownload;
+  return { documentId, exportId, job, data, newCount, request, retry, busy, showLatest, waitingForDownload };
 }
 
 export type ZipExport = ReturnType<typeof useZipExport>;
 
-/** 產生、更新與下載均放在頁面底部；指定成果下載不會重新申請打包。 */
+/** 單一下載入口：後端決定沿用或打包，受理後不再為新增簽署重新申請。 */
 export function ZipActionButtons({ zip, signedCount, fileName }: { zip: ZipExport; signedCount: number; fileName: string }) {
-  const { documentId, data, current, busy, request, download, newCount, requestedId } = zip;
   if (zip.job.isError || (zip.exportId && zip.job.isPending)) return null;
-  const generateButton = (label: string) => (
-    <Button size="large" variant="contained" startIcon={<FolderZipRoundedIcon />}
-      loading={request.isPending} disabled={busy || signedCount === 0}
-      onClick={() => request.mutate(documentId)}>{label}</Button>
-  );
-  const downloadButtons = (result: EsignExportJob, label: string) => result.files.map((file) => (
-    <Button key={file.id} size="large" variant="contained" startIcon={<FileDownloadRoundedIcon />}
-      loading={download.isPending && download.variables?.fileId === file.id} disabled={busy}
-      onClick={() => download.mutate({ exportId: result.id, fileId: file.id, fileName })}>
-      {label}
+  if (zip.data?.status === 'failed' || zip.data?.status === 'superseded') return null;
+  return (
+    <Button size="large" variant="contained" startIcon={<FileDownloadRoundedIcon />}
+      loading={zip.busy} disabled={zip.busy || signedCount === 0}
+      onClick={() => zip.request.mutate({ id: zip.documentId, fileName })}>
+      下載 ZIP
     </Button>
-  ));
-  if (!data) return generateButton(`產生 ZIP（${signedCount} 份已簽署）`);
-  if (data.status === 'completed') return <>
-    {downloadButtons(data, requestedId ? '下載本次成果' : '下載 ZIP')}
-    {newCount > 0 && generateButton('更新並下載 ZIP')}
-  </>;
-  if (zip.oldAvailable && current) return downloadButtons(current, '下載舊版 ZIP');
-  return null;
+  );
 }
 
 export default function ZipExportPanel({ zip, signedCount, fileName = '' }: { zip: ZipExport; signedCount: number; fileName?: string }) {
-  const { documentId, exportId, job, data, current, newCount, retry, busy, showLatest, oldAvailable, exportState } = zip;
+  const { documentId, exportId, job, data, newCount, retry, busy, showLatest, waitingForDownload } = zip;
   // 預覽本次下載名稱；實際下載仍由後端驗證並回傳最終檔名。
   const requestedFileName = fileName.trim();
   const downloadFileName = requestedFileName
@@ -161,7 +164,7 @@ export default function ZipExportPanel({ zip, signedCount, fileName = '' }: { zi
   return (
     <Stack spacing={2}>
       <Typography variant="description">
-        每位已簽署者一份個人簽署副本（PDF），打包成一個 ZIP。範圍為產生當下所有已簽署的副本，不套用狀態、部門等篩選。
+        每位已簽署者一份個人簽署副本（PDF），打包成一個 ZIP。範圍為受理下載當下所有已簽署的副本，不套用狀態、部門等篩選。
       </Typography>
 
       {exportId && job.isPending ? (
@@ -180,7 +183,7 @@ export default function ZipExportPanel({ zip, signedCount, fileName = '' }: { zi
               目前還沒有人完成簽署，沒有可匯出的已簽署文件。
             </Alert>
           ) : (
-            <Typography variant="description">請使用下方操作列產生 ZIP。</Typography>
+            <Alert severity="info" variant="outlined">本次下載將包含 {signedCount} 份已簽署文件。</Alert>
           )}
         </Box>
       ) : IN_PROGRESS.includes(data.status) ? (
@@ -197,19 +200,15 @@ export default function ZipExportPanel({ zip, signedCount, fileName = '' }: { zi
             value={data.expectedCount ? (data.processedCount / data.expectedCount) * 100 : 0}
           />
           <Typography variant="helper">
-            已處理 {data.processedCount}／{data.expectedCount} 份；完成後即可在此下載，可以先離開此頁。
+            已處理 {data.processedCount}／{data.expectedCount} 份。{waitingForDownload ? '完成後將自動下載，請保持此頁開啟。' : '點擊下載 ZIP，完成後將自動下載。'}
           </Typography>
         </Stack>
       ) : data.status === 'completed' ? (
         <Stack spacing={1.5}>
-          {renderFiles(data)}
-          {newCount > 0 && (
-            <Stack spacing={1}>
-              <Alert severity="info" variant="outlined">
-                目前 ZIP 共 {data.expectedCount} 份，另有 {newCount} 份新簽署尚未包含。
-              </Alert>
-            </Stack>
-          )}
+          {newCount === 0 && renderFiles(data)}
+          <Alert severity="info" variant="outlined">
+            本次下載將包含 {signedCount} 份已簽署文件。
+          </Alert>
         </Stack>
       ) : data.status === 'superseded' ? (
         <Alert
@@ -231,7 +230,7 @@ export default function ZipExportPanel({ zip, signedCount, fileName = '' }: { zi
                 startIcon={<ReplayRoundedIcon />}
                 loading={retry.isPending}
                 disabled={busy}
-                onClick={() => retry.mutate({ id: documentId, exportId: data.id })}
+                onClick={() => retry.mutate({ id: documentId, exportId: data.id, fileName })}
               >
                 重試
               </Button>
@@ -247,14 +246,7 @@ export default function ZipExportPanel({ zip, signedCount, fileName = '' }: { zi
           檔案已不可用，請聯絡系統管理員。
         </Alert>
       )}
-      {oldAvailable && current && (
-          <Stack spacing={1}>
-            <Alert severity="info" variant="outlined">
-              更新完成前仍可下載舊版 ZIP（{current.expectedCount} 份），尚有 {exportState.currentNewSignatureCount} 份新簽署未包含。
-            </Alert>
-            {renderFiles(current)}
-          </Stack>
-        )}
+
     </Stack>
   );
 }

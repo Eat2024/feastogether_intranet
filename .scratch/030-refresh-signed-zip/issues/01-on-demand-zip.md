@@ -36,3 +36,9 @@
 使用者授權第 1、2 項清理，追加工作進行中（claimed），原 resolved 記錄保留。修正先前 Excel／PDF 共用 expired 的誤述：該前端狀態僅服務 ZIP。Ticket 01 負責 T033 型別／UI；Ticket 04 負責 T034 一次性工具退役及回歸。保留文件 expired、expires_at/index/API、completedAt、workNewSignatureCount；不新增 migration。驗證結果後續追加至 validation.md。
 
 - 2026-11-06：T033／T034 追加清理已於整合分支工作區完成並驗收：root lint/build、1,204 unit、111 匯出 e2e、5 S3 export 通過。Spec030 describe 逐字保留，文件 expired 與 schema/API 期限欄位未改。詳細指令及未重跑範圍見 validation.md「2026-11-06 清理」。追加變更尚未 commit／push，原票 resolved 是先前交付紀錄，不代表本輪已提交。
+
+## 2026-11-06 單一下載操作
+
+追加 T035（claimed）：使用者要求只保留下載 ZIP，顯示所有已簽署份數，打包完成自動下載。取代原雙按鈕及匯出頁舊版入口驗收；固定快照與後端保留舊成果不變。實測結果追加至 validation.md。
+
+- T035 已於整合工作區完成，真瀏覽器驗證單擊自動下載、僅一次、固定快照／檔名、重用、重試及離頁返回通過。詳細證據見 validation.md 的單一下載章節；追加變更尚未 commit／push。

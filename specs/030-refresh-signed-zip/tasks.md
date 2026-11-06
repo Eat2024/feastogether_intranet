@@ -133,3 +133,7 @@ Setup T001–T002
 
 - [x] T033 移除前端 ZIP expired 型別與歷史頁分支，修正文檔中 Excel／PDF 共用狀態的誤述（Ticket 01）。
 - [x] T034 移除 Spec 019 保存政策工具、專屬 tsconfig/README、019 describe 與未使用 import；保留 Spec030 describe，完成回歸並記錄結果（Ticket 04）。
+
+## 2026-11-06 單一下載操作
+
+- [x] T035 取代 T012／T018 雙按鈕 UI：單一下載入口、全部簽署份數提示、完成自動下載一次，固定名單與點擊檔名；驗證無新增沿用、打包中新簽署、失敗重試及離頁返回。

@@ -49,3 +49,10 @@
 ## 2026-11-06 範圍澄清
 
 使用者已確認目前沒有 ZIP 匯出 `expired` 資料，本次移除該歷史狀態的相容分支與驗證，不做資料回填或恢復。文件簽署期限／到期邏輯不在此調整範圍；已完成 ZIP 意外缺檔仍依不可用處理。
+
+## 2026-11-06 狀態邊界補充
+
+- 文件 expired 仍代表「已超過簽署期限且尚有人未簽」，完全保留文件 DTO、查詢推導與 client esignDocuments 的此狀態。
+- 只清 ZIP 匯出 service／repository 的 expired 判斷與未使用 archiveFile()；未確認其他匯出類型資料前，共用 EsignExportStatus 與歷史頁保留 Excel／PDF 的 expired 相容，不能用 ZIP 查詢結果推論全部。
+- 保留 expires_at、idx_esign_export_jobs_expires_at、idx_esign_exports_reuse 中原欄位及 API expiresAt（新 ZIP 仍為 null），不做 schema migration。本輪未查驗所有 export_type 的非 null expires_at，亦未查驗全部檔案 archive_status 分布，不能宣稱可全域刪除。
+- 若另案要移除所有匯出 expired／expires_at，需先唯讀盤點全部 export_type/status、file_purpose/archive_status 及非 null expires_at，再明確規劃 migration 與相容切換；不納入 030。

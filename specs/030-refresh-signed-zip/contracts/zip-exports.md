@@ -47,7 +47,7 @@ Body 不變：`{ "type": "signed_copies_zip" }`，不新增 force、客戶端人
 - `POST /api/esign/documents/:id/exports/:exportId/retries`：只重試最新適用 failed，沿用快照。存在進行中工作則回該工作；不被舊 completed 攔截。
 - 過時 failed、superseded 或完整性失敗：沿用 ESIGN_EXPORT_RETRY_INVALID；不能讓舊工作復活並覆蓋新成功版。
 - 重試後 pending／進行中沿用 202；所有重試都在 document 鎖下重新確認。
-- ExportJobView.status 保留 pending／waiting／processing／completed／failed，移除 ZIP 的 expired 並新增 `superseded`。該狀態保留份數／時點／completedAt，但 `files=[]`，無重試入口。
+- ZIP 的 ExportJobView.status 使用 pending／waiting／processing／completed／failed／superseded；共用的前端 EsignExportStatus 與歷史頁仍保留其他匯出類型的 expired，相容移除只限 ZIP 專用流程。該狀態保留份數／時點／completedAt，但 `files=[]`，無重試入口。
 
 ## 4. 指定成果下載
 

@@ -58,3 +58,27 @@ AUTH_TRUSTED_ORIGINS=http://localhost:3030 CORS_ORIGIN=http://localhost:3030 pnp
 - Merger 核對 6d93e69 相對 25a3fef 的差異與上述實際測試證據，fast-forward 整合成功。
 - 在整合 worktree 執行預設 `pnpm build`（未傳 webpack）成功，包含 Nest build 與 Next Turbopack build；日誌 `/tmp/spec030-merge01-build.log`。隔離 worktree 的 symlink 限制不影響整合 build。
 - 額外核對文件期限型別及推導未變、共用匯出 expired 保留、expires_at/index/API 沒有 schema 變更，無關使用者檔案保持未追蹤且未修改。
+
+## Ticket 02：固定範圍與並發（2026-11-06）
+
+使用 `impl/030-02`、隔離測試 DB、10 個合成員工 session 與有效 PDF，沒有連線 UAT。T014–T019 完成；取代／清理與容量驗證仍由後續票負責。
+
+### TDD 與行為證據
+
+- Public service RED：舊 failed 在有較新 failed 時仍被復活（預期拒絕，實際 pending）；改為文件鎖內以 current/work 判定最新可重試工作後 GREEN。15 個 service 情境通過，包括舊 completed 不截走新 failed、其他進行中工作共用、superseded／完整性錯誤拒絕與同 ID／同快照重試。
+- 真實 API／MySQL／Redis／worker／storage：10 個不同員工 session 同時申請得到同一工作 ID、13 份快照，工作數為 1。故意令 queue.add 失敗，再由 maintain 恢復；第 13 份 PDF 尚未 ready 時工作 waiting，不產生缺件 ZIP。
+- 等待期間新增第 14 人，再由 10 session 申請仍共用原 ID／13 份。PDF ready 後，HTTP 下載的真實 ZIP 恰好 13 個 entries，每份逐 byte 比對各自來源，沒有第 14 份。預覽缺 1 份；maintain 後工作數仍 1，沒有自動續包。
+- 明確再次更新後建立 14 份工作，注入 storage 寫入失敗，再加入第 15 人。失敗期間舊 13 份 ZIP 仍可 HTTP 下載；retry 保留同 ID、14 份及 snapshot hash，完成後工作數為 2，沒有擴大為 15 份。
+- 真 Chromium RED：第二個 session 在處理中返回頁面後，完成時缺少「下載本次成果」。將 requestedId 初始化為服務端 work.id，並以 document ID 作為 panel key 後 GREEN：兩個 session／重整皆追蹤同一 13 份工作；新增第 14 人僅呈現過時提示，完成可下載本次 13 份，工作數沒有自動增加。
+- T016 沿用既有 processor 的固定 snapshot、等待及租約機制；新增端到端證據後不需修改 production worker。T017 沿用既有 query 的進行中輪詢／終態停止與完成、失敗時預覽／文件／歷史 invalidation。T018 沿用 ticket01 的兩個明確操作，補上重開追蹤後通過瀏覽器驗收。
+
+### 執行結果與重跑
+
+- 全 server unit：119 suites／1204 tests 通過；service 檔案 15 tests。
+- 完整 `esign-export.e2e-spec.ts`：8/8 通過；真實瀏覽器 harness：1/1 通過。
+- server lint 0 errors／292 warnings；client lint、server build、client webpack build 通過。10 並發 supertest 觸發 Node MaxListeners 警告，未停用警告且所有並發斷言通過。
+- 前票 read-ahead 修正只限定目的端啟動時段；整檔執行仍曾計到 66（門檻 <64）。storage spy 作用於兩個 worker 的所有工作，時間條件不能隔離本案例來源；追加以本案例 source object keys 限制計數，保留兩 worker、慢目的端、<64 門檻及原工作數斷言後 8/8 通過。此處修正測量範圍，未改串流實作或放寬門檻。
+
+命令同 Ticket 01（server test、指定 e2e、兩端 lint/build）。本機日誌 `/tmp/spec030-02-{unit-red,unit-green,unit,unit-all,e2e-fixed,e2e-all,browser-red,browser-green,server-lint,client-lint,server-build,client-build}.log`。瀏覽器 harness 位於 `/tmp/spec030-browser/ticket02-browser.e2e-spec.ts`，截圖 `/tmp/spec030-browser/ticket02-fixed-13.png`；以 Ticket 01 的步驟複製為臨時測試並啟動 Next 3030/API 3031，即可重跑。harness 和日誌是本機暫存證據，未提交 secret 或外部 Playwright dependency。
+
+SC-003 的 10 session 共用與 SC-004 的固定 13→14／離頁恢復已有證據。文件 expired、共用非 ZIP expired、expiresAt/index/API 均保持；沒有 migration/config/dependency 變更。尚未在本票驗證舊版原子停用／實體刪除、S3 或 6,000 份容量。

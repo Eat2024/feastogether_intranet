@@ -46,12 +46,12 @@
 
 獨立驗收：13 份處理時加入第 14 人，10 人重複申請仍同工作，完成可下載 13 份且不自動重做。
 
-- [ ] T014 [US2] 先在 server/test/esign-export.e2e-spec.ts 補 10 個並發申請、申請與簽署交錯、13→14 固定範圍、等待來源、queue 加入失敗恢復及失敗重試測試，確認每案具工作數與快照斷言。
-- [ ] T015 [US2] 在 server/src/features/esign/services/esign-export.service.ts 完成 request/retry 的文件→工作鎖序，適用重試保持同 ID／快照；舊 completed 不截走新 failed，過時 failed／superseded／完整性失敗拒絕，其他進行中工作直接共用。
-- [ ] T016 [US2] 在 server/src/worker/esign/document-export.processor.ts 保留固定 snapshot 的等待來源、租約及串流驗證，確保不重查簽署範圍或自動排下一版；失敗與重送只處理原工作，不改原個人 PDF。
-- [ ] T017 [US2] 在 client/src/api/queries/esignExports.ts 與 client/src/features/esign-documents/ZipExportPanel.tsx 固定 requestedId、進行中輪詢與重開恢復；終態刷新預覽／文件／歷史快取並停止輪詢，避免 effect 自動 mutation。
-- [ ] T018 [US2] 在 client/src/features/esign-documents/ZipExportPanel.tsx 分離「下載本次成果」與「再次更新」，13 份完成仍可直接下載；failed 僅提供適用重試，處理中及失敗時原 current 可下載且標示份數。
-- [ ] T019 [US2] 執行雙 session／離頁返回／13→14 與並發測試，將工作 ID、固定範圍、零自動續包與重試結果追加至 specs/030-refresh-signed-zip/validation.md。
+- [x] T014 [US2] 先在 server/test/esign-export.e2e-spec.ts 補 10 個並發申請、申請與簽署交錯、13→14 固定範圍、等待來源、queue 加入失敗恢復及失敗重試測試，確認每案具工作數與快照斷言。
+- [x] T015 [US2] 在 server/src/features/esign/services/esign-export.service.ts 完成 request/retry 的文件→工作鎖序，適用重試保持同 ID／快照；舊 completed 不截走新 failed，過時 failed／superseded／完整性失敗拒絕，其他進行中工作直接共用。
+- [x] T016 [US2] 在 server/src/worker/esign/document-export.processor.ts 保留固定 snapshot 的等待來源、租約及串流驗證，確保不重查簽署範圍或自動排下一版；失敗與重送只處理原工作，不改原個人 PDF。
+- [x] T017 [US2] 在 client/src/api/queries/esignExports.ts 與 client/src/features/esign-documents/ZipExportPanel.tsx 固定 requestedId、進行中輪詢與重開恢復；終態刷新預覽／文件／歷史快取並停止輪詢，避免 effect 自動 mutation。
+- [x] T018 [US2] 在 client/src/features/esign-documents/ZipExportPanel.tsx 分離「下載本次成果」與「再次更新」，13 份完成仍可直接下載；failed 僅提供適用重試，處理中及失敗時原 current 可下載且標示份數。
+- [x] T019 [US2] 執行雙 session／離頁返回／13→14 與並發測試，將工作 ID、固定範圍、零自動續包與重試結果追加至 specs/030-refresh-signed-zip/validation.md。
 
 ## Phase 5: User Story 3 — 新版取代與舊檔清理（P1）
 

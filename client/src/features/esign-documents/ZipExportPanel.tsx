@@ -36,7 +36,7 @@ export default function ZipExportPanel({ documentId, signedCount, exportState, f
   const { showSnackbar } = useSnackbar();
   const exportSummary = exportState.work ?? exportState.current;
   // 使用者受理的工作固定追蹤，不因新增簽署自動重做。
-  const [requestedId, setRequestedId] = useState<string | null>(null);
+  const [requestedId, setRequestedId] = useState<string | null>(() => exportState.work?.id ?? null);
   const exportId = requestedId ?? exportSummary?.id ?? null;
   const job = useGetDocumentExportQuery(documentId, exportId);
 

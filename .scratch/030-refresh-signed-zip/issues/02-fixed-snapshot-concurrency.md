@@ -6,7 +6,7 @@
 
 **對應 Tasks:** T014–T019
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 以 13 份受理後新增第 14 人，不取消、追加、重啟或自動排下一版；完成仍可下載 13 份並提示缺 1。
 - [ ] 10 個並發申請共用同一工作；重複點擊及過時畫面不建立重複工作。
@@ -20,3 +20,6 @@
 
 - 2026-11-06：使用者指示依 implement-spec 開始開發，確認採此拆分與依賴。前置 resolved 後才可 claimed；通過驗收且整合後才可 resolved。
 
+- 2026-11-06：以 b7a1840 為基準，於 impl/030-02 獨立 worktree 開始實作。
+
+- 2026-11-06：T014–T019 實作與驗證完成：修正較舊 failed 重試及重開頁面的固定工作追蹤；真實 10 session、13→14、等待 PDF、queue 恢復、固定範圍重試及雙瀏覽器 session 通過。詳見 specs/030-refresh-signed-zip/validation.md；保持 claimed，待 merger 驗收整合後 resolved。

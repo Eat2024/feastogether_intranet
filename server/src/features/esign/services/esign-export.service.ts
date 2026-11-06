@@ -266,21 +266,16 @@ export class EsignExportService {
       if (!original?.snapshotJson)
         throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
 
-      const other = await this.jobs.reusable(documentId, manager);
-
-      if (
-        other &&
-        (other.completedAt ||
-          other.status === 'completed' ||
-          (other.id !== original.id && other.status !== 'failed'))
-      )
-        return other;
-
-      if (['pending', 'waiting', 'processing'].includes(original.status))
-        return original;
+      const current = await this.jobs.current(documentId, manager);
+      const work = await this.jobs.work(documentId, manager, current?.id);
+      // 文件鎖保證重試與新申請共用同一進行中工作；不排入下一版。
+      if (work && ['pending', 'waiting', 'processing'].includes(work.status))
+        return work;
 
       if (
         original.status !== 'failed' ||
+        original.completedAt ||
+        work?.id !== original.id ||
         original.failureCode === 'ESIGN_INTEGRITY_FAILED'
       )
         throw new AppException(...AppErrors.ESIGN_EXPORT_RETRY_INVALID);

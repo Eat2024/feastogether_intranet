@@ -18,6 +18,7 @@ describe('ZIP 按需更新公開服務', () => {
   let work: EsignExportJob | null;
   let records: EsignSignatureRecord[];
   let saved: EsignExportJob[];
+  let requested: EsignExportJob | null;
   const stat = jest.fn(async () => ({ fileSize: 10 }));
   const manager = {};
   const record = (id: number) =>
@@ -43,6 +44,7 @@ describe('ZIP 按需更新公開服務', () => {
     work = null;
     records = [record(1), record(2)];
     saved = [];
+    requested = null;
     stat.mockClear();
     const module = await Test.createTestingModule({
       providers: [
@@ -69,6 +71,7 @@ describe('ZIP 按需更新公開服務', () => {
           provide: ExportJobRepository,
           useValue: {
             reusable: async () => work ?? current,
+            find: async () => requested,
             current: async () => current,
             work: async () => work,
             records: async () => records,
@@ -102,6 +105,92 @@ describe('ZIP 按需更新公開服務', () => {
       ],
     }).compile();
     service = module.get(EsignExportService);
+  });
+
+  it('舊版已完成也能重試新失敗工作，保留名單與份數', async () => {
+    work = Object.assign(new EsignExportJob(), {
+      id: 2,
+      publicId: 'latest-failure',
+      documentId: 9,
+      status: 'failed',
+      snapshotJson: [{ recordId: 1 }, { recordId: 2 }],
+      snapshotSha256: 'fixed',
+      recordCount: 2,
+    });
+    requested = work;
+    records.push(record(3));
+    expect(await service.retry(9, 'latest-failure', 7)).toMatchObject({
+      id: 'latest-failure',
+      status: 'pending',
+      expectedCount: 2,
+    });
+    expect(saved[0].snapshotJson?.map((entry) => entry.recordId)).toEqual([
+      1, 2,
+    ]);
+    expect(saved[0].snapshotSha256).toBe('fixed');
+  });
+
+  it('重試時已有另一個進行中工作則共用，不排入下一版', async () => {
+    requested = Object.assign(new EsignExportJob(), {
+      id: 2,
+      documentId: 9,
+      status: 'failed',
+      snapshotJson: [{ recordId: 1 }],
+    });
+    work = Object.assign(new EsignExportJob(), {
+      id: 3,
+      publicId: 'in-progress',
+      documentId: 9,
+      status: 'processing',
+      recordCount: 2,
+    });
+    expect(await service.retry(9, 'older-failure', 7)).toMatchObject({
+      id: 'in-progress',
+      status: 'processing',
+      expectedCount: 2,
+    });
+    expect(saved).toHaveLength(0);
+  });
+
+  it.each(['superseded', 'completed', 'failed'])(
+    '拒絕不適用的 %s 工作重試',
+    async (status) => {
+      requested = Object.assign(new EsignExportJob(), {
+        id: 2,
+        documentId: 9,
+        status,
+        snapshotJson: [{ recordId: 1 }],
+        failureCode: status === 'failed' ? 'ESIGN_INTEGRITY_FAILED' : null,
+      });
+      work = status === 'failed' ? requested : null;
+      await expect(service.retry(9, 'invalid-retry', 7)).rejects.toMatchObject({
+        code: 'ESIGN_EXPORT_RETRY_INVALID',
+      });
+      expect(saved).toHaveLength(0);
+    },
+  );
+
+  it('較舊失敗工作不可越過更新的失敗工作重新排隊', async () => {
+    requested = Object.assign(new EsignExportJob(), {
+      id: 2,
+      publicId: 'older-failure',
+      documentId: 9,
+      status: 'failed',
+      snapshotJson: [{ recordId: 1 }],
+      recordCount: 1,
+    });
+    work = Object.assign(new EsignExportJob(), {
+      id: 3,
+      publicId: 'latest-failure',
+      documentId: 9,
+      status: 'failed',
+      snapshotJson: [{ recordId: 1 }, { recordId: 2 }],
+      recordCount: 2,
+    });
+    await expect(service.retry(9, 'older-failure', 7)).rejects.toMatchObject({
+      code: 'ESIGN_EXPORT_RETRY_INVALID',
+    });
+    expect(saved).toHaveLength(0);
   });
 
   it('已有一份成果，新增簽署後明確申請取得兩份的新工作', async () => {

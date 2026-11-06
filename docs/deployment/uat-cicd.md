@@ -62,7 +62,7 @@ https://truststore.pki.rds.amazonaws.com/ap-east-2/ap-east-2-bundle.pem
 5. 無 pending 就略過備份。有 pending 時先拉取 `mysql:8.4` 工具 image，再停止 client/server/worker。一次性 `db-backup` 容器以同一組 raw RDS 帳密與 CA，對 `intranet_uat` 做加密連線的邏輯備份，gzip 完成後才執行 TypeORM migrations。
 6. 備份包含表、資料與 triggers；本專案沒有 stored routines／events，這些不在 dump 範圍。只備份 intranet_uat，不接觸帳號另外可存取的 oauth_uat。這是 schema 級備份，不呼叫 AWS snapshot，也不需要新增 AWS IAM 權限。
 7. server 更新後等待 HTTP healthy；worker/client 啟動後透過前端代理 `/api/health` 檢查服務，並檢查 worker 啟動訊息及 restart count。首頁未登入時預期回傳 404，不作為健康依據。worker 不使用 HTTP `--wait`。smoke 不等於完整業務驗收。
-8. 記錄 `releases/current.env`、`previous.env`、`before-last-deploy.env`。不自動 prune 或刪除 volumes。
+8. 記錄 `releases/current.env`、`previous.env`、`before-last-deploy.env`。健康檢查成功並寫入紀錄後，自動清理本專案歷史 images，保留目前版與前一版；不刪除 volumes。
 
 2 核／8 GB EC2 的建置與服務共用資源，migration 有停機窗口，不宣稱零停機。
 
@@ -74,7 +74,7 @@ https://truststore.pki.rds.amazonaws.com/ap-east-2/ap-east-2-bundle.pem
 - migration 一旦開始，之後任何失敗都停止應用，交由人工確認；MySQL DDL 可能部分提交，不能假設換 image 或 migration:revert 就能復原。
 - SQL 備份在主機 `backups/<SHA>-<UTC>.sql.gz`，含敏感資料且限制權限。不得直接將備份匯入共用 Aurora cluster，先由 SRE 確認復原目標、其他應用及資料影響。
 - 同機 dump 不能防主機／磁碟遺失；SRE 仍須確認 Aurora 自動備份／PITR、必要時的 cluster snapshot，以及簽署檔案的異地備份與保留期限。
-- 定期檢查 `df -h`、`docker system df` 與備份容量。僅清理確認不需要的舊 images/cache，保留 current／previous；此 PR 不新增清理排程。
+- 定期檢查 `df -h`、`docker system df` 與備份容量。每次成功部署後自動清理本專案舊 images，保留 current／previous；build cache、備份與其他專案 images 不在此清理範圍。
 
 ## 人工操作
 
@@ -91,3 +91,11 @@ docker compose --env-file /dev/null -f docker-compose.uat.yml ps
 第一次部署尚未成功時，從 Actions build 輸出取得兩個 digest，明確設定 CLIENT_IMAGE／SERVER_IMAGE。修改環境檔後以相同 Compose／env-file 參數 recreate server／worker；server 可使用 `--wait`，worker 不要加 `--wait`。
 
 自動部署接管後不要再使用舊 compose.app.yaml，避免接回本機 DB；手動 compose.rds.yaml 雖連 RDS，仍固定舊 image，也不應用來重部署。不要使用 `--remove-orphans` 刪除舊容器，更不要執行 `down -v`。清除舊 MySQL 是另外的人工操作，這個 PR 不會刪除它。
+
+## UAT 本機映像保留策略
+
+- `.github/scripts/cleanup-uat-images.sh` 在部署成功後、仍持有部署鎖時執行，只處理本次 client/server 的 GHCR repository。GHCR 遠端版本不刪除。
+- 以 image ID 保護目前版與前一版的所有 tags／digest 引用。`previous.env` 記錄部署前實際容器的 image ID，支援首次接管手動部署；相同 images 重跑不覆蓋前一版。
+- 任何保留版本無法解析時停止清理；其他容器（包含停止中的容器）引用的舊 image 也保留。不使用強制刪除，不刪容器、network、volume 或備份。
+- 部署失敗不清理。清理失敗顯示 Actions warning，不觸發已成功部署的回退或停機；可能仍有歷史 images，需依警告處理。
+- 28 GB 主機仍需容納建置尖峰、目前／前一版與候選版。這次只限制成功部署後的應用 image 留存，不限制 build cache，也不清除失敗建置的 dangling images；已滿的磁碟需先確認用量並清理才能重新建置。長期可將建置移至其他 runner，UAT 僅拉取映像。

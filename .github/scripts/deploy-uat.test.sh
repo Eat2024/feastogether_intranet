@@ -6,6 +6,11 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/bin" "$tmp/repo/.github/scripts" "$tmp/uat"
 sed "s|/home/feasteng/deploy/intranet-uat|$tmp/uat|g" "$repo_root/.github/scripts/deploy-uat.sh" > "$tmp/repo/.github/scripts/deploy-uat.sh"
+# 清理替身記錄呼叫；刪除範圍由 cleanup-uat-images.test.sh 驗證。
+cat > "$tmp/repo/.github/scripts/cleanup-uat-images.sh" <<'MOCK'
+printf 'cleanup\n' >> "$TEST_LOG"
+exit "${FAIL_CLEANUP:-0}"
+MOCK
 export TEST_LOG="$tmp/commands"
 export PATH="$tmp/bin:$PATH"
 export TARGET_SHA=1111111111111111111111111111111111111111
@@ -15,6 +20,7 @@ cat > "$tmp/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TEST_LOG"
 case "$*" in
+  'image inspect '*) echo "${@: -1}" ;;
   'volume inspect '*|'network inspect '*) exit 0 ;;
   'inspect -f {{.Image}} intranet-uat-client-1') echo sha256:old-client ;;
   'inspect -f {{.Image}} '*) echo sha256:old-server ;;
@@ -59,6 +65,7 @@ run_case() {
   local actual=0
   bash "$tmp/repo/.github/scripts/deploy-uat.sh" > "$tmp/output" 2>&1 || actual=$?
   [[ "$actual" == "$1" ]] || { cat "$tmp/output"; exit 1; }
+  if [[ "$actual" != 0 ]]; then ! grep -q '^cleanup$' "$TEST_LOG"; fi
 }
 export CHECK_STATUS=0
 run_case 0
@@ -102,3 +109,14 @@ test ! -f "$tmp/uat/releases/current.env"
 test "$(cat "${TEST_LOG}.curl-count")" = 24
 grep -q '恢復失敗' "$tmp/output"
 echo '啟動檢查測試通過：暫時 connection reset 可恢復；持續失敗有上限且不記錄成功。'
+
+export FAIL_HTTP_ALWAYS=0 FAIL_CLEANUP=1
+run_case 0
+grep -q '::warning::' "$tmp/output"
+! grep -q '嘗試恢復' "$tmp/output"
+# 用現有測試替身回傳的 image 值模擬相同版本重跑。
+sed -i.bak "s|echo sha256:old-client|echo \"\$CLIENT_IMAGE\"|; s|echo sha256:old-server|echo \"\$SERVER_IMAGE\"|" "$tmp/bin/docker"
+printf '保留前一版\n' > "$tmp/uat/releases/previous.env"
+bash "$tmp/repo/.github/scripts/deploy-uat.sh" > "$tmp/output" 2>&1
+grep -q '保留前一版' "$tmp/uat/releases/previous.env"
+echo '清理整合測試通過：失敗部署不清理、清理失敗不回退、重跑保留前一版。'

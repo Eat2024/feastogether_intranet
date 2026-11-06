@@ -83,6 +83,7 @@ const TABS: { value: HistoryTab; label: string }[] = [
 type HistorySortKey =
   | "exportedAt"
   | "title"
+  | "fileName"
   | "docNumber"
   | "scope"
   | "count"
@@ -94,9 +95,9 @@ type HistoryItem = ExportHistoryItemByType[ExportHistoryType];
 /** 各類型可排序的欄位（切換分頁標籤時排序會清除） */
 const SORT_KEYS_BY_TYPE: Record<ExportHistoryType, readonly HistorySortKey[]> =
   {
-    excel: ["exportedAt", "title", "docNumber", "scope", "count", "exportedBy"],
-    pdf: ["exportedAt", "title", "docNumber", "scope", "exportedBy"],
-    zip: ["exportedAt", "title", "docNumber", "count", "status", "exportedBy"],
+    excel: ["exportedAt", "title", "fileName", "docNumber", "scope", "count", "exportedBy"],
+    pdf: ["exportedAt", "title", "fileName", "docNumber", "scope", "exportedBy"],
+    zip: ["exportedAt", "title", "fileName", "docNumber", "count", "status", "exportedBy"],
   };
 
 // ZIP 狀態依處理流程排序
@@ -113,6 +114,8 @@ const ZIP_STATUS_ORDER: EsignExportStatus[] = [
 const SORT_VALUE: Record<HistorySortKey, (r: HistoryItem) => SortValue> = {
   exportedAt: (r) => r.exportedAt,
   title: (r) => r.document.title,
+  // 「未記錄」的舊紀錄沒有檔名，排在最後
+  fileName: (r) => r.downloadFileName,
   docNumber: (r) => r.document.docNumber,
   scope: (r) => r.scope || null,
   count: (r) => r.count,
@@ -417,7 +420,7 @@ export default function ExportHistoryView() {
   const head: HeadCell[] = [
     { label: "匯出時間", sortKey: "exportedAt" },
     { label: "文件名稱", sortKey: "title" },
-    { label: "匯出檔名" },
+    { label: "匯出檔名", sortKey: "fileName" },
     { label: "文件編號", sortKey: "docNumber" },
     ...columns.head,
     { label: "匯出人", sortKey: "exportedBy" },

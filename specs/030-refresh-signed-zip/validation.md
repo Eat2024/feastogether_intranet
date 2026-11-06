@@ -252,3 +252,15 @@ PATH=/tmp/esign019-moto/bin:$PATH node --env-file=/tmp/spec030-test.env -e 'cons
 `git diff --check` 通過；server／CI／部署文件沒有殘留工具呼叫。文件 expired 相關原始碼、expires_at/index/API、completedAt、workNewSignatureCount 與 repository 查詢均無 diff。既有未追蹤研究文件與 travel 目錄保持原狀。
 
 未執行：完整非匯出 e2e、瀏覽器重驗、6,000 份容量重跑及 migration（本輪沒有新增 migration，亦未改匯出執行期／容量流程）。本輪變更尚未 commit／push，未部署；不把先前 PR 的驗證或瀏覽器證據視為本輪已重跑。
+
+## 2026-11-06 單一下載操作驗證
+
+依最新要求，匯出頁只有「下載 ZIP」，提示全部 signed 份數；每次明確點擊才讓後端決定沿用／產製，完成後自動下載固定工作一次。改動僅 client ZipExportPanel 與規格／tickets；後端、schema、歷史指定成果下載及 expired 清理範圍不變。
+
+- 真 Chromium + Next 3030 + API 3031 + worker + 本機隔離 MySQL／Redis／local storage，未 mock API。1/1 場景通過，36.33 秒：首次 1 份一鍵下載；2 份打包時新增第 3 人並修改輸入檔名，仍自動下載 2 份、使用點擊時檔名；等待後沒有重複下載／隱藏新工作；下次明確點擊才取得 3 份；再次下載沿用工作。
+- 注入 storage 失敗後加入第 5 人，重試仍固定 4 份並自動下載；離頁返回不自動下載，點擊才接續／下載 5 份。每次實際讀取下載 ZIP 的 central directory 核對 PDF 份數，並驗證下載事件數及 DB 工作數。
+- 瀏覽器 harness 留 `/tmp/spec030-browser/single-download.e2e-spec.ts`；執行時暫放 server/test，執行後已移除。日誌 `/tmp/spec030-single-browser.log`，截圖 `/tmp/spec030-browser/single-download.png`。隔離 Next 使用 `/tmp/spec030-pr-client`，未停止原有開發伺服器；本次服務已停止。
+- 指令：`AUTH_TRUSTED_ORIGINS=http://localhost:3030 CORS_ORIGIN=http://localhost:3030 node --conditions=development --env-file=/tmp/spec030-test.env server/node_modules/jest/bin/jest.js --config server/test/jest-e2e.json --testRegex 'spec030-single-browser\.e2e-spec\.ts$' --runInBand --forceExit --runTestsByPath server/test/spec030-single-browser.e2e-spec.ts`。
+- `pnpm -C client lint`、`pnpm -C client build` 的最終結果見本段後續紀錄；首次 lint 發現未使用參數 warning，已修正再跑。日誌 `/tmp/spec030-single-download-lint.log`、`/tmp/spec030-single-download-build.log`。
+- 未執行全套 server unit/e2e、S3／容量重跑：本輪未改後端；上述真瀏覽器場景已實際經過後端產製、重試與下載。未部署，本輪尚未 commit／push。
+- 最終 `pnpm -C client lint` 通過（無 warnings），`pnpm -C client build` 通過（Next Turbopack／TypeScript）；`git diff --check` 通過。未新增 dependency、環境變數或 migration，既有未追蹤檔案未動。

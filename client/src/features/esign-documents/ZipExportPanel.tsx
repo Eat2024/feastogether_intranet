@@ -8,7 +8,7 @@ import { queryKeys } from '@/api/query-keys';
 import { prepareExportDownload, preparedExportFileUrl, requestDocumentExport, retryDocumentExport } from '@/api/requests';
 import type { EsignExportJob, EsignExportState } from '@/api/types';
 import { useSnackbar } from '@/components/providers/SnackbarProvider';
-import { getErrorMessage } from '@/lib/apiError';
+import { getErrorCode, getErrorMessage } from '@/lib/apiError';
 import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
 import FolderZipRoundedIcon from '@mui/icons-material/FolderZipRounded';
 import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
@@ -20,7 +20,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { formatDateTime } from './listQuery';
 
 /** 檔案大小：KB／MB 顯示 */
@@ -39,6 +39,16 @@ export default function ZipExportPanel({ documentId, signedCount, exportState, f
   const [requestedId, setRequestedId] = useState<string | null>(() => exportState.work?.id ?? null);
   const exportId = requestedId ?? exportSummary?.id ?? null;
   const job = useGetDocumentExportQuery(documentId, exportId);
+
+  const refreshSummary = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT_EXPORT_PREVIEW, documentId] });
+    void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, documentId] });
+    void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_EXPORT_HISTORY] });
+  }, [documentId, queryClient]);
+  const showLatest = () => {
+    setRequestedId(null);
+    refreshSummary();
+  };
 
   const onJob = (next: EsignExportJob) => {
     setRequestedId(next.id);
@@ -72,7 +82,16 @@ export default function ZipExportPanel({ documentId, signedCount, exportState, f
       link.click();
     },
     meta: { suppressGlobalErrorToast: true },
-    onError: (err) => showSnackbar(getErrorMessage(err, '準備下載失敗，請稍後再試'), 'error'),
+    onError: (err, input) => {
+      showSnackbar(getErrorMessage(err, '準備下載失敗，請稍後再試'), 'error');
+      if (getErrorCode(err) !== 'ESIGN_EXPORT_SUPERSEDED') return;
+      // 停用已被取代的操作，再讀取目前成果；不可自動申請另一個工作。
+      queryClient.setQueryData<EsignExportJob>(
+        [queryKeys.ESIGN_DOCUMENT_EXPORT, documentId, input.exportId],
+        (previous) => previous ? { ...previous, status: 'superseded', files: [] } : previous,
+      );
+      showLatest();
+    },
   });
 
   const data = job.data ?? exportSummary;
@@ -83,10 +102,8 @@ export default function ZipExportPanel({ documentId, signedCount, exportState, f
   const status = job.data?.status;
   useEffect(() => {
     if (!status || IN_PROGRESS.includes(status)) return;
-    void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT_EXPORT_PREVIEW, documentId] });
-    void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, documentId] });
-    void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_EXPORT_HISTORY] });
-  }, [status, exportId, documentId, queryClient]);
+    refreshSummary();
+  }, [status, exportId, refreshSummary]);
   // 預覽本次下載名稱；實際下載仍由後端驗證並回傳最終檔名。
   const requestedFileName = fileName.trim();
   const downloadFileName = requestedFileName
@@ -188,6 +205,14 @@ export default function ZipExportPanel({ documentId, signedCount, exportState, f
             </Stack>
           )}
         </Stack>
+      ) : data.status === 'superseded' ? (
+        <Alert
+          severity="info"
+          variant="outlined"
+          action={<Button color="inherit" size="small" onClick={showLatest}>查看最新成果</Button>}
+        >
+          此 ZIP 已被新版取代，請查看最新成果。
+        </Alert>
       ) : data.status === 'failed' ? (
         <Alert
           severity="error"

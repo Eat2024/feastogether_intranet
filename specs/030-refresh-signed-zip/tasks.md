@@ -57,15 +57,15 @@
 
 獨立驗收：新版成功才停用刪除舊 ZIP；新版失敗舊版可用；刪檔失敗與 crash 可補清理，歷史保留。
 
-- [ ] T020 [US3] 先在 server/test/export-retention.e2e-spec.ts 補發布前失敗、發布後 crash、刪檔失敗、刪成功回寫前 crash、重複清理與參照保護測試，確認新版及個人 PDF 不受影響。
-- [ ] T021 [P] [US3] 先在 server/test/esign-export-history.e2e-spec.ts 補已取代歷史／名稱不變、prepare／直接下載／Range 拒絕舊版與跨部門／錯文件拒絕測試，不以重新導向新版作通過。
-- [ ] T022 [US3] 在 server/src/features/esign/repositories/export-job.repository.ts 與 server/src/features/esign/repositories/file-object.repository.ts 實作同文件較舊曾成功工作及 ZIP 查詢、superseded/delete_pending 條件式轉移；保留 completedAt／歷史及 reference，禁止反向轉 active。
-- [ ] T023 [US3] 在 server/src/worker/esign/document-export.processor.ts 實作新版確認可用後的短交易發布：先 document 後工作鎖、重驗租約／文件／合法工作、儲存新 active/completed 並同交易停用舊版；交易失敗不清舊檔，storage I/O 不持長鎖。
-- [ ] T024 [US3] 在 server/src/common/errors/app-error-code.ts、server/src/common/errors/app-errors.ts、server/src/features/esign/services/esign-export.service.ts 與 server/src/features/esign/controllers/exports.controller.ts 實作 ESIGN_EXPORT_SUPERSEDED 409，先驗權再判舊版；superseded files=[]，prepare／GET／Range 均拒絕，既有傳輸不持長鎖。
-- [ ] T025 [US3] 在 server/src/features/esign/services/esign-export-history.service.ts、client/src/api/errorCodes.ts、client/src/features/export-history/ExportHistoryView.tsx 與 client/src/features/esign-documents/ZipExportPanel.tsx 呈現已被取代且無下載／重試，保留原歷史資訊；收到取代錯誤僅刷新摘要，不自動打包。
-- [ ] T026 [US3] 在 server/src/worker/esign/document-export.processor.ts 加入發布成功後獨立清理與 maintain 補清理：僅 superseded+delete_pending+signed_copies_zip，以完整 objectVersion reference 刪除並條件式標 deleted；先確認無 active/staging 引用，清理錯誤不得落回產製 failed catch。
-- [ ] T027 [US3] 在 server/src/features/esign/repositories/export-job.repository.ts 完成待清理有界查詢：每輪最多 50 工作、nextAttemptAt/id 排序、失敗延後 60 秒、全清完排除；原 pending/waiting 的時間語意與既有 orphan sweep 保持相容，避免失敗首批造成飢餓。
-- [ ] T028 [US3] 在 server/test/s3-export.e2e-spec.ts 補 S3 指定版本真正不存在與中斷重入測試，並執行 server/test/export-retention.e2e-spec.ts 的隔離 local 實體刪除驗證；記錄結果於 specs/030-refresh-signed-zip/validation.md，不以 mock/delete marker 代替清除證據。
+- [x] T020 [US3] 先在 server/test/export-retention.e2e-spec.ts 補發布前失敗、發布後 crash、刪檔失敗、刪成功回寫前 crash、重複清理與參照保護測試，確認新版及個人 PDF 不受影響。
+- [x] T021 [P] [US3] 先在 server/test/esign-export-history.e2e-spec.ts 補已取代歷史／名稱不變、prepare／直接下載／Range 拒絕舊版與跨部門／錯文件拒絕測試，不以重新導向新版作通過。
+- [x] T022 [US3] 在 server/src/features/esign/repositories/export-job.repository.ts 與 server/src/features/esign/repositories/file-object.repository.ts 實作同文件較舊曾成功工作及 ZIP 查詢、superseded/delete_pending 條件式轉移；保留 completedAt／歷史及 reference，禁止反向轉 active。
+- [x] T023 [US3] 在 server/src/worker/esign/document-export.processor.ts 實作新版確認可用後的短交易發布：先 document 後工作鎖、重驗租約／文件／合法工作、儲存新 active/completed 並同交易停用舊版；交易失敗不清舊檔，storage I/O 不持長鎖。
+- [x] T024 [US3] 在 server/src/common/errors/app-error-code.ts、server/src/common/errors/app-errors.ts、server/src/features/esign/services/esign-export.service.ts 與 server/src/features/esign/controllers/exports.controller.ts 實作 ESIGN_EXPORT_SUPERSEDED 409，先驗權再判舊版；superseded files=[]，prepare／GET／Range 均拒絕，既有傳輸不持長鎖。
+- [x] T025 [US3] 在 server/src/features/esign/services/esign-export-history.service.ts、client/src/api/errorCodes.ts、client/src/features/export-history/ExportHistoryView.tsx 與 client/src/features/esign-documents/ZipExportPanel.tsx 呈現已被取代且無下載／重試，保留原歷史資訊；收到取代錯誤僅刷新摘要，不自動打包。
+- [x] T026 [US3] 在 server/src/worker/esign/document-export.processor.ts 加入發布成功後獨立清理與 maintain 補清理：僅 superseded+delete_pending+signed_copies_zip，以完整 objectVersion reference 刪除並條件式標 deleted；先確認無 active/staging 引用，清理錯誤不得落回產製 failed catch。
+- [x] T027 [US3] 在 server/src/features/esign/repositories/export-job.repository.ts 完成待清理有界查詢：每輪最多 50 工作、nextAttemptAt/id 排序、失敗延後 60 秒、全清完排除；原 pending/waiting 的時間語意與既有 orphan sweep 保持相容，避免失敗首批造成飢餓。
+- [x] T028 [US3] 在 server/test/s3-export.e2e-spec.ts 補 S3 指定版本真正不存在與中斷重入測試，並執行 server/test/export-retention.e2e-spec.ts 的隔離 local 實體刪除驗證；記錄結果於 specs/030-refresh-signed-zip/validation.md，不以 mock/delete marker 代替清除證據。
 
 ## Phase 6: Polish & Cross-Cutting Concerns（整合交付）
 

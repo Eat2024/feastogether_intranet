@@ -398,6 +398,8 @@ export class EsignExportService {
     const files = await this.jobs.files(job.id, this.mysql.getManager());
     const file = files.find((f) => f.id === fileId);
     if (!file) throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    if (job.status === 'superseded')
+      throw new AppException(...AppErrors.ESIGN_EXPORT_SUPERSEDED);
     if (job.completedAt || job.status === 'completed')
       await this.assertAvailable(job);
     if (job.status !== 'completed')

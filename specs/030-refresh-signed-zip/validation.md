@@ -88,3 +88,57 @@ SC-003 的 10 session 共用與 SC-004 的固定 13→14／離頁恢復已有證
 - Merger 核對 6cf5b47 相對 b7a1840 的 service／UI／測試差異，以及 e2e 8/8、Chromium 1/1 實際日誌，fast-forward 整合成功。
 - read-ahead 測試 sourceKeys 在排工作前收集本案例兩組 64 個來源，spy 仍觀察真實 openReadStream；保留兩 worker、200ms 延遲、peak=1 與 peakReadAhead<64，未放寬門檻或改動 production streaming。
 - 已驗證項目不重複廣跑；整合狀態 commit 仍完整執行既有 lint/unit hooks。
+
+
+## Ticket 03：原子取代與舊 ZIP 補清理（2026-11-06）
+
+在 `impl/030-03`、隔離測試 DB 及 local/Moto storage 執行；無 UAT／正式資料或部署。首個 API RED 確認原本發布新版後舊工作仍 completed、files 仍可下載（`/tmp/spec030-ticket03-red.log`）；短交易發布與交易外清理後 GREEN。
+
+### 發布與恢復證據
+
+- 新版完成後，同交易寫入新 active/completed、舊 superseded/delete_pending；先 document 後 job 鎖，再檢查有效租約與目前合法工作。新 storage stat 失敗保留舊成果；真 MySQL 測試 trigger 在舊工作狀態更新時 SIGNAL，確認整筆交易回滾（新版 failed、沒有新成果列、舊版仍可 HTTP 下載）。測試 trigger 於 finally 移除，不屬於產品 schema/migration。
+- 發布後注入刪除失敗，以及實體刪除完成後、狀態回寫前丟出錯誤；新版均保持 completed 且 HTTP 可下載，舊版立即拒絕下載，delete_pending 保留。未到 nextAttemptAt 不清理；60 秒後及重複 maintain 可恢復為 deleted。
+- 活躍 staging reference 令刪除延後，釋放後才清除。實際 source document、個人 PDF、其他文件 ZIP 與最新 ZIP 保留；不建立新排程。
+- 建立 51 個待清理工作，第一個持續故障：首輪僅處理 50 工作（49 刪除／1 延後）；同時間第二輪清除第 51 個，不被失敗首筆阻塞；60 秒後失敗項可恢復。待清理查詢只投影 ID，依 nextAttemptAt/id 排序，全清完不再選取。
+- 舊版 detail/history 為 superseded/files=[]，保留原匯出人／時間／份數／名稱；prepare、直接 GET、Range 回 `ESIGN_EXPORT_SUPERSEDED` 409，不 redirect 新版。跨部門與錯文件先回 404，retry 舊版拒絕，不覆寫原歷史資料。
+- 真 S3（Moto versioned bucket）：使用舊 ZIP 完整 objectVersion 刪除；注入刪後中斷後 HEAD 指定版本回 404。maintain 重入後 file=deleted，ListObjectVersions 不含舊版本且無 delete marker；同 key 的其他版本、個人 PDF、新版及新版 Range 下載均保留。
+
+### 提交結果不明的恢復
+
+唯讀 review 發現發布 COMMIT 成功、回覆卻中斷時，既有 catch 先刪 stored，可能刪掉已 active 的新版。以真 MySQL transaction 先提交、再於 DB 邊界丟錯重現 RED（新版 DB completed，但 stat ENOENT；`/tmp/spec030-ticket03-commit-red.log`）。改為先確認工作狀態，且只刪無 active/staging reference 的產物；參照查詢失敗時保留待 orphan sweep。GREEN 同時驗證正常查到 active 與參照查詢故障，新版仍可下載、不改 failed，舊版立即 409 且 maintain 接手實體清理；真正 rollback 測試仍保持舊版可下載。
+
+### 自動驗證
+
+- 最後一輪 `export-retention.e2e-spec.ts` + `esign-export.e2e-spec.ts` + `esign-export-history.e2e-spec.ts`：117/117 通過，含上述兩個提交結果不明案例（`/tmp/spec030-ticket03-all-e2e.log`）。
+- `export-retention.e2e-spec.ts` + `esign-export-history.e2e-spec.ts`：107 tests 通過（`/tmp/spec030-ticket03-integration.log`）。
+- 加強來源／他文件保護及精簡清理投影後，`export-retention.e2e-spec.ts` + `esign-export.e2e-spec.ts`：23 tests 通過（`/tmp/spec030-ticket03-final-e2e.log`）。既有並發案例仍會產生 Node MaxListeners 警告，未隱藏警告或改門檻。
+- `PATH=/tmp/esign019-moto/bin:$PATH pnpm --config.verify-deps-before-run=false -C server test:s3:e2e --runTestsByPath test/s3-export.e2e-spec.ts`：5 tests 通過（`/tmp/spec030-ticket03-s3.log`）。
+- 全 server unit：119 suites／1204 tests 通過（`/tmp/spec030-ticket03-unit.log`）；server build 通過。
+- T022 的檔案狀態查詢集中於現有 ExportJobRepository，避免 file-object.repository 重複匯出業務邏輯；T025 的既有 history mapper 已對非 completed 回 files=[]，直接加入回歸證據即可。
+
+保留文件期限 expired、共用 Excel/PDF expired，以及 expires_at/index/API；沒有 migration/config/dependency 變更。6,000 份容量驗證與最後部署交付文件仍屬整合票。測試 fault injection 僅施加於 storage／真 DB 邊界，產物讀取與實體刪除皆實際執行；本機日誌與瀏覽器截圖是暫存證據，非持久化 CI artifact。
+
+### 舊畫面與歷史取代提示
+
+
+- 真瀏覽器 seam：隔離 MySQL/Redis、synthetic employee session、真 API/worker/local storage、Next 3030 → API 3031；Chromium 153 / Playwright，未攔截或 mock 網路。
+- Red：第一個 session 產生 1 份，第二個 session 更新 2 份後，舊畫面準備下載真實回 409，但 UI 未刷新；等待新版下載按鈕逾時。證據 `/tmp/spec030-ticket03-ui-red.log`。
+- Green（panel）：收到 `ESIGN_EXPORT_SUPERSEDED` 後停用舊操作並刷新 preview/document/history，實際下載為 2 個 PDF。接續歷史舊畫面 409 未刷新形成第二個 red，證據 `/tmp/spec030-ticket03-ui-history-red.log`。
+- Green（history）：歷史同樣重新查詢；舊列顯示「已被新版取代」，無下載／重試按鈕、不再標「處理中」。新版可下載，工作總數保持 2，沒有錯誤後自動打包。
+- 執行：`AUTH_TRUSTED_ORIGINS=http://localhost:3030 CORS_ORIGIN=http://localhost:3030 pnpm --config.verify-deps-before-run=false -C server test:e2e --testRegex spec030-browser.e2e-spec.ts --runTestsByPath test/spec030-browser.e2e-spec.ts`，1/1 passed（11.647 秒）。Harness `/tmp/spec030-browser/ticket03-browser.e2e-spec.ts` 暫放 server/test 執行後已移除；可複製回重跑。
+- 最終回歸 log `/tmp/spec030-ticket03-ui-regression.log`；截圖 `/tmp/spec030-browser/ticket03-refreshed.png`、`/tmp/spec030-browser/ticket03-history.png`。
+- `pnpm --config.verify-deps-before-run=false -C client lint` 通過；前端 build 與整合驗證由 ticket 主流程統一執行。
+
+
+### Ticket 03：直接讀到 superseded 的重新連線分支
+
+- 已固定 pending 工作後讓第一個真瀏覽器 context 離線；第二個 session 完成原 1 份 ZIP 並明確更新至 2 份，第一個 context 重新連線後 GET 原工作為 superseded。未模擬 API response。
+- Red：缺少「查看最新成果」入口，舊 requestedId 持續停留已取代畫面；`/tmp/spec030-ticket03-reconnect-red.log`。
+- Green：專用提示提供「查看最新成果」，只清 requestedId／刷新摘要，沒有申請或重試 mutation；實際取得新 ZIP 的 2 個 PDF，工作總數保持 2。`/tmp/spec030-ticket03-reconnect-green.log`，1/1 passed（24.352 秒）；harness `/tmp/spec030-browser/ticket03-reconnect.e2e-spec.ts`，截圖 `/tmp/spec030-browser/ticket03-reconnected.png`。
+- 共用刷新 handler 後再驗證先前 409 流程：開發環境一次出現整頁重新載入而未保留舊畫面，該輪逾時，未列成功。凍結 UI 後重跑，`/tmp/spec030-ticket03-ui-regression.log` 1/1 passed（11.808 秒），兩次真正 409、最新下載 2 個 PDF、歷史無舊下載且總工作仍 2。
+- 最新 client lint 通過。Next 已停止，產生的 AGENTS block 已還原，暫時 server test harness 已移除；未新增 client 測試框架。
+
+### Ticket 03 最後檢查
+
+- root `pnpm lint` 通過（server 0 errors／310 warnings，包含測試中的 bind／既有 any 警告；client lint 通過），日誌 `/tmp/spec030-ticket03-final-lint.log`。
+- Nest build、Next webpack build 通過（`/tmp/spec030-ticket03-final-build.log`、`/tmp/spec030-ticket03-client-build.log`）。工作區依賴仍為外部 symlink，預設 Turbopack root build 留待整合工作區執行；沒有提交 symlink、Next 生成 AGENTS 區塊或 browser 暫存 harness。

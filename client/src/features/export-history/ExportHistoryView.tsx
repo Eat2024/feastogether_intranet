@@ -36,7 +36,7 @@ import {
   selectedDeptNames,
 } from "@/features/esign-documents/exportQuery";
 import { formatDateTime } from "@/features/esign-documents/listQuery";
-import { getErrorMessage } from "@/lib/apiError";
+import { getErrorCode, getErrorMessage } from "@/lib/apiError";
 import { PAGE_SIZE, pageHrefs, paginate, parsePage } from "@/lib/paginate";
 import {
   nextSortState,
@@ -221,6 +221,7 @@ function PdfRedownload({ record }: { record: PdfExportHistoryItem }) {
 
 /** ZIP：下載或重試尚未成功的匯出；舊不可用成果不重新產生。 */
 function ZipAction({ record }: { record: ZipExportHistoryItem }) {
+  const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
   const refresh = useRefreshHistory();
   const retry = useMutation({
@@ -246,6 +247,20 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
             exportId: record.id,
             fileId: file.id,
             fileName: record.downloadFileName ?? undefined,
+          }).catch((error: unknown) => {
+            if (getErrorCode(error) === "ESIGN_EXPORT_SUPERSEDED") {
+              refresh();
+              void queryClient.invalidateQueries({
+                queryKey: [queryKeys.ESIGN_DOCUMENT_EXPORT_PREVIEW, record.document.id],
+              });
+              void queryClient.invalidateQueries({
+                queryKey: [queryKeys.ESIGN_DOCUMENT, record.document.id],
+              });
+              void queryClient.invalidateQueries({
+                queryKey: [queryKeys.ESIGN_DOCUMENT_EXPORT, record.document.id, record.id],
+              });
+            }
+            throw error;
           });
           const link = document.createElement("a");
           link.href = preparedExportFileUrl(prepared.downloadPath);
@@ -273,6 +288,9 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
         }
       />
     );
+  }
+  if (record.status === "superseded") {
+    return <Typography variant="helper">已被新版取代</Typography>;
   }
   if (record.status === "expired") {
     return <Typography variant="helper">檔案已不可用</Typography>;

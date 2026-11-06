@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { type EntityManager, IsNull, In } from 'typeorm';
+import { type EntityManager, IsNull, In, LessThan, Not } from 'typeorm';
 import {
   EsignExportJob,
   type EsignExportType,
@@ -32,9 +32,7 @@ export class ExportJobRepository {
   current(documentId: number, manager: EntityManager) {
     const query = this.summaryQuery(documentId, manager)
       .andWhere("job.status <> 'superseded'")
-      .andWhere(
-        "(job.completedAt IS NOT NULL OR job.status = 'completed')",
-      )
+      .andWhere("(job.completedAt IS NOT NULL OR job.status = 'completed')")
       .orderBy('job.id', 'DESC');
     return query.getOne();
   }
@@ -390,7 +388,82 @@ export class ExportJobRepository {
       )
       .getExists();
   }
-  documentExists(id: number, manager: EntityManager) {
-    return manager.findOneBy(EsignDocument, { id, deletedAt: IsNull() });
+  /** 文件鎖已由呼叫端持有；只取代同文件較舊的成功 ZIP。 */
+  async supersedeOlder(current: EsignExportJob, manager: EntityManager) {
+    const older = await manager.find(EsignExportJob, {
+      where: {
+        documentId: current.documentId!,
+        exportType: 'signed_copies_zip',
+        id: LessThan(current.id),
+        status: 'completed',
+        snapshotJson: Not(IsNull()),
+      },
+      order: { id: 'ASC' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    for (const job of older) {
+      job.status = 'superseded';
+      job.nextAttemptAt = null;
+      await this.save(job, manager);
+      const files = await this.files(job.id, manager);
+      for (const file of files) {
+        if (file.archiveStatus !== 'active') continue;
+        file.archiveStatus = 'delete_pending';
+        await manager.save(file);
+      }
+    }
+  }
+
+  pendingCleanup(now: Date, manager: EntityManager, documentId?: number) {
+    const query = manager
+      .createQueryBuilder(EsignExportJob, 'job')
+      .select(['job.id'])
+      .where(
+        "job.exportType = 'signed_copies_zip' AND job.status = 'superseded'",
+      )
+      .andWhere('(job.nextAttemptAt IS NULL OR job.nextAttemptAt <= :now)', {
+        now,
+      })
+      .andWhere(
+        `EXISTS (${manager
+          .createQueryBuilder(EsignFileObject, 'file')
+          .select('1')
+          .where('file.exportJobId = job.id')
+          .andWhere(
+            "file.filePurpose = 'signed_copies_zip' AND file.archiveStatus = 'delete_pending'",
+          )
+          .getQuery()})`,
+      )
+      .orderBy('job.nextAttemptAt', 'ASC')
+      .addOrderBy('job.id', 'ASC')
+      .take(50);
+    if (documentId !== undefined)
+      query.andWhere('job.documentId = :documentId', { documentId });
+    return query.getMany();
+  }
+
+  cleanupFiles(jobId: number, manager: EntityManager) {
+    return manager.find(EsignFileObject, {
+      where: {
+        exportJobId: jobId,
+        filePurpose: 'signed_copies_zip',
+        archiveStatus: 'delete_pending',
+      },
+    });
+  }
+
+  markFileDeleted(id: number, manager: EntityManager) {
+    return manager.update(
+      EsignFileObject,
+      { id, filePurpose: 'signed_copies_zip', archiveStatus: 'delete_pending' },
+      { archiveStatus: 'deleted' },
+    );
+  }
+
+  documentExists(id: number, manager: EntityManager, lock = false) {
+    return manager.findOne(EsignDocument, {
+      where: { id, deletedAt: IsNull() },
+      ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    });
   }
 }

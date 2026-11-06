@@ -1,3 +1,8 @@
+import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
+import { ExportJobRepository } from '#app/features/esign/repositories/export-job.repository';
+import { FileObjectRepository } from '#app/features/esign/repositories/file-object.repository';
+import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
+import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { DocumentExportProcessor } from '#app/worker/esign/document-export.processor';
 import { EsignExportJob } from '#app/features/esign/entities/esign-export-job.entity';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -7,6 +12,7 @@ import { Test } from '@nestjs/testing';
 import { startTestS3, type TestS3 } from './s3-test.helper';
 import {
   ListObjectVersionsCommand,
+  HeadObjectCommand,
   ListMultipartUploadsCommand,
   PutObjectCommand,
   PutBucketVersioningCommand,
@@ -282,6 +288,187 @@ describe('Spec009 S3 匯出 API/worker', () => {
       ).toHaveLength(0);
     } finally {
       await worker.close();
+    }
+  });
+
+  it('Spec030 只清除被取代 ZIP 的固定 S3 版本，刪後中斷可重入且新版可下載', async () => {
+    const queue = ctx.app.get<Queue>(getQueueToken(ESIGN_EXPORT_QUEUE));
+    await queue.pause();
+    const processor = new DocumentExportProcessor(
+      ctx.app.get(MysqlService),
+      ctx.app.get(ExportJobRepository),
+      ctx.app.get(FileObjectRepository),
+      s3.storage,
+      queue,
+      ctx.app.get(AppLoggerService),
+    );
+    try {
+      const document = await db.manager.save(
+        EsignDocument,
+        db.manager.create(EsignDocument, {
+          docNumber: randomUUID(),
+          title: '合成 S3 新版取代',
+          status: 'active',
+          createdByUserId: Number(ownerId),
+          createdByDepartmentCode: 'D009',
+          signStartAt: new Date(Date.now() - 60000),
+          signEndAt: new Date(Date.now() + 86400000),
+        }),
+      );
+      async function signed(order: number) {
+        const signer = await db.manager.save(
+          EsignSigner,
+          db.manager.create(EsignSigner, {
+            publicId: randomUUID(),
+            documentId: document.id,
+            signerType: 'email',
+            email: `s3-${order}@example.test`,
+            nameSnapshot: `合成簽署人${order}`,
+            status: 'signed',
+            signedAt: new Date(),
+            completionStatus: 'ready',
+            completionReadyAt: new Date(),
+            sortOrder: order,
+          }),
+        );
+        const record = await db.manager.save(
+          EsignSignatureRecord,
+          db.manager.create(EsignSignatureRecord, {
+            signerId: signer.id,
+            documentSha256: 'a'.repeat(64),
+            signingPayloadSha256: 'b'.repeat(64),
+            consentVersion: 'test',
+            authenticationMethod: 'test',
+            authenticationEventId: randomUUID(),
+            signedAtUtc: new Date(),
+          }),
+        );
+        const pdf = await PDFDocument.create();
+        pdf.addPage().drawText(`Synthetic signed copy ${order}`);
+        const stored = await s3.storage.store({
+          directory: `documents/s3-refresh-${document.id}`,
+          extension: 'pdf',
+          mimeType: 'application/pdf',
+          bytes: Buffer.from(await pdf.save()),
+        });
+        return db.manager.save(
+          EsignFileObject,
+          db.manager.create(EsignFileObject, {
+            ...stored,
+            signatureRecordId: record.id,
+            filePurpose: 'completed_pdf',
+            archiveStatus: 'active',
+          }),
+        );
+      }
+      async function generate() {
+        const accepted = apiData<{ id: string }>(
+          await request(ctx.server)
+            .post(`/api/esign/documents/${document.id}/exports`)
+            .set('Cookie', cookie)
+            .set('Origin', origin)
+            .send({ type: 'signed_copies_zip' })
+            .expect(202),
+        );
+        const job = await db.manager.findOneByOrFail(EsignExportJob, {
+          publicId: accepted.id,
+        });
+        await processor.run(job.id);
+        return apiData<{
+          id: string;
+          status: string;
+          files: Array<{ id: string; downloadPath: string }>;
+        }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${document.id}/exports/${accepted.id}`)
+            .set('Cookie', cookie)
+            .expect(200),
+        );
+      }
+      const personal = await signed(1);
+      const old = await generate();
+      const original = await db.manager.findOneByOrFail(EsignFileObject, {
+        id: Number(old.files[0].id),
+      });
+      expect(original.objectVersion).toBeTruthy();
+      const unrelatedVersion = await s3.client.send(
+        new PutObjectCommand({
+          Bucket: s3.bucket,
+          Key: original.objectKey,
+          Body: Buffer.from('synthetic unrelated version'),
+        }),
+      );
+      await signed(2);
+      const remove = s3.storage.delete.bind(s3.storage);
+      const interrupted = jest
+        .spyOn(s3.storage, 'delete')
+        .mockImplementation(async (reference) => {
+          await remove(reference);
+          if (reference.objectKey === original.objectKey)
+            throw new Error('合成 S3 刪後回寫前中斷');
+        });
+      let next: Awaited<ReturnType<typeof generate>>;
+      try {
+        next = await generate();
+      } finally {
+        interrupted.mockRestore();
+      }
+      expect(next.status).toBe('completed');
+      await request(ctx.server)
+        .get(next.files[0].downloadPath)
+        .set('Cookie', cookie)
+        .expect(200);
+      await request(ctx.server)
+        .get(old.files[0].downloadPath)
+        .set('Cookie', cookie)
+        .expect(409);
+      expect(
+        (await db.manager.findOneByOrFail(EsignFileObject, { id: original.id }))
+          .archiveStatus,
+      ).toBe('delete_pending');
+      await expect(
+        s3.client.send(
+          new HeadObjectCommand({
+            Bucket: s3.bucket,
+            Key: original.objectKey,
+            VersionId: original.objectVersion!,
+          }),
+        ),
+      ).rejects.toMatchObject({ $metadata: { httpStatusCode: 404 } });
+      const pending = await db.manager.findOneByOrFail(EsignExportJob, {
+        publicId: old.id,
+      });
+      await processor.maintain(pending.nextAttemptAt!);
+      await processor.maintain(
+        new Date(pending.nextAttemptAt!.getTime() + 60000),
+      );
+      expect(
+        (await db.manager.findOneByOrFail(EsignFileObject, { id: original.id }))
+          .archiveStatus,
+      ).toBe('deleted');
+      const versions = await s3.client.send(
+        new ListObjectVersionsCommand({
+          Bucket: s3.bucket,
+          Prefix: original.objectKey,
+        }),
+      );
+      expect(
+        versions.Versions?.some((v) => v.VersionId === original.objectVersion),
+      ).toBe(false);
+      expect(versions.Versions?.map((v) => v.VersionId)).toContain(
+        unrelatedVersion.VersionId,
+      );
+      expect(versions.DeleteMarkers ?? []).toHaveLength(0);
+      expect(await s3.storage.stat(personal)).toMatchObject({
+        fileSize: Number(personal.fileSize),
+      });
+      await request(ctx.server)
+        .get(next.files[0].downloadPath)
+        .set('Cookie', cookie)
+        .set('Range', 'bytes=0-3')
+        .expect(206);
+    } finally {
+      await queue.resume();
     }
   });
 

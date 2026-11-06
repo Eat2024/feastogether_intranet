@@ -24,6 +24,7 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   INVALID_REQUEST: '輸入資料格式有誤，請確認後再試',
 
   // --- 電子簽 ---
+  ESIGN_EXPORT_SUPERSEDED: '此 ZIP 已被新版取代，請重新取得最新匯出資訊。',
   ESIGN_INVALID_PDF: 'PDF 格式、大小或頁數不符合規格',
   ESIGN_DEPARTMENT_UNAVAILABLE: '無法取得您的部門資料，請重新登入或聯絡系統管理員',
   ESIGN_RESOURCE_NOT_FOUND: '找不到此文件，或您沒有權限存取',

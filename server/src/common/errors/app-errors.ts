@@ -678,6 +678,11 @@ export const AppErrors = {
     '匯出成果暫時無法下載',
     HttpStatus.SERVICE_UNAVAILABLE,
   ],
+  ESIGN_EXPORT_SUPERSEDED: [
+    AppErrorCode.ESIGN_EXPORT_SUPERSEDED,
+    '此 ZIP 已被新版取代，請重新取得最新匯出資訊。',
+    HttpStatus.CONFLICT,
+  ],
   ESIGN_EXPORT_NOT_READY: [
     AppErrorCode.ESIGN_EXPORT_NOT_READY,
     '匯出尚未完成',

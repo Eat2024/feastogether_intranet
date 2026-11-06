@@ -66,7 +66,8 @@ export class ExportsController {
   })
   @ApiResponse({
     status: 409,
-    description: 'ZIP 尚未就緒或員工部門尚未設定',
+    description:
+      'ESIGN_EXPORT_SUPERSEDED：ZIP 已被新版取代；或 ZIP 尚未就緒、員工部門尚未設定',
   })
   @ApiResponse({
     status: 503,
@@ -136,6 +137,11 @@ export class ExportsController {
   }
 
   // 下載匯出 ZIP 分檔，支援 Range 部分下載。
+  @ApiResponse({
+    status: 409,
+    description:
+      'ESIGN_EXPORT_SUPERSEDED：ZIP 已被新版取代，包含 Range 請求；請刷新匯出資訊',
+  })
   @Get('documents/:documentId/exports/:exportId/files/:fileId')
   async download(
     @Param('documentId') id: string,

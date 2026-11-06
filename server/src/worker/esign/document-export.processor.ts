@@ -1,3 +1,4 @@
+import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { once } from 'node:events';
 import { canonicalSha256 } from '#app/features/esign/helpers/signing-evidence';
@@ -37,6 +38,7 @@ export class DocumentExportProcessor
     private readonly files: FileObjectRepository,
     @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
     @InjectQueue(ESIGN_EXPORT_QUEUE) private readonly queue: Queue,
+    private readonly logger: AppLoggerService,
   ) {
     super();
   }
@@ -74,6 +76,7 @@ export class DocumentExportProcessor
     if (!claim) return;
     const abort = new AbortController();
     let stored: StoredPrivateFile | undefined;
+    let published = false;
     const renewal = setInterval(() => {
       void this.mutate(id, generation, (j) => {
         j.leaseExpiresAt = new Date(Date.now() + LEASE_MS);
@@ -233,7 +236,15 @@ export class DocumentExportProcessor
         await storagePromise.catch(() => undefined);
         throw error;
       }
+      if (
+        !this.storage.stat ||
+        (await this.storage.stat(stored)).fileSize !== stored.fileSize
+      )
+        throw new Error('新匯出成果不可用');
       await this.mysql.transaction(async (m) => {
+        // 與申請／簽署一致：先文件、再工作；storage I/O 留在交易外。
+        if (!(await this.jobs.documentExists(claim.documentId!, m, true)))
+          throw new Error('文件已不存在');
         const current = await this.jobs.byId(id, m, true);
         if (
           !current ||
@@ -243,8 +254,9 @@ export class DocumentExportProcessor
           current.leaseExpiresAt <= new Date()
         )
           throw new Error('匯出租約已失效');
-        if (!(await this.jobs.documentExists(current.documentId!, m)))
-          throw new Error('文件已不存在');
+        const work = await this.jobs.work(current.documentId!, m);
+        if (work?.id !== current.id)
+          throw new Error('匯出工作已被後續工作取代');
         const file = this.files.create(
           {
             ...stored!,
@@ -267,11 +279,12 @@ export class DocumentExportProcessor
         current.stagingJson = null;
         current.nextAttemptAt = null;
         await this.jobs.save(current, m);
+        await this.jobs.supersedeOlder(current, m);
       });
       stored = undefined;
+      published = true;
     } catch (error) {
       abort.abort();
-      if (stored) await this.storage.delete(stored).catch(() => undefined);
       await this.mysql.transaction(async (m) => {
         const current = await this.jobs.byId(id, m, true);
         if (current?.leaseToken !== generation) return;
@@ -286,9 +299,26 @@ export class DocumentExportProcessor
         current.leaseExpiresAt = null;
         await this.jobs.save(current, m);
       });
+      // COMMIT 可能已成功但回覆中斷；先確認沒有已發布／活躍參照才可刪。
+      // DB 無法確認時保留產物，交由既有 orphan sweep 安全回收。
+      if (stored) {
+        try {
+          if (
+            !(await this.jobs.isReferenced(
+              stored.objectKey,
+              this.mysql.getManager(),
+            ))
+          )
+            await this.storage.delete(stored);
+        } catch {
+          // 不以刪除未知狀態的成果來補償交易錯誤。
+        }
+      }
     } finally {
       clearInterval(renewal);
     }
+    // 發布已提交；清理失敗不得進入產製 catch 或把新版改為 failed。
+    if (published) await this.cleanupSuperseded(new Date(), claim.documentId!);
   }
   private async mutate(
     id: number,
@@ -308,6 +338,73 @@ export class DocumentExportProcessor
       await this.jobs.save(job, m);
     });
   }
+  private async cleanupSuperseded(now: Date, documentId?: number) {
+    try {
+      const rows = await this.jobs.pendingCleanup(
+        now,
+        this.mysql.getManager(),
+        documentId,
+      );
+      for (const row of rows) {
+        try {
+          const current = await this.jobs.byId(row.id, this.mysql.getManager());
+          if (
+            current?.status !== 'superseded' ||
+            current.exportType !== 'signed_copies_zip'
+          )
+            continue;
+          const files = await this.jobs.cleanupFiles(
+            row.id,
+            this.mysql.getManager(),
+          );
+          let deferred = false;
+          for (const file of files) {
+            if (
+              await this.jobs.isReferenced(
+                file.objectKey,
+                this.mysql.getManager(),
+                now,
+              )
+            ) {
+              deferred = true;
+              continue;
+            }
+            await this.storage.delete(file);
+            await this.jobs.markFileDeleted(file.id, this.mysql.getManager());
+          }
+          await this.deferCleanup(
+            row.id,
+            deferred ? new Date(now.getTime() + 60_000) : null,
+          );
+        } catch {
+          await this.deferCleanup(
+            row.id,
+            new Date(now.getTime() + 60_000),
+          ).catch(() => undefined);
+          this.logger.error({
+            event: 'esign.export_cleanup_failed',
+            message: '舊 ZIP 清理未完成，將由維護流程重試',
+            metadata: { exportJobId: row.id },
+          });
+        }
+      }
+    } catch {
+      this.logger.error({
+        event: 'esign.export_cleanup_unavailable',
+        message: '無法讀取舊 ZIP 清理工作，將由維護流程重試',
+      });
+    }
+  }
+
+  private async deferCleanup(id: number, nextAttemptAt: Date | null) {
+    await this.mysql.transaction(async (m) => {
+      const job = await this.jobs.byId(id, m, true);
+      if (job?.status !== 'superseded') return;
+      job.nextAttemptAt = nextAttemptAt;
+      await this.jobs.save(job, m);
+    });
+  }
+
   async maintain(now = new Date()) {
     const rows = await this.jobs.maintenance(now, this.mysql.getManager());
     for (const row of rows) {
@@ -332,6 +429,7 @@ export class DocumentExportProcessor
       if (action?.kind === 'enqueue')
         await this.queue.add(...exportJobArguments(action.id));
     }
+    await this.cleanupSuperseded(now);
     await this.storage.cleanupExports?.(
       new Date(now.getTime() - 24 * 60 * 60_000),
       100,

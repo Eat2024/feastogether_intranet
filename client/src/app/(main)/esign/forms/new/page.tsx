@@ -7,6 +7,7 @@ import SheetEditor from "@/features/forms/sheet/SheetEditor";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import { Alert, Box, Button } from "@mui/material";
 import type { Metadata } from "next";
+import { ESIGN_ROUTES } from "@/constants/routes/esign";
 
 export const metadata: Metadata = { title: "新增電子簽文件" };
 
@@ -14,9 +15,9 @@ export const metadata: Metadata = { title: "新增電子簽文件" };
 const SHEET_ENABLED = false;
 
 const TYPES = [
-  { value: "upload", label: "一般文件（上傳）", href: "/esign/forms/new" },
+  { value: "upload", label: "一般文件（上傳）", href: ESIGN_ROUTES.createForm.href },
   // 後端尚未支援簽到表，先隱藏此分頁
-  ...(SHEET_ENABLED ? [{ value: "sheet", label: "簽到表（尚未完成）", href: "/esign/forms/new?type=sheet" }] : []),
+  ...(SHEET_ENABLED ? [{ value: "sheet", label: "簽到表（尚未完成）", href: `${ESIGN_ROUTES.createForm.href}?type=sheet` }] : []),
 ];
 
 export default async function NewFormPage({
@@ -32,7 +33,7 @@ export default async function NewFormPage({
         <Button
           variant="text"
           startIcon={<ArrowBackRoundedIcon />}
-          href="/esign/forms"
+          href={ESIGN_ROUTES.forms.href}
         >
           返回電子簽列表
         </Button>

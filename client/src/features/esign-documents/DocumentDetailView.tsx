@@ -40,6 +40,7 @@ import {
 import ReopenDocumentButton from './ReopenDocumentButton';
 import ReopeningInvitationsButton from './ReopeningInvitationsButton';
 import StopDocumentButton from './StopDocumentButton';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 function Kpi({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
@@ -125,13 +126,13 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
               </Button>
             )}
             {doc.canExport && doc.status !== 'draft' && (
-              <Button size="large" variant="outlined" href={`/esign/forms/${doc.id}/export`}>匯出</Button>
+              <Button size="large" variant="outlined" href={`${ESIGN_ROUTES.forms.href}/${doc.id}/export`}>匯出</Button>
             )}
             {doc.isCreator && <>
               {doc.status === 'draft' ? (
                 <>
-                  <Button size="large" variant="outlined" href={`/esign/forms/${doc.id}/edit`} startIcon={<EditRoundedIcon />}>編輯</Button>
-                  <Button size="large" variant="contained" href={`/esign/forms/${doc.id}/signers`}>設定簽署</Button>
+                  <Button size="large" variant="outlined" href={`${ESIGN_ROUTES.forms.href}/${doc.id}/edit`} startIcon={<EditRoundedIcon />}>編輯</Button>
+                  <Button size="large" variant="contained" href={`${ESIGN_ROUTES.forms.href}/${doc.id}/signers`}>設定簽署</Button>
                 </>
               ) : (
                 <>

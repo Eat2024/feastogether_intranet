@@ -13,6 +13,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export const metadata: Metadata = { title: '簽署文件' };
 export const dynamic = 'force-dynamic';
@@ -44,7 +45,7 @@ export default async function SignDocumentPage({
 
   // 返回時停在這份文件所屬的分頁（待簽署／已簽署／已拒絕）
   const backHref =
-    me.status === 'signed' ? '/esign/my-signature?tab=signed' : me.status === 'rejected' ? '/esign/my-signature?tab=rejected' : '/esign/my-signature';
+    me.status === 'signed' ? `${ESIGN_ROUTES.mySignature.href}?tab=signed` : me.status === 'rejected' ? `${ESIGN_ROUTES.mySignature.href}?tab=rejected` : ESIGN_ROUTES.mySignature.href;
 
   return (
     <>

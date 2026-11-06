@@ -9,6 +9,7 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import { Box, Button } from '@mui/material';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export const metadata: Metadata = { title: '編輯文件' };
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,7 @@ export default async function EditFormPage({
     return (
       <>
         <Box>
-          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href={ESIGN_ROUTES.forms.href}>
             返回電子簽列表
           </Button>
         </Box>
@@ -44,7 +45,7 @@ export default async function EditFormPage({
         <Button
           variant="text"
           startIcon={<ArrowBackRoundedIcon />}
-          href="/esign/forms"
+          href={ESIGN_ROUTES.forms.href}
         >
           返回電子簽列表
         </Button>

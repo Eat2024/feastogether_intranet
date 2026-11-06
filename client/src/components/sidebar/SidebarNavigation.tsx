@@ -6,7 +6,7 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import { alpha } from "@mui/material/styles";
 import SidebarMenuGroup from "./SidebarMenuGroup";
-import { isRouteActive, type NavItem } from "./services";
+import { isNavItemActive, type NavItem } from "./services";
 
 type Props = {
   items: NavItem[];
@@ -25,7 +25,7 @@ export default function SidebarNavigation({ items, pathname }: Props) {
             key={item.key}
             component={Link}
             href={item.href}
-            selected={isRouteActive(pathname, item.href)}
+            selected={isNavItemActive(pathname, item)}
             sx={(theme) => ({
               borderBottom: "1px solid",
               borderBottomColor: alpha(theme.palette.common.white, 0.12),

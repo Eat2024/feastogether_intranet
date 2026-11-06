@@ -26,3 +26,5 @@
 - 2026-11-06：由 implementer 01 在獨立 worktree 開始；整合基準 775b82e。
 
 - 2026-11-06 使用者澄清：移除 ZIP expired 狀態的查詢／型別／UI 相容處理，不影響文件簽署期限；無須處理 expired 歷史資料。
+
+- 2026-11-06 狀態邊界補充：文件 expired 保留；共用匯出 status／歷史 UI 因 Excel/PDF 未盤點亦保留 expired。僅移除 ZIP 專用舊判斷與無呼叫者 archiveFile()，保留 expires_at/index/API，不做 migration。

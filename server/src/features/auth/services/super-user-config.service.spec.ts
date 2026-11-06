@@ -41,17 +41,19 @@ describe('SuperUserConfigService', () => {
   });
 
   it.each([
-    ['缺 SUPER_USER_ACCOUNT', { SUPER_USER_ACCOUNT: undefined }],
-    ['SUPER_USER_ACCOUNT 為空字串', { SUPER_USER_ACCOUNT: '' }],
-    ['缺 SUPER_USER_PASSWORD_HASH', { SUPER_USER_PASSWORD_HASH: undefined }],
-    ['SUPER_USER_PASSWORD_HASH 為空字串', { SUPER_USER_PASSWORD_HASH: '' }],
-  ])('%s → 建構即失敗，沒有預設值', (_label, override) => {
-    const key = Object.keys(override)[0];
+    ['都未設定', {}],
+    ['都是空字串', { SUPER_USER_ACCOUNT: '', SUPER_USER_PASSWORD_HASH: '' }],
+    ['只有帳號', { SUPER_USER_ACCOUNT: ACCOUNT }],
+    ['只有 hash', { SUPER_USER_PASSWORD_HASH: 'set-in-test' }],
+  ])(
+    '%s → 照常建構，維護登入停用：沒有 fingerprint，任何帳密都不通過',
+    async (_label, env) => {
+      const config = build(env);
 
-    expect(thrownBy(() => build({ ...validEnv(), ...override }))).toEqual(
-      new Error(`環境變數 ${key} 為必填`),
-    );
-  });
+      expect(config.fingerprint).toBeNull();
+      await expect(config.verify(ACCOUNT, PASSWORD)).resolves.toBe(false);
+    },
+  );
 
   it('hash 格式錯誤 → 建構即失敗，錯誤訊息只含變數名、不含設定值', () => {
     const invalid = hash.replace('scrypt:32768:', 'scrypt:16384:');

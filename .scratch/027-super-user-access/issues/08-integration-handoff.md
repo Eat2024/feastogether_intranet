@@ -126,3 +126,16 @@
 - 文件 commit（spec、契約、quickstart、README、AGENTS、UAT 文件與本節）
 - `fix(server)` commit：路徑先解碼再遮罩與判斷（review 時補）
 - `fix(client)` commit：有效入口原本回 404（Next 對改寫後的路徑再執行 proxy，被「直接開內部路徑回 404」擋下），實際頁面路徑改做同樣檢查；移除 `instrumentation.ts` 的格式檢查（review 時補）
+
+## 後續：Super user 帳密改為選填（使用者 2026-11-06 要求）
+
+使用者要求不設 Super user 帳密也能開啟 server 與 REPL。分支 `027-optional-super-user-config`（從 `027-super-user-access` `a0d7926`）。
+
+- `SuperUserConfigService`：`SUPER_USER_ACCOUNT`、`SUPER_USER_PASSWORD_HASH` 任一未設定時 `fingerprint` 為 `null`、`verify()` 一律 `false`；hash 有填但格式錯誤仍讓啟動失敗。
+  - 原本打算「只設一個仍啟動失敗」，實作時發現使用者本機 `.env` 正是「帳號有填、hash 空白」，會擋住「先開 REPL 產生 hash」，改為任一未設定即停用。
+- REPL `initialize()`、`activateCredentials()` 在未設定時拒絕執行，不寫 DB。
+- 已初始化後才拿掉設定：與「本機設定不符」相同，維護登入暫停（登入 401；既有 Super user 會話的請求回 503「維護登入暫時無法使用」），恢復原設定後照常。
+- 驗證：
+  - server unit 123 suites／1280 tests；`test:e2e:security` 20 suites／172 tests；`lint:check` 0 errors。
+  - 以「帳號有填、hash 空白」的 `.env` 實際啟動（測試庫 `feastogether_intranet_test_o`、Redis DB 6、Portal 指向本機）：HTTP `/api/health` 200、隱藏入口 404；worker 持續執行；REPL `hashPassword()` 產生 hash，`initialize()`／`activateCredentials()` 回「未設定 SUPER_USER_ACCOUNT／SUPER_USER_PASSWORD_HASH，維護登入停用；設定後重新啟動 REPL 再執行」。
+

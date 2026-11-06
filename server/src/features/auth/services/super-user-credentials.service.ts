@@ -5,7 +5,10 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { AuthSessionRepository } from '../repositories/auth-session.repository';
 import { SuperUserAccessRepository } from '../repositories/super-user-access.repository';
 import { AuthSecurityEventService } from './auth-security-event.service';
-import { SuperUserConfigService } from './super-user-config.service';
+import {
+  SUPER_USER_NOT_CONFIGURED,
+  SuperUserConfigService,
+} from './super-user-config.service';
 
 /**
  * 明確啟用本機 Super user 帳密設定。只由 REPL 呼叫；HTTP／worker／REPL 啟動都不寫入，
@@ -26,11 +29,13 @@ export class SuperUserCredentialsService {
    * 本機設定已是啟用版本時 no-op；否則 generation+1（再啟用先前的設定也一樣），並在同一交易撤銷全部
    * active 維護會話、寫 credentials.activated。鎖序與登入相同：singleton → 會話。
    */
-  activate({
+  async activate({
     expectedGeneration,
   }: {
     expectedGeneration: number;
   }): Promise<{ activated: boolean }> {
+    const fingerprint = this.superUserConfig.fingerprint;
+    if (!fingerprint) throw new Error(SUPER_USER_NOT_CONFIGURED);
     return this.mysql.transaction(async (manager) => {
       const access = await this.access.findForUpdate(manager);
       // 取得鎖後才取時間：等鎖期間先 commit 的登入，其會話不會晚於生效時間。
@@ -43,12 +48,10 @@ export class SuperUserCredentialsService {
           ...AppErrors.AUTH_SUPER_USER_GENERATION_CONFLICT,
         );
       }
-      if (
-        access.activeCredentialFingerprint === this.superUserConfig.fingerprint
-      ) {
+      if (access.activeCredentialFingerprint === fingerprint) {
         return { activated: false };
       }
-      access.activeCredentialFingerprint = this.superUserConfig.fingerprint;
+      access.activeCredentialFingerprint = fingerprint;
       access.credentialGeneration = expectedGeneration + 1;
       access.credentialActivatedAt = now;
       await this.access.save(access, manager);

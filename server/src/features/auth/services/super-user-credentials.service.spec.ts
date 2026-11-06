@@ -1,3 +1,4 @@
+import { SUPER_USER_NOT_CONFIGURED } from './super-user-config.service';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import type { AuthSecurityEvent } from '../entities/auth-security-event.entity';
 import type { SuperUserAccess } from '../entities/super-user-access.entity';
@@ -65,7 +66,7 @@ function setup(access: Partial<SuperUserAccess> | null) {
     { warn: jest.fn() } as never,
   );
   /** 載入指定本機設定的實例；同一份 state 代表共用的 DB。 */
-  const instance = (fingerprint: string) =>
+  const instance = (fingerprint: string | null) =>
     new SuperUserCredentialsService(
       mysql as never,
       accessRepository as never,
@@ -83,6 +84,16 @@ function setup(access: Partial<SuperUserAccess> | null) {
 }
 
 describe('SuperUserCredentialsService.activate', () => {
+  it('本機未設定 Super user 帳密時拒絕啟用，DB 版本與會話不變', async () => {
+    const db = setup({});
+    const before = structuredClone(db.state);
+
+    await expect(
+      db.instance(null).activate({ expectedGeneration: 1 }),
+    ).rejects.toThrow(SUPER_USER_NOT_CONFIGURED);
+    expect(db.state).toEqual(before);
+  });
+
   it('本機設定不同於已啟用版本：generation+1、更新指紋與生效時間、撤銷維護會話並記錄啟用事件', async () => {
     const db = setup({});
 

@@ -78,7 +78,8 @@ https://truststore.pki.rds.amazonaws.com/ap-east-2/ap-east-2-bundle.pem
 - `server.env` 新增兩項 server-only 設定，不建立 `NEXT_PUBLIC_*` 版本；client 只需要 `client.env` 的來源網路（見「來源網路限制」）。
   - `SUPER_USER_ACCOUNT`：原樣比對，不 trim／normalize。server.env 不是 raw 格式，Compose 會解析 `$`、引號與 `#` 註解，帳號避開這些字元與前後空白。
   - `SUPER_USER_PASSWORD_HASH`：維護者在自己的互動式終端機執行 `pnpm -s -C server super-user:hash-password`，輸入兩次密碼（不回顯），stdout 只有 hash；`-s` 讓 pnpm 不多印指令行。工具不連 DB、不讀 `.env`。沒有 checkout 時可用 `docker run --rm -it <server image> node dist/console/hash-super-user-password.js`。
-- HTTP、worker 與 REPL 啟動時都驗證這兩項；缺漏或格式錯誤時 server healthcheck 失敗，worker 因 `restart: unless-stopped` 反覆重啟，錯誤訊息只有變數名。UAT 的 server 與 worker 共用 server.env（`x-backend`），**推送含 027 的版本前就要寫入**：027 帶 migration，migration 開始後的啟動失敗會讓部署腳本停止全部服務、交人工處理。
+- 兩項都是選填：任一項未設定時 server、worker、REPL 照常啟動，維護登入停用（登入一律不通過，REPL `initialize()`、`activateCredentials()` 拒絕執行）。漏設不會擋下部署，要用維護登入時才寫入、重啟後再執行 `initialize()`。
+- hash 有填但格式錯誤時，server healthcheck 失敗，worker 因 `restart: unless-stopped` 反覆重啟，錯誤訊息只有變數名。UAT 的 server 與 worker 共用 server.env（`x-backend`）；027 帶 migration，migration 開始後的啟動失敗會讓部署腳本停止全部服務、交人工處理，所以推送含 027 的版本前若要填 hash，先確認格式正確。
 - `FEASTOGETHER_*`（`19633f8` 移除）與 `DEVMOD`（027-05 移除）已沒有程式讀取，server.env 殘留不影響開機，可以刪除。
 
 ### 在容器內執行 REPL

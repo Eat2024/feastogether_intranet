@@ -4,7 +4,7 @@
 
 ## 設定與密碼雜湊
 
-新增兩個 server-only 設定：`SUPER_USER_ACCOUNT`、`SUPER_USER_PASSWORD_HASH`。兩者在 HTTP／維護 worker／REPL 啟動時驗格式；缺漏即啟動錯誤，不記值。`client` 不接收、不建立 NEXT_PUBLIC 版本。原有 WEBVIEW_JWT_*、WEBVIEW_LAUNCH_ORIGIN、AUTH_TRUSTED_ORIGINS／CORS_ORIGIN 繼續沿用。
+新增兩個 server-only 設定：`SUPER_USER_ACCOUNT`、`SUPER_USER_PASSWORD_HASH`。兩者皆選填：任一項未設定時 HTTP、worker、REPL 照常啟動，維護登入停用（登入一律不通過，REPL `initialize()`、`activateCredentials()` 拒絕執行）；hash 有填但格式錯誤時啟動失敗，不記值。`client` 不接收、不建立 NEXT_PUBLIC 版本。原有 WEBVIEW_JWT_*、WEBVIEW_LAUNCH_ORIGIN、AUTH_TRUSTED_ORIGINS／CORS_ORIGIN 繼續沿用。
 
 密碼格式固定 `scrypt:32768:8:1:<salt-base64url>:<derived-key-base64url>`，salt16bytes、derived64bytes，maxmem64MiB；只接受固定參數與正規base64url長度，避免受設定注入巨大KDF成本。使用非同步crypto.scrypt並限制登入輸入1024 UTF-8 bytes；帳號及密碼不trim。固定長度derived key採timingSafeEqual。帳號不符也執行同一次KDF，最後統一401。
 

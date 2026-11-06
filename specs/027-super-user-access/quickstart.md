@@ -591,3 +591,15 @@ client 沒有 test script，未宣稱跑過 client 自動測試。
 - 時間差：允許網路內的錯誤入口會查一次 DB；不存在的網址不會。未量測，也未處理。
 - 隱藏頁的 chunk 是靜態檔，知道檔名就能下載。檔名是 build hash，只出現在有效入口的頁面裡。
 - 既有行為：未登入員工頁的 404 是 rewrite，可看出「需要登入」；不在本次範圍。
+
+### 027-o Super user 帳密改為選填（使用者 2026-11-06 要求）
+
+不設 Super user 帳密也能開啟 server、worker 與 REPL；規則見 spec FR-017 與 [operations.md](contracts/operations.md)「設定與密碼雜湊」。
+
+| 驗證 | 結果 |
+| --- | --- |
+| `pnpm -C server test` | 123 suites／1280 tests 通過（新增：任一未設定即停用、REPL 初始化與帳密啟用拒絕執行） |
+| `pnpm -C server test:e2e:security` | 20 suites／172 tests 通過 |
+| `pnpm -C server lint:check` | 0 errors |
+| 實際啟動（`.env` 帳號有填、hash 空白；測試庫 `feastogether_intranet_test_o`、Redis DB 6、Portal 指向本機） | HTTP `/api/health` 200、隱藏入口 404；worker 持續執行；REPL `hashPassword()` 可用，`initialize()`／`activateCredentials()` 拒絕執行並說明要先設定 |
+

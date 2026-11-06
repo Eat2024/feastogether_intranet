@@ -2,6 +2,7 @@ import type { AuthSecurityEvent } from '../entities/auth-security-event.entity';
 import type { SuperUserAccess } from '../entities/super-user-access.entity';
 import { AuthSecurityEventService } from './auth-security-event.service';
 import { SuperUserAccessService } from './super-user-access.service';
+import { SUPER_USER_NOT_CONFIGURED } from './super-user-config.service';
 
 const FINGERPRINT = 'f'.repeat(64);
 const OLD_ENTRY = 'E'.repeat(43);
@@ -12,7 +13,10 @@ const taipei = (local: string) => new Date(`${local}+08:00`);
  * 以記憶體模擬 super_user_access／auth_security_events 與交易：transaction 失敗時還原快照，
  * 等同 MySQL rollback。只模擬 SuperUserAccessService 依賴的查詢語意。
  */
-function setup(periodStartAt: Date | null) {
+function setup(
+  periodStartAt: Date | null,
+  fingerprint: string | null = FINGERPRINT,
+) {
   let state = {
     access: periodStartAt
       ? ({
@@ -74,7 +78,7 @@ function setup(periodStartAt: Date | null) {
   const service = new SuperUserAccessService(
     mysql as never,
     access as never,
-    { fingerprint: FINGERPRINT } as never,
+    { fingerprint } as never,
     events,
   );
   return {
@@ -183,6 +187,16 @@ describe('SuperUserAccessService.rotateEntryIfDue', () => {
       periodStartAt: taipei('2026-11-02T04:00'),
     });
     expect(context.state.events).toHaveLength(1);
+  });
+
+  it('未設定 Super user 帳密時拒絕初始化，不寫入口與事件', async () => {
+    const context = setup(null, null);
+
+    await expect(context.service.initialize()).rejects.toThrow(
+      SUPER_USER_NOT_CONFIGURED,
+    );
+    expect(context.state.access).toBeNull();
+    expect(context.state.events).toEqual([]);
   });
 
   it('初始化後同一週期不輪換，下一個週一 04:00 才輪換', async () => {

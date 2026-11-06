@@ -7,7 +7,7 @@ import { SuperUserCredentialsService } from './services/super-user-credentials.s
 
 /**
  * Super user 帳密設定、維護入口與安全事件的窄組合，HTTP AuthModule、維護 worker 與維運 REPL 共用。
- * 沒有 controller、APP_GUARD 或啟動寫入；缺少或不合法的 Super user 設定在建構時即讓啟動失敗。
+ * 沒有 controller、APP_GUARD 或啟動寫入；Super user 帳密任一未設定時維護登入停用，hash 格式錯誤時建構即讓啟動失敗。
  */
 @Module({
   imports: [MysqlModule],

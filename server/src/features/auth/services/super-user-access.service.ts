@@ -10,7 +10,10 @@ import {
 } from '../helpers/rotation-period';
 import { SuperUserAccessRepository } from '../repositories/super-user-access.repository';
 import { AuthSecurityEventService } from './auth-security-event.service';
-import { SuperUserConfigService } from './super-user-config.service';
+import {
+  SUPER_USER_NOT_CONFIGURED,
+  SuperUserConfigService,
+} from './super-user-config.service';
 
 export interface CurrentEntry {
   path: string;
@@ -54,6 +57,8 @@ export class SuperUserAccessService {
    * 直接 INSERT 只競爭同一 PK，維持預設隔離等級即可。不回傳入口；入口只由 currentEntry 揭露。
    */
   async initialize(): Promise<{ initialized: boolean }> {
+    const fingerprint = this.superUserConfig.fingerprint;
+    if (!fingerprint) throw new Error(SUPER_USER_NOT_CONFIGURED);
     const now = new Date();
     return this.mysql.transaction(async (manager) => {
       const initialized = await this.access.insertIfAbsent(
@@ -62,7 +67,7 @@ export class SuperUserAccessService {
           entryGeneration: 1,
           rotatedAt: now,
           periodStartAt: latestDueRotationPeriod(now),
-          activeCredentialFingerprint: this.superUserConfig.fingerprint,
+          activeCredentialFingerprint: fingerprint,
           credentialGeneration: 1,
           credentialActivatedAt: now,
         },

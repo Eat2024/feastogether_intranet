@@ -31,7 +31,7 @@ cp server/.env.test.example server/.env.test
 cp client/.env.example client/.env.local
 
 pnpm install
-pnpm -s -C server super-user:hash-password   # 輸出填入 server/.env 的 SUPER_USER_PASSWORD_HASH，並設定 SUPER_USER_ACCOUNT
+pnpm -s -C server super-user:hash-password   # 選填，要用維護登入時才需要：輸出填入 server/.env 的 SUPER_USER_PASSWORD_HASH，並設定 SUPER_USER_ACCOUNT
 docker compose up -d mysql redis
 pnpm -C server db:setup
 pnpm dev
@@ -87,7 +87,7 @@ await auth.currentEntry() // 取得 path，以前端 origin＋path 在瀏覽器�
 await auth.hashPassword('在自己的終端機換成明碼密碼') // 回傳可填入 SUPER_USER_PASSWORD_HASH 的 hash
 ```
 
-`auth.hashPassword()` 只產生 hash，不寫入 `.env` 或啟用 DB 帳密版本；同一密碼每次會因隨機 salt 產生不同 hash。密碼原樣使用，長度限制為 1～1024 UTF-8 bytes。REPL 輸入會顯示在終端機；需要隱藏輸入時使用 `pnpm -s -C server super-user:hash-password`。REPL 仍需現有有效設定與 MySQL 才能啟動，首次設定請使用上述離線指令。
+`auth.hashPassword()` 只產生 hash，不寫入 `.env` 或啟用 DB 帳密版本；同一密碼每次會因隨機 salt 產生不同 hash。密碼原樣使用，長度限制為 1～1024 UTF-8 bytes。REPL 輸入會顯示在終端機；需要隱藏輸入時使用 `pnpm -s -C server super-user:hash-password`。REPL 只需要 MySQL；`SUPER_USER_*` 未設定時也能啟動並使用 `hashPassword()`，但 `initialize()`、`activateCredentials()` 會拒絕執行。
 
 REPL 只載入設定、logging 與 MySQL，不啟動 HTTP 或 queue consumer。入口原值與帳密不寫進 Git、ticket、PR 或 log。
 

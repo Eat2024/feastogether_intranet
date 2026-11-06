@@ -1,9 +1,10 @@
 import type { SvgIconComponent } from "@mui/icons-material";
-import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
 import DrawRoundedIcon from "@mui/icons-material/DrawRounded";
 import FlightTakeoffRoundedIcon from "@mui/icons-material/FlightTakeoffRounded";
-import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
-import ListAltRoundedIcon from "@mui/icons-material/ListAltRounded";
+import { esignMenu } from "@/constants/menu/esign";
+import { travelMenu } from "@/constants/menu/travel";
+import { ESIGN_ROUTES } from "@/constants/routes/esign";
+import { TRAVEL_ROUTES } from "@/constants/routes/travel";
 
 /** 側邊欄第一層選單；有 children 時為群組，href 是群組底下頁面共用的路徑前綴 */
 export type NavItem = {
@@ -12,6 +13,8 @@ export type NavItem = {
   href: string;
   icon: SvgIconComponent;
   children?: NavSubItem[];
+  /** 只有網址完全相同才算目前頁（用於服務首頁，避免底下所有頁面都亮起） */
+  exact?: boolean;
 };
 
 export type NavSubItem = {
@@ -35,41 +38,26 @@ export const SERVICES: ServiceDefinition[] = [
     key: "esign",
     name: "電子簽署",
     icon: DrawRoundedIcon,
-    pathPrefixes: ["/esign"],
-    menu: [
-      { key: "forms", label: "電子簽列表", href: "/esign/forms", icon: ListAltRoundedIcon },
-      { key: "my-signature", label: "我的電子簽", href: "/esign/my-signature", icon: DrawRoundedIcon },
-      {
-        key: "export-history",
-        label: "歷史匯出文件",
-        href: "/esign/export-history",
-        icon: HistoryRoundedIcon,
-      },
-    ],
+    pathPrefixes: [ESIGN_ROUTES.home.href],
+    menu: esignMenu,
   },
   {
     key: "travel",
     name: "旅遊平台",
     icon: FlightTakeoffRoundedIcon,
-    pathPrefixes: ["/travel"],
-    menu: [
-      {
-        key: "permissions",
-        label: "權限管理",
-        href: "/travel/permissions",
-        icon: AdminPanelSettingsRoundedIcon,
-        children: [
-          { key: "roles", label: "角色管理", href: "/travel/permissions/roles" },
-          { key: "accounts", label: "帳號管理", href: "/travel/permissions/accounts" },
-        ],
-      },
-    ],
+    pathPrefixes: [TRAVEL_ROUTES.home.href],
+    menu: travelMenu,
   },
 ];
 
 /** pathname 是 href 本身或其子路由（/esign/forms 不會匹配 /esign/forms-x） */
 export function isRouteActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** 選單項目是否為目前頁 */
+export function isNavItemActive(pathname: string, item: NavItem) {
+  return item.exact ? pathname === item.href : isRouteActive(pathname, item.href);
 }
 
 /** 點選選單項目實際前往的頁面：群組前往第一個子頁 */

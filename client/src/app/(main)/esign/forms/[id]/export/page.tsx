@@ -31,6 +31,7 @@ import Typography from '@mui/material/Typography';
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export const metadata: Metadata = { title: '匯出簽署紀錄' };
 export const dynamic = 'force-dynamic';
@@ -42,7 +43,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
     return (
       <>
         <Box>
-          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href={ESIGN_ROUTES.forms.href}>
             返回電子簽列表
           </Button>
         </Box>
@@ -58,7 +59,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
   const form = getForm(id);
   if (!form || form.docType !== 'sheet') notFound();
   // 草稿尚無簽署資料可匯出
-  if (form.status === 'draft') redirect('/esign/forms');
+  if (form.status === 'draft') redirect(ESIGN_ROUTES.forms.href);
 
   const search = await searchParams;
   const query = parseExportQuery(search);
@@ -76,7 +77,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
   return (
     <>
       <Box>
-        <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
+        <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href={ESIGN_ROUTES.forms.href}>
           返回電子簽列表
         </Button>
       </Box>
@@ -146,7 +147,7 @@ export default async function FormExportPage({ params, searchParams }: PageProps
       </Stack>
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        <Button size="large" variant="outlined" href="/esign/forms">
+        <Button size="large" variant="outlined" href={ESIGN_ROUTES.forms.href}>
           取消
         </Button>
         {/* 檔案下載用一般連結（不經 Next.js 前端路由） */}

@@ -16,6 +16,7 @@ import {
   updateForm,
 } from './store';
 import type { EFormDoc, SheetInfo, Signer } from './types';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 /** 現在時間，格式 YYYY/MM/DD HH:mm */
 function nowStr() {
@@ -28,8 +29,8 @@ export type ActionResult = { error: string } | undefined;
 
 function revalidateLists() {
   // 'layout'：連同 /esign/forms/[id] 等子頁面一起更新
-  revalidatePath('/esign/forms', 'layout');
-  revalidatePath('/esign/my-signature');
+  revalidatePath(ESIGN_ROUTES.forms.href, 'layout');
+  revalidatePath(ESIGN_ROUTES.mySignature.href);
 }
 
 /** 步驟二：儲存簽署人與簽署期間；publish 為 true 時同時發起簽署 */
@@ -83,7 +84,7 @@ export async function saveSigners(input: {
   if (!input.publish) {
     updateForm(form.id, { signers, options });
     revalidateLists();
-    redirect('/esign/forms?flash=saved');
+    redirect(`${ESIGN_ROUTES.forms.href}?flash=saved`);
   }
 
   updateForm(form.id, {
@@ -94,7 +95,7 @@ export async function saveSigners(input: {
     endAt: input.deadline.end,
   });
   revalidateLists();
-  redirect(`/esign/forms?flash=published&count=${signers.length}`);
+  redirect(`${ESIGN_ROUTES.forms.href}?flash=published&count=${signers.length}`);
 }
 
 /** 通知（提醒）簽署人；未指定 signerIds 時通知所有待簽署者。只會通知待簽署的人，回傳實際通知人數 */
@@ -180,8 +181,8 @@ export async function saveSheetDocument(input: {
     }
     updateForm(form.id, { name, sheet, docType: 'sheet', upload: undefined });
     revalidateLists();
-    if (form.status === 'draft') redirect(`/esign/forms/${form.id}/signers`);
-    redirect('/esign/forms?flash=updated');
+    if (form.status === 'draft') redirect(`${ESIGN_ROUTES.forms.href}/${form.id}/signers`);
+    redirect(`${ESIGN_ROUTES.forms.href}?flash=updated`);
   }
 
   const id = `f${Date.now()}`;
@@ -201,7 +202,7 @@ export async function saveSheetDocument(input: {
     options: { watermark: false, allowReject: false },
   });
   revalidateLists();
-  redirect(`/esign/forms/${id}/signers`);
+  redirect(`${ESIGN_ROUTES.forms.href}/${id}/signers`);
 }
 
 /**

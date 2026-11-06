@@ -48,6 +48,7 @@ import axios from "axios";
 import dayjs from "dayjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { ESIGN_ROUTES } from "@/constants/routes/esign";
 
 const DEADLINE_REQUIRED = "請選擇簽署期間的開始日與結束日";
 const DEADLINE_START_PAST = "開始日不得早於今天，請重新選擇";
@@ -174,7 +175,7 @@ export default function DocumentSignersEditor({
   } = useGetDocumentQuery(documentId);
   const router = useRouter();
   useEffect(() => {
-    if (doc && !doc.isCreator) router.replace(`/esign/forms/${doc.id}`);
+    if (doc && !doc.isCreator) router.replace(`${ESIGN_ROUTES.forms.href}/${doc.id}`);
   }, [doc, router]);
 
   if (isPending) {
@@ -215,7 +216,7 @@ export default function DocumentSignersEditor({
   if (!doc.isCreator) return <Alert severity="info">正在前往文件檢視頁…</Alert>;
   if (doc.status !== "draft") {
     return (
-      <Alert severity="info" action={<Button href="/esign/forms">返回列表</Button>}>
+      <Alert severity="info" action={<Button href={ESIGN_ROUTES.forms.href}>返回列表</Button>}>
         「{doc.title}」已發起簽署，無法再修改簽署設定。
       </Alert>
     );
@@ -365,7 +366,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
       void queryClient.invalidateQueries({
         queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id],
       });
-      router.push(`/esign/forms?flash=initiating&count=${job.totalCount}`);
+      router.push(`${ESIGN_ROUTES.forms.href}?flash=initiating&count=${job.totalCount}`);
     },
     // 查無員工帳號時是自訂的 Error，其餘為後端回應
     onError: (err) =>
@@ -395,7 +396,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
       void queryClient.invalidateQueries({
         queryKey: [queryKeys.ESIGN_DOCUMENT, doc.id],
       });
-      router.push("/esign/forms?flash=draftSaved");
+      router.push(`${ESIGN_ROUTES.forms.href}?flash=draftSaved`);
     },
     onError: (err) =>
       setSubmitError(
@@ -570,7 +571,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
         <Button
           size="large"
           variant="outlined"
-          href={`/esign/forms/${doc.id}/edit`}
+          href={`${ESIGN_ROUTES.forms.href}/${doc.id}/edit`}
           disabled={busy}
         >
           上一步，回到上傳文件
@@ -590,7 +591,7 @@ function Editor({ doc, org }: { doc: EsignManagedDocumentDetail; org: OrgDept[] 
           </span>
         </Tooltip>
         <Box sx={{ display: "flex", gap: 1, ml: "auto" }}>
-          <Button size="large" variant="outlined" href="/esign/forms" disabled={busy}>
+          <Button size="large" variant="outlined" href={ESIGN_ROUTES.forms.href} disabled={busy}>
             取消
           </Button>
           <Button

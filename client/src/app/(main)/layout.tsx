@@ -10,10 +10,8 @@ export default async function MainLayout({ children }: LayoutProps<"/">) {
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
       <Sidebar defaultOpen={sidebarOpen} />
-      <Box
-        component="main"
-        sx={{ flexGrow: 1, minWidth: 0, p: 3, display: "flex", flexDirection: "column", gap: 3 }}
-      >
+      {/* 內距由各服務的 layout 決定（旅遊平台頂端有滿版的麵包屑列） */}
+      <Box component="main" sx={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {children}
       </Box>
     </Box>

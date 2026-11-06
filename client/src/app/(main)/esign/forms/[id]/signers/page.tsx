@@ -9,6 +9,7 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import { Box, Button } from '@mui/material';
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export const metadata: Metadata = { title: '設定簽署' };
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,7 @@ export const dynamic = 'force-dynamic';
 function BackToList() {
   return (
     <Box>
-      <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
+      <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href={ESIGN_ROUTES.forms.href}>
         返回電子簽列表
       </Button>
     </Box>
@@ -43,7 +44,7 @@ export default async function FormSignersPage({
   const form = getForm(id);
   if (!form || form.docType !== 'sheet') notFound();
   // 已發起的文件不能再改簽署設定
-  if (form.status !== 'draft') redirect('/esign/forms');
+  if (form.status !== 'draft') redirect(ESIGN_ROUTES.forms.href);
 
   return (
     <>

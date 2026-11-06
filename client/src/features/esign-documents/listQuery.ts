@@ -4,6 +4,7 @@ import type { EsignDocumentListItem, EsignDocumentStatus } from '@/api/types';
 import { parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
 import type { ChipProps } from '@mui/material/Chip';
 import dayjs from 'dayjs';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 /** 列表顯示的狀態：直接使用後端狀態（「已到期」由後端判斷） */
 export type DocumentListStatus = EsignDocumentStatus;
@@ -122,7 +123,7 @@ export function filterDocuments(docs: EsignDocumentListItem[], filters: Document
 
 // ── 排序 ──────────────────────────────────────────────
 
-export const DOCUMENT_SORT_KEYS = ['name', 'docNumber', 'startAt', 'endAt', 'status', 'progress', 'createdBy'] as const;
+export const DOCUMENT_SORT_KEYS = ['name', 'docNumber', 'createdAt', 'startAt', 'endAt', 'status', 'progress', 'createdBy'] as const;
 export type DocumentSortKey = (typeof DOCUMENT_SORT_KEYS)[number];
 export type DocumentSort = Sort<DocumentSortKey>;
 
@@ -137,6 +138,9 @@ const sortValue = (key: DocumentSortKey) => (d: EsignDocumentListItem): SortValu
       return d.title;
     case 'docNumber':
       return d.docNumber || null;
+    // ISO 時間可直接以字串比較
+    case 'createdAt':
+      return d.createdAt;
     case 'startAt':
       return display.signStartAt;
     // 已發起但未設結束時間（不限）視為最晚；尚未發起才是無值
@@ -180,5 +184,5 @@ export function documentsHref(opts: { filters: DocumentFilters; sort: DocumentSo
   }
   if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
-  return s ? `/esign/forms?${s}` : '/esign/forms';
+  return s ? `${ESIGN_ROUTES.forms.href}?${s}` : ESIGN_ROUTES.forms.href;
 }

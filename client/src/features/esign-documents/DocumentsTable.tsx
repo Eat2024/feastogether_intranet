@@ -27,7 +27,7 @@ import {
   type DocumentSortKey,
 } from './listQuery';
 
-const COLUMNS: [DocumentSortKey | 'createdAt', string][] = [
+const COLUMNS: [DocumentSortKey, string][] = [
   ['name', '文件名稱'],
   ['docNumber', '文件編號'],
   ['createdAt', '建立時間'],
@@ -57,9 +57,7 @@ export default function DocumentsTable({
       <Table>
         <TableHead>
           <TableRow>
-            {COLUMNS.map(([key, label]) => key === 'createdAt' ? (
-              <TableCell key={key} sx={{ whiteSpace: 'nowrap' }}>{label}</TableCell>
-            ) : (
+            {COLUMNS.map(([key, label]) => (
               <SortableHeaderCell
                 key={key}
                 active={sort?.key === key}

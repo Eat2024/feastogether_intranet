@@ -1,5 +1,6 @@
 // 匯出頁的條件（範圍、欄位）與資料整理；條件記在網址上，預覽與 Excel 檔案共用同一套規則
 import type { EFormDoc, Signer } from '../types';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export const STATUS_OPTIONS = [
   { key: 'pending', label: '待簽署' },
@@ -106,11 +107,11 @@ export function exportPageHref(formId: string, query: ExportQuery, page = 1) {
   const qs = new URLSearchParams(toSearch(query));
   if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
-  return s ? `/esign/forms/${formId}/export?${s}` : `/esign/forms/${formId}/export`;
+  return s ? `${ESIGN_ROUTES.forms.href}/${formId}/export?${s}` : `${ESIGN_ROUTES.forms.href}/${formId}/export`;
 }
 
 /** 下載 Excel 檔案的網址 */
 export function exportFileHref(formId: string, query: ExportQuery) {
   const s = toSearch(query);
-  return s ? `/esign/forms/${formId}/export/file?${s}` : `/esign/forms/${formId}/export/file`;
+  return s ? `${ESIGN_ROUTES.forms.href}/${formId}/export/file?${s}` : `${ESIGN_ROUTES.forms.href}/${formId}/export/file`;
 }

@@ -3,6 +3,7 @@
 import type { EsignSigningTask } from '@/api/types';
 import { DOCUMENT_STATUSES, formatDate, formatDateTime } from '@/features/esign-documents/listQuery';
 import { parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export type SigningTab = 'pending' | 'signed' | 'rejected';
 
@@ -128,9 +129,9 @@ export function signingHref(tab: SigningTab, sort: SigningSort, page = 1, query 
     qs.set('order', sort.order);
   }
   if (page > 1) qs.set('page', String(page));
-  return `/esign/my-signature?${qs}`;
+  return `${ESIGN_ROUTES.mySignature.href}?${qs}`;
 }
 
 /** 簽署頁返回時停在這份文件所屬的分頁 */
 export const backHref = (task: EsignSigningTask) =>
-  task.signer.status === 'pending' ? '/esign/my-signature' : `/esign/my-signature?tab=${task.signer.status}`;
+  task.signer.status === 'pending' ? ESIGN_ROUTES.mySignature.href : `${ESIGN_ROUTES.mySignature.href}?tab=${task.signer.status}`;

@@ -26,6 +26,7 @@ import {
   type SigningSortKey,
   type SigningTab,
 } from './taskQuery';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 // 剩餘天數 ≤ 此值時標示「即將到期」
 const DUE_SOON_DAYS = 3;
@@ -113,7 +114,7 @@ export default function SigningTasksTable({
             label="前往簽署"
             icon={<VisibilityRoundedIcon />}
             color="info"
-            href={`/esign/my-signature/${task.signerPublicId}`}
+            href={`${ESIGN_ROUTES.mySignature.href}/${task.signerPublicId}`}
           />
         ),
       },
@@ -143,7 +144,7 @@ export default function SigningTasksTable({
             label="檢視"
             icon={<VisibilityRoundedIcon />}
             color="info"
-            href={`/esign/my-signature/${task.signerPublicId}`}
+            href={`${ESIGN_ROUTES.mySignature.href}/${task.signerPublicId}`}
           />
         ),
       },
@@ -177,7 +178,7 @@ export default function SigningTasksTable({
             label="檢視"
             icon={<VisibilityRoundedIcon />}
             color="info"
-            href={`/esign/my-signature/${task.signerPublicId}`}
+            href={`${ESIGN_ROUTES.mySignature.href}/${task.signerPublicId}`}
           />
         ),
       },

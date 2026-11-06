@@ -5,6 +5,7 @@ import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import Button from '@mui/material/Button';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export const metadata: Metadata = { title: '電子簽列表' };
 
@@ -31,7 +32,7 @@ export default function FormsPage() {
             size="large"
             variant="contained"
             startIcon={<AddRoundedIcon />}
-            href="/esign/forms/new"
+            href={ESIGN_ROUTES.createForm.href}
           >
             新增電子簽文件
           </Button>

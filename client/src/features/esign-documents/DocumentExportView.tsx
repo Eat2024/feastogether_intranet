@@ -1,37 +1,40 @@
-'use client';
+"use client";
 
 // 匯出簽署紀錄（後端文件）：畫面與 mock 版 /esign/forms/[id]/export 相同，條件記在網址上。
 // Excel 以 GET /api/esign/documents/:id?view=export 的授權匯出資料在瀏覽器端產生，產生前先記錄到歷史匯出（Spec 015）。
-import { useGetDocumentExportPreviewQuery } from '@/api/queries';
-import type { EsignExportPreviewDocument, EsignSignerStatus } from '@/api/types';
-import LinkPagination from '@/components/LinkPagination';
-import PageHeader from '@/components/PageHeader';
-import { useSnackbar } from '@/components/providers/SnackbarProvider';
-import DeptTreeSelect from '@/features/forms/export/DeptTreeSelect';
-import { getErrorMessage } from '@/lib/apiError';
-import { PAGE_SIZE, pageHrefs, paginate, parsePage } from '@/lib/paginate';
-import FileDownloadRoundedIcon from '@mui/icons-material/FileDownloadRounded';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
-import CircularProgress from '@mui/material/CircularProgress';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Paper from '@mui/material/Paper';
-import Radio from '@mui/material/Radio';
-import RadioGroup from '@mui/material/RadioGroup';
-import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
-import { useMutation } from '@tanstack/react-query';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo, useState, useTransition, type ReactNode } from 'react';
+import { useGetDocumentExportPreviewQuery } from "@/api/queries";
+import type {
+  EsignExportPreviewDocument,
+  EsignSignerStatus,
+} from "@/api/types";
+import LinkPagination from "@/components/LinkPagination";
+import PageHeader from "@/components/PageHeader";
+import { useSnackbar } from "@/components/providers/SnackbarProvider";
+import DeptTreeSelect from "@/features/forms/export/DeptTreeSelect";
+import { getErrorMessage } from "@/lib/apiError";
+import { PAGE_SIZE, pageHrefs, paginate, parsePage } from "@/lib/paginate";
+import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import CircularProgress from "@mui/material/CircularProgress";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Paper from "@mui/material/Paper";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
+import Stack from "@mui/material/Stack";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
+import { useMutation } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import {
   buildDeptOptions,
   exportPageHref,
@@ -41,22 +44,43 @@ import {
   STATUS_OPTIONS,
   type ExportQuery,
   type FieldKey,
-} from './exportQuery';
-import { DOCUMENT_STATUS_META, periodText } from './listQuery';
-import ZipExportPanel from './ZipExportPanel';
+} from "./exportQuery";
 
-type ContentType = 'list' | 'docs';
+import { ESIGN_ROUTES } from "@/constants/routes/esign";
+import ZipExportPanel, {
+  useZipExport,
+  ZipActionButtons,
+} from "./ZipExportPanel";
+import { DOCUMENT_STATUS_META, periodText } from "./listQuery";
 
-const CONTENT_TYPES: { key: ContentType; label: string; description: string }[] = [
-  { key: 'list', label: '簽署紀錄清單（Excel）', description: '每位簽署人一列，可選擇欄位與範圍。' },
+type ContentType = "list" | "docs";
+
+const CONTENT_TYPES: {
+  key: ContentType;
+  label: string;
+  description: string;
+}[] = [
   {
-    key: 'docs',
-    label: '已簽署文件（PDF，每人一份打包為 ZIP）',
-    description: '由系統在背景打包，完成後即可下載。',
+    key: "list",
+    label: "簽署紀錄清單（Excel）",
+    description: "每位簽署人一列，可選擇欄位與範圍。",
+  },
+  {
+    key: "docs",
+    label: "已簽署文件（PDF，每人一份打包為 ZIP）",
+    description: "由系統在背景打包，完成後即可下載。",
   },
 ];
 
-function Section({ step, title, children }: { step: number; title: string; children: ReactNode }) {
+function Section({
+  step,
+  title,
+  children,
+}: {
+  step: number;
+  title: string;
+  children: ReactNode;
+}) {
   return (
     <Box>
       <Typography variant="subheading" component="div" sx={{ mb: 1 }}>
@@ -67,12 +91,31 @@ function Section({ step, title, children }: { step: number; title: string; child
   );
 }
 
-export default function DocumentExportView({ documentId }: { documentId: string }) {
-  const { data: doc, isPending, isError, error, refetch, isFetching } = useGetDocumentExportPreviewQuery(documentId);
+export default function DocumentExportView({
+  documentId,
+}: {
+  documentId: string;
+}) {
+  const {
+    data: doc,
+    isPending,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useGetDocumentExportPreviewQuery(documentId);
 
   if (isPending) {
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 8 }}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 1.5,
+          py: 8,
+        }}
+      >
         <CircularProgress size={20} />
         <Typography variant="description">載入文件中…</Typography>
       </Box>
@@ -83,7 +126,12 @@ export default function DocumentExportView({ documentId }: { documentId: string 
       <Alert
         severity="error"
         action={
-          <Button color="inherit" size="small" onClick={() => refetch()} loading={isFetching}>
+          <Button
+            color="inherit"
+            size="small"
+            onClick={() => refetch()}
+            loading={isFetching}
+          >
             重新載入
           </Button>
         }
@@ -92,7 +140,7 @@ export default function DocumentExportView({ documentId }: { documentId: string 
       </Alert>
     );
   }
-  return <ExportPage doc={doc} />;
+  return <ExportPage key={doc.id} doc={doc} />;
 }
 
 function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
@@ -100,39 +148,61 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
   const params = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const [, startTransition] = useTransition();
-  const [content, setContent] = useState<ContentType>('list');
+  const [content, setContent] = useState<ContentType>("list");
   // Excel 與 ZIP 共用當次下載名稱，不保存為文件設定。
-  const [fileName, setFileName] = useState('');
+  const [fileName, setFileName] = useState("");
   const query = useMemo(() => parseExportQuery(params), [params]);
-  const deptOptions = useMemo(() => buildDeptOptions(doc.signers), [doc.signers]);
-  const rows = useMemo(() => exportRows(doc.signers, query), [doc.signers, query]);
-  const preview = paginate(rows, parsePage(params.get('page') ?? undefined), PAGE_SIZE);
+  const deptOptions = useMemo(
+    () => buildDeptOptions(doc.signers),
+    [doc.signers],
+  );
+  const rows = useMemo(
+    () => exportRows(doc.signers, query),
+    [doc.signers, query],
+  );
+  const preview = paginate(
+    rows,
+    parsePage(params.get("page") ?? undefined),
+    PAGE_SIZE,
+  );
   const fields = FIELDS.filter((f) => query.fields.includes(f.key));
-  const signed = doc.signers.filter((s) => s.status === 'signed').length;
+  const signed = doc.signers.filter((s) => s.status === "signed").length;
+  const zip = useZipExport(doc.id, doc.exportState);
 
   const update = (change: Partial<ExportQuery>) =>
-    startTransition(() => router.replace(exportPageHref(doc.id, { ...query, ...change }), { scroll: false }));
+    startTransition(() =>
+      router.replace(exportPageHref(doc.id, { ...query, ...change }), {
+        scroll: false,
+      }),
+    );
 
   const allStatuses = query.statuses.length === 0;
   const toggleStatus = (key: EsignSignerStatus) => {
-    const next = query.statuses.includes(key) ? query.statuses.filter((s) => s !== key) : [...query.statuses, key];
+    const next = query.statuses.includes(key)
+      ? query.statuses.filter((s) => s !== key)
+      : [...query.statuses, key];
     // 三種都勾等同全部
     update({ statuses: next.length === STATUS_OPTIONS.length ? [] : next });
   };
   const toggleField = (key: FieldKey) => {
-    const next = query.fields.includes(key) ? query.fields.filter((f) => f !== key) : [...query.fields, key];
+    const next = query.fields.includes(key)
+      ? query.fields.filter((f) => f !== key)
+      : [...query.fields, key];
     if (next.length === 0) return; // 至少保留一個欄位
-    update({ fields: FIELDS.filter((f) => next.includes(f.key)).map((f) => f.key) });
+    update({
+      fields: FIELDS.filter((f) => next.includes(f.key)).map((f) => f.key),
+    });
   };
 
   const download = useMutation({
     mutationFn: async (input: { fileName: string; query: ExportQuery }) => {
       // exceljs 較大，點擊時才載入
-      const { recordAndDownloadExcel } = await import('./buildExportXlsx');
+      const { recordAndDownloadExcel } = await import("./buildExportXlsx");
       await recordAndDownloadExcel(doc, input.query, input.fileName);
     },
     meta: { suppressGlobalErrorToast: true },
-    onError: (err) => showSnackbar(getErrorMessage(err, '匯出失敗，請稍後再試'), 'error'),
+    onError: (err) =>
+      showSnackbar(getErrorMessage(err, "匯出失敗，請稍後再試"), "error"),
   });
 
   return (
@@ -145,7 +215,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
           `簽署期間：${periodText(doc)}`,
           `文件狀態：${DOCUMENT_STATUS_META[doc.status].label}（${signed}/${doc.signers.length} 已簽署）`,
         ].map((line) => (
-          <Box key={line} component="span" sx={{ display: 'block' }}>
+          <Box key={line} component="span" sx={{ display: "block" }}>
             {line}
           </Box>
         ))}
@@ -158,7 +228,10 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
       <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
         <Stack spacing={3}>
           <Section step={1} title="選擇匯出內容">
-            <RadioGroup value={content} onChange={(e) => setContent(e.target.value as ContentType)}>
+            <RadioGroup
+              value={content}
+              onChange={(e) => setContent(e.target.value as ContentType)}
+            >
               {CONTENT_TYPES.map((t) => (
                 <FormControlLabel
                   key={t.key}
@@ -168,7 +241,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
                     <Box>
                       <Typography variant="content" component="span">
                         {t.label}
-                      </Typography>{' '}
+                      </Typography>{" "}
                       <Typography variant="helper">{t.description}</Typography>
                     </Box>
                   }
@@ -182,24 +255,45 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
               onChange={(e) => setFileName(e.target.value)}
               placeholder="未填寫時使用系統預設檔名"
               helperText="僅套用本次下載，自動處理副檔名；留白使用預設檔名"
-              sx={{ mt: 2, width: '100%', maxWidth: 480 }}
+              sx={{ mt: 2, width: "100%", maxWidth: 480 }}
             />
           </Section>
 
-          {content === 'docs' ? (
+          {content === "docs" ? (
             <Section step={2} title="產生與下載">
-              <ZipExportPanel key={doc.id} fileName={fileName} documentId={doc.id} signedCount={signed} exportState={doc.exportState} />
+              <ZipExportPanel
+                zip={zip}
+                fileName={fileName}
+                signedCount={signed}
+              />
             </Section>
           ) : (
             <>
               <Section step={2} title="匯出範圍">
                 <Stack spacing={1.5}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 1 }}>
-                    <Typography variant="label" component="span" sx={{ width: 72 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      columnGap: 1,
+                    }}
+                  >
+                    <Typography
+                      variant="label"
+                      component="span"
+                      sx={{ width: 72 }}
+                    >
                       簽署狀態
                     </Typography>
                     <FormControlLabel
-                      control={<Checkbox size="small" checked={allStatuses} onChange={() => update({ statuses: [] })} />}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={allStatuses}
+                          onChange={() => update({ statuses: [] })}
+                        />
+                      }
                       label={<Typography variant="content">全部</Typography>}
                     />
                     {STATUS_OPTIONS.map((o) => (
@@ -208,30 +302,52 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
                         control={
                           <Checkbox
                             size="small"
-                            checked={!allStatuses && query.statuses.includes(o.key)}
+                            checked={
+                              !allStatuses && query.statuses.includes(o.key)
+                            }
                             onChange={() => toggleStatus(o.key)}
                           />
                         }
-                        label={<Typography variant="content">{o.label}</Typography>}
+                        label={
+                          <Typography variant="content">{o.label}</Typography>
+                        }
                       />
                     ))}
                   </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', columnGap: 1 }}>
-                    <Typography variant="label" component="span" sx={{ width: 72, flexShrink: 0, pt: 1.25 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      columnGap: 1,
+                    }}
+                  >
+                    <Typography
+                      variant="label"
+                      component="span"
+                      sx={{ width: 72, flexShrink: 0, pt: 1.25 }}
+                    >
                       部門
                     </Typography>
-                    <DeptTreeSelect tree={deptOptions} value={query.depts} onChange={(depts) => update({ depts })} />
+                    <DeptTreeSelect
+                      tree={deptOptions}
+                      value={query.depts}
+                      onChange={(depts) => update({ depts })}
+                    />
                   </Box>
                 </Stack>
               </Section>
 
               <Section step={3} title="匯出欄位">
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 2 }}>
+                <Box sx={{ display: "flex", flexWrap: "wrap", columnGap: 2 }}>
                   {FIELDS.map((f) => (
                     <FormControlLabel
                       key={f.key}
                       control={
-                        <Checkbox size="small" checked={query.fields.includes(f.key)} onChange={() => toggleField(f.key)} />
+                        <Checkbox
+                          size="small"
+                          checked={query.fields.includes(f.key)}
+                          onChange={() => toggleField(f.key)}
+                        />
                       }
                       label={
                         <Typography variant="content" component="span">
@@ -247,10 +363,17 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
         </Stack>
       </Paper>
 
-      {content === 'list' && (
+      {content === "list" && (
         <>
           <Stack spacing={1.5}>
-            <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 2 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                gap: 2,
+              }}
+            >
               <Typography variant="subheading" component="div">
                 4. 預覽
               </Typography>
@@ -270,16 +393,28 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
                 <TableBody>
                   {rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={fields.length} align="center" sx={{ py: 4 }}>
-                        <Typography variant="description">此範圍沒有可匯出的簽署人。</Typography>
+                      <TableCell
+                        colSpan={fields.length}
+                        align="center"
+                        sx={{ py: 4 }}
+                      >
+                        <Typography variant="description">
+                          此範圍沒有可匯出的簽署人。
+                        </Typography>
                       </TableCell>
                     </TableRow>
                   ) : (
                     preview.items.map((r, index) => (
                       <TableRow key={index}>
                         {fields.map((f) => (
-                          <TableCell key={f.key} sx={{ whiteSpace: f.key === 'rejectReason' ? 'normal' : 'nowrap' }}>
-                            {f.value(r) || '—'}
+                          <TableCell
+                            key={f.key}
+                            sx={{
+                              whiteSpace:
+                                f.key === "rejectReason" ? "normal" : "nowrap",
+                            }}
+                          >
+                            {f.value(r) || "—"}
                           </TableCell>
                         ))}
                       </TableRow>
@@ -290,18 +425,19 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
             </TableContainer>
             <LinkPagination
               page={preview.page}
-              hrefs={pageHrefs(preview.pageCount, (p) => exportPageHref(doc.id, query, p))}
+              hrefs={pageHrefs(preview.pageCount, (p) =>
+                exportPageHref(doc.id, query, p),
+              )}
             />
           </Stack>
-
         </>
       )}
 
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        <Button size="large" variant="outlined" href="/esign/forms">
-          {content === 'list' ? '取消' : '返回列表'}
+      <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
+        <Button size="large" variant="outlined" href={ESIGN_ROUTES.forms.href}>
+          取消
         </Button>
-        {content === 'list' && (
+        {content === "list" && (
           <Button
             size="large"
             variant="contained"
@@ -312,6 +448,13 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
           >
             匯出 Excel（{rows.length} 筆）
           </Button>
+        )}
+        {content === "docs" && (
+          <ZipActionButtons
+            zip={zip}
+            signedCount={signed}
+            fileName={fileName}
+          />
         )}
       </Box>
     </>

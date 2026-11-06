@@ -33,7 +33,8 @@ pnpm start
 - `src/features/my-signature/`：目前使用者的待簽／已簽流程與簽名處理。
 - `src/api/`：呼叫 NestJS 後端（`server/`）的 API 層，見下方「呼叫後端 API」。
 - `src/components/`：跨 feature 共用的 UI 元件；`src/components/providers/` 放全站 Provider（TanStack Query、Snackbar）。
-- `src/components/sidebar/`：`(main)` 的側邊欄（版型移植自 CKS_Acceptance_System，可收合為圖示模式；收合狀態存在 `sidebar_open` cookie，由 `(main)/layout.tsx` 在伺服器端讀取，避免重新整理時先展開再收合）。頂端切換服務，選單依網址前綴判斷目前服務；新增服務或選單項目只改 `services.ts` 的 `SERVICES`。每個服務的頁面放在 `(main)` 底下自己的網址前綴（電子簽 `/esign`、旅遊平台 `/travel`），新增服務時同步加進 proxy 的 `matcher`。電子簽舊網址（`/forms` 等）由 `next.config.ts` 的 `redirects` 轉到 `/esign`。旅遊平台目前只有權限管理的佔位頁。
+- `src/components/sidebar/`：`(main)` 的側邊欄（版型移植自 CKS_Acceptance_System，可收合為圖示模式；收合狀態存在 `sidebar_open` cookie，由 `(main)/layout.tsx` 在伺服器端讀取，避免重新整理時先展開再收合）。頂端切換服務，選單依網址前綴判斷目前服務；新增服務在 `services.ts` 的 `SERVICES` 加一筆，選單項目改 `src/constants/menu/`。每個服務的頁面放在 `(main)` 底下自己的網址前綴（電子簽 `/esign`、旅遊平台 `/travel`），新增服務時同步加進 proxy 的 `matcher`。電子簽舊網址（`/forms` 等）由 `next.config.ts` 的 `redirects` 轉到 `/esign`。`(main)/layout.tsx` 只放側邊欄，內容區內距由各服務的 layout 決定；旅遊平台的 `travel/layout.tsx` 頂端有滿版的麵包屑列（`src/components/PageBreadcrumbs.tsx`，比照 CKS，依 `TRAVEL_ROUTE_LABEL_MAP` 逐層顯示名稱，未登記的層級顯示路徑）。旅遊平台目前各頁皆為佔位頁。
+- `src/constants/`：各服務的頁面路徑與選單（比照 CKS_Acceptance_System 的 `constants/routes.ts`、`constants/menu.ts`）。`routes/<服務>.ts` 登記頁面 `href` 與名稱（`ESIGN_ROUTES`、`TRAVEL_ROUTES`），程式內的內部連結、轉址、`revalidatePath` 都從這裡取，帶 id 的頁面以 `${ESIGN_ROUTES.forms.href}/${id}` 組出；`menu/<服務>.ts` 由路徑表組成側邊欄選單。新增頁面先登記路徑再加選單。proxy `matcher`、`next.config.ts` 舊網址轉址與 `PageProps<'/route'>` 型別必須是字面值，不從這裡取。只放路徑與選單，不放一般常數。
 - `src/lib/`：無 feature 歸屬的純工具函式。
 - `src/theme/tokens.ts`：唯一的 design token 來源。
 - `src/theme/theme.ts`：唯一的 MUI theme 與全域 component overrides。

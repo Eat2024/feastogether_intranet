@@ -10,6 +10,7 @@ import { redirect } from 'next/navigation';
 import { isValidSignatureId } from '@/lib/signatureQr';
 import { getSignBlock } from './sign/eligibility';
 import { SIGN_TERMS_VERSION } from './sign/terms';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 type ActionResult = { error: string } | undefined;
 
@@ -36,8 +37,8 @@ function findMe(formId: string): { signer: Signer; form: NonNullable<ReturnType<
 }
 
 function revalidateLists() {
-  revalidatePath('/esign/forms');
-  revalidatePath('/esign/my-signature', 'layout');
+  revalidatePath(ESIGN_ROUTES.forms.href);
+  revalidatePath(ESIGN_ROUTES.mySignature.href, 'layout');
 }
 
 /** 送出簽署：每個簽名欄位都必須有手寫簽名 */
@@ -82,6 +83,6 @@ export async function signDocument(input: {
     ...(form.docType === 'sheet' && remark.remark ? { remark: remark.remark } : {}),
   } satisfies Partial<Signer>);
   revalidateLists();
-  redirect('/esign/my-signature?tab=signed&flash=signed');
+  redirect(`${ESIGN_ROUTES.mySignature.href}?tab=signed&flash=signed`);
 }
 

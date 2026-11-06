@@ -216,3 +216,10 @@ RSS 每 250 ms 取樣，只取 processing 至 completed 區間，包含 ts-node 
 - 整合分支為 impl/030-integration；未建立遠端 PR、未 push、未部署。文件 expired、非 ZIP 共用 expired、expiresAt 欄位／索引／API 保留。
 - 本次 implementer worktrees 將於交付前移除；node_modules 僅移除本次建立的符號連結，不刪共用依賴或其他既有 worktree。
 - 專用測試設定另留本機 /tmp/spec030-test.env（0600，不提交、不含於報告），供重現測試使用；root 原環境檔未修改。容量資料與原始驗證產物留既有隔離 /tmp 路徑，已提交去識別摘要、來源 hash 與限制。
+
+## PR 準備：同步 dev
+
+- 2026-11-06：合併 dev 0773b07，保留上游 ZIP 底部操作列與路由常數；共用 useZipExport 狀態，更新與指定成果下載仍分開處理。
+- 合併後 root `pnpm build`（Nest／Next Turbopack）、client lint 通過。
+- 在隔離前端目錄重跑 Ticket 04 真 Chromium 整合場景，1/1 通過（15.259 秒）：失敗保留舊版、第三人簽署後重試仍兩份、雙 session 檔名獨立、舊 panel/history 真 409 刷新。
+- 補測初次因測試 origin 設定、既有 Next dev 工作目錄占用而未進入場景；改為明確設定測試 origin 與隔離目錄。冷啟動一輪保留舊頁時計的欄位等待逾時，同一場景重跑通過；未改產品行為或放寬斷言。臨時 harness 已移除。

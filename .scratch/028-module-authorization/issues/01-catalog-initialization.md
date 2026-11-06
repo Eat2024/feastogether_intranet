@@ -4,7 +4,7 @@
 
 **Blocked by:** [027-03](../../027-super-user-access/issues/03-narrow-repl-entry.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Source:** [Spec](../../../specs/028-module-authorization/spec.md)、[Plan](../../../specs/028-module-authorization/plan.md)、[Tasks](../../../specs/028-module-authorization/tasks.md)、[API 契約](../../../specs/028-module-authorization/contracts/api-behavior.md)、[權限目錄](../../../specs/028-module-authorization/contracts/permissions.md)、[維運契約](../../../specs/028-module-authorization/contracts/operations.md)
 
@@ -33,3 +33,8 @@
 - schema.sql 由空測試庫自動匯出；沒有寫入開發／正式資料。027 schema 歷史測試固定原版本，其餘最新 schema 驗收更新五表清單。
 - catalog 服務驗證採真 DB e2e 而非內部 collaborator mock；稽核裁切與 permission modifier 是獨立單元測試。失敗案例先建立，再補實作；首輪 schema drift 與既有硬編版本預期已修正。
 - 此票仍為 claimed，待 merger 合入整合分支後補 commit 並改 resolved。後續授權 guard／管理 API／業務保護尚未完成，不能正式切換。
+
+### 2026-11-06 整合紀錄
+
+- 實作 commit `eff58c6`（`028-01-catalog`）已 fast-forward 合入 `028-module-authorization`；本票驗收與整合完成，狀態改為 `resolved`。
+- 已核對上述測試結果與 quickstart 的驗收紀錄；後續票可基於此整合版本開始，完整 028 正式切換仍待其餘 tickets 完成。

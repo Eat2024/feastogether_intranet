@@ -64,9 +64,9 @@ UI 公開網址 `/ops-access/<入口>` 本身沒有頁面，實際頁面在 `app
 
 隱藏頁與其 API 只允許公司網路（VPN 與辦公室的固定出口 IP）。判斷只在 client 的 `src/proxy.ts`，後端不重複：
 
-- 允許清單：client server-only `SUPER_USER_ALLOWED_CIDRS`，逗號分隔的 IPv4／IPv6 CIDR，以 `node:net` 的 `BlockList` 比對。未設定或空白時一律不允許（維護登入停用），員工與公開頁不受影響。任一項不是合法 CIDR 時 `src/instrumentation.ts` 在啟動時丟錯，訊息只帶變數名：`next dev` 直接結束；standalone 記錯誤後每個請求（含 `/api/health`）回 500，部署 smoke 失敗。
+- 允許清單：client server-only `SUPER_USER_ALLOWED_CIDRS`，逗號分隔的 IPv4／IPv6 CIDR，以 `node:net` 的 `BlockList` 比對。未設定或空白時一律不允許（維護登入停用），員工與公開頁不受影響。任一項不是合法 CIDR 時 `BlockList` 丟錯，proxy 載入失敗，每個請求（含 `/api/health`）回 500、不轉給後端，部署 smoke 失敗。不另做格式檢查。
 - client IP 只看 `X-Real-IP`，由主機 Nginx 以連線來源覆寫（見 [UAT CI/CD](../../../docs/deployment/uat-cicd.md)）；不採用可偽造的 `X-Forwarded-For`。缺少、不是 IP 或不在清單都視為不允許。
-- 頁面 `/ops-access/<入口>`：先驗來源網路，允許時才向後端驗入口；不允許時不呼叫後端，回應與不存在的網址相同。
+- 頁面 `/ops-access/<入口>`：先驗來源網路，允許時才向後端驗入口；不允許時不呼叫後端，回應與不存在的網址相同。Next 會對改寫後的實際頁面路徑再執行一次 proxy，該路徑做同樣檢查，通過才放行（有效入口一次頁面查驗兩次），直接開啟且未通過時回 404。
 - `/api/*`（與 `next.config.ts` rewrite 同範圍，不分大小寫）：來源網路不允許時，proxy 在 request 加 `x-entry-network-denied` 照常轉給後端，`SuperUserEntryGuard` 看到就回 404，回應即是後端不存在路由的 404。proxy 不比對隱藏 API 的路徑：後端會解碼百分比編碼（如 `%73uper-user-entries`），只比對路徑會被繞過。client 自帶這個 header 只會讓自己 404。其他 API 只多這個 header，不查 session、不多呼叫後端。
 - 被擋時不寫 log（不記允許清單與 client IP）。
 

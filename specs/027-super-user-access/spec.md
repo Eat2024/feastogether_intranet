@@ -104,7 +104,7 @@
 - **FR-013**: 登入成功及既有內部頁面 MUST 顯示 Super user 並可登出；不製作 OAuth 登入／callback 或其他管理畫面。（US1、US2）
 - **FR-014**: 後續授權尚未接入前，Super user MUST NOT 被視為普通員工 ID 或自動略過業務檢查；全業務權限由 Spec 028 驗收。（US1）
 - **FR-015**: 不知道入口的人（含已登入員工）MUST NOT 能從公開前端資源（共用 JS、middleware manifest、build manifest）、Swagger 或 HTTP 回應看出 Super user 或維護登入存在；Super user 專用程式碼只在開啟有效隱藏頁時下載，共用的身分顯示只用後端給的顯示名稱。（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）
-- **FR-016**: 隱藏頁與其 API MUST 只允許公司網路（VPN 與辦公室的固定出口 IP，client 設定 `SUPER_USER_ALLOWED_CIDRS`）；client IP 只信任主機 Nginx 覆寫的 `X-Real-IP`，不採用 `X-Forwarded-For`。允許清單未設定或空白時維護登入停用；格式錯誤時 client 啟動失敗，錯誤只帶變數名。被擋的請求不寫 log。（使用者 2026-11-06 確認）
+- **FR-016**: 隱藏頁與其 API MUST 只允許公司網路（VPN 與辦公室的固定出口 IP，client 設定 `SUPER_USER_ALLOWED_CIDRS`）；client IP 只信任主機 Nginx 覆寫的 `X-Real-IP`，不採用 `X-Forwarded-For`。允許清單未設定或空白時維護登入停用；格式錯誤時 client 所有請求回 500（不放行）。被擋的請求不寫 log。（使用者 2026-11-06 確認）
 
 ### Key Entities
 

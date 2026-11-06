@@ -88,7 +88,7 @@ pnpm start
 - 程式碼只放在 `features/super-user-login/`（表單；`api.ts` 放請求、路徑與型別）與 `app/ops-access-page/[entryKey]`，只由隱藏頁引用。共用模組保持通用：身分 banner 只看 `user === null` 與後端給的 `displayName`，表單用通用的 `meta.handlesOwnErrors`。
 - 公開網址 `/ops-access/<入口>` 沒有頁面。proxy 確認來源網路與入口都有效，才改寫到 `/ops-access-page/<入口>` 並加上 Referrer-Policy、X-Robots-Tag、frame-ancestors；其餘情況不改寫，由 Next 當作不存在的網址回 404（改寫到 `/_not-found` 會多出 `x-middleware-rewrite` 與不同的 Cache-Control，可被分辨）。直接開 `/ops-access-page/*` 回 404。
 - 隱藏 API：來源網路不允許時，proxy 對每個 `/api` 請求（不分大小寫，與 `next.config.ts` rewrite 同範圍）加上 `x-entry-network-denied` 照常轉給後端，由後端 `SuperUserEntryGuard` 回與不存在路由相同的 404。不比對隱藏 API 的路徑：後端會解碼百分比編碼（如 `%73uper-user-entries`），只比對路徑會被繞過。
-- 來源網路：`SUPER_USER_ALLOWED_CIDRS`（server-only），只看 `X-Real-IP`（正式環境由主機 Nginx 覆寫）；未設定時維護登入停用，格式錯誤時 `src/instrumentation.ts` 讓啟動失敗。本機沒有 Nginx，手動驗證與 Playwright 自帶 `X-Real-IP`（文件用位址，見 `.env.example`）。
+- 來源網路：`SUPER_USER_ALLOWED_CIDRS`（server-only），只看 `X-Real-IP`（正式環境由主機 Nginx 覆寫）；未設定時維護登入停用，格式錯誤時 proxy 載入失敗、所有請求 500。Next 會對 proxy 改寫後的路徑再執行一次 proxy，改寫目標的路徑要能通過同樣的判斷。本機沒有 Nginx，手動驗證與 Playwright 自帶 `X-Real-IP`（文件用位址，見 `.env.example`）。
 - 入口值就是存取條件：proxy 與頁面的錯誤訊息只帶 HTTP 狀態，`next.config.ts` 的 `logging.incomingRequests.ignore` 讓 dev log 不記入口網址。
 
 ## 資料與業務不變量

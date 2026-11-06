@@ -3,7 +3,7 @@ import { isAllowedClient, parseAllowedNetworks } from "@/lib/allowedNetworks";
 
 // 與 next.config.ts 的 /api rewrite 是同一個後端位址
 const API_PROXY_TARGET = process.env.API_PROXY_TARGET ?? "http://localhost:3001";
-// 格式已由 instrumentation.ts 在啟動時檢查；未設定或空字串時隱藏路徑一律不存在
+// 未設定或空字串時隱藏路徑一律不存在
 const ALLOWED_NETWORKS = parseAllowedNetworks(process.env.SUPER_USER_ALLOWED_CIDRS);
 
 /** (main) 底下的員工頁面 */
@@ -27,6 +27,7 @@ const notFound = (request: NextRequest) =>
  *   不讓人從網址看出這些頁面存在。頁面資料仍由後端 AuthGuard 把關。
  * - 隱藏維護入口：來源網路在允許清單內且入口有效，才改寫到實際頁面並加安全標頭。/ops-access/* 本身沒有頁面，
  *   其餘情況不改寫，交給 Next 照不存在的網址處理（改寫到 /_not-found 會多出 x-middleware-rewrite 與不同的 Cache-Control）。
+ *   Next 會對改寫後的路徑再執行一次 proxy，所以實際頁面的路徑也做同樣檢查：通過才放行，直接開啟時回 404。
  *   錯誤訊息不含入口網址。
  * - /api：來源網路不在允許清單時加上拒絕標記，照常轉給後端，由隱藏入口的 guard 回與不存在路由相同的 404。
  * - 其他路徑（公開頁、靜態檔）直接通過，不查 session。
@@ -34,11 +35,13 @@ const notFound = (request: NextRequest) =>
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (EMPLOYEE_PAGE.test(pathname)) return checkSession(request);
-  if (pathname.startsWith(ENTRY_PAGE)) return notFound(request);
+  if (pathname.startsWith(ENTRY_PAGE)) {
+    return (await isOpenEntry(request, pathname.slice(ENTRY_PAGE.length))) ? undefined : notFound(request);
+  }
 
   if (API.test(pathname)) return markApiNetwork(request);
   const entryKey = ENTRY_URL.exec(pathname)?.[1];
-  if (entryKey && isAllowedClient(ALLOWED_NETWORKS, request.headers)) return openEntry(request, entryKey);
+  if (entryKey && (await isOpenEntry(request, entryKey))) return openEntry(request, entryKey);
 }
 
 async function checkSession(request: NextRequest) {
@@ -60,10 +63,16 @@ function markApiNetwork(request: NextRequest) {
   return NextResponse.next({ request: { headers } });
 }
 
-async function openEntry(request: NextRequest, entryKey: string) {
+/** 來源網路在允許清單內才向後端確認入口有效 */
+async function isOpenEntry(request: NextRequest, entryKey: string) {
+  if (!isAllowedClient(ALLOWED_NETWORKS, request.headers)) return false;
   const response = await fetch(`${API_PROXY_TARGET}/api/auth/super-user-entries/${entryKey}`, { cache: "no-store" });
-  if (response.status === 404) return;
+  if (response.status === 404) return false;
   if (!response.ok) throw new Error(`維護入口檢查失敗：HTTP ${response.status}`);
+  return true;
+}
+
+function openEntry(request: NextRequest, entryKey: string) {
   const page = NextResponse.rewrite(new URL(`${ENTRY_PAGE}${entryKey}`, request.url));
   // 不送出含入口的 Referer、不讓搜尋引擎收錄、不允許被任何頁面嵌入（只套在有效入口，不影響 WebView 與可被嵌入的頁面）
   page.headers.set("Referrer-Policy", "no-referrer");

@@ -88,10 +88,11 @@
 | Swagger 列出隱藏路由（UAT staging 開放） | `@ApiExcludeController()`；auth session 摘要不再提 Super user |
 
 來源網路的做法：
-- client `SUPER_USER_ALLOWED_CIDRS` 以 `node:net` 的 `BlockList` 比對 `X-Real-IP`。未設定時停用；格式錯誤時 `instrumentation.ts` 讓啟動失敗，訊息只帶變數名。
+- client `SUPER_USER_ALLOWED_CIDRS` 以 `node:net` 的 `BlockList` 比對 `X-Real-IP`。未設定時停用；格式錯誤時 proxy 載入失敗、所有請求 500（使用者 2026-11-06 決定不另做啟動檢查）。
 - 頁面在網路檢查通過後才向後端驗入口。
 - `/api`（不分大小寫，與 rewrite 同範圍）不允許時加上 `x-entry-network-denied`，由 `SuperUserEntryGuard` 回後端不存在路由的 404。
 - UAT 的 client 讀主機 `client.env`。Nginx 要在所有轉給 client 的 location 覆寫 `X-Real-IP`；只覆寫兩個 location 會被 `/API/...` 繞過。
+- review 時發現：Next 16.3.6 standalone 會對 proxy 改寫後的 `/ops-access-page/<入口>` 再執行一次 proxy，原本的程式在第二次執行時回 404，公司網路內的有效入口也打不開。改為實際頁面路徑也檢查來源網路與入口，通過才放行。以真實後端＋standalone 驗證：清單內頁面 200、登入 201 並取得 Super user 會話；清單外頁面與登入都是 404。
 - review 時另修既有問題：`getRequestPath` 原本以未解碼的路徑遮罩與判斷，`/api/auth/%73uper-user-entries/<入口>` 會命中路由，但 access log 留下明文入口、`OriginGuard` 不要求 Origin。改為先解碼再比對（格式錯誤的編碼保留原字串）。
 
 **驗證**（細節見 quickstart「027-h」）
@@ -108,7 +109,7 @@
   - 隱藏 API：上述情況加上 `%73` 編碼與 `/API/` 路徑，14 種請求都與不存在路由相同。
 - `next dev`：headers 相同；body 去掉 dev 隨機 key 與路徑後相同。
 - 公開頁 headers 與修改前相同（ETag 除外）。
-- Playwright 在 standalone 與 dev 各 23/23。
+- Playwright 在 standalone 與 dev 各 23/23（子代理回報；review 時以最終程式重新 build，standalone 的有效入口實際是 404，已修，見上方「review 時發現」）。
 
 **無法消除的差異**
 
@@ -116,7 +117,7 @@
 - DB 故障時入口查驗 503／頁面 500。
 - 允許網路內錯誤入口多一次 DB 查詢的時間差，未量測。
 - 隱藏頁 chunk 知道 hash 檔名即可下載。
-- standalone 遇到格式錯誤的允許清單時，程序不結束，而是所有請求 500（`next dev` 會直接結束）。
+- 格式錯誤的允許清單：程序不結束，所有請求 500。
 
 **commits**
 - `9aab70b fix(auth): 錯誤入口與不存在路由回應相同，隱藏入口不列在 Swagger`
@@ -124,3 +125,4 @@
 - `73cf89b ci(deploy): UAT client 讀取主機 client.env 的維護登入來源網路`
 - 文件 commit（spec、契約、quickstart、README、AGENTS、UAT 文件與本節）
 - `fix(server)` commit：路徑先解碼再遮罩與判斷（review 時補）
+- `fix(client)` commit：有效入口原本回 404（Next 對改寫後的路徑再執行 proxy，被「直接開內部路徑回 404」擋下），實際頁面路徑改做同樣檢查；移除 `instrumentation.ts` 的格式檢查（review 時補）

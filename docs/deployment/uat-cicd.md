@@ -168,7 +168,7 @@ commit 之後、全部實例重啟之前：舊設定實例的維護登入與新�
   SUPER_USER_ALLOWED_CIDRS={VPN egress CIDR},{office egress CIDR}
   ```
 
-  逗號分隔的 IPv4／IPv6 CIDR（單一位址寫 `/32`、`/128`）。實際位址只放在主機檔案，不寫進 Git、ticket、PR 或聊天。任一項格式錯誤時 client 啟動失敗：每個請求（含 `/api/health`）回 500，部署 smoke 失敗並回復舊版；錯誤訊息只有變數名。改值後要 recreate client（`up -d --no-deps client`）才生效。
+  逗號分隔的 IPv4／IPv6 CIDR（單一位址寫 `/32`、`/128`）。實際位址只放在主機檔案，不寫進 Git、ticket、PR 或聊天。任一項格式錯誤時 client 每個請求（含 `/api/health`）回 500，部署 smoke 失敗：沒有 migration 時回復舊版，有 migration 時停止服務等人工處理。改值後要 recreate client（`up -d --no-deps client`）才生效。
 - Nginx（ALB 之後）：以 real_ip 模組還原連線來源，**所有轉給 client（127.0.0.1:3000）的 location** 都以 `$remote_addr` 覆寫 `X-Real-IP`，不只下一節兩個隱藏路徑的 location。只覆寫那兩個 location 會被繞過：Next 的 `/api/:path*` rewrite 不分大小寫，`/API/auth/super-user-entries/…` 不會落在 Nginx 那兩個區分大小寫的 location，client 自帶的 `X-Real-IP` 就會原樣傳到 proxy。示意（未在 UAT 主機驗證）：
 
   ```nginx

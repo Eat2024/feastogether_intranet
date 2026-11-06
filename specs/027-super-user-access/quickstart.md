@@ -517,7 +517,7 @@ client 沒有 test script，未宣稱跑過 client 自動測試。
 | `pnpm -C server test:e2e` | 559 passed、1 skipped、1 failed；唯一失敗是既有 `api-coverage` 的 `GET /api/esign/documents/1/history`，未修 |
 | `pnpm test:deploy` | Compose 與部署流程測試通過 |
 | `pnpm -C client lint` | 0 problems |
-| `pnpm -C client test` | 5 tests 通過（來源網路判斷：允許、拒絕、缺 header、空清單、IPv6、偽造 X-Forwarded-For、格式錯誤） |
+| `pnpm -C client test` | 4 tests 通過（來源網路判斷：允許、拒絕、缺 header、空清單、IPv6、偽造 X-Forwarded-For） |
 | `API_PROXY_TARGET=http://localhost:3011 pnpm -C client build` | 成功，0 warning |
 | `pnpm -C client check:bundle` | 通過；排除隱藏頁專用 chunk 1 個；放入含 `super-user` 的假檔時失敗（反向驗證） |
 
@@ -537,7 +537,7 @@ client 沒有 test script，未宣稱跑過 client 自動測試。
     - 鄰近位址 `198.51.100.8`；
     - 允許清單未設定，但帶允許的 IP。
   - `next dev`：headers 相同。dev 每次請求有隨機 React key，而且會把網址路徑寫進 not-found 內容，兩個不同的不存在網址原始 body 也不同；把這兩類值換成佔位後，body 相同。
-  - 有效入口＋`203.0.113.10`／`198.51.100.7`／`2001:db8::5`：200、有密碼欄位，帶 `Referrer-Policy: no-referrer`、`X-Robots-Tag: noindex, nofollow`、`Content-Security-Policy: frame-ancestors 'none'`。
+  - 有效入口＋`203.0.113.10`／`198.51.100.7`／`2001:db8::5`（子代理回報；最終程式重新 build 後實際是 404，已修，見下方「review 時另修」）：200、有密碼欄位，帶 `Referrer-Policy: no-referrer`、`X-Robots-Tag: noindex, nofollow`、`Content-Security-Policy: frame-ancestors 'none'`。
 - API：經 Next 送 14 種請求，與 `/api/no-such-route/<隨機>` 比對：
   - 請求：GET 入口、GET sessions；POST 分別帶 JSON＋Origin、缺 Origin、惡意 Origin、跨站、空 body、壞 JSON、text/plain、form、9 KiB、1.1 MiB；PUT；OPTIONS。
   - 以下情況的 status、headers、body 都相同：
@@ -560,11 +560,15 @@ client 沒有 test script，未宣稱跑過 client 自動測試。
   - review 時另修：`getRequestPath` 先解碼再遮罩與判斷。修正前 `/api/auth/%73uper-user-entries/<入口>` 在允許網路內會命中路由，但 access log 記下明文入口、`OriginGuard` 不要求 Origin；新 e2e 在修正前失敗、修正後通過。
 - 公開頁：`/verify/abc`、`/embed`、未登入的 `/esign/forms` 與 `/no-such-page/abc`，與修改前的 headers（ETag 除外）及 body 大小相同。`/embed` 仍可被嵌入。
 - 後端呼叫：`/verify`、`/embed` 與被拒的隱藏頁都沒有呼叫後端；`/api/health` 只有 rewrite 本身那一次。
-- 允許清單格式錯誤（`203.0.113.0/24,not-a-cidr`、`198.51.100.7`）：
-  - `next dev` 以 exit code 1 結束；
-  - standalone 記錄「An error occurred while loading instrumentation hook: SUPER_USER_ALLOWED_CIDRS 必須是逗號分隔的 CIDR」後仍在執行，但每個請求（含 `/api/health`）都回 500，UAT 部署 smoke 會失敗並回復。
+- 允許清單格式錯誤：使用者 2026-11-06 決定不另做啟動檢查，移除 `instrumentation.ts`，交給 `BlockList` 丟錯。standalone 實測 `203.0.113.10,198.51.100.7/32`（少 `/32`）與 `203.0.113.10/32,`（結尾逗號）：`/api/*`、`/verify`、`/ops-access/*` 都回 500，請求沒有轉到後端。
+- review 時另修：Next 16.3.6 standalone 會對 proxy 改寫後的 `/ops-access-page/<入口>` 再執行一次 proxy（log 依序為 `/ops-access/<入口>`、`/ops-access-page/<入口>`、`/_not-found`）。原本的程式在第二次執行時回 404，清單內的有效入口也是 404。修正後以假後端（只對一個入口回 200）實測：
+  - 清單內＋有效入口：200、有表單、帶三個安全標頭；一次頁面向後端查驗兩次。
+  - 清單內＋錯誤入口、清單外＋有效入口、缺 `X-Real-IP`：HTML 與 RSC 的 headers 與 body 都與不存在的網址相同；清單外不呼叫後端。
+  - 直接開 `/ops-access-page/<入口>`：清單內＋有效 200；清單外或錯誤入口 404（帶 `x-middleware-rewrite: /_not-found`，同既有差異）。
+  - 清單內＋有效入口的 RSC 請求回 307 轉到 `/ops-access-page/<入口>?_rsc`（Next 對改寫頁面的行為），該路徑同樣經過上述檢查。
+  - 真實後端（開發庫 `feastogether_intranet_027h`、合成帳密）＋standalone：清單內頁面 200、錯誤密碼 401、缺 Origin 403、正確帳密 201 並取得 `super_user` 會話；清單外頁面與登入都是 404；server／client log 不含入口與密碼。測試資料已刪除。
   - 輸出不含設定值。
-- 瀏覽器（Playwright Chromium，repo 外暫存腳本）：standalone 與 `next dev` 最終版各 23/23。
+- 瀏覽器（Playwright Chromium，repo 外暫存腳本）：standalone 與 `next dev` 最終版各 23/23（子代理回報；review 時以最終程式重新 build，standalone 的有效入口實際是 404，已修，見下方「review 時另修」）。
   - 允許清單外：有效入口 404 且沒有表單。
   - 未登入時 `/`、`/esign/forms`、`/travel/permissions` 都是 404。
   - `/verify`、外部簽署頁、`/embed` 照常開啟。

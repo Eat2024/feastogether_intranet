@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
+import ArrowDropUpIcon from "@mui/icons-material/ArrowDropUp";
+import CircleIcon from "@mui/icons-material/Circle";
 import Collapse from "@mui/material/Collapse";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import { alpha } from "@mui/material/styles";
-import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
-import ArrowDropUpIcon from "@mui/icons-material/ArrowDropUp";
-import CircleIcon from "@mui/icons-material/Circle";
+import Link from "next/link";
+import { useState } from "react";
 import { isRouteActive, type NavItem } from "./services";
 
 type Props = {
@@ -21,7 +21,9 @@ type Props = {
 /** 可收合的選單群組；目前頁面在群組內時預設展開，左側顯示主色標記 */
 export default function SidebarMenuGroup({ item, pathname }: Props) {
   const children = item.children ?? [];
-  const isGroupActive = children.some((child) => isRouteActive(pathname, child.href));
+  const isGroupActive = children.some((child) =>
+    isRouteActive(pathname, child.href),
+  );
   const [open, setOpen] = useState(isGroupActive);
   const listId = `sidebar-group-${item.key}`;
 
@@ -74,16 +76,33 @@ export default function SidebarMenuGroup({ item, pathname }: Props) {
               href={child.href}
               selected={isRouteActive(pathname, child.href)}
               sx={{
-                pl: 4,
+                // CKS 的 theme spacing 是 4px（pl: 4 = 16px），本專案是 8px
+                pl: 2,
+                // 長名稱換行時，圓點對齊第一行
+                alignItems: "flex-start",
                 color: "inherit",
                 "&.Mui-selected": { bgcolor: "primary.main" },
                 "&.Mui-selected:hover": { bgcolor: "primary.dark" },
               }}
             >
-              <ListItemIcon sx={{ color: "inherit", minWidth: 24 }}>
+              <ListItemIcon
+                sx={(theme) => ({
+                  color: "inherit",
+                  // 預設 56px 是給一般圖示的寬度，圓點只需留一點間距，讓文字有更多空間
+                  minWidth: theme.spacing(2.5),
+                  // 與 ListItemText 同樣的上外距，高度等於一行文字，圓點才會落在第一行中線
+                  mt: 0.5,
+                  height: `calc(${theme.typography.body2.fontSize} * ${theme.typography.body2.lineHeight})`,
+                  alignItems: "center",
+                })}
+              >
                 <CircleIcon sx={{ fontSize: 6 }} />
               </ListItemIcon>
-              <ListItemText primary={child.label} sx={{ whiteSpace: "nowrap" }} />
+              <ListItemText
+                // secondary 以 body2（14px）顯示，比群組標題小一級；顏色沿用白字
+                secondary={child.label}
+                slotProps={{ secondary: { color: "inherit" } }}
+              />
             </ListItemButton>
           ))}
         </List>

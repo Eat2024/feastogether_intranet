@@ -28,22 +28,6 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // 只套用在隱藏維護入口（不影響 WebView bridge 與可被入口網 iframe 嵌入的員工頁）：
-  // 不送出含入口的 Referer、不讓搜尋引擎收錄、不允許被任何頁面嵌入。
-  // Cache-Control 不在此設定：Next 會覆寫頁面的 Cache-Control，動態頁面本來就是 private, no-store。
-  async headers() {
-    return [
-      {
-        source: "/ops-access/:entryKey",
-        headers: [
-          { key: "Referrer-Policy", value: "no-referrer" },
-          { key: "X-Robots-Tag", value: "noindex, nofollow" },
-          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
-        ],
-      },
-    ];
-  },
-
   // 電子簽頁面已移到 /esign 底下，舊網址（書籤、既有連結）轉到新位置；
   // 不設為永久轉址，避免瀏覽器長期快取
   async redirects() {

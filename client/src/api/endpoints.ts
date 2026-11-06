@@ -1,11 +1,9 @@
 // 後端 API 路徑（相對於 baseURL /api）；新增 API 時在此登記，避免字串散落各處。
 // 與後端 server/src/config/config.path.ts 及各 controller 的路徑對應。
-// 員工 session 由外部流程建立（以 HttpOnly cookie 帶入）；這裡只有 Super user 隱藏入口登入與共用的身分／登出。
+// 員工 session 由外部流程建立（以 HttpOnly cookie 帶入）；這裡只有共用的身分查詢與登出。
 export const endpoints = {
   // 目前身分與登出（server/src/features/auth/controllers/auth.controller.ts）
   AUTH_SESSION: 'auth/session',
-  // Super user 隱藏入口登入（server/src/features/auth/controllers/super-user-access.controller.ts）
-  SUPER_USER_ENTRY_SESSIONS: (entryKey: string) => `auth/super-user-entries/${encodeURIComponent(entryKey)}/sessions`,
   // 電子簽文件（server/src/features/esign/controllers/documents.controller.ts）
   ESIGN_DOCUMENTS: 'esign/documents',
   ESIGN_DOCUMENT: (id: string) => `esign/documents/${encodeURIComponent(id)}`,

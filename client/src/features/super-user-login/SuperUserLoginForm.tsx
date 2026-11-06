@@ -1,8 +1,8 @@
 'use client';
 
-// Super user 帳密登入表單：錯誤都在表單內顯示（帳密錯誤不是登入過期，不開全站提示）。
+// Super user 帳密登入表單：錯誤都在表單內顯示（meta.handlesOwnErrors：帳密錯誤的 401 不是登入過期，不開全站提示）。
 // 成功後整頁 replace 到根路徑：清掉入口網址的瀏覽紀錄與舊會話的 query 快取，重新讀取目前身分。
-import { createSuperUserSession, getSession } from '@/api/requests';
+import { getSession } from '@/api/requests';
 import { getErrorCode, getErrorMessage } from '@/lib/apiError';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
@@ -13,6 +13,7 @@ import Typography from '@mui/material/Typography';
 import { useMutation } from '@tanstack/react-query';
 import axios from 'axios';
 import { useState, type FormEvent } from 'react';
+import { createSuperUserSession } from './api';
 
 const enterRoot = () => window.location.replace('/');
 
@@ -41,7 +42,7 @@ export default function SuperUserLoginForm({ entryKey }: { entryKey: string }) {
   const [error, setError] = useState<string | null>(null);
   const login = useMutation({
     mutationFn: createSuperUserSession,
-    meta: { suppressGlobalErrorToast: true },
+    meta: { handlesOwnErrors: true },
     onSuccess: () => {
       setAccount('');
       setPassword('');

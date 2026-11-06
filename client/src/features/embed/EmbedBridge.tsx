@@ -15,7 +15,7 @@ type SessionCheck = "match" | "mismatch" | "none";
 
 /**
  * 比對電子簽 session 與入口網目前登入者：只有員工會話且員編相同才是 match；
- * Super user 不是任何員工，一律視為 mismatch。無 session 或查詢失敗視為 none。
+ * 員工以外的身分不是任何員工，一律視為 mismatch。無 session 或查詢失敗視為 none。
  */
 async function checkSession(empid: string): Promise<SessionCheck> {
   try {
@@ -37,7 +37,7 @@ async function checkSession(empid: string): Promise<SessionCheck> {
 /**
  * 被入口網 iframe 嵌入時，處理入口網的換頁指令：
  * - 電子簽 session 與入口網是同一位員工 → 保持登入，直接換到指定頁面
- * - 不是同一位員工（含 Super user 會話）→ 登出（DELETE session），請入口網重新 launch
+ * - 不是同一位員工（含員工以外的身分）→ 登出（DELETE session），請入口網重新 launch
  * - 沒有 session → 請入口網 launch
  * 只接受 AUTH_TRUSTED_ORIGINS 內、且來自直接父視窗的訊息；不在 iframe 內時不做任何事。
  */

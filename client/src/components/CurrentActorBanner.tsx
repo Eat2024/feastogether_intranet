@@ -1,6 +1,6 @@
 'use client';
 
-// 員工頁共用版面上的目前身分：只有 Super user 顯示（員工畫面不變），並提供登出。
+// 員工頁共用版面上的目前身分：沒有員工資料的身分（員工以外）才顯示 server 給的名稱（員工畫面不變），並提供登出。
 // 登出後整頁 replace 到根路徑：清掉舊會話的 query 快取；沒有會話時 proxy 會回 404。
 import { useGetSessionQuery } from '@/api/queries';
 import { deleteSession } from '@/api/requests';
@@ -15,7 +15,7 @@ export default function CurrentActorBanner() {
     onSuccess: () => window.location.replace('/'),
   });
 
-  if (session?.actor.kind !== 'super_user') return null;
+  if (!session || session.user) return null;
   return (
     <Alert
       severity="info"

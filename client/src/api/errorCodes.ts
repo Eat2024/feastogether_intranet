@@ -13,8 +13,6 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   CSRF_ORIGIN_REJECTED: '請求來源不允許，請重新整理頁面後再試',
   AUTH_EXCHANGE_FAILED: '登入驗證失敗，請重新登入',
   AUTH_DB_UNAVAILABLE: '登入服務暫時無法使用，請稍後再試',
-  AUTH_SUPER_USER_CREDENTIALS_INVALID: '帳號或密碼錯誤',
-  AUTH_SUPER_USER_UNAVAILABLE: '維護登入暫時無法使用',
   AUTH_SESSION_REPLACED: '登入身分已更新，請重新整理',
   AUTH_ACTOR_NOT_ALLOWED: '目前身分無法使用此功能',
 

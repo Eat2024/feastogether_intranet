@@ -29,10 +29,6 @@ export const getErrorCode = (error: unknown): string | undefined =>
 /** 外部簽署存取失效（邀請無效、過期或 cookie 已不存在），一律 401；不是員工登入過期 */
 export const isExternalAccessLost = (error: unknown): boolean => getErrorCode(error) === 'ESIGN_EXTERNAL_UNAUTHORIZED';
 
-/** Super user 帳號或密碼錯誤（401）：由登入表單就地顯示，不是登入過期 */
-export const isSuperUserCredentialsInvalid = (error: unknown): boolean =>
-  getErrorCode(error) === 'AUTH_SUPER_USER_CREDENTIALS_INVALID';
-
 /** 只接受該專用錯誤與 server 契約中的固定 Portal 目的地，避免一般錯誤變成任意導頁。 */
 export const getInternalPortalLoginUrl = (error: unknown): string | null => {
   if (!axios.isAxiosError<InternalLoginRequiredResponse>(error) || error.response?.status !== 403 ||

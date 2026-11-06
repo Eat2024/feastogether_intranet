@@ -52,3 +52,9 @@ AUTH_TRUSTED_ORIGINS=http://localhost:3030 CORS_ORIGIN=http://localhost:3030 pnp
 | SC-008 | 6,000 份容量驗證待整合票 |
 
 未驗證 S3、舊版清理、完整並發／重試、雙 session 取代。Next 預設 Turbopack build 因隔離工作區的外部 node_modules symlink 失敗，webpack build 已通過；最終整合工作區仍須執行預設 root build/lint。沒有 client test script，瀏覽器證據不等同 client 單元測試。T005 的新增 exportState 僅屬 export preview，沿用既有 document summary 型別，無須修改 esignDocuments.ts。
+
+### Ticket 01 整合驗證
+
+- Merger 核對 6d93e69 相對 25a3fef 的差異與上述實際測試證據，fast-forward 整合成功。
+- 在整合 worktree 執行預設 `pnpm build`（未傳 webpack）成功，包含 Nest build 與 Next Turbopack build；日誌 `/tmp/spec030-merge01-build.log`。隔離 worktree 的 symlink 限制不影響整合 build。
+- 額外核對文件期限型別及推導未變、共用匯出 expired 保留、expires_at/index/API 沒有 schema 變更，無關使用者檔案保持未追蹤且未修改。

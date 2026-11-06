@@ -128,11 +128,20 @@ esac
 services_changed=true
 start_apps
 smoke
-if [[ -f "$state_dir/current.env" ]]; then
-  cp "$state_dir/current.env" "$state_dir/previous.env"
+# 相同 image 重跑不推進 previous，保留真正可回退的前一版。
+new_client=$(docker image inspect --format '{{.Id}}' "$CLIENT_IMAGE")
+new_server=$(docker image inspect --format '{{.Id}}' "$SERVER_IMAGE")
+if [[ "$old_client" != "$new_client" || "$old_server" != "$new_server" || ! -s "$state_dir/previous.env" ]]; then
+  printf 'CLIENT_IMAGE=%s\nSERVER_IMAGE=%s\n' "$old_client" "$old_server" > "$state_dir/previous.env.tmp"
+  mv "$state_dir/previous.env.tmp" "$state_dir/previous.env"
 fi
 printf 'TARGET_SHA=%s\nCLIENT_IMAGE=%s\nSERVER_IMAGE=%s\n' \
   "$TARGET_SHA" "$CLIENT_IMAGE" "$SERVER_IMAGE" > "$state_dir/current.env.tmp"
 mv "$state_dir/current.env.tmp" "$state_dir/current.env"
 printf 'CLIENT_IMAGE=%s\nSERVER_IMAGE=%s\n' "$old_client" "$old_server" > "$state_dir/before-last-deploy.env"
 echo "UAT 部署成功：$TARGET_SHA"
+# 清理失敗不觸發部署回退／migration 後停機，保留警告供處理。
+trap - ERR
+if ! bash "$repo_root/.github/scripts/cleanup-uat-images.sh" "$state_dir"; then
+  echo '::warning::舊映像未完全清理，請檢查磁碟空間與容器引用。'
+fi

@@ -1,3 +1,6 @@
+import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
+import { AuthorizationCatalogService } from '#app/features/authorization/services/authorization-catalog.service';
+import { AuthorizationAuditService } from '#app/features/authorization/services/authorization-audit.service';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ClsModule } from 'nestjs-cls';
@@ -10,12 +13,14 @@ import { LoggingModule } from '#app/infrastructure/logging/logging.module';
  * 排程、Portal、mail、storage 或 Redis，也沒有任何啟動寫入。
  */
 @Module({
+  providers: [AuthorizationCatalogService, AuthorizationAuditService],
   imports: [
     // 與 HTTP／worker 相同從 server/.env 載入，已設定的程序環境變數優先。
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     ClsModule.forRoot({ global: true }),
     LoggingModule,
     SuperUserAccessModule,
+    MysqlModule,
   ],
 })
 export class ConsoleModule {}

@@ -40,5 +40,6 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   STAFF_LOOKUP_FAILED: '查詢員工資料失敗，請稍後再試',
 
   // --- Server ---
+  AUTHORIZATION_UNAVAILABLE: '授權服務暫時無法使用',
   INTERNAL_ERROR: '伺服器發生錯誤，請稍後再試',
 };

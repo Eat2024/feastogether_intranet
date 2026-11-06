@@ -33,3 +33,81 @@ pnpm -C server build
 9. **導入演練（US5／SC-006）**：依operations停流量切換，只有同仁自動生效，核定額外指派全數核對；沒有歷史行為升權。重跑seed／指派不重複關聯。測試readiness拒絕缺目錄，備份／回復策略能保護Super資料與既有證據。
 
 成功標準為spec全部SC；將執行命令、結果與無法驗證的環境限制記錄於實作交付，不以文件或mock替代真MySQL／worker證明。
+
+
+## 028-01 實作盤點（2026-11-06）
+
+範圍以實際 Nest controller 裝飾器逐一列出；下表能力省略 `esign.` 前綴，測試名稱位於 `server/test/*.e2e-spec.ts`（作為既有回歸參考；新增 028 矩陣驗收由對應後續票負責）。這是入口盤點，不代表能力 guard 已啟用。前端 mock 簽到表不列入正式功能。
+
+| 方法／實際路徑 | 規格要求能力或公開例外 | 既有回歸測試 | 後續任務 |
+| --- | --- | --- | --- |
+| GET `/api/esign/documents` | document.read | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| POST `/api/esign/documents` | document.create | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| GET `/api/esign/documents/:documentId` | document.read；view=export 改驗 export.read | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| PATCH `/api/esign/documents/:documentId` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| DELETE `/api/esign/documents/:documentId` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| PUT `/api/esign/documents/:documentId/draftSave` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| PATCH `/api/esign/documents/:documentId/draft-settings` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| PUT `/api/esign/documents/:documentId/fields` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| POST `/api/esign/documents/:documentId/initiations` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| POST `/api/esign/documents/:documentId/reopenings` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| GET `/api/esign/documents/:documentId/reopening-invitations` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| GET `/api/esign/documents/:documentId/source-file` | document.read | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| POST `/api/esign/documents/:documentId/stoppages` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| PATCH `/api/esign/documents/:documentId/signers/:signerPublicId/note` | document.manage | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| POST `/api/esign/documents/:documentId/signers/:signerPublicId/completed-file/downloads` | signing.copy（本人） | security-esign-department、core-esign-flow、esign-initiation-acceptance、esign-initiation-query | T016–T019、T035–T047 |
+| GET `/api/esign/history/export` | export.read；pdf 另驗本人 | esign-export-history、internal-email-copy | T016、T018–T019、T048–T051 |
+| POST `/api/esign/history/export` | export.create | esign-export-history、internal-email-copy | T016、T018–T019、T048–T051 |
+| GET `/api/esign/history/export/:id/document` | export.read；pdf 另驗本人 | esign-export-history、internal-email-copy | T016、T018–T019、T048–T051 |
+| POST `/api/esign/history/export/:id/downloads` | export.read；pdf 另驗本人 | esign-export-history、internal-email-copy | T016、T018–T019、T048–T051 |
+| POST `/api/esign/documents/:documentId/export-downloads` | export.read／export.create（實際分支） | esign-export、security-esign-department | T016、T048–T051 |
+| GET `/api/esign/exportable-documents` | export.read | esign-export、security-esign-department | T016、T048–T051 |
+| POST `/api/esign/documents/:documentId/exports` | export.create | esign-export、security-esign-department | T016、T048–T051 |
+| GET `/api/esign/documents/:documentId/exports/:exportId` | export.read | esign-export、security-esign-department | T016、T048–T051 |
+| POST `/api/esign/documents/:documentId/exports/:exportId/retries` | export.create | esign-export、security-esign-department | T016、T048–T051 |
+| GET `/api/esign/documents/:documentId/exports/:exportId/files/:fileId` | export.read | esign-export、security-esign-department | T016、T048–T051 |
+| POST `/api/external-signing-task/rejection` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| GET `/api/external-signature-invitations/:token` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| POST `/api/external-signature-otps` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| POST `/api/external-signature-session` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| DELETE `/api/external-signature-session` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| POST `/api/external-signing-task` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| GET `/api/external-signing-task` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| GET `/api/external-signing-task/source-file` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| POST `/api/external-signing-task/signatures` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| POST `/api/external-signing-task/completed-file/downloads` | Public（現有入口自驗） | esign-document-delivery-security、internal-email-copy | T057–T059（保留公開憑證邊界） |
+| POST `/api/esign/documents/:documentId/initiation-jobs/:jobId/retries` | document.manage | esign-initiation-acceptance、esign-initiation-query | T016、T043–T047 |
+| GET `/api/esign/documents/:documentId/initiation-jobs/latest` | document.manage | esign-initiation-acceptance、esign-initiation-query | T016、T043–T047 |
+| GET `/api/esign/documents/:documentId/initiation-jobs/:jobId/issues` | document.manage | esign-initiation-acceptance、esign-initiation-query | T016、T043–T047 |
+| GET `/api/esign/documents/:documentId/initiation-jobs/:jobId/input` | document.manage | esign-initiation-acceptance、esign-initiation-query | T016、T043–T047 |
+| GET `/api/esign/documents/:documentId/initiation-jobs/:jobId` | document.manage | esign-initiation-acceptance、esign-initiation-query | T016、T043–T047 |
+| POST `/api/esign/documents/:documentId/notification-batches` | document.manage | internal-group-reminders、esign-reminders | T016、T043–T047 |
+| GET `/api/esign/documents/:documentId/notification-batches` | document.manage | internal-group-reminders、esign-reminders | T016、T043–T047 |
+| GET `/api/esign/documents/:documentId/notification-batches/:batchId` | document.manage | internal-group-reminders、esign-reminders | T016、T043–T047 |
+| GET `/api/signature-verifications/*` | Public（現有入口自驗） | security-signature-verification | T057–T059（保留唯讀公開驗證） |
+| GET `/api/esign/signer-candidates/org-chart` | document.create OR document.manage | esign-candidate-resolution、org-chart | T016 |
+| POST `/api/esign/signer-candidates/resolutions` | document.create OR document.manage | esign-candidate-resolution、org-chart | T016 |
+| GET `/api/esign/signer-candidates` | document.create OR document.manage | esign-candidate-resolution、org-chart | T016 |
+| POST `/api/esign/signing-tasks/:signerPublicId/rejection` | signing.submit | internal-portal-signing、internal-portal-completion | T016、T018–T019 |
+| GET `/api/esign/signing-tasks` | signing.read | internal-portal-signing、internal-portal-completion | T016、T018–T019 |
+| POST `/api/esign/signing-tasks/:signerPublicId` | signing.read | internal-portal-signing、internal-portal-completion | T016、T018–T019 |
+| GET `/api/esign/signing-tasks/:signerPublicId/source-file` | signing.read | internal-portal-signing、internal-portal-completion | T016、T018–T019 |
+| POST `/api/esign/signing-tasks/:signerPublicId/signatures` | signing.submit | internal-portal-signing、internal-portal-completion | T016、T018–T019 |
+| POST `/api/esign/signing-tasks/:signerPublicId/completed-file/downloads` | signing.copy | internal-portal-signing、internal-portal-completion | T016、T018–T019 |
+
+027 接縫：`AuthGuard` 先驗 opaque session 與 actor；目前只有明確 `AllowSuperUser` 入口能使用維護身分，未完成 028 actor 相容的業務入口維持拒絕。`CurrentActor` 與 `actor.context.ts` 是後續服務接點，不能把 Super 轉成假員工。HTTP 寫入沿現有 Origin guard。
+
+console 以 `ConsoleModule`、`createAuthConsole` 的窄 context 為基礎；本票新增 `createAuthorizationConsole` 暴露 `authz.syncCatalog()` 閉包。每次同步先讀 active generation，再於同交易鎖 singleton 重驗 generation／本機 fingerprint；沒有啟動初始化或 HTTP／worker／Portal／Redis／mail／storage 連線模組。`AuthorizationCatalogService.assertReady()` 僅讀，缺失或不相容回 503，不修補資料。
+
+持久接點：`AuthorizationRepository` 以 manager 傳入，roles／permissions 集合查詢可依 ID 升冪鎖定，關聯差異透過 save 撤銷／恢復原列；指派交易後續必先鎖 users、再 roles、permissions、relations。`AuthorizationAuditService` 僅同交易寫白名單，no-op 無事件；本票不恢復文件簽署歷程。
+
+
+### 028-01 驗證結果與交接
+
+- `pnpm -C server test --runInBand`：126 suites／1282 tests 通過。
+- `pnpm -C server test:schema`：7 suites／45 tests 通過，包含空庫 up/down/reapply、完整 schema drift、FK、名稱競爭、兩種關聯還原與有 audit 時拒絕 down。
+- `pnpm -C server test:e2e:security --testPathPatterns=authorization`：2 suites／10 tests 通過。catalog 服務以真 MySQL `authorization-catalog.e2e-spec.ts` 驗證（取代 mock catalog service 單元），含並發 sync、保護同仁修復、移除權限、保留一般角色自訂、稽核故障 rollback、過期維護設定及真 ConsoleModule helpers。
+- `pnpm build`、`pnpm lint` 通過；server 保留 271 個既有 lint warnings，沒有新增 warnings 或 errors。client `test` 4 項與 `check:bundle` 通過。
+- schema 快照由獨立空測試庫套全部 migrations 後，以專案 `dump-schema.ts` 產生，只有五張授權表增量。舊 schema 測試的最新版本、表數／時間欄數／CHECK 清單已更新；027 歷史回填測試固定在其 migration／entity 版本，不因後續表增加而改變測試意義。
+- 測試使用獨立 MySQL 8.4 容器 `intranet-spec028-mysql`（loopback 13328）與 `feastogether_intranet_test_a*`；沒有寫入開發／UAT／正式 DB。既有 `.env.test` 連線認證失敗後改用此隔離環境，未修改已追蹤設定或新增環境變數。
+- T010 所需 `AUTHORIZATION_UNAVAILABLE` 已提前同步 server／client；其餘 T012 錯誤由 028-02 補齊。HTTP 授權 guards、角色管理 API、業務 actor、正式切換仍屬後續 tickets，這一票不代表 028 已上線。未執行全套業務 e2e 或正式 Portal 連線；本票沒有改既有業務控制器行為。

@@ -1,3 +1,5 @@
+import { AuthorizationEventRepository } from '#app/features/authorization/repositories/authorization-event.repository';
+import { AuthorizationRepository } from '#app/features/authorization/repositories/authorization.repository';
 import { InitiationJobRepository } from '#app/features/esign/repositories/initiation-job.repository';
 import { MailRecipientWhitelistRepository } from '#app/infrastructure/mail/mail-recipient-whitelist.repository';
 import { ExportJobRepository } from '#app/features/esign/repositories/export-job.repository';
@@ -20,6 +22,8 @@ import { MysqlProvider } from './mysql.provider';
 import { MysqlService } from './mysql.service';
 
 const repositories = [
+  AuthorizationEventRepository,
+  AuthorizationRepository,
   InitiationJobRepository,
   MailRecipientWhitelistRepository,
   ExportJobRepository,

@@ -81,6 +81,118 @@ CREATE TABLE `auth_sessions` (
   CONSTRAINT `chk_auth_sessions_status` CHECK ((`status` in (_utf8mb4'validating',_utf8mb4'pending',_utf8mb4'active',_utf8mb4'failed',_utf8mb4'revoked')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='WebView 啟動與員工登入 Session';
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `authorization_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `authorization_events` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `occurred_at` datetime(6) NOT NULL COMMENT '事件時間',
+  `actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作者種類',
+  `source` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作來源',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
+  `event_type` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '事件種類',
+  `target_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '目標種類',
+  `target_id` bigint DEFAULT NULL COMMENT '目標 ID',
+  `request_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '請求追蹤 ID',
+  `before_json` json DEFAULT NULL COMMENT '異動前白名單內容',
+  `after_json` json DEFAULT NULL COMMENT '異動後白名單內容',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  PRIMARY KEY (`id`),
+  KEY `idx_authorization_events_created_at` (`created_at`),
+  KEY `idx_authorization_events_occurred_at` (`occurred_at`),
+  CONSTRAINT `chk_authorization_events_actor_kind` CHECK ((`actor_kind` in (_utf8mb4'super_user',_utf8mb4'operator',_utf8mb4'system'))),
+  CONSTRAINT `chk_authorization_events_source` CHECK ((`source` in (_utf8mb4'http',_utf8mb4'repl',_utf8mb4'migration'))),
+  CONSTRAINT `chk_authorization_events_target_kind` CHECK ((`target_kind` in (_utf8mb4'role',_utf8mb4'user',_utf8mb4'catalog')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='授權異動紀錄（append-only）';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `authorization_permissions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `authorization_permissions` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
+  `permission_key` varchar(100) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '權限代碼',
+  `permission_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '權限名稱',
+  `assignable` tinyint(1) NOT NULL COMMENT '可否指派',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_authorization_permissions_key` (`permission_key`),
+  UNIQUE KEY `uq_authorization_permissions_scope` (`module_key`,`id`),
+  KEY `idx_authorization_permissions_created_at` (`created_at`),
+  KEY `idx_authorization_permissions_updated_at` (`updated_at`),
+  KEY `idx_authorization_permissions_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='權限目錄';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `authorization_role_permissions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `authorization_role_permissions` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
+  `role_id` bigint unsigned NOT NULL COMMENT '角色 ID',
+  `permission_id` bigint unsigned NOT NULL COMMENT '權限 ID',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_authorization_role_permissions_pair` (`role_id`,`permission_id`),
+  KEY `idx_authorization_role_permissions_created_at` (`created_at`),
+  KEY `idx_authorization_role_permissions_updated_at` (`updated_at`),
+  KEY `idx_authorization_role_permissions_deleted_at` (`deleted_at`),
+  KEY `fk_authorization_role_permissions_role_scope` (`module_key`,`role_id`),
+  KEY `fk_authorization_role_permissions_permission_scope` (`module_key`,`permission_id`),
+  CONSTRAINT `fk_authorization_role_permissions_permission_scope` FOREIGN KEY (`module_key`, `permission_id`) REFERENCES `authorization_permissions` (`module_key`, `id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_authorization_role_permissions_role_scope` FOREIGN KEY (`module_key`, `role_id`) REFERENCES `authorization_roles` (`module_key`, `id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色權限關聯';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `authorization_roles`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `authorization_roles` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
+  `role_code` varchar(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '穩定角色代碼',
+  `role_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL COMMENT '角色名稱',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否啟用',
+  `is_protected` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否受保護',
+  `version` int unsigned NOT NULL DEFAULT '1' COMMENT '設定版本',
+  `active_role_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin GENERATED ALWAYS AS ((case when (`deleted_at` is null) then `role_name` else NULL end)) VIRTUAL COMMENT '未刪除角色名稱',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_authorization_roles_code` (`module_key`,`role_code`),
+  UNIQUE KEY `uq_authorization_roles_scope` (`module_key`,`id`),
+  UNIQUE KEY `uq_authorization_roles_name` (`module_key`,`active_role_name`),
+  KEY `idx_authorization_roles_created_at` (`created_at`),
+  KEY `idx_authorization_roles_updated_at` (`updated_at`),
+  KEY `idx_authorization_roles_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `authorization_user_roles`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `authorization_user_roles` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `user_id` bigint NOT NULL COMMENT '員工 ID',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
+  `role_id` bigint unsigned NOT NULL COMMENT '角色 ID',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_authorization_user_roles_pair` (`user_id`,`role_id`),
+  KEY `idx_authorization_user_roles_created_at` (`created_at`),
+  KEY `idx_authorization_user_roles_updated_at` (`updated_at`),
+  KEY `idx_authorization_user_roles_deleted_at` (`deleted_at`),
+  KEY `idx_authorization_user_roles_user_scope` (`user_id`,`module_key`,`deleted_at`),
+  KEY `fk_authorization_user_roles_role_scope` (`module_key`,`role_id`),
+  CONSTRAINT `fk_authorization_user_roles_role_scope` FOREIGN KEY (`module_key`, `role_id`) REFERENCES `authorization_roles` (`module_key`, `id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_authorization_user_roles_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='員工角色關聯';
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_document_fields`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;

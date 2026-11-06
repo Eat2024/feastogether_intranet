@@ -668,6 +668,11 @@ export const AppErrors = {
     '來源完整性異常，無法重試',
     HttpStatus.CONFLICT,
   ],
+  AUTHORIZATION_UNAVAILABLE: [
+    AppErrorCode.AUTHORIZATION_UNAVAILABLE,
+    '授權服務暫時無法使用',
+    HttpStatus.SERVICE_UNAVAILABLE,
+  ],
   INTERNAL_ERROR: [
     AppErrorCode.INTERNAL_ERROR,
     '系統發生未預期錯誤',

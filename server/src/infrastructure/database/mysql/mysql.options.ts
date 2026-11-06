@@ -1,3 +1,9 @@
+import { ModuleAuthorization1793923200000 } from '../migrations/1793923200000-ModuleAuthorization';
+import { AuthorizationRole } from '#app/features/authorization/entities/authorization-role.entity';
+import { AuthorizationPermission } from '#app/features/authorization/entities/authorization-permission.entity';
+import { AuthorizationRolePermission } from '#app/features/authorization/entities/authorization-role-permission.entity';
+import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
+import { AuthorizationEvent } from '#app/features/authorization/entities/authorization-event.entity';
 import { RetireSigningAudit1793836801000 } from '../migrations/1793836801000-RetireSigningAudit';
 import { SuperUserAccess1793836802000 } from '../migrations/1793836802000-SuperUserAccess';
 import { ExportDownloadFileName1793836800000 } from '../migrations/1793836800000-ExportDownloadFileName';
@@ -88,6 +94,11 @@ export function buildMysqlOptions(
     charset: 'utf8mb4',
 
     entities: [
+      AuthorizationEvent,
+      AuthorizationUserRole,
+      AuthorizationRolePermission,
+      AuthorizationPermission,
+      AuthorizationRole,
       Department,
       User,
       AuthSession,
@@ -128,6 +139,7 @@ export function buildMysqlOptions(
       ExportDownloadFileName1793836800000,
       RetireSigningAudit1793836801000,
       SuperUserAccess1793836802000,
+      ModuleAuthorization1793923200000,
     ],
 
     extra: {

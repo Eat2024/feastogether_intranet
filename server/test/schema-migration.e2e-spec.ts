@@ -6,6 +6,11 @@ import { withSchemaTestDatabase } from '#app/infrastructure/database/test/schema
 import { revertAfter } from './schema-migration.helper';
 
 const BUSINESS_TABLES = [
+  'authorization_roles',
+  'authorization_permissions',
+  'authorization_role_permissions',
+  'authorization_user_roles',
+  'authorization_events',
   'hr_departments',
   'mail_recipient_whitelist',
   'users',
@@ -409,15 +414,15 @@ describe('e-sign schema migrations', () => {
               ['a'.repeat(64)],
             );
           const before: unknown = await ds.query(
-          'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
-        );
+            'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
+          );
           await revertAfter(ds, 'ExpiredDocuments1792368000000');
           await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
           expect(
-          await ds.query(
-            'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
-          ),
-        ).toEqual(before);
+            await ds.query(
+              'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
+            ),
+          ).toEqual(before);
         } finally {
           await ds.destroy();
         }
@@ -554,7 +559,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(80);
+        expect(first.timeColumns).toHaveLength(94);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(
@@ -581,13 +586,12 @@ describe('e-sign schema migrations', () => {
         await dataSource.undoLastMigration();
         expect(await listBusinessTables(dataSource, database)).toEqual(
           BUSINESS_TABLES.filter(
-            (table) =>
-              !['auth_security_events', 'super_user_access'].includes(table),
+            (table) => !table.startsWith('authorization_'),
           ),
         );
         expect(
           await hasColumn(dataSource, database, 'auth_sessions', 'actor_kind'),
-        ).toBe(false);
+        ).toBe(true);
 
         await dataSource.runMigrations();
         expect(await schemaSnapshot(dataSource, database)).toEqual(first);

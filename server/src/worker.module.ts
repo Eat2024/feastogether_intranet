@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
 import { RequestIdClsModule } from './infrastructure/logging/requestId/request-id.module';
+import { SuperUserAccessWorkerModule } from './worker/auth/super-user-access-worker.module';
 import { EsignWorkerModule } from './worker/esign/esign-worker.module';
 import { PortalUserSyncWorkerModule } from './worker/users/portal-user-sync-worker.module';
 
@@ -15,6 +16,7 @@ import { PortalUserSyncWorkerModule } from './worker/users/portal-user-sync-work
     InfrastructureModule,
     EsignWorkerModule,
     PortalUserSyncWorkerModule,
+    SuperUserAccessWorkerModule,
   ],
 })
 export class WorkerModule {}

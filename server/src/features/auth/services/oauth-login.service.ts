@@ -3,10 +3,14 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import type { OauthCallbackDto } from '#app/features/auth/dto/oauth-callback.dto';
 import { OauthClient } from '#app/infrastructure/http-client/oauth/oauth.client';
-import { AuthService, type AuthSession } from './auth.service';
+import {
+  toEmployeeSessionView,
+  type EmployeeSessionView,
+} from '../dto/session-view.dto';
 import { safeLoginReturnPath } from '../helpers/login-return-path';
 import { OauthIdentityService } from './oauth-identity.service';
 import { OauthTransactionService } from './oauth-transaction.service';
+import { SessionService } from './session.service';
 
 export interface OauthStartResult {
   authorizationUrl: string;
@@ -16,7 +20,7 @@ export interface OauthStartResult {
 
 export interface OauthCallbackResult {
   accessToken: string;
-  session: AuthSession;
+  session: EmployeeSessionView;
   redirectTo: string;
 }
 
@@ -24,8 +28,8 @@ export interface OauthCallbackResult {
  * 統一登入流程協調（US1）：
  * start → 產 state／nonce、存交易、回授權網址；
  * getAccessTokenAndUserInfo → 領取交易 → 換 token（套件驗簽／nonce／issuer／aud）→ UserInfo → 配對帳號 →
- * 發本系統 session（上游 token 不持久保存）。
- * 任一步失敗不發 cookie；已交換的 token 只留在記憶體，失敗即丟棄、不代呼叫上游登出。
+ * 以本系統 session 原子替換瀏覽器目前的會話（上游 token 不持久保存）。
+ * 任一步失敗不發 cookie、不撤原會話；已交換的 token 只留在記憶體，失敗即丟棄、不代呼叫上游登出。
  */
 @Injectable()
 export class OauthLoginService {
@@ -33,7 +37,7 @@ export class OauthLoginService {
     private readonly client: OauthClient,
     private readonly transactions: OauthTransactionService,
     private readonly identities: OauthIdentityService,
-    private readonly authService: AuthService,
+    private readonly sessions: SessionService,
   ) {}
 
   async start(redirectTo: string | undefined): Promise<OauthStartResult> {
@@ -50,6 +54,7 @@ export class OauthLoginService {
   async getAccessTokenAndUserInfo(
     dto: OauthCallbackDto,
     browserToken: string | null | undefined,
+    currentToken: string | null,
   ): Promise<OauthCallbackResult> {
     const claimed = await this.transactions.claim(dto.state, browserToken);
     const code = this.acceptedCode(dto);
@@ -69,12 +74,14 @@ export class OauthLoginService {
     });
 
     // 本系統拿到 OAuth Server 給的 AT 後會轉成自己認得的 AT
-    const issued = await this.authService.issueSession(Number(user.id));
-    const sessionToken = issued.token;
-    const session = this.authService.buildSession(user, issued.expiresAt);
+    const issued = await this.sessions.replace(currentToken, {
+      kind: 'employee',
+      userId: Number(user.id),
+      source: 'oauth',
+    });
     return {
-      accessToken: sessionToken,
-      session,
+      accessToken: issued.token,
+      session: toEmployeeSessionView(user, issued.expiresAt),
       redirectTo: claimed.redirectTo,
     };
   }

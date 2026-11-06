@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test scripts/allowed-networks.test.mjs",
+    "check:bundle": "node scripts/check-public-bundle.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

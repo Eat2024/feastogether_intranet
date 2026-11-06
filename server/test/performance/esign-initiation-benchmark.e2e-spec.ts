@@ -6,8 +6,6 @@ import { Worker, type Queue } from 'bullmq';
 import { DataSource, In } from 'typeorm';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
@@ -29,6 +27,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from '../security-e2e.helper';
+import { employeeSessionCookie } from '../employee-session.helper';
 
 /** 明確 opt-in 的本機合成效能驗收，不登記一般 e2e suite。 */
 describe('022 發起實時間效能驗收', () => {
@@ -64,7 +63,7 @@ describe('022 發起實時間效能驗收', () => {
     users = await mysql
       .getManager()
       .find(User, { where: { empid: In(empids) }, order: { empid: 'ASC' } });
-    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
+    cookie = await employeeSessionCookie(ctx.app, users[0].id);
     const source = await PDFDocument.create();
     source.addPage();
     pdf = Buffer.from(await source.save());

@@ -240,6 +240,74 @@ describe('HttpAccessLogInterceptor', () => {
     expect(JSON.stringify(entry)).not.toContain(token);
   });
 
+  it.each([
+    ['GET', '', 200, undefined],
+    [
+      'POST',
+      '/sessions',
+      201,
+      { account: 'ops-account', password: 'pw-value' },
+    ],
+    [
+      'POST',
+      '/sessions',
+      401,
+      { account: 'ops-account', password: 'pw-value' },
+    ],
+  ] as const)(
+    '維護入口 %s%s（%s）只記路由模板，不記 query、body 或入口',
+    async (method, suffix, statusCode, body) => {
+      const { interceptor, accessLogger } = makeInterceptor();
+      const entryKey = 'E'.repeat(43);
+      await lastValueFrom(
+        interceptor.intercept(
+          makeContext(
+            baseReq({
+              method,
+              url: `/api/auth/super-user-entries/${entryKey}${suffix}?leak=${entryKey}`,
+              query: { leak: entryKey },
+              body,
+            }),
+            statusCode,
+          ),
+          { handle: () => of({}) },
+        ),
+      );
+      const entry = getWrittenEntry(accessLogger);
+      expect(entry).toMatchObject({
+        path: `/api/auth/super-user-entries/:entryKey${suffix}`,
+        url: `/api/auth/super-user-entries/:entryKey${suffix}`,
+        query: undefined,
+        requestBody: undefined,
+      });
+      const serialized = JSON.stringify(entry);
+      for (const secret of [entryKey, 'ops-account', 'pw-value']) {
+        expect(serialized).not.toContain(secret);
+      }
+    },
+  );
+
+  it('維護入口 handler 例外時同樣只記路由模板', async () => {
+    const { interceptor, accessLogger } = makeInterceptor();
+    const entryKey = 'E'.repeat(43);
+    await expect(
+      lastValueFrom(
+        interceptor.intercept(
+          makeContext(
+            baseReq({
+              url: `/api/auth/super-user-entries/${entryKey}/sessions`,
+              body: { account: 'ops-account', password: 'pw-value' },
+            }),
+          ),
+          { handle: () => throwError(() => new Error('boom')) },
+        ),
+      ),
+    ).rejects.toThrow('boom');
+    const serialized = JSON.stringify(getWrittenEntry(accessLogger));
+    expect(serialized).not.toContain(entryKey);
+    expect(serialized).not.toContain('pw-value');
+  });
+
   it('錯誤路徑：非 HttpException → fallback 500 並重新拋出', async () => {
     const { interceptor, accessLogger } = makeInterceptor();
     const ctx = makeContext(baseReq(), 200);

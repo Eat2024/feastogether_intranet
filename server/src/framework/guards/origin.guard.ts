@@ -45,8 +45,7 @@ export class OriginGuard implements CanActivate {
   private requiresExplicitOrigin(request: FastifyRequest): boolean {
     const path = getRequestPath(request);
     return (
-      path === '/api/auth/login' ||
-      path === '/auth/login' ||
+      path.startsWith('/api/auth/super-user-entries/') ||
       path.startsWith('/api/esign/') ||
       path === '/api/esign' ||
       path.startsWith('/api/external-signature') ||

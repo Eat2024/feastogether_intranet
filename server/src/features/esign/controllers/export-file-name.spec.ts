@@ -15,7 +15,7 @@ import { Test } from '@nestjs/testing';
 import { ClsService } from 'nestjs-cls';
 import { validationExceptionFactory } from '#app/common/errors/validation-exception.factory';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
-import { AuthService } from '#app/features/auth/services/auth.service';
+import { SessionService } from '#app/features/auth/services/session.service';
 import { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { AuthGuard } from '#app/framework/guards/auth.guard';
@@ -35,7 +35,12 @@ import { ExportsController } from './exports.controller';
 describe('準備匯出檔名（真 controller／service／policy／guard）', () => {
   let app: NestFastifyApplication;
   let document: EsignDocument | null;
-  const verifySessionToken = jest.fn();
+  const authenticate = jest.fn();
+  const employeeSession = (userId: number) => ({
+    actor: { kind: 'employee', userId },
+    user: { id: userId },
+    expiresAt: new Date(Date.now() + 60_000),
+  });
   const redownloadPdf = jest.fn();
   const recordDownloadFileName = jest.fn();
   const pdfUrl =
@@ -129,7 +134,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     app.useLogger(false);
     app.useGlobalGuards(
       new AuthGuard(
-        { verifySessionToken } as unknown as AuthService,
+        { authenticate } as unknown as SessionService,
         { isActive: () => false } as unknown as ClsService,
         module.get(Reflector),
       ),
@@ -154,7 +159,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     });
     recordDownloadFileName.mockReset().mockResolvedValue({ affected: 1 });
     jobStatus = 'completed';
-    verifySessionToken.mockResolvedValue({ userId: 7 });
+    authenticate.mockResolvedValue(employeeSession(7));
     document = Object.assign(new EsignDocument(), {
       id: 9,
       status: 'active',
@@ -216,7 +221,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
       payload: { fileName: '年度' },
     });
     expect(missingOrigin.statusCode).toBe(403);
-    verifySessionToken.mockResolvedValue(null);
+    authenticate.mockResolvedValue(null);
     const unauthorized = await app.inject({
       method: 'POST',
       url: pdfUrl,
@@ -325,19 +330,23 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     expect(response.statusCode).toBe(400);
     expect(response.body).not.toContain('sensitive-name');
   });
-  it('無員工 session、失效 session 或外部身分不授權', async () => {
+  it('無員工 session、失效 session 不授權；Super user 回 403', async () => {
     const payload = { type: 'excel' };
     expect(
       (await app.inject({ method: 'POST', url, payload })).statusCode,
     ).toBe(401);
-    verifySessionToken.mockResolvedValue(null);
+    authenticate.mockResolvedValue(null);
     expect(
       (await app.inject({ method: 'POST', url, headers, payload })).statusCode,
     ).toBe(401);
-    verifySessionToken.mockResolvedValue({ signerPublicId: 'external' });
+    authenticate.mockResolvedValue({
+      actor: { kind: 'super_user' },
+      user: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
     expect(
       (await app.inject({ method: 'POST', url, headers, payload })).statusCode,
-    ).toBe(401);
+    ).toBe(403);
   });
   it('缺少或不允許的來源不授權', async () => {
     const payload = { type: 'excel' };
@@ -520,7 +529,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
       headers,
       payload: { type: 'zip', exportId, fileId: '1' },
     });
-    verifySessionToken.mockResolvedValue(null);
+    authenticate.mockResolvedValue(null);
     expect(
       (
         await app.inject({

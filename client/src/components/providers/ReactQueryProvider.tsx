@@ -1,7 +1,7 @@
 'use client';
 
 // TanStack Query 的 QueryClient；query 與 mutation 失敗時統一以 Snackbar 顯示錯誤，
-// 收到 401（登入已過期）時改以整頁提示請使用者重新進入；外部簽署存取失效由外部簽署頁自行顯示。
+// 收到 401（登入已過期）時改以整頁提示請使用者重新進入；外部簽署存取失效由外部簽署頁顯示。
 import { UNAUTHORIZED_REDIRECT } from '@/api/config';
 import { getErrorMessage, isExternalAccessLost } from '@/lib/apiError';
 import { minutes } from '@/lib/time';
@@ -12,11 +12,12 @@ import { useState, type ReactNode } from 'react';
 import SessionExpiredDialog from './SessionExpiredDialog';
 import { useSnackbar } from './SnackbarProvider';
 
-// 個別 query／mutation 可宣告 meta.suppressGlobalErrorToast，自行處理錯誤顯示（避免全域與元件各跳一次）
+// 個別 query／mutation 可宣告 meta.suppressGlobalErrorToast，自行顯示錯誤訊息（避免全域與元件各跳一次；401 仍開登入過期提示）。
+// mutation 另可宣告 meta.handlesOwnErrors：所有錯誤（含 401）都由呼叫端處理，全站不跳提示、也不開登入過期提示。
 declare module '@tanstack/react-query' {
   interface Register {
     queryMeta: { suppressGlobalErrorToast?: boolean };
-    mutationMeta: { suppressGlobalErrorToast?: boolean };
+    mutationMeta: { suppressGlobalErrorToast?: boolean; handlesOwnErrors?: boolean };
   }
 }
 
@@ -47,6 +48,7 @@ export default function ReactQueryProvider({ children }: { children: ReactNode }
         }),
         mutationCache: new MutationCache({
           onError(error, _variables, _context, mutation) {
+            if (mutation.meta?.handlesOwnErrors) return;
             handleError(error, mutation.meta?.suppressGlobalErrorToast);
           },
         }),

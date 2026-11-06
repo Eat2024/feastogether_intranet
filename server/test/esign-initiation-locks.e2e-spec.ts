@@ -5,8 +5,6 @@ import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
@@ -27,6 +25,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('022 員工共享鎖與跨文件受理', () => {
   jest.setTimeout(60000);
@@ -61,7 +60,7 @@ describe('022 員工共享鎖與跨文件受理', () => {
     pdf = Buffer.from(await source.save());
   });
   async function session(userId: number) {
-    return `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(userId)).token}`;
+    return await employeeSessionCookie(ctx.app, userId);
   }
   async function newDoc() {
     const id = apiData<{ id: string }>(
@@ -133,23 +132,21 @@ describe('022 員工共享鎖與跨文件受理', () => {
     async (stage) => {
       const doc = await newDoc();
       const job = await submit(doc);
-      await mysql
-        .getManager()
-        .update(
-          EsignInitiationJob,
-          job.id,
-          stage === 'processing'
-            ? {
-                status: 'processing',
-                stage: 'validating',
-                leaseToken: randomUUID(),
-                leaseExpiresAt: new Date(Date.now() + 60000),
-              }
-            : {
-                nextAttemptAt:
-                  stage === 'retry' ? new Date(Date.now() + 30000) : null,
-              },
-        );
+      await mysql.getManager().update(
+        EsignInitiationJob,
+        job.id,
+        stage === 'processing'
+          ? {
+              status: 'processing',
+              stage: 'validating',
+              leaseToken: randomUUID(),
+              leaseExpiresAt: new Date(Date.now() + 60000),
+            }
+          : {
+              nextAttemptAt:
+                stage === 'retry' ? new Date(Date.now() + 30000) : null,
+            },
+      );
       const items = apiData<
         Array<{
           id: string;
@@ -576,9 +573,9 @@ describe('022 員工共享鎖與跨文件受理', () => {
         ),
       );
       expect(
-          apiData<InitiationJobDto>(await get(doc, job.publicId).expect(200))
-            .status,
-        ).toBe('succeeded');
+        apiData<InitiationJobDto>(await get(doc, job.publicId).expect(200))
+          .status,
+      ).toBe('succeeded');
       expect(heldMs).toBeGreaterThanOrEqual(4900);
       expect(acceptedMs).toBeLessThan(3000);
       expect(same.elapsedMs).toBeLessThan(3000);
@@ -695,18 +692,18 @@ describe('022 員工共享鎖與跨文件受理', () => {
       });
       const storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
       const original: PrivateFileStorage['openReadStream'] =
-      storage.openReadStream.bind(
-        storage,
-      ) as PrivateFileStorage['openReadStream'];
+        storage.openReadStream.bind(
+          storage,
+        ) as PrivateFileStorage['openReadStream'];
       const entered = deferred();
       const release = deferred();
       const gate = jest
-      .spyOn(storage, 'openReadStream')
-      .mockImplementationOnce(async (...args) => {
-        entered.resolve();
-        await release.promise;
-        return original(...args);
-      });
+        .spyOn(storage, 'openReadStream')
+        .mockImplementationOnce(async (...args) => {
+          entered.resolve();
+          await release.promise;
+          return original(...args);
+        });
       const writer = await externalConnection();
       const processing = ctx.app.get(EsignInitiationJobService).process(job.id);
       let mutation: Promise<unknown> | undefined;

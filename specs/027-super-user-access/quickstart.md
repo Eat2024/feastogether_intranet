@@ -1,0 +1,605 @@
+# Quickstart：Spec 027 實作後驗證指南
+
+本文件描述實作完成後要執行的流程。各 ticket 實際執行的驗證只記在文末「驗收記錄」；1～6 節仍是待執行流程，不是已通過的測試紀錄。
+
+## 前置
+
+- 使用現有pnpm workspace與Node >=24.22.1，MySQL／Redis可用；整合測試只用 `feastogether_intranet_test*`，保留既有fail-closed防護。
+- 按 [operations](contracts/operations.md) 產生專用密碼hash並填測試／本機設定；不要把帳密或入口原值寫進測試快照、PR或log。
+- OAuth／WebView fixtures沿現有測試，外部OAuth成功流程使用現有受控測試環境；本plan未操作上游。
+- DB migration先在隔離空庫及帶既有員工session／文件關聯的測試庫執行；正式環境不得照抄測試命令。
+
+## 建置與自動驗證
+
+```bash
+pnpm -C server lint:check
+pnpm -C server test --runInBand
+pnpm -C server build
+pnpm -C server test:e2e
+pnpm -C server test:e2e:security
+pnpm -C server test:schema
+pnpm -C client lint
+pnpm -C client build
+pnpm build
+pnpm lint
+```
+
+root lint可能包含server自動修正，執行前確認工作目錄；不能藉此覆蓋其他任務變更。client無test script，不宣稱跑過client自動測試。跨package變更需root build/lint；無外部服務時明確列出未執行項。
+
+## 1. 初始化與登入（US1、US3）
+
+實作後啟動：
+
+```bash
+pnpm -C server repl:dev
+```
+
+REPL依序 `await auth.initialize()`、`await auth.credentialStatus()`、`await auth.currentEntry()`。首次一列／一組初始化事件；再次initialize不換網址、不改版本。以同源瀏覽器開回傳path（本機沒有 Nginx：client 設 `SUPER_USER_ALLOWED_CIDRS` 並自帶清單內的 `X-Real-IP`，見 `client/README.md`）、輸入帳密；成功顯示Super user、cookie為HttpOnly。登入後URL回 `/`，頁面不殘留密碼。
+
+測試錯密碼、未知帳號、無效／舊入口、未初始化、來源網路不允許、超限、缺Origin／跨站、缺trusted IP、Redis不可用、DB不可用。無效入口、未初始化與來源網路不允許時，回應須與不存在的網址／路由相同（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）。預期狀態見 [API契約](contracts/api-behavior.md)；錯密碼不撤原員工會話，不將登入401當成全站員工過期。
+
+## 2. 會話相容與替換（US2）
+
+- OAuth與WebView同員編取得同一本地user，user欄位仍可供EmbedBridge比對。
+- employee→super→employee雙向切換；保存舊cookie僅在測試記憶體，直接重放應401。另一瀏覽器獨立會話不受影響。
+- 同一有效舊cookie同時提交兩次登入，只有一次成功，另一409且無Set-Cookie；新session與舊revoked關聯一致。
+- KDF／OAuth／Portal失敗或DB rollback不得撤原會話；commit後網路丟失重新登入，不回復舊token。
+- 共用cookie正式環境SameSite=None+Secure，本機Lax；八小時不滑動。iframe舊流程仍可用。
+- Super user session不依賴users列；user:null、actor.kind明確。員工業務在028前403，不能用任何假員工ID。
+- 登出清目前cookie、撤session，不恢復舊身分。移除的POST auth/login及dev入口不得發session。
+
+## 3. 入口輪換與並發（US3）
+
+以測試注入時間（不新增production時間env）覆蓋週一03:59:59／04:00、跨年、停機兩週。worker job與startup catch-up並發，entryGeneration只加一次，舊GET／POST皆404；既有super session仍有效。重啟同週不換網址。
+
+清除測試Redis的該queue排程再啟動worker，仍依DB補一次。輪換DB失敗保持舊key；retry成功只有一個新週期。純REPL查詢不改row、啟動不出現queue consumer／mail／S3／Portal連線。
+
+驗證舊表單提交與輪換競態：輪換先commit則登入404；登入先commit則session有效。HTTP／console兩種啟動均不得註冊週排程。
+
+## 4. 跨實例帳密輪換（US4）
+
+兩個測試server共享DB／Redis但載不同帳密設定。舊設定已active時新設定登入503；以新設定REPL activate一次後，舊session於兩實例皆不能用，舊實例不能新登入且不能改回DB版本。新實例可新登入，員工session兩側仍有效。
+
+same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟不撤會話；再啟用舊設定也要新generation，之前舊session不能復活。版本啟用與舊super revoke／安全事件須同交易，故障注入驗證rollback。
+
+## 5. UI與紀錄邊界
+
+- 無效entry的HTML與RSC都不能含帳密表單，pre-render proxy檢查不可只放layout；entry驗證GET無Set-Cookie及DB寫入。無效入口與來源網路不允許的 HTML／RSC 須與不存在的網址相同；`pnpm -C client build && pnpm -C client check:bundle` 確認公開靜態檔不含隱藏登入的程式碼。（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）
+- 正常登入、401／404／409／429／503、guard及SSR例外，檢查Nest log、Next log、nginx access/error log沒有入口原值、密碼或cookie；REPL currentEntry是唯一指定主動揭露。
+- 頁面no-store／no-referrer／noindex且不能iframe；此限制不得套到WebView或一般嵌入頁。
+- 身分切換清舊query cache，Super user標示與登出可用；與入口網不匹配時按既有EmbedBridge流程重新launch。
+- 安全事件只有白名單欄位；不新增簽署事件鏈、不碰既有證據。
+
+## 6. Migration／回復
+
+隔離測試庫驗證apply→down→apply；down僅空維護資料允許，有安全事件／維護session時應明確拒絕資料損失。既有employee session保持有效、users與文件FK未變、CHECK與entity一致；使用專案schema dump工具更新快照。部署／回復按operations，不在此指南提供正式刪表命令。
+
+## 驗收記錄
+
+各 ticket 實作者以獨立小節記錄：實際指令與結果、未跑原因、schema 變化、兩實例測試、iframe 瀏覽器結果、代理遮罩證據（不得包含敏感值）。未列出的 1～6 節項目尚未執行。
+
+### 027-02 共用會話與 schema（T001～T014、T053）
+
+範圍只有持久約束、repository、SessionService 與員工相容；隱藏登入頁、REPL、週排程與前端尚未存在，1、3～5 節不適用。
+
+- schema（6 節）：`pnpm -C server test:schema` 6 suites／39 tests 通過，其中 `test/super-user-schema.e2e-spec.ts` 7 tests 在 `feastogether_intranet_test_a_<hex>` 臨時庫驗證：空庫 apply 後欄位型別／NULL／CHECK／FK／unique／索引與 entity 無 drift；既有員工 session（validating、failed、pending、active、revoked）回填 `employee`、其他欄位與 users／文件關聯不變；空維護資料 down 後 `SHOW CREATE TABLE auth_sessions` 與原定義相同，再 apply 無 drift；歷史 active 列缺 `expires_at` 時整個 ALTER 失敗、不留新欄位或新表；有安全事件、維護入口或 Super user 會話時 down 拒絕且資料不變。結束後無殘留臨時庫。
+- 開發庫 `feastogether_intranet_027a`（只經 `server/.env`）：空庫 `pnpm -C server migration:run` 全部 21 支成功 → `migration:revert` 撤 `SuperUserAccess1793836802000` 成功（兩表與三欄消失）→ 寫入一筆合成員工 active session 後 `migration:run`，該列回填 `employee`／generation NULL／replacement NULL → 再寫入一筆合成 Super user 會話，`migration:revert` 以「無法回滾…」拒絕，migration 紀錄仍在 → 刪除合成列，保留已套用狀態。`pnpm -C server schema:dump` 更新 `server/src/infrastructure/database/schema.sql`：新增 `auth_security_events`、`super_user_access` 與 `auth_sessions` 三欄／兩索引／一 FK／兩 CHECK；`users`、`esign_export_jobs` 僅欄位順序與實際 migration 結果對齊，`esign_initiation_jobs` 由手寫格式改為 mysqldump 正規格式，結構相同。
+- 會話（2 節中可在本張驗證的部分）：`test/security-actor-session.e2e-spec.ts` 7 tests 對真實 MySQL 驗證員工回應保留原 user 並新增 actor、Super user 會話 `user_id` NULL 且員工 guard 回 401、停用／soft-deleted 員工拒絕、DB 版本失配拒絕、本機 fingerprint 不符或入口 soft-delete 回 503、同一舊 token 並行替換一筆成功另一筆 409、替換中途失敗 rollback 保留舊會話、登出撤銷與事件倒序分頁。「兩個帶不存在 cookie 的登入都鎖定後才插入」一案在 REPEATABLE READ 下 2/2 次重現 deadlock，改用 READ COMMITTED 後通過。八小時不滑動、過期與撤銷另由 `session.service.spec.ts` 驗證。
+- 員工回歸：`pnpm -C server test` 122 suites／1238 tests、`pnpm -C server test:e2e:security` 15 suites／91 tests、`pnpm -C server build`、`pnpm -C server lint:check`（0 errors；新檔無 warning）。
+- `pnpm -C server test:e2e`：542 passed／1 skipped／1 failed；失敗為 `api-coverage` 的 `GET /api/esign/documents/{id}/history`（路由已在本張前由 `9344734` 移除，但 003 openapi 仍列出），與本張無關。`webview-session`、`oauth-login`、`password-login` 3 suites／36 tests 通過。
+- 未執行：client lint／build 與 root build／lint（本張未改 client）；兩實例、iframe 瀏覽器、代理遮罩（尚無對應功能）。
+
+### 027-03 窄 REPL 初始化與查詢（T015、T016）
+
+範圍只有 1、3 節中的 REPL 初始化與唯讀查詢；隱藏登入、週輪換與帳密啟用尚未存在。
+
+- 自動測試：`src/features/auth/helpers/rotation-period.spec.ts` 8 tests，涵蓋週一 03:59:59.999／04:00、週日深夜、UTC 與台北跨日、跨年；在 `TZ=UTC`／`America/New_York`／`Pacific/Chatham` 下結果相同。`test/super-user-console.e2e-spec.ts` 10 tests（`feastogether_intranet_test_a`），驗證：
+  - 窄模組圖不含 App／Worker／Framework／Infrastructure／Auth／BullRoot／Redis／Portal／Mail／FileStorage，啟動不寫入；`auth` 只有三個 helper。
+  - 未初始化時查詢回 503 且不寫入。
+  - 初始化欄位與兩筆 operator 事件；重複初始化不覆寫；兩交易並發只成功一次；事件失敗整筆 rollback。
+  - 查詢結果欄位完全等於契約且前後資料不變；fingerprint 不符時 `localConfigMatches=false`；`close()` 後連線池已銷毀。
+- 初始化交易沿用預設 REPEATABLE READ。若在 INSERT 前先做 `FOR UPDATE`，空表 gap lock 會讓並發初始化 2/2 次 deadlock；實作直接以 INSERT 競爭 PK=1，因此不需要 READ COMMITTED。
+- 開發庫 `feastogether_intranet_027a`：以 pty 操作 `pnpm -C server repl:dev`，依序 `currentEntry()`（503）→ `initialize()`（`initialized:true`）→ `credentialStatus()`（generation 1、`localConfigMatches:true`）→ `currentEntry()`（`/ops-access/<遮罩>`、entryGeneration 1、nextScheduledAt 台北下週一 04:00）→ `initialize()`（`initialized:false`）→ `.exit`（exit 0）。
+- 建置後 `pnpm -C server repl`：
+  - `initialize()` 回 false；`currentEntry()`／`credentialStatus()` 與開發模式一致。
+  - `get`／`$`／`select`／`debug`／`methods` 都不存在。
+  - session 中 DB 連線 1 條，`.exit` 後 0 條。
+  - 設定 `NODE_REPL_HISTORY` 也不會產生 history 檔。
+  - hash 格式錯誤時啟動 exit 1，訊息不含值。
+- 回歸：`pnpm -C server test` 123 suites／1246 tests；`test:e2e:security` 15 suites／91 tests；`test:schema` 6 suites／39 tests（無臨時庫殘留）；`test:e2e` 552 passed／1 skipped／1 failed（既有 `api-coverage` history 路由，同 027-02）；`lint:check` 0 errors；`build` 成功。
+- 展示後已刪除開發庫的 singleton 與兩筆 operator 事件。
+- 未執行：實際 spawn REPL 的自動化測試（留給 T043）；client 與 root build／lint（本張未改 client）。
+
+### 027-04 隱藏登入、身分顯示與登出（T003、T017～T026、T028、T050、T051）
+
+範圍是 1 節的登入／錯密碼／登出、5 節的頁面與 log 邊界；週輪換（3 節）、帳密輪換（4 節）、OAuth／WebView 身分切換尚未實作。
+
+**T003 現行入口盤點（實作前）**
+
+- `server/src/features/auth/auth.module.ts`：`AuthGuard` 以 `APP_GUARD` 全域套用，`@Public()` 才略過；登入路由用 `OriginGuard`＋`AuthThrottlerGuard`（Redis storage，`short` 10 次／60 秒、`long` 50 次／300 秒，tracker 為 `req.ip`、`trustProxy: 1`）。`GET /auth/session` 經 `AuthService.getMe`，需要數字 userId，Super user 會話會被當成未登入。
+- `client/src/proxy.ts`：只涵蓋 `(main)` 的 `/`、`/forms`、`/my-signature`、`/export-history`；帶 cookie 呼叫 `GET /api/auth/session`，401 改寫成 404（HTML 與 RSC 都不含頁面）。
+- `client/src/features/embed/EmbedBridge.tsx`：比對 `session.data.user.empId` 與 launch 的員編，不同就 `DELETE /api/auth/session` 再要求入口網重新 launch。Super user 會話的 `user` 是 null，結果是 mismatch，所以不需修改。
+- `client/src/components/providers/ReactQueryProvider.tsx`：query／mutation 的任何 401 都先開整頁 SessionExpiredDialog，判斷在 `suppressGlobalErrorToast` 之前；這個 meta 只能關 Snackbar，關不掉 dialog。帳密錯誤因此需要專用錯誤碼 `AUTH_SUPER_USER_CREDENTIALS_INVALID` 並在 provider 排除。
+
+**自動測試**
+
+- 新增：
+  - `test/security-super-user-access.e2e-spec.ts`：26 tests，隔離庫 `feastogether_intranet_test_a`、`REDIS_DB=6`。
+  - `super-user-login.service.spec.ts`：11 tests。
+  - `super-user-throttler.guard.spec.ts`（1 test，缺 client IP 回 503）、`session-view.dto.spec.ts`（2 tests）。
+  - 改寫 `auth.guard.spec.ts`（16 tests）：403 `AUTH_ACTOR_NOT_ALLOWED`、`@AllowSuperUser()`。
+  - `request.context.spec.ts`／`http-access-log.interceptor.spec.ts` 新增維護路徑案例：成功、404、401、handler 例外。
+- e2e 涵蓋：
+  - GET：目前入口回 200，no-store、無 Set-Cookie、DB 不變；無效入口 404；未初始化或 soft-delete 回 503；DB 失敗回 503。
+  - POST 成功：201 回 super 身分；cookie 為 HttpOnly、`Path=/`、`Max-Age=28800`、`SameSite=Lax`、無 Domain；body 不含 token、帳號或入口。
+  - 錯帳號、錯密碼、帳號前後空白都回同一個 401，原員工會話保持有效。
+  - 員工 cookie 被原子替換，舊 cookie 再登入回 409。
+  - 舊入口回 404，且不先跑 DTO 驗證。
+  - KDF 期間入口輪換先 commit：回 404，不簽發會話。
+  - DTO 400 時不跑 KDF；128 字元 emoji 帳號與 1024 bytes 密碼在邊界內；孤立 surrogate 回 401 而不是 500。
+  - Origin 缺少、不受信任或跨站回 403；body 9 KiB 回 413。
+  - 同 IP 第 11 次回 429 與 Retry-After，不隨 entryKey 分桶；限流儲存不可用回 503。
+  - Super user 呼叫員工業務端點回 403；登出後會話失效。
+- Mutation 檢查：拿掉 `SessionService` 交易內的入口重驗，`session.service.spec.ts` 1 test 與 e2e「KDF 期間入口輪換」1 test 失敗；已還原。
+- 回歸：
+  - server：`pnpm -C server test` 126 suites／1270 tests；`test:e2e:security` 16 suites／117 tests。
+  - `test:e2e`：552 passed、1 skipped、1 failed（50 suites passed）。唯一失敗是既有的 `api-coverage` history 路由，同 027-02。
+  - `lint:check`：0 errors、276 warnings，逐檔與本張前相同，新檔 0 warning；`build` 成功。
+  - client：`pnpm -C client lint`、`pnpm -C client build` 成功，`/ops-access/[entryKey]` 為動態路由（ƒ）。
+- 未執行：`test:schema`（本張沒有 migration 或 entity 變更）、root `pnpm build`／`pnpm lint`。
+
+**真實旅程（開發庫 `feastogether_intranet_027a`、`REDIS_DB=9`，server `PORT=3011`，client `-p 3010`）**
+
+- 環境：`server/.env` 填合成 `SUPER_USER_ACCOUNT`／`SUPER_USER_PASSWORD_HASH`（隨機密碼只放在 repo 外的暫存檔，驗證後刪除）。`AUTH_TRUSTED_ORIGINS` 加上 `http://localhost:3010`。
+- REPL：以 pty 操作 `pnpm -C server repl:dev`，執行 `initialize()` → `credentialStatus()`（`localConfigMatches:true`）→ `currentEntry()` 取得入口；入口原值不寫入任何文件。
+- curl（開發模式與 `next build` 後的 `next start`）：
+  - 有效入口 HTML 回 200，帶 `Referrer-Policy: no-referrer`、`X-Robots-Tag: noindex, nofollow`、`Content-Security-Policy: frame-ancestors 'none'`；正式 build 另有 `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`。
+  - 無效入口的 HTML 與帶 `RSC: 1` 的請求都回 404，回應不含密碼欄位。
+  - 有效入口的 RSC 請求先 307 到 `?_rsc`，再回 200。
+  - 正式 build 的 `/embed` 與 `/external-signatures/<id>` 不帶上述三個 header，入口網 iframe 與 WebView 規則不受影響。
+  - 開發模式下把 singleton soft-delete：頁面回 500，Next log 只有「維護入口檢查失敗：HTTP 503」；之後已還原。
+- 瀏覽器：Playwright 1.63（安裝在 repo 外暫存目錄）驅動 Chromium，分別對開發模式與正式 build 各跑一次，結果相同：
+  - 無效入口顯示 404 頁，沒有密碼欄位。
+  - 有效入口顯示「維護登入」表單。
+  - 錯密碼：表單內顯示「帳號或密碼錯誤」，沒有出現「登入已過期」dialog，沒有 cookie，網址不變。
+  - 正確帳密：`location.replace('/')` 經 proxy 轉到 `/forms`，cookie 為 `FT_ESIGN_SESSION` HttpOnly、SameSite=Lax、Path=/、host-only。登入 POST 帶 `Origin` 與 `Sec-Fetch-Site: same-origin`，沒有 Referer。
+  - 登入後：版面上方持續顯示「目前身分：Super user」與「登出」；文件列表回 403，顯示「目前身分無法使用此功能」（028 前預期行為）。
+  - 上一頁回到前一個無效入口，有效入口沒有留在瀏覽紀錄。
+  - 登出：回根路徑顯示 404 頁，banner 消失，`GET /api/auth/session` 回 401，cookie 已清除。
+  - 在頁面內以 `fetch` 帶 `RSC: 1` 請求無效入口，回 404，回應不含表單。
+- 開發庫事件：`login.rejected`（anonymous／credentials_invalid）、`login.succeeded`（super_user）、`session.revoked`（super_user／logout）都有寫入；會話全為 revoked。展示後已刪除開發庫的 singleton、事件與 Super user 會話。
+- log 邊界：
+  - Nest 的 `server.log`、Next 開發與正式 log：入口、密碼、cookie 值各 0 筆命中。
+  - Nest access log 只有 `/api/auth/super-user-entries/:entryKey` 與 `…/:entryKey/sessions`。
+  - `next dev` 的 `.next/dev/trace` 會記錄含入口的 request URL。這是本機開發的 trace 檔，不在正式環境產生，驗證後已刪除。
+- 倉庫外代理：Nginx／ALB 的 access／error log 尚未遮罩，已在 `docs/deployment/uat-cicd.md` 列為部署阻擋；本節不代表全鏈 log 已驗收。
+
+### 027-05 OAuth／WebView 共用身分與移除員工帳密（T029～T036）
+
+範圍是 2 節的會話替換，以及移除 `POST auth/login` 與開發替代入口；週輪換（3 節）、帳密輪換（4 節）不在本張。
+
+**行為**
+
+- OAuth callback 與 WebView activation 都把瀏覽器目前的 `FT_ESIGN_SESSION` 交給 `SessionService.replace`，與 Super user 登入共用同一個交易：鎖舊會話 → 建新列（OAuth，`source=oauth`）或就地啟用 launch 時的 pending 列（WebView，`source=webview`）→ 撤舊會話並記 `replacement_session_id` → 寫 `session.replaced` 與 `login.succeeded`。commit 後才設 cookie。
+- WebView launch 與 GET bridge 不讀也不改瀏覽器會話；只有 `POST /api/auth/session` 會替換，成功仍 303 回 `/`。舊會話已被其他登入取代時，啟動頁顯示「登入身分已更新，請重新整理」（409），啟動碼不被消耗。
+- `DELETE /api/auth/session` 先撤銷目前會話，成功後才以寫入時的屬性清 `FT_ESIGN_SESSION` 與 `FT_ESIGN_OAUTH_TX`；撤銷失敗回 503 且不清 cookie，可重試。缺 cookie 或已撤銷仍回 200。
+- `POST /api/auth/login`、`/api/auth/dev-login`、`GET /api/auth/login-options` 回 404。
+- `EmbedBridge` 只有員工會話且員編相同才算同一人；Super user 一律 mismatch，走既有的撤銷與 launch-required。
+
+**自動測試**
+
+- 新增 `test/security-session-replacement.e2e-spec.ts`（14 tests，隔離庫 `feastogether_intranet_test_a`、`REDIS_DB=6`，上游 OIDC 以替身取代、員工資料來自合成 Portal）：
+  - OAuth 與 WebView 同員編得到同一個 actor，來源分別為 `oauth`／`webview`。
+  - webview→super→oauth→super→webview 連續切換：每個舊 cookie 重放 401、`replacement_session_id` 依序串起、事件依序為 `login.succeeded`／`session.replaced`；另一瀏覽器不受影響；已被取代的 cookie 再走 OAuth 或 WebView 回 409 且不設 cookie。
+  - 帶 Super user cookie 的 launch 與 GET bridge 不改瀏覽器會話，activation 才替換。
+  - 「WebView＋Super user」「OAuth＋WebView」各以同一舊 cookie 並發：一筆成功、另一筆 409 且沒有 Set-Cookie。
+  - 並發落敗或交易 rollback 時啟動碼仍為 pending、原會話有效，重試可成功。
+  - OAuth 上游交換失敗（401）、Portal 失敗（502）、替換交易失敗（503）、WebView 無效 code（401）、Super user 錯密碼（KDF 後 401）：都不設 cookie、不撤原會話。
+  - 過期或已登出的舊 cookie 不擋新登入，也不被標成已替換。
+  - 登出只撤目前會話、不恢復先前身分、不影響另一瀏覽器；兩把 cookie 以 `Max-Age=0; Path=/; HttpOnly; SameSite=Lax` 清除；缺 cookie 冪等。撤銷失敗回 503 時不清 cookie，會話仍可用。
+- 改寫或新增：
+  - `password-login.e2e-spec.ts`：`/api/auth/login`、`/auth/login`、`/api/auth/dev-login` 回 404 不設 cookie；Swagger 的 `/api/auth` 路由恰為 OAuth（2）、WebView（3）、`/session`（GET／DELETE）、`embed-origins` 與 Super user 入口（2）。
+  - `webview-session.e2e-spec.ts`：承接原帳密檔的 Portal 姓名 U+FFFD 與 Portal 不回應（15 秒內 502、不用本機舊資料、錯誤不含 Portal 連線資訊）。
+  - `oauth-login.e2e-spec.ts`：新會話 `source=oauth`、寫 `login.succeeded`、交易 cookie 以寫入時屬性清除。
+  - 單元：`session.service.spec.ts` 加 WebView activation（鎖序 `session → pending`、無效／過期／已用 code 回 401 且原會話不動）；`auth.controller.spec.ts` 驗 activation 失敗文案（409／401／503）與 DELETE 先撤銷後清兩把 cookie、撤銷失敗不清；`auth.service.spec.ts` 把資格與部門案例改用 `createWebviewLaunch`。
+- 回歸：
+  - server：`pnpm -C server test` 123 suites／1246 tests；`test:e2e:security` 17 suites／131 tests。
+  - `test:e2e`：542 passed、1 skipped、1 failed（50 suites passed）。唯一失敗是既有的 `api-coverage` history 路由，同 027-02。第一次跑時 `core-esign-flow*` 三個 suite 在 afterAll 刪會話時撞到 `login.succeeded` 事件的 FK（WebView activation 現在會寫事件），已改為先刪事件。
+  - `lint:check`：0 errors、271 warnings（027-04 為 276），新檔與本張改動的行 0 warning；`build` 成功。
+  - client：`pnpm -C client lint`、`pnpm -C client build` 成功。
+- 未執行：`test:schema`（本張沒有 migration 或 entity 變更）、root `pnpm build`。
+
+**瀏覽器回歸（開發庫 `feastogether_intranet_027a`、`REDIS_DB=9`，server `PORT=3011`，client `next dev -p 3010`）**
+
+- 環境：只用合成資料，以環境變數覆寫 `server/.env`，未修改 `.env`：
+  - `PORTAL_MYSQL_DB` 指向本機合成庫 `feastogether_intranet_027a_portal`（兩名在職合成員工）。
+  - WebView 使用臨時產生的 RSA 金鑰（`WEBVIEW_JWT_*`、`WEBVIEW_LAUNCH_ORIGIN=http://localhost:3010`）。
+  - `SUPER_USER_*` 使用隨機合成帳密；以 REPL 的 `initialize()`／`currentEntry()`／`credentialStatus()` 初始化入口（`localConfigMatches:true`）。
+  - `.env` 沒有 `OAUTH_*`，OAuth 回 503，沒有連任何真實 OAuth 或 Portal。
+- 合成入口網：本機 `http://localhost:8080` 的 HTTP server 以 iframe 嵌入電子簽並收發 postMessage。Playwright 1.63 驅動 Chromium for Testing（repo 外暫存目錄，`journey-05.js`），18 項全數通過：
+  - 舊帳密、dev 與 login-options 路徑皆 404，沒有 cookie。
+  - bridge 的 `frame-ancestors` 含合成入口網；iframe 內員工會話 cookie 為 HttpOnly、SameSite=Lax、Path=/、約 480 分鐘。
+  - 同員工 `esign:navigate` → `esign:navigated` 並換頁；不同員工 → 撤銷並 `esign:launch-required`。
+  - employee→super：在同一瀏覽器另一分頁以 Super user 登入後，舊員工 cookie 重放 401。
+  - iframe 再送員工甲的 navigate：Super user 會話視為 mismatch，撤銷後 launch-required。
+  - super→employee：WebView activation 取代 Super user，舊 Super user cookie 重放 401；分頁重整後不再顯示「目前身分：Super user」。
+  - 同一瀏覽器帶同一 cookie 同時送兩個 activation：一筆 303、一筆 409；cookie 為勝者，舊 cookie 失效。
+  - 登出 200、重複登出 200、之後 `GET /api/auth/session` 401；cookie 清除，先前各身分都不恢復。
+- 收尾：已停止 server／client（以 PID）、刪除合成 Portal 庫、開發庫的 singleton、會話、事件與兩名合成員工、暫存的密碼／私鑰／入口檔，以及 `next dev` 寫入含入口 URL 的 `client/.next/dev/trace`。`next dev` 啟動時改寫的 `client/AGENTS.md` 已還原。server／client log 中入口值 0 筆命中。
+- 本機 Chrome 的 Local Network Access 會擋下沒有網路位址的頁面（Playwright `route.fulfill`）嵌入 localhost，所以合成入口網改用真的 loopback HTTP server；與正式環境無關。
+
+**限制（不新增裝置 cookie）**
+
+- commit 後回應在網路上遺失：新會話已生效、舊會話已撤銷，但瀏覽器仍帶舊 cookie，下一個請求回 401，需重新登入；不回復舊 token。
+- 沒有舊 cookie 時（首次登入或已登出），同一瀏覽器兩個分頁同時登入無法辨識為同一瀏覽器：兩筆都成功，瀏覽器保留最後寫入的 cookie，另一筆會話留到八小時到期。
+- OAuth 只以 e2e 驗證（openid-client 替身、合成 Portal）；瀏覽器沒有走 OAuth，因為本機沒有合成 OIDC 提供者，且不得連真實 OAuth。
+
+### 027-06 每週輪換與停機補做（T037～T044）
+
+範圍是 3 節的入口輪換、並發與 REPL 副作用；帳密輪換（4 節）與 OAuth／WebView 身分切換不在本張。
+
+**排程註冊方式（對齊 [operations](contracts/operations.md)）**
+
+- 只有 `WorkerModule` 載入 `SuperUserAccessWorkerModule`：queue `auth-access-maintenance`、scheduler `super-user-entry-weekly`、job `rotate-entry-if-due`、`0 4 * * 1`／`Asia/Taipei`、空 payload、`attempts: 3`、exponential backoff 5000ms、`removeOnComplete: 100`、`removeOnFail: 100`。
+- worker 啟動時先以 DB 補做（直接執行與 job 相同的 processor），再看 Redis：已到期未執行的 job 保留不覆寫，否則 upsert。補做失敗只記 `auth.entry_rotation_failed`，worker 照常啟動並註冊排程（使用者決定，不擋電子簽與 Portal processor）。
+- 輪換鎖 singleton，DB 已處理週期早於最近到期週期才換入口；結果為 `rotated`／`not_due`／`uninitialized`，也是 job 回傳值。失敗原因只帶錯誤代碼。
+
+**自動測試**
+
+- 新增：
+  - `super-user-access.service.spec.ts`：8 tests。以 fake timers 驗證週一 03:59:59.999 no-op、04:00 輪換、同週再執行 no-op、跨年、停機多週只補一次、初始化後同週不輪換、未初始化不建列、寫入失敗 rollback。
+  - `super-user-access.scheduler.spec.ts` 4 tests、`super-user-access.processor.spec.ts` 4 tests：排程參數、補做先於排程、過期 job 不覆寫、補做失敗仍啟動並註冊、未初始化結果與警告、失敗原因與 log 不含原始訊息。
+  - `test/super-user-entry-rotation.e2e-spec.ts`：10 tests，正式 `WorkerModule`（Portal 匯入換成替身）＋正式 `AppModule`，測試庫 `feastogether_intranet_test_b`、`REDIS_DB=10`。
+- e2e 涵蓋：
+  - HTTP app 沒有維護 queue、scheduler、processor，也不在 Redis 建排程。
+  - 停機三週後兩個 worker 同時啟動：只換一次（entry generation 2、一筆 `system` 事件），帳密版本不變，Redis 只有一份排程，下次為下週一台北 04:00。
+  - 同週重啟兩次不換；清掉 Redis 排程並落後一週後重啟：補做一次並重建排程。
+  - 錯過的 job 仍在 Redis 時啟動：補做與該 job 合計只換一次，下次排程回到下週一。
+  - job 第一次寫入失敗：失敗原因為「維護入口輪換失敗（ER_LOCK_WAIT_TIMEOUT）」、stacktrace 不含原始訊息、舊入口仍 200；5 秒後重試成功，只換一次，舊入口 404。
+  - 未初始化：worker 照常啟動，job 回 `uninitialized`，不建列。
+  - 輪換後舊入口 GET／POST 404（含輪換前已開的表單），新入口 200，輪換前登入的 Super user 會話仍 200。
+  - 兩個執行者同時輪換：一個 `rotated`、一個 `not_due`。
+  - KDF 期間輪換先 commit：舊入口登入 404，不簽發會話。
+  - 登入交易先鎖 singleton：輪換等到登入 commit 後才完成，該會話仍有效。
+- `test/super-user-console.e2e-spec.ts`：14 tests（原 10 個）。新增 REPL 未初始化時輪換回 `uninitialized`；未到期 no-op、到期以 `operator` 輪換一次且帳密版本不變；`securityEvents` 預設 20 筆、`limit` 0／101 拒絕、`beforeId` 倒序、只回白名單欄位且不寫入；以 `pnpm -s repl:dev` 同時啟動兩個真正 REPL：初始化只成功一次、重複不覆寫、查詢不寫入、`currentEntry` 之前輸出不含入口、`.exit` 後 exit 0。模組圖另確認不含 `SuperUserAccessWorkerModule`。
+- Mutation 檢查：把輪換的 `findForUpdate` 改成 `find`，e2e 有 3 tests 失敗（兩 worker 同時啟動、錯過的 job、兩執行者同時輪換）；已還原。
+- 回歸：`pnpm -C server test` 129 suites／1286 tests；`test:e2e` 566 passed、1 skipped、1 failed（51 suites passed；唯一失敗是既有 `api-coverage` history 路由，同 027-02）；`test:e2e:security` 16 suites／117 tests；`test:schema` 6 suites／39 tests（無臨時庫殘留）；`lint:check` 0 errors、276 warnings（與 027-04 相同，新檔與改動檔 0 warning）；`build` 成功。
+
+**實際 worker／REPL／HTTP（開發庫 `feastogether_intranet_027b`、Redis `127.0.0.1:16321` DB 2，HTTP `PORT=3021`）**
+
+- 空庫 `migration:run` 21 支；`pnpm -C server repl:dev` 逐行執行：`rotateEntryIfDue()` 回 `uninitialized` → `initialize()` true → `credentialStatus()` generation 1、`localConfigMatches:true` → `rotateEntryIfDue()` `not_due` → `initialize()` false。
+- 把已處理週期往前推兩週後 `pnpm -C server worker:dev`：啟動補做一次（entry generation 2、`system` 事件），period 回到 2026-11-02 04:00（台北）；Redis 排程 pattern `0 4 * * 1`、tz `Asia/Taipei`、opts 同上，下次 2026-11-09 04:00（台北）。Portal 每日匯入排程下次為 2026-11-06 04:00，未到期、未查 Portal。
+- 建置後 `node dist/worker`（`NODE_ENV=development`）：同週重啟不換；刪除該 queue 的 Redis key 並落後一週後重啟，補做一次並重建排程。
+- 以 BullMQ `promote()` 提前執行排程 job：`attemptsMade` 1、回傳 `rotated`、`system` 事件。提前執行會讓 BullMQ 從原排定時間算下一次（跳過一週），只用於驗證；需要立即補做請用 REPL `rotateEntryIfDue()`。
+- HTTP（`node dist/main`）啟動後 Redis 沒有 `bull:auth-access-maintenance:*` key。舊入口 GET 200 → REPL `rotateEntryIfDue()`（`rotated`，再執行為 `not_due`）→ 舊入口 GET／POST 404、新入口 GET 200。HTTP 與 worker log 中含入口值的路徑 0 筆，access log 只有 `:entryKey` 模板。
+- 建置後 `pnpm -C server repl`（設定 `NODE_REPL_HISTORY`）：`initialize()` false、`currentEntry()` path 格式正確、`rotateEntryIfDue()` `not_due`、`securityEvents({limit:3})` 倒序、`beforeId` 翻頁、`limit:101` 回 RangeError、`get`／`$` 不存在；`.exit` 後 exit 0、該庫連線 0 條、沒有 history 檔。
+- 驗證後已刪除開發庫的 singleton 與事件（會話 0 筆），並清空 Redis DB 2（驗證前為空）。
+
+**未執行／限制**
+
+- 停機情境以「DB 已處理週期落後」「刪除 Redis key」「注入 DB 錯誤」模擬；沒有在 UAT 實際停機跨過週一 04:00、Redis 故障切換或多台主機的 worker 上執行。
+- 每個 worker 以自己的時鐘判斷到期，主機需 NTP 對時。
+- 週一 04:00 DB 不可用超過重試窗（約 5＋10 秒）時，job 失敗後不會再自動嘗試，要等下次 cron 或 worker 重啟補做；失敗可從 failed job 與 `auth.entry_rotation_failed` log 看到，維護者可用 REPL `rotateEntryIfDue()` 補做。這是契約既定的重試次數與「不增加掃描排程」。
+- 非 TTY 一次輸入多行時，REPL 不等前一行的 `await` 完成就執行下一行，`.exit` 可能在查詢完成前關閉連線池（027-03 既有行為）；逐行執行沒有此問題。
+
+### 027-07 帳密啟用與跨實例撤銷（T045～T049）
+
+範圍是 4 節。網址輪換（3 節）與 OAuth／WebView 身分切換不在本張。
+
+**生效點與部署條件**
+
+- 生效點是 `await auth.activateCredentials({ expectedGeneration })` 的交易 commit。同一交易內：
+  - DB 啟用指紋換成 REPL 本機設定，`credential_generation` 加 1，`credential_activated_at` 更新。
+  - 全部 active 維護會話改為 revoked。
+  - 寫入一筆 `credentials.activated` 事件。
+  - 入口與 `entry_generation` 不變。
+- commit 前，已換新設定的實例：維護登入與既有維護會話都回 503（`AUTH_SUPER_USER_UNAVAILABLE`），員工照常。
+- commit 後：
+  - 舊維護會話在所有實例都回 401，因為已撤銷。
+  - 仍是舊設定的實例：維護登入與新維護會話都回 503，直到改成新設定並重啟。
+  - 已換新設定的實例可以登入維護身分。
+  - 員工會話在新、舊設定的實例都有效。
+- 混跑期間，負載平衡後面只要還有舊設定實例，維護操作就可能間歇 503，所以不能宣稱維護登入零中斷。
+- 完成條件：所有 HTTP 與 worker 都換成新設定並重啟，每個執行環境的 REPL `credentialStatus()` 都回 `localConfigMatches: true`，並在實際入口完成一次維護登入驗證。只更新部分實例不算完成。
+- 任何實例啟動都不會寫 DB 版本。舊設定實例重啟也改不回去。要回復舊設定，必須在舊設定的 REPL 明確 activate，得到更高的 generation；先前的會話不會復活。
+
+**自動測試**
+
+- `src/features/auth/services/super-user-credentials.service.spec.ts`（9 tests，記憶體替身）：
+  - 新設定使 generation 加 1，同時更新指紋、生效時間、撤銷與事件。
+  - 再啟用先前的設定時 generation 仍會增加（1→2→3）。
+  - 相同指紋為 no-op。
+  - expectedGeneration 為 0、2 或字串 `'1'` 時，以及相同設定但版本不符時，一律回 409 `AUTH_SUPER_USER_GENERATION_CONFLICT` 且不寫入。
+  - 事件寫入失敗時整筆 rollback。
+  - 未初始化時回 503。
+- `test/super-user-console.e2e-spec.ts` 新增 4 tests（真實 MySQL，`feastogether_intranet_test_c`）：
+  - 只撤 active 維護會話；入口欄位、員工會話與已撤銷的列都不變；寫入一筆 operator 事件。
+  - 兩個交易在鎖 singleton 前會合，再並發用同一個 expectedGeneration 啟用：一筆 `{activated:true}`，另一筆回版本衝突。
+  - 事件寫入失敗時，版本、指紋與會話都不變。
+  - 與「Super user → 員工」切換交錯：測試照 `SessionService.replace` 的 SQL 順序，以 READ COMMITTED 先鎖舊會話，等啟用交易進入鎖等待後，再插入員工會話並撤舊。結果不 deadlock，切換寫入的 `revoked_at` 與 replacement 也不會被覆寫。
+  - 連跑 5 次都是 14 passed。
+- `test/security-super-user-credentials.e2e-spec.ts`（6 tests，約 8 秒）：
+  - 用 `node --conditions=development -r ts-node/register src/main.ts` 啟動兩個獨立 HTTP 程序：A 是舊設定（port 3030），B 是新設定（port 3031），共用 `feastogether_intranet_test_c` 與 Redis DB 11。
+  - 每次 REPL 操作都另起一個程序，執行 `test/helpers/run-auth-console.ts`，載入指定設定並呼叫 `createAuthConsole`。
+  - 依序驗證：
+    1. B 啟動不改 DB。B 的登入與 A 簽出的會話在 B 都回 503；新設定 REPL 的 `credentialStatus()` 回 `localConfigMatches:false`。員工在兩側都是 200。
+    2. A 以相同設定重啟，會話仍有效，DB 不變。
+    3. expectedGeneration=2 回 409，不撤銷。
+    4. 新設定 activate(1)：舊會話在兩側都回 401，A 登入回 503。A 重啟後 generation 仍是 2，登入仍回 503。B 可以登入；B 簽出的會話在 A 回 503。員工在兩側都是 200。
+    5. 再 activate(2) 為 no-op，B 會話仍有效。
+    6. 舊設定 activate(2)：generation 變成 3，先前兩個會話在兩側都回 401；A 可以重新登入，B 登入回 503。員工在兩側都是 200。operator 事件的 generation 依序是 1、2、3。
+  - 結束後兩個程序都已停止、port 都已釋放，測試庫沒有殘留列。
+- 先寫測試：實作前 unit spec 因找不到模組而失敗。只還原 `repl.ts`／module 時，console e2e 5 failed，雙實例 e2e 4 failed（啟用前的 2 步是既有行為，通過）。
+- Mutation 檢查（都已還原）：
+  - 改回單一條件 UPDATE：死鎖競態 2/2 次出現 `Deadlock found`（REPEATABLE READ）。第一版實作是 READ COMMITTED 加單一條件 UPDATE，同樣 deadlock。
+  - 拿掉撤銷：console e2e 2 failed，雙實例 e2e 3 failed。
+  - 事件改用非交易 manager：console e2e 3 failed。
+  - UPDATE 拿掉 `status='active'` 重驗：死鎖競態 1 failed（`revoked_at` 被覆寫）。
+
+**REPL 實際展示（開發庫 `feastogether_intranet_027c`、Redis `127.0.0.1:16321` DB 3，只經 `server/.env`）**
+
+- 準備：
+  - 對空庫跑 `pnpm -C server migration:run`，套用 21 支。
+  - 隨機產生兩組合成密碼 A、B（放在 repo 外的暫存檔），以 `hashSuperUserPassword` 產生 hash。
+  - REPL 以 Python `pty` 操作；入口原值與 hash 在輸出中遮罩。
+- 開發模式 `pnpm -C server repl:dev`，`.env` 為設定 A：
+  - `Object.keys(auth)` 是 4 個 helper。
+  - 未初始化時 `activateCredentials({expectedGeneration:1})` 回 503 `AUTH_SUPER_USER_UNAVAILABLE`。
+  - `initialize()` → `{initialized:true}`；`credentialStatus()` → `{generation:1, localConfigMatches:true}`；`currentEntry()` 回遮罩後的 path。
+  - `.exit` 結束，exit 0。
+- HTTP 實例：以 `node --conditions=development -r ts-node/register src/main.ts` 啟動，`NODE_ENV=test`。
+  - 開機必填但 `.env` 沒有的 OAuth／WebView／邀請金鑰用合成值。
+  - Portal 指向不存在的庫，避免碰到真實 Portal。
+  - 實例 A（設定 A，3030）以 curl 登入：201，GET session 200 super_user。
+- 把 `.env` 換成設定 B 後，以 `pnpm -C server repl:dev` 操作：
+  - `credentialStatus()` → `{generation:1, localConfigMatches:false}`。
+  - `activateCredentials({expectedGeneration:2})` → 409 `AUTH_SUPER_USER_GENERATION_CONFLICT`，訊息「expectedGeneration 不是目前的帳密啟用版本，請以 credentialStatus() 確認後再啟用」。
+  - `activateCredentials({expectedGeneration:1})` → `{activated:true}`；`credentialStatus()` → `{generation:2, localConfigMatches:true}`。
+  - `activateCredentials({expectedGeneration:2})` → `{activated:false}`。
+- 啟用後的 HTTP 結果：
+  - A：舊會話 401 `UNAUTHORIZED`；設定 A 的密碼登入回 503。
+  - 啟動實例 B（設定 B，3031）：舊會話 401；舊密碼 401 `AUTH_SUPER_USER_CREDENTIALS_INVALID`；新密碼 201；新會話在 B 回 200，在 A 回 503。
+- 建置模式 `pnpm -C server repl`，以環境變數覆寫回設定 A：
+  - `[typeof get, typeof $, typeof select]` 全為 `'undefined'`。
+  - `credentialStatus()` → `{generation:2, localConfigMatches:false}`。
+  - `activateCredentials({expectedGeneration:2})` → `{activated:true}`；`credentialStatus()` → `{generation:3, localConfigMatches:true}`。
+  - 之後 B 的會話 401，最早的會話仍是 401（沒有復活）。A 以設定 A 重新登入 201，B 登入 503。
+- 重啟：
+  - A 以設定 A 重啟後，第 3 版會話仍是 200；同一會話在設定 B 的 B 回 503。
+  - 展示中曾讓 A 讀到已改成 B 的 `.env` 重啟，結果該會話回 503，正好就是「只更新部分實例」的狀態。
+  - DB 始終是 generation 3，沒有被任何啟動改寫。
+- DB 事件依序為：
+  1. `entry.initialized`
+  2. `credentials.activated`(1)
+  3. `login.succeeded`(1)
+  4. `credentials.activated`(2)
+  5. `login.rejected`（舊密碼打 B）
+  6. `login.succeeded`(2)
+  7. `credentials.activated`(3)
+  8. `login.succeeded`(3)
+- 收尾：
+  - 兩種 REPL 都設定 `NODE_REPL_HISTORY` 指向暫存路徑，結束後該檔不存在。
+  - 展示後已停止兩個 HTTP 程序，刪除開發庫的 singleton、事件與會話（migration 保留），也刪除暫存密碼、hash 與 cookie。
+  - `server/.env` 留下設定 B 的 hash，對應密碼已丟棄。
+- 最後一個改動是把啟用時間改成取得 singleton 鎖之後才取，以上展示在這個改動之前執行。改動後重新 build，以建置模式 REPL 在同一開發庫重跑一次：
+  - `initialize()` → `credentialStatus()`，結果為 generation 1、相符。
+  - 以另一組合成 hash 覆寫環境變數後，`credentialStatus()` 回不相符；`activateCredentials({expectedGeneration:1})` → `{activated:true}`；`credentialStatus()` → generation 2、相符。
+  - 結束後刪除產生的列。
+
+**回歸**
+
+- `pnpm -C server test`：127 suites／1279 tests 通過。
+- `pnpm -C server test:e2e:security`：17 suites／123 tests 通過。
+- `pnpm -C server test:e2e`：556 passed、1 skipped、1 failed。失敗為既有 `api-coverage` 的 history 路由，同 027-02。
+- `pnpm -C server lint:check`：0 errors、276 warnings，與本張前相同。
+- `pnpm -C server build`：成功。
+
+**未執行**
+
+- `test:schema`：本張沒有 migration 或 entity 變更。
+- client 與 root build／lint：本張沒有改 client。
+- 正式／UAT 的多實例與負載平衡實測。
+
+### 027-08 整合驗收與交付摘要（T052、T054、T055）
+
+**交付狀態：** 功能與文件已完成。Nginx 8080／ALB 完整入口 URL 遮罩（[uat-cicd.md](../../docs/deployment/uat-cicd.md)「Super user 隱藏入口的 log 遮罩」）**未解除，不能宣稱可正式交付**；UAT／正式環境在主機管理員完成遮罩並留下驗證證據前，不得執行 `initialize()` 或提供入口。
+
+**交付摘要**
+
+- 前端（client）：
+  - 隱藏登入頁 `src/app/ops-access/[entryKey]`（`features/super-user-login`），不在 `(main)` 內。帳密 401 就地顯示，不觸發全站「登入已過期」。
+  - `src/proxy.ts` 在 HTML／RSC 渲染前向後端驗證入口，無效時改寫成既有 404 頁。`next.config.ts` 對維護頁加 `no-referrer`、`noindex`、`frame-ancestors 'none'`，dev request log 略過維護路徑。
+  - 共用 layout 的 `CurrentActorBanner` 顯示「目前身分：Super user」與登出。`EmbedBridge` 對 Super user 一律視為 mismatch，走既有撤銷並要求 launch 的流程。
+  - 沒有新設定、沒有 OAuth 前端、管理 UI 或選單變更。
+- 後端（server）：
+  - 共用 MySQL 會話辨識 `employee`／`super_user`。`AuthGuard` 只讓 Super user 進入 `@AllowSuperUser()`（目前只有 `GET /api/auth/session`），其他回 403 `AUTH_ACTOR_NOT_ALLOWED`。
+  - `SessionService.replace` 讓 OAuth、WebView、Super user 三個入口以目前 cookie 原子替換會話。員工帳密登入、開發替代登入、`DEVMOD`、`FeastogetherModule` 都已移除。
+  - 隱藏入口 `GET`／`POST /api/auth/super-user-entries/:entryKey[/sessions]`：Origin → IP 限流 → 入口 → DTO → scrypt KDF → 鎖 singleton 重驗後替換會話。
+  - `auth_security_events` 只記白名單安全事件。access log 只記路由模板。
+  - REPL `src/console/repl.ts` 提供 6 個 helper；離線 hash 工具 `src/console/hash-super-user-password.ts`。
+  - worker 每週一台北 04:00 輪換入口，啟動時補做；補做失敗只記 log。
+- migration／config：
+  - `1793836802000-SuperUserAccess`：新增 `super_user_access`、`auth_security_events`；`auth_sessions` 加 `actor_kind`、`credential_generation`、`replacement_session_id` 與對應 CHECK／FK／index。`schema.sql` 已同步（T053）。沒有角色或權限表。
+  - 新增 server-only 設定 `SUPER_USER_ACCOUNT`、`SUPER_USER_PASSWORD_HASH`，HTTP、worker、REPL 都必填。`DEVMOD` 與 `FEASTOGETHER_*` 已沒有程式讀取，UAT `server.env` 的殘留可以刪除。
+  - 文件：`server/.env.example`、root `README.md`、`client/README.md`、`docs/deployment/uat-cicd.md`、`server/AGENTS.md`，以及三份契約。repo 沒有 `server/README.md`，server 說明寫在 root README（T052 偏差）。
+
+**契約校正（以實作為準）**
+
+- openapi：刪除 GET 入口的 429（GET 由 Next server 代理，所有請求同一來源 IP，不限流）。錯誤碼範例改成實際值：404 `NOT_FOUND`「找不到請求的資源」、429 `REFUSE_SERVICE`「系統拒絕服務，請聯絡IT人員」、413 `INVALID_REQUEST`「請求內容超過大小限制」、400 `INVALID_REQUEST`（欄位驗證訊息）、GET session 401 `UNAUTHORIZED`、DELETE 503 `AUTH_DB_UNAVAILABLE`。503 註明 `AUTH_SUPER_USER_UNAVAILABLE` 與 `AUTH_DB_UNAVAILABLE` 兩種。
+- `Cache-Control: no-store` 只出現在成功回應與 handler 內的錯誤（400、帳密 401、409、DELETE 503）。guard 與框架層提前拒絕的 403／404／413／429／503 與 GET session 401 不帶，openapi 已移除這些回應的 header 宣告。
+- operations：補 `initialize` 回 `{initialized}`、`activateCredentials` 回 `{activated}` 與 409 `AUTH_SUPER_USER_GENERATION_CONFLICT`、只寫一筆 `credentials.activated`、未初始化查詢回 503、容器內 `node dist/console/*.js`、hash 指令加 `-s`、NTP 與 `promote()` 警告、UAT 部署後才 `initialize()`、換帳密完成條件、回退不得重開員工帳密登入。
+- api-behavior：同步上述錯誤碼並補 `AUTH_DB_UNAVAILABLE` 列。tasks.md：更新 T032（`auth.launch_code_rejected` 已恢復）、T033（`FeastogetherModule` 已移除）、T040（補做失敗不擋啟動）。
+- 範圍核對：沒有角色表、管理 UI、OAuth 前端、029 選單，也沒有提前放行 028 業務 API。
+
+**自動驗證**（`server/.env.test`：`feastogether_intranet_test_a`、`REDIS_DB=6`；08 只改文件與 `.env.example`）
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors、271 warnings（14 秒）；08 沒有改程式，沒有新增 warning |
+| `pnpm -C server test --runInBand` | 123 suites／1265 tests 通過 |
+| `pnpm -C server build` | 成功 |
+| `pnpm -C server test:e2e` | 559 passed、1 skipped、1 failed（51 suites passed、1 failed、1 skipped，188 秒）；唯一失敗是既有 `api-coverage` 的 `GET /api/esign/documents/1/history`，同 027-02，未修 |
+| `pnpm -C server test:e2e:security` | 19 suites／157 tests 通過（19 秒） |
+| `pnpm -C server test:schema` | 6 suites／39 tests 通過（28 秒） |
+| `pnpm -C client lint` | 0 problems |
+| `pnpm -C client build` | 成功 |
+| `pnpm build`、`pnpm lint` | build 成功；lint 為 server `lint:check`（0 errors、271 warnings）＋ client eslint 0 problems。root lint 是 dry-run，前後 `git status` 相同，沒有修檔 |
+
+client 沒有 test script，未宣稱跑過 client 自動測試。
+
+**手動整合驗收**（開發庫 `feastogether_intranet_027a`、Redis DB 9；server `node dist/main.js` 在 3011，client 在 3010。Super user 帳密、WebView 金鑰與邀請金鑰都是 repo 外暫存的合成值，Portal 指向合成庫 `feastogether_intranet_08_portal`，OAuth 留空，SMTP 指向 127.0.0.1:1025；都只用環境變數覆寫，未改 `.env`）
+
+- REPL 副作用（以 Python `pty` 一次送一行，每行等提示字元）：
+  - 未初始化、`pnpm -C server repl:dev`：helper 為 6 個。`currentEntry()`、`credentialStatus()` 回 503 `AUTH_SUPER_USER_UNAVAILABLE`，`securityEvents()` 回 `[]`，`rotateEntryIfDue()` 回 `{status:'uninitialized'}`，`get`／`$`／`select`／`methods` 都是 `undefined`。前後 `CHECKSUM TABLE`（`super_user_access`、`auth_security_events`、`auth_sessions`、`users`）都是 0，Redis DB 9 key 數維持 5。
+  - REPL 程序沒有 LISTEN socket，只連 MySQL 3306，沒有連 Redis 6379。`NODE_REPL_HISTORY` 指向的暫存檔結束後不存在。
+  - `initialize()` → `{initialized:true}`，事件為 `entry.initialized`、`credentials.activated`。之後 `credentialStatus()`（generation 1、相符）、`currentEntry()`、`securityEvents({limit:5})`、`rotateEntryIfDue()`（`not_due`）、再次 `initialize()`（`{initialized:false}`）前後 checksum 與 `updated_at` 不變。
+  - 建置後 `pnpm -C server repl`：`credentialStatus()`、`currentEntry()`、`securityEvents()` 前後 checksum 不變。
+- 容器（本機建置 server image，驗收後已刪除）：image 內沒有 pnpm，使用者 `node`、工作目錄 `/workspace/server`。以 image 對暫時的 `mysql:8.4` 容器跑 `node node_modules/typeorm/cli.js migration:run -d dist/infrastructure/database/mysql/data-source.js`，套用 21 支。`docker run --rm -it <image> node dist/console/hash-super-user-password.js` 不回顯密碼，stdout 只有一行 `scrypt:32768:8:1:…`。以這個 hash 執行 `docker run --rm -it … node dist/console/repl.js`：未初始化 503 → `initialize()` → generation 1、相符 → `rotateEntryIfDue()` `not_due`，查詢前後 checksum 不變。`docker compose -f docker-compose.uat.yml run／exec` 需要 UAT 主機路徑，未在本機執行。
+- API 契約（直接打 3011，每組用不同 `X-Forwarded-For`）：
+  - GET 有效入口 200 no-store `{available:true}`、無 Set-Cookie；43 字元無效入口與格式錯誤入口 404 `NOT_FOUND`；同 IP 連續 12 次無效 GET 都是 404（沒有 429）。
+  - POST：缺 Origin、不受信任 Origin、`Sec-Fetch-Site: cross-site` 都是 403 `CSRF_ORIGIN_REJECTED`；無效入口加不合法 body 回 404（入口檢查早於 DTO）；多餘欄位與空帳號 400 `INVALID_REQUEST`；錯密碼與錯帳號同為 401 `AUTH_SUPER_USER_CREDENTIALS_INVALID`；9 KiB body 413 `INVALID_REQUEST`。
+  - 正確帳密 201，`Set-Cookie: FT_ESIGN_SESSION; Max-Age=28800; Path=/; HttpOnly; SameSite=Lax`（本機），`expiresAt` 約 28800 秒後，data 只有 `actor`、`user:null`、`expiresAt`。帶這把 cookie 再登入 201，用被替換的舊 cookie 再登入 409 `AUTH_SESSION_REPLACED`、無 Set-Cookie。
+  - GET session：無 cookie 401「請先登入」；無效、被替換、已登出、已過期的 cookie 都是 401「登入已失效，請重新登入」；Super user 200。Super user 呼叫 `GET /api/esign/documents` 回 403 `AUTH_ACTOR_NOT_ALLOWED`。
+  - DELETE：不受信任 Origin 403；登出 200，清除 `FT_ESIGN_SESSION` 與 `FT_ESIGN_OAUTH_TX`；無 cookie 也是 200 `{localLogout:'completed'}`。
+  - 八小時：DB 的 `expires_at - activated_at` 為 28800 秒；把 `expires_at` 改到過去後 GET session 401。
+  - 限流：同 IP 第 11 次 POST 回 429 `REFUSE_SERVICE`、`Retry-After: 60`；同 IP 換成另一個 entryKey 仍 429。
+  - 入口 soft-delete 時 GET 回 503 `AUTH_SUPER_USER_UNAVAILABLE`，維護頁回 Next 500，Next log 只有「維護入口檢查失敗：HTTP 503」；還原後頁面 200。
+- 前端 HTML／RSC（curl）：有效入口 HTML 200，含表單，帶 `Referrer-Policy: no-referrer`、`X-Robots-Tag: noindex, nofollow`、`Content-Security-Policy: frame-ancestors 'none'`；standalone 另帶 `Cache-Control: private, no-cache, no-store, max-age=0, must-revalidate`，dev 為 Next 預設的 `no-cache, must-revalidate`。無效與格式錯誤入口的 HTML 與 RSC（`RSC: 1`）都是 404、只有 404 文案、沒有表單。
+- 瀏覽器（Playwright Chromium，repo 外暫存腳本；`next dev` 與 `API_PROXY_TARGET=http://localhost:3011` 重建後的 standalone `server.js` 各跑一次，都是 14/14）：
+  - 無效入口 HTML 404、無密碼欄位；RSC fetch 404、無表單。
+  - 合成入口網（`http://localhost:8080`）以 iframe 嵌入，WebView launch → activation 303 → iframe 進入 `/forms`；員工 cookie HttpOnly、Lax、Path=/，剩餘 8.000 小時。
+  - 同一瀏覽器另一分頁從隱藏入口登入 Super user：`Max-Age=28800`、剩餘 8.000 小時；舊員工 cookie 重放 401；落在 `/forms`，顯示「目前身分：Super user」與「目前身分無法使用此功能」。
+  - 入口網對 iframe 送員工 navigate：Super user 被視為 mismatch，會話撤銷（401）並回 `esign:launch-required`。
+  - Super user 再登入後 iframe 走 WebView：變回員工，舊 Super user cookie 401；分頁重新整理後不再顯示 Super user；同員工 navigate 回 `esign:navigated`。
+  - 登出 200、重複登出 200、之後 GET session 401，先前兩個身分都沒有恢復。
+  - 另一員工 WebView 會話的 DB 期限 28800 秒；改成已過期後 GET session 401，`/forms` 回 404 頁。
+- OAuth：027 沒有 OAuth 前端，以 `test:e2e:security` 的 `security-session-replacement` 驗證 WebView → Super user → OAuth → Super user → WebView 的切換、舊 cookie 重放 401 與並發 409（OAuth 上游為測試替身）。
+- 雙實例撤銷：`security-super-user-credentials`（兩個獨立 HTTP 程序共用 DB／Redis，見 027-07）在上表的 `test:e2e:security` 內通過；另單獨重跑這兩個 suite，2 suites／20 tests 通過。
+- 一般 log 遮罩：掃描 Nest log（366 行，213 筆 `http_access`）、`next dev` 輸出（35 行）、`client/.next/dev/logs/next-development.log`（19 行）與 standalone 輸出（10 行）。比對值為入口、Super user 密碼、hash，以及驗收中出現的 25 個 cookie、啟動碼與 launch JWT：命中都是 0；`/ops-access/` 出現 0 次；後端維護路徑只以 `/api/auth/super-user-entries/:entryKey[/sessions]` 模板出現（40 筆）。`client/.next/dev/trace` 含入口網址，驗收後已刪除。
+
+**限制與未完成**
+
+- 部署阻擋：Nginx 8080／ALB 完整入口 URL 遮罩在 repo 外，未解除。
+- Spec 028 之前：Super user 登入後經 `/` 轉到 `/esign/forms`（dev 的 PR #59 把電子簽頁面移到 `/esign`）看到業務 403；會話過期對話框仍是員工版文案。
+- OAuth 瀏覽器入口（前端）不在 027，留待後續 spec。
+- 登入 commit 後回應遺失：新會話已生效、舊會話已撤銷，瀏覽器沒有拿到新 cookie，只能重新登入。兩個分頁在沒有舊 cookie 時同時登入，兩筆都成功，瀏覽器只留最後收到的 cookie，另一筆會話留到 8 小時到期。
+- 輪換依各 worker 主機時鐘，需 NTP。job 3 次重試（約 5＋10 秒）都失敗後，要等下週排程、worker 重啟或 REPL `rotateEntryIfDue()`。
+- REPL 一次貼上多行時不等前一行的 `await` 完成。
+- 員工 e2e 會在測試庫累積 `login.succeeded` 事件，之後該庫的 `migration:revert` 會被 down 拒絕，需要重建測試庫。
+- UAT 自動部署在 migration 與啟動之間不暫停，`initialize()` 在部署成功後執行；期間維護登入 503、worker 記 `auth.entry_rotation_uninitialized`。
+- 範圍外觀察（未處理）：standalone 下 Next 404 頁（包括無效入口與未登入的 `/forms`）帶 `Cache-Control: s-maxage=31536000`，是既有 not-found 靜態頁的行為；目前部署前面沒有共用快取。
+
+### 027-h 隱藏維護登入的存在與來源網路限制（使用者 2026-11-06 要求）
+
+使用者 2026-11-06 要求：不得從公開資源看出維護登入存在；同日確認隱藏頁與其 API 只開放公司網路。本節取代 027-04／027-08 紀錄中與此衝突的行為：尚未初始化回 503、body 8 KiB 回 413、POST 的 403／429 早於入口檢查、`next.config.ts` 對維護頁加標頭、proxy 把無效入口改寫到 `/_not-found`。
+
+**修正前的洩漏**
+
+- 公開 JS：root layout 的 `ReactQueryProvider` 把 `apiError.ts`、`errorCodes.ts` 帶進共用 chunk，含 `AUTH_SUPER_USER_*`、「維護登入暫時無法使用」與 `isSuperUserCredentialsInvalid`。共用 API chunk 含 `createSuperUserSession` 與 `super-user-entries` 路徑。`CurrentActorBanner` 含 `'super_user'`。
+- `_clientMiddlewareManifest.js` 列出 `/ops-access/:entryKey`。
+- `next.config.ts` 的 `headers()` 讓錯誤入口也帶 Referrer-Policy／X-Robots-Tag／frame-ancestors。proxy 改寫到 `/_not-found` 多出 `x-middleware-rewrite` 與 `s-maxage` Cache-Control，與不存在的網址不同。
+- 後端：
+  - POST guard 順序是 Origin → 限流 → 入口，錯誤入口會回 403／429，且帶 `x-ratelimit-*`。
+  - 9 KiB body 回 413。
+  - 未初始化時 GET／POST 回 503「維護登入暫時無法使用」，頁面回 500。
+  - Swagger（UAT `NODE_ENV=staging` 開放）列出這兩支路由。
+
+**修正**：見 [api-behavior.md](contracts/api-behavior.md)「新入口」「來源網路」與 UI 段落。
+
+**自動驗證**（`server/.env.test`：`feastogether_intranet_test_h`、`REDIS_DB=6`）
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors、271 warnings；本次改動的檔案都不在 warning 清單 |
+| `pnpm -C server test` | 123 suites／1276 tests 通過（rebase 到 `8f53def` 後；含 review 時補的路徑解碼案例） |
+| `pnpm -C server build` | 成功 |
+| `pnpm -C server test:e2e:security` | 20 suites／172 tests 通過（含新的 `security-super-user-entry-concealment`；百分比編碼的有效入口缺 Origin 回 403） |
+| `pnpm -C server test:e2e` | 559 passed、1 skipped、1 failed；唯一失敗是既有 `api-coverage` 的 `GET /api/esign/documents/1/history`，未修 |
+| `pnpm test:deploy` | Compose 與部署流程測試通過 |
+| `pnpm -C client lint` | 0 problems |
+| `pnpm -C client test` | 4 tests 通過（來源網路判斷：允許、拒絕、缺 header、空清單、IPv6、偽造 X-Forwarded-For） |
+| `API_PROXY_TARGET=http://localhost:3011 pnpm -C client build` | 成功，0 warning |
+| `pnpm -C client check:bundle` | 通過；排除隱藏頁專用 chunk 1 個；放入含 `super-user` 的假檔時失敗（反向驗證） |
+
+`next.config.ts` 的 `/api` rewrite 目標在 build 時寫入 `routes-manifest.json`。本機 standalone 要帶 `API_PROXY_TARGET` build，否則 rewrite 會打到預設的 3001。
+
+**實測比對**
+
+環境：開發庫 `feastogether_intranet_027h`、Redis DB 9；server 3011，client 3010；允許清單為文件用位址 `203.0.113.0/24,198.51.100.7/32,2001:db8::/32`。比對時排除 `date`、`connection`、`keep-alive`、`transfer-encoding`、`x-request-id`，以及 body 的 `timestamp`。
+
+- 頁面：與 `/no-such-page/<隨機 43 字元>` 比對 HTML 與 RSC（`RSC: 1`＋`?_rsc=x`）。
+  - standalone：以下情況的 headers 與 body 都逐位元組相同：
+    - 錯誤入口（允許的 IP）；
+    - 有效入口但 IP 不在清單（IPv4，以及不在 `2001:db8::/32` 內的 IPv6）；
+    - 沒有 `X-Real-IP`；
+    - 只偽造 `X-Forwarded-For: 203.0.113.10`；
+    - 多一層路徑；
+    - 鄰近位址 `198.51.100.8`；
+    - 允許清單未設定，但帶允許的 IP。
+  - `next dev`：headers 相同。dev 每次請求有隨機 React key，而且會把網址路徑寫進 not-found 內容，兩個不同的不存在網址原始 body 也不同；把這兩類值換成佔位後，body 相同。
+  - 有效入口＋`203.0.113.10`／`198.51.100.7`／`2001:db8::5`（子代理回報；最終程式重新 build 後實際是 404，已修，見下方「review 時另修」）：200、有密碼欄位，帶 `Referrer-Policy: no-referrer`、`X-Robots-Tag: noindex, nofollow`、`Content-Security-Policy: frame-ancestors 'none'`。
+- API：經 Next 送 14 種請求，與 `/api/no-such-route/<隨機>` 比對：
+  - 請求：GET 入口、GET sessions；POST 分別帶 JSON＋Origin、缺 Origin、惡意 Origin、跨站、空 body、壞 JSON、text/plain、form、9 KiB、1.1 MiB；PUT；OPTIONS。
+  - 以下情況的 status、headers、body 都相同：
+    - 錯誤入口；
+    - 有效入口但 IP 不在清單（IPv4／IPv6）；
+    - 沒有 `X-Real-IP`；
+    - 只偽造 `X-Forwarded-For`；
+    - 自帶拒絕標記；
+    - 允許清單未設定；
+    - `/api/auth/%73uper-user-entries/<入口>`；
+    - `/API/auth/super-user-entries/<入口>`。
+  - 實測的反應：壞 JSON 兩者都是 400，超過 1 MiB 兩者都是 413，OPTIONS 兩者都是 204。
+- 路徑變體：
+  - 反斜線與雙斜線會由 Next 308 轉到正規網址。
+  - `/x/../ops-access/<入口>` 由 Next 正規化。
+  - `/%6Fps-access/…` 與 `/ops-access-page` 的編碼變體都是 404，沒有表單。
+  - 修正過程中實測到兩個繞過，修正後都回 404：
+    - `/api/auth/%73uper-user-entries/<入口>`：後端會解碼；
+    - `/API/…`：Next config rewrite 不分大小寫。
+  - review 時另修：`getRequestPath` 先解碼再遮罩與判斷。修正前 `/api/auth/%73uper-user-entries/<入口>` 在允許網路內會命中路由，但 access log 記下明文入口、`OriginGuard` 不要求 Origin；新 e2e 在修正前失敗、修正後通過。
+- 公開頁：`/verify/abc`、`/embed`、未登入的 `/esign/forms` 與 `/no-such-page/abc`，與修改前的 headers（ETag 除外）及 body 大小相同。`/embed` 仍可被嵌入。
+- 後端呼叫：`/verify`、`/embed` 與被拒的隱藏頁都沒有呼叫後端；`/api/health` 只有 rewrite 本身那一次。
+- 允許清單格式錯誤：使用者 2026-11-06 決定不另做啟動檢查，移除 `instrumentation.ts`，交給 `BlockList` 丟錯。standalone 實測 `203.0.113.10,198.51.100.7/32`（少 `/32`）與 `203.0.113.10/32,`（結尾逗號）：`/api/*`、`/verify`、`/ops-access/*` 都回 500，請求沒有轉到後端。
+- review 時另修：Next 16.3.6 standalone 會對 proxy 改寫後的 `/ops-access-page/<入口>` 再執行一次 proxy（log 依序為 `/ops-access/<入口>`、`/ops-access-page/<入口>`、`/_not-found`）。原本的程式在第二次執行時回 404，清單內的有效入口也是 404。修正後以假後端（只對一個入口回 200）實測：
+  - 清單內＋有效入口：200、有表單、帶三個安全標頭；一次頁面向後端查驗兩次。
+  - 清單內＋錯誤入口、清單外＋有效入口、缺 `X-Real-IP`：HTML 與 RSC 的 headers 與 body 都與不存在的網址相同；清單外不呼叫後端。
+  - 直接開 `/ops-access-page/<入口>`：清單內＋有效 200；清單外或錯誤入口 404（帶 `x-middleware-rewrite: /_not-found`，同既有差異）。
+  - 清單內＋有效入口的 RSC 請求回 307 轉到 `/ops-access-page/<入口>?_rsc`（Next 對改寫頁面的行為），該路徑同樣經過上述檢查。
+  - 真實後端（開發庫 `feastogether_intranet_027h`、合成帳密）＋standalone：清單內頁面 200、錯誤密碼 401、缺 Origin 403、正確帳密 201 並取得 `super_user` 會話；清單外頁面與登入都是 404；server／client log 不含入口與密碼。測試資料已刪除。
+  - 輸出不含設定值。
+- 瀏覽器（Playwright Chromium，repo 外暫存腳本）：standalone 與 `next dev` 最終版各 23/23（子代理回報；review 時以最終程式重新 build，standalone 的有效入口實際是 404，已修，見下方「review 時另修」）。
+  - 允許清單外：有效入口 404 且沒有表單。
+  - 未登入時 `/`、`/esign/forms`、`/travel/permissions` 都是 404。
+  - `/verify`、外部簽署頁、`/embed` 照常開啟。
+  - 允許清單外的 107 個 JS、員工頁的 23 個 JS 都不含隱藏登入痕跡。
+  - 允許清單內（`extraHTTPHeaders` 帶 `X-Real-IP: 203.0.113.10`）：
+    - 錯誤入口 404；
+    - 有效入口 200 並帶安全標頭；
+    - 帳密錯誤 401，在表單內顯示「帳號或密碼錯誤」，沒有「登入已過期」；
+    - iframe WebView 員工登入，員工畫面沒有 banner；
+    - employee→Super user 後顯示「目前身分：Super user」，舊員工 cookie 401，網址不含入口；
+    - EmbedBridge 遇 Super user 為 mismatch，撤銷後收到 `launch-required`；
+    - super→employee 後舊 Super user cookie 401，同員工 navigate 收到 `navigated`；
+    - banner 登出後會話撤銷，回根路徑 404，舊身分不恢復。
+- REPL、輪換、雙實例撤銷：`security-super-user-credentials` 等 suite 在 `test:e2e:security` 內通過。本次沒有改 REPL 與 worker。
+
+**無法消除或未處理的差異**
+
+- 直接開內部路徑 `/ops-access-page/*`：body 與不存在的網址相同，但 headers 多 `x-middleware-rewrite: /_not-found`，Cache-Control 是 `s-maxage=31536000`。這和未登入的員工頁相同，只看得出「這裡有需要條件的頁面」。內部名稱只出現在 repo 與有效入口回應的 `x-middleware-rewrite`。
+- DB 故障：入口查驗回 503 `AUTH_DB_UNAVAILABLE`，頁面 500。只在故障期間出現，不洩漏入口。
+- 時間差：允許網路內的錯誤入口會查一次 DB；不存在的網址不會。未量測，也未處理。
+- 隱藏頁的 chunk 是靜態檔，知道檔名就能下載。檔名是 build hash，只出現在有效入口的頁面裡。
+- 既有行為：未登入員工頁的 404 是 rewrite，可看出「需要登入」；不在本次範圍。
+
+### 027-o Super user 帳密改為選填（使用者 2026-11-06 要求）
+
+不設 Super user 帳密也能開啟 server、worker 與 REPL；規則見 spec FR-017 與 [operations.md](contracts/operations.md)「設定與密碼雜湊」。
+
+| 驗證 | 結果 |
+| --- | --- |
+| `pnpm -C server test` | 123 suites／1280 tests 通過（新增：任一未設定即停用、REPL 初始化與帳密啟用拒絕執行） |
+| `pnpm -C server test:e2e:security` | 20 suites／172 tests 通過 |
+| `pnpm -C server lint:check` | 0 errors |
+| 實際啟動（`.env` 帳號有填、hash 空白；測試庫 `feastogether_intranet_test_o`、Redis DB 6、Portal 指向本機） | HTTP `/api/health` 200、隱藏入口 404；worker 持續執行；REPL `hashPassword()` 可用，`initialize()`／`activateCredentials()` 拒絕執行並說明要先設定 |
+

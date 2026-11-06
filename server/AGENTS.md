@@ -5,7 +5,7 @@
 ## 技術與架構
 
 - NestJS 11、Fastify、TypeScript、TypeORM 0.3、MySQL 8.4、Redis 7。
-- HTTP server 入口為 `src/main.ts`；background worker 入口為 `src/worker.ts`，共用 `InfrastructureModule`。
+- HTTP server 入口為 `src/main.ts`；background worker 入口為 `src/worker.ts`，共用 `InfrastructureModule`。維運 REPL 入口為 `src/console/repl.ts`，`ConsoleModule` 只載入設定、logging 與 Super user 維護入口服務。
 - `src/features/`以 feature 分層；預設走 `Controller → Service → Repository`，DTO 用 `class-validator`，entity/DTO 由 mapper 轉換。
 - Repository 由 `MysqlModule` 統一註冊與匯出，不自行注入 `DataSource`；Service 負責取得或開啟交易的 `EntityManager` 後傳入 Repository。
 - `src/framework/` 放 guard/filter/interceptor/decorator 等橫切關注點；`src/infrastructure/` 放 DB、Redis、HTTP client 與 logging。
@@ -14,14 +14,14 @@
 
 ## 必須遵守
 
-- 全域 guard 對所有未標 `@Public()` 的 endpoint 預設驗證員工 session；`@Public()` 入口必須自行負責適用的 pre-session 驗證。
+- 全域 guard 對所有未標 `@Public()` 的 endpoint 驗證 session，只放行員工；Super user 只能進入標了 `@AllowSuperUser()` 的 endpoint（目前只有 `GET /api/auth/session`），其他回 403 `AUTH_ACTOR_NOT_ALLOWED`。Super user 的業務授權由 Spec 028 決定。`@Public()` 入口必須自行負責適用的 pre-session 驗證。
 - Controller 只處理 HTTP 邊界並回傳 DTO，不直接回傳 TypeORM entity，不重複包裝全域 interceptor 的 response envelope。
 - 跨目錄 import 使用 `#app/*`，同 feature 近距離可用相對路徑；避免 `../../` 以上深層路徑。
 - 業務 entity 繼承 `AuditableEntity`，DB 欄位用 snake_case、TS property 用 camelCase，並於 entity/欄位加繁體中文 comment。
 - 更新需稽核 entity 時使用 `repository.save(entity)`；刪除業務資料預設使用 soft delete。
 - DB 寫入以 UTC 為準；台北時間僅在 API/UI 邊界轉換，使用現有 date-time helper。
 - schema 由 migration 管理，不開啟 `synchronize`。變更 schema 必須同步 entity、migration、測試與 `schema.sql`。
-- 錯誤使用 `AppException` 與穩定的 `AppErrorCode`；log 使用既有結構化 logger，不記錄 secret、token、cookie 或簽名資料。
+- 錯誤使用 `AppException` 與穩定的 `AppErrorCode`；log 使用既有結構化 logger，不記錄 secret、token、cookie、Super user 隱藏入口或簽名資料。
 - 業務錯誤的錯誤碼、訊息、HTTP 狀態集中在 `src/common/errors/app-errors.ts`，以 `new AppException(...AppErrors.NAME)` 引用；動態訊息使用該檔的定義函式，DTO 自訂訊息引用定義的 `[1]`。內部程式、啟動與 worker 重試錯誤保留原有例外類型。
 - 測試 DB 名稱必須以 `feastogether_intranet_test` 開頭，不得降低此 fail-closed 保護。
 

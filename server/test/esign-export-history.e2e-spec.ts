@@ -6,8 +6,6 @@ import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import type { EntityManager } from 'typeorm';
 import { DocumentExportProcessor } from '#app/worker/esign/document-export.processor';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
@@ -33,6 +31,7 @@ import {
   createSyntheticWorker,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 jest.setTimeout(30_000);
 
@@ -140,8 +139,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
   });
 
   async function employeeCookie(user: User) {
-    const session = await ctx.app.get(AuthService).issueSession(user.id);
-    return `${AUTH_COOKIE_NAME}=${session.token}`;
+    return employeeSessionCookie(ctx.app, user.id);
   }
 
   function createDocument(title: string) {

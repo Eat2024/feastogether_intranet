@@ -3,8 +3,6 @@ import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
@@ -25,6 +23,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('022 背景工作終態明細保留', () => {
   jest.setTimeout(60000);
@@ -59,7 +58,7 @@ describe('022 背景工作終態明細保留', () => {
     pdf = Buffer.from(await source.save());
   });
   async function session(userId: number) {
-    return `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(userId)).token}`;
+    return await employeeSessionCookie(ctx.app, userId);
   }
   async function newDoc() {
     const id = apiData<{ id: string }>(
@@ -335,17 +334,17 @@ describe('022 背景工作終態明細保留', () => {
     const doc = await newDoc();
     const input = body();
     const parent = await terminal(
-        doc,
-        new Date(now.getTime() - retentionMs),
-        input,
-      );
+      doc,
+      new Date(now.getTime() - retentionMs),
+      input,
+    );
     const key = randomUUID();
     const accepted = apiData<InitiationJobDto>(
       await retry(doc, parent.publicId, key).expect(202),
     );
     const child = await mysql
-          .getManager()
-          .findOneByOrFail(EsignInitiationJob, { publicId: accepted.jobId });
+      .getManager()
+      .findOneByOrFail(EsignInitiationJob, { publicId: accepted.jobId });
     ownedJobs.add(child.id);
     await ctx.app.get(EsignInitiationJobService).maintain(now);
     expect((await details(parent)).inputJson).toBeNull();

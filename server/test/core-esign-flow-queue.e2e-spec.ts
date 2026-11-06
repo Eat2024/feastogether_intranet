@@ -97,6 +97,11 @@ describe('核心電子簽真實 queue e2e', () => {
 
   afterAll(async () => {
     if (documentId) await cleanupDocument(documentId);
+    // WebView activation 寫入的安全事件以 FK 指向會話與員工，須先刪。
+    await db.query(
+      'DELETE FROM auth_security_events WHERE actor_user_id IN (SELECT id FROM users WHERE empid = ?)',
+      [creatorEmpid],
+    );
     await db.query(
       'DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE empid = ?)',
       [creatorEmpid],

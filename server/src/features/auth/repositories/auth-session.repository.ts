@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { EntityManager } from 'typeorm';
+import { In, type EntityManager } from 'typeorm';
 import {
   AUTH_SESSION_STATUS,
   AuthSession,
@@ -8,24 +8,23 @@ import {
 @Injectable()
 export class AuthSessionRepository {
   createActive(
-    userId: number,
-    sourceJtiHash: string,
-    sessionTokenHash: string,
-    activatedAt: Date,
-    expiresAt: Date,
+    fields: Pick<
+      AuthSession,
+      | 'actorKind'
+      | 'userId'
+      | 'source'
+      | 'credentialGeneration'
+      | 'sourceJtiHash'
+      | 'sessionTokenHash'
+    > & { activatedAt: Date; expiresAt: Date },
     manager: EntityManager,
   ): Promise<AuthSession> {
     return manager.save(
       manager.create(AuthSession, {
-        userId,
-        source: 'webview',
+        ...fields,
         status: AUTH_SESSION_STATUS.ACTIVE,
-        sourceJtiHash,
-        assertionExpiresAt: activatedAt,
-        verifiedAt: activatedAt,
-        activatedAt,
-        expiresAt,
-        sessionTokenHash,
+        assertionExpiresAt: fields.activatedAt,
+        verifiedAt: fields.activatedAt,
       }),
     );
   }
@@ -101,6 +100,7 @@ export class AuthSessionRepository {
     return manager.save(session);
   }
 
+  /** LEFT JOIN users：Super user 會話沒有員工列，員工狀態由呼叫端依 actorKind 判斷。 */
   findActive(
     sessionTokenHash: string,
     now: Date,
@@ -108,7 +108,7 @@ export class AuthSessionRepository {
   ): Promise<AuthSession | null> {
     return manager
       .createQueryBuilder(AuthSession, 'session')
-      .innerJoinAndSelect('session.user', 'user')
+      .leftJoinAndSelect('session.user', 'user')
       .where('session.session_token_hash = :sessionTokenHash', {
         sessionTokenHash,
       })
@@ -118,25 +118,55 @@ export class AuthSessionRepository {
       .andWhere('session.revoked_at IS NULL')
       .andWhere('session.expires_at > :now', { now })
       .andWhere('session.deleted_at IS NULL')
-      .andWhere('user.deleted_at IS NULL')
-      .andWhere('user.is_active = :isActive', { isActive: true })
       .getOne();
   }
 
-  async revoke(
+  /** 鎖定瀏覽器帶來的舊會話（任何狀態），供替換或登出判斷。 */
+  findByTokenHashForUpdate(
     sessionTokenHash: string,
-    now: Date,
     manager: EntityManager,
-  ): Promise<boolean> {
-    const result = await manager
-      .createQueryBuilder()
-      .update(AuthSession)
-      .set({ status: AUTH_SESSION_STATUS.REVOKED, revokedAt: now })
-      .where('session_token_hash = :sessionTokenHash', { sessionTokenHash })
-      .andWhere('status = :status', { status: AUTH_SESSION_STATUS.ACTIVE })
-      .andWhere('revoked_at IS NULL')
-      .andWhere('expires_at > :now', { now })
-      .execute();
-    return result.affected === 1;
+  ): Promise<AuthSession | null> {
+    return manager
+      .createQueryBuilder(AuthSession, 'session')
+      .setLock('pessimistic_write')
+      .where('session.session_token_hash = :sessionTokenHash', {
+        sessionTokenHash,
+      })
+      .getOne();
+  }
+
+  /** 撤銷已鎖定的會話；被新登入取代時同時記下 replacement。 */
+  async revokeById(
+    id: number,
+    revokedAt: Date,
+    replacementSessionId: number | null,
+    manager: EntityManager,
+  ): Promise<void> {
+    await manager.update(
+      AuthSession,
+      { id },
+      { status: AUTH_SESSION_STATUS.REVOKED, revokedAt, replacementSessionId },
+    );
+  }
+
+  /**
+   * 帳密啟用時撤銷全部 active 維護會話。呼叫端須在同一交易先鎖 singleton，新的維護會話因此無法同時建立。
+   * 先以非鎖定讀取取 id 再依主鍵更新：直接用 actor_kind／status 條件更新時，InnoDB 經含 status 的
+   * 次要索引先鎖索引列、再等主鍵列，會與「已鎖住舊維護會話、正要改它 status」的登出或身分切換互相等待而 deadlock。
+   * 等待期間已被他人撤銷的列，由 status 條件在取得鎖後重新判斷而略過。
+   */
+  async revokeActiveSuperUser(
+    revokedAt: Date,
+    manager: EntityManager,
+  ): Promise<void> {
+    const live = await manager.find(AuthSession, {
+      select: { id: true },
+      where: { actorKind: 'super_user', status: AUTH_SESSION_STATUS.ACTIVE },
+    });
+    await manager.update(
+      AuthSession,
+      { id: In(live.map(({ id }) => id)), status: AUTH_SESSION_STATUS.ACTIVE },
+      { status: AUTH_SESSION_STATUS.REVOKED, revokedAt },
+    );
   }
 }

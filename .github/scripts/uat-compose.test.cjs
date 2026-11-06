@@ -8,6 +8,8 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'intranet-rds-compose-'));
 try {
   const password = 'synthetic$VALUE#with!special';
   fs.writeFileSync(path.join(dir, 'server.env'), 'DB_MYSQL_HOST=mysql\nDB_MYSQL_USER=intranet_app\nDB_MYSQL_PASS=old-password\nSMTP_PASSWORD=synthetic-smtp\n');
+  // 文件用位址（RFC 5737／3849）
+  fs.writeFileSync(path.join(dir, 'client.env'), 'SUPER_USER_ALLOWED_CIDRS=203.0.113.0/24,2001:db8::/32\n');
   fs.writeFileSync(path.join(dir, 'migration.env'), [
     'DB_MYSQL_HOST=ftg2-00-test-rds-cluster.cluster-cheguogu8mzk.ap-east-2.rds.amazonaws.com',
     'DB_MYSQL_PORT=3306',
@@ -42,6 +44,8 @@ try {
     assert.equal(result.services[name].ports, undefined);
   }
   assert.equal(result.services.server.environment.SMTP_PASSWORD, 'synthetic-smtp');
+  assert.equal(result.services.client.environment.SUPER_USER_ALLOWED_CIDRS, '203.0.113.0/24,2001:db8::/32');
+  assert.equal(result.services.server.environment.SUPER_USER_ALLOWED_CIDRS, undefined);
   assert.equal(result.services.worker.healthcheck.disable, true);
   assert.match(result.services['db-backup'].command[0], /--ssl-mode=VERIFY_IDENTITY/);
   assert.match(result.services['db-backup'].command[0], /--ssl-ca=/);

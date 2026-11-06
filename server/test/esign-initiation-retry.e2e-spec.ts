@@ -4,8 +4,6 @@ import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
@@ -26,6 +24,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('022 失敗恢復與人工重試', () => {
   jest.setTimeout(60000);
@@ -60,7 +59,7 @@ describe('022 失敗恢復與人工重試', () => {
     pdf = Buffer.from(await source.save());
   });
   async function session(userId: number) {
-    return `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(userId)).token}`;
+    return await employeeSessionCookie(ctx.app, userId);
   }
   async function newDoc() {
     const id = apiData<{ id: string }>(
@@ -194,14 +193,12 @@ describe('022 失敗恢復與人工重試', () => {
       apiData<InitiationJobDto>(await get(doc, job.publicId).expect(200))
         .issueCount,
     ).toBe(502);
-    await mysql
-      .getManager()
-      .update(EsignInitiationJob, job.id, {
-        inputJson: null,
-        issuesJson: null,
-        documentVersionJson: null,
-        inputPurgedAt: new Date(),
-      });
+    await mysql.getManager().update(EsignInitiationJob, job.id, {
+      inputJson: null,
+      issuesJson: null,
+      documentVersionJson: null,
+      inputPurgedAt: new Date(),
+    });
     await request(ctx.server).get(url).set('Cookie', cookie).expect(410);
     await request(ctx.server)
       .get(url.replace('/issues', '/input'))
@@ -212,16 +209,14 @@ describe('022 失敗恢復與人工重試', () => {
   async function retryable(doc: string, input = body()) {
     const job = await submit(doc, input);
     // 已驗證的 worker 終態作為人工重試起點；不依賴真實上游故障。
-    await mysql
-      .getManager()
-      .update(EsignInitiationJob, job.id, {
-        status: 'failed',
-        stage: 'failed',
-        completedAt: new Date(),
-        errorCode: 'ESIGN_INITIATION_TRANSIENT_FAILURE',
-        retryable: true,
-        attemptCount: 3,
-      });
+    await mysql.getManager().update(EsignInitiationJob, job.id, {
+      status: 'failed',
+      stage: 'failed',
+      completedAt: new Date(),
+      errorCode: 'ESIGN_INITIATION_TRANSIENT_FAILURE',
+      retryable: true,
+      attemptCount: 3,
+    });
     return job;
   }
   function retry(
@@ -276,14 +271,12 @@ describe('022 失敗恢復與人工重試', () => {
         await retry(doc, parent.publicId, key).expect(200),
       ),
     ).toMatchObject({ jobId: child.publicId, status: 'succeeded' });
-    await mysql
-      .getManager()
-      .update(EsignInitiationJob, parent.id, {
-        inputJson: null,
-        issuesJson: null,
-        documentVersionJson: null,
-        inputPurgedAt: new Date(),
-      });
+    await mysql.getManager().update(EsignInitiationJob, parent.id, {
+      inputJson: null,
+      issuesJson: null,
+      documentVersionJson: null,
+      inputPurgedAt: new Date(),
+    });
     expect(
       apiData<InitiationJobDto>(
         await retry(doc, parent.publicId, key).expect(200),
@@ -343,37 +336,31 @@ describe('022 失敗恢復與人工重試', () => {
     );
     const replacement = await submit(doc, { ...body(), watermark: false });
     expect(replacement.parentJobId).toBeNull();
-    await mysql
-      .getManager()
-      .update(EsignInitiationJob, replacement.id, {
-        status: 'failed',
-        stage: 'failed',
-        completedAt: new Date(),
-        errorCode: 'ESIGN_INITIATION_INTERNAL_ERROR',
-      });
+    await mysql.getManager().update(EsignInitiationJob, replacement.id, {
+      status: 'failed',
+      stage: 'failed',
+      completedAt: new Date(),
+      errorCode: 'ESIGN_INITIATION_INTERNAL_ERROR',
+    });
     expect(apiError(await retry(doc, parent.publicId).expect(409)).code).toBe(
       'ESIGN_INITIATION_RETRY_NOT_ALLOWED',
     );
     const expiredDoc = await newDoc();
     const expired = await retryable(expiredDoc);
-    await mysql
-      .getManager()
-      .update(EsignInitiationJob, expired.id, {
-        inputJson: {
-          ...body(),
-          signEndAt: new Date(Date.now() - 1000).toISOString(),
-        },
-      });
+    await mysql.getManager().update(EsignInitiationJob, expired.id, {
+      inputJson: {
+        ...body(),
+        signEndAt: new Date(Date.now() - 1000).toISOString(),
+      },
+    });
     expect(
       apiError(await retry(expiredDoc, expired.publicId).expect(409)).code,
     ).toBe('ESIGN_INITIATION_DEADLINE_PASSED');
-    await mysql
-      .getManager()
-      .update(EsignInitiationJob, expired.id, {
-        inputJson: null,
-        documentVersionJson: null,
-        inputPurgedAt: new Date(),
-      });
+    await mysql.getManager().update(EsignInitiationJob, expired.id, {
+      inputJson: null,
+      documentVersionJson: null,
+      inputPurgedAt: new Date(),
+    });
     expect(
       apiError(await retry(expiredDoc, expired.publicId).expect(410)).code,
     ).toBe('ESIGN_INITIATION_INPUT_EXPIRED');

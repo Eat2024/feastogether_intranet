@@ -5,7 +5,7 @@ import fastifyCookie from '@fastify/cookie';
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
 import { AuthGuard } from '#app/framework/guards/auth.guard';
-import { AuthService } from '#app/features/auth/services/auth.service';
+import { SessionService } from '#app/features/auth/services/session.service';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { validationExceptionFactory } from '#app/common/errors/validation-exception.factory';
 import { ValidationPipe } from '@nestjs/common';
@@ -43,7 +43,12 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
   let app: NestFastifyApplication;
   const drafts = { create: jest.fn(), update: jest.fn() };
   const queries = { detail: jest.fn() };
-  const verifySessionToken = jest.fn();
+  const authenticate = jest.fn();
+  const employeeSession = (userId: number) => ({
+    actor: { kind: 'employee', userId },
+    user: { id: userId },
+    expiresAt: new Date(Date.now() + 60_000),
+  });
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -76,7 +81,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
     app.useLogger(false);
     app.useGlobalGuards(
       new AuthGuard(
-        { verifySessionToken } as unknown as AuthService,
+        { authenticate } as unknown as SessionService,
         { isActive: () => false } as unknown as ClsService,
         module.get(Reflector),
       ),
@@ -99,7 +104,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
   });
   beforeEach(() => {
     jest.clearAllMocks();
-    verifySessionToken.mockResolvedValue({ userId: 7 });
+    authenticate.mockResolvedValue(employeeSession(7));
     drafts.create.mockResolvedValue({ id: 9 });
     drafts.update.mockResolvedValue(undefined);
     queries.detail.mockResolvedValue({ id: '9', status: 'draft' });
@@ -262,7 +267,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
     );
   });
   it('Guard 拒絕無效身分，不進入上傳解析或業務寫入', async () => {
-    verifySessionToken.mockResolvedValueOnce({ userId: 0 });
+    authenticate.mockResolvedValueOnce(employeeSession(0));
     expect((await send([{ ...file, name: 'unexpected' }])).statusCode).toBe(
       401,
     );
@@ -274,7 +279,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
       url: '/api/esign/documents',
     });
     expect(response.statusCode).toBe(401);
-    expect(verifySessionToken).not.toHaveBeenCalled();
+    expect(authenticate).not.toHaveBeenCalled();
     expect(drafts.create).not.toHaveBeenCalled();
   });
   it('重複檔案仍受 multipart 單檔限制', async () => {

@@ -22,8 +22,9 @@ pnpm build
 pnpm start
 ```
 
-- 專案目前沒有 test script 或測試框架，不要宣稱已執行自動測試。
+- `pnpm test` 只跑 `scripts/*.test.mjs`（Node 內建 test runner，沒有測試框架）；元件與頁面沒有自動測試，交付時照實說明。
 - 一般程式修改至少執行 `pnpm lint`；路由、Server Action、型別、建置設定或相依套件有變更時，再執行 `pnpm build`。
+- 改到 proxy、共用模組（`src/api`、`lib`、`components`、全站 Provider）或隱藏維護頁時，`pnpm build` 後再執行 `pnpm check:bundle`。
 - 若無法完成驗證，交付時要明確說明未執行的項目與原因。
 
 ## 目錄與責任
@@ -33,7 +34,7 @@ pnpm start
 - `src/features/my-signature/`：目前使用者的待簽／已簽流程與簽名處理。
 - `src/api/`：呼叫 NestJS 後端（`server/`）的 API 層，見下方「呼叫後端 API」。
 - `src/components/`：跨 feature 共用的 UI 元件；`src/components/providers/` 放全站 Provider（TanStack Query、Snackbar）。
-- `src/components/sidebar/`：`(main)` 的側邊欄（版型移植自 CKS_Acceptance_System，可收合為圖示模式；收合狀態存在 `sidebar_open` cookie，由 `(main)/layout.tsx` 在伺服器端讀取，避免重新整理時先展開再收合）。頂端切換服務，選單依網址前綴判斷目前服務；新增服務或選單項目只改 `services.ts` 的 `SERVICES`。每個服務的頁面放在 `(main)` 底下自己的網址前綴（電子簽 `/esign`、旅遊平台 `/travel`），新增服務時同步加進 proxy 的 `matcher`。電子簽舊網址（`/forms` 等）由 `next.config.ts` 的 `redirects` 轉到 `/esign`。旅遊平台目前只有權限管理的佔位頁。
+- `src/components/sidebar/`：`(main)` 的側邊欄（版型移植自 CKS_Acceptance_System，可收合為圖示模式；收合狀態存在 `sidebar_open` cookie，由 `(main)/layout.tsx` 在伺服器端讀取，避免重新整理時先展開再收合）。頂端切換服務，選單依網址前綴判斷目前服務；新增服務或選單項目只改 `services.ts` 的 `SERVICES`。每個服務的頁面放在 `(main)` 底下自己的網址前綴（電子簽 `/esign`、旅遊平台 `/travel`），新增服務時同步加進 `src/proxy.ts` 的 `EMPLOYEE_PAGE`。電子簽舊網址（`/forms` 等）由 `next.config.ts` 的 `redirects` 轉到 `/esign`。旅遊平台目前只有權限管理的佔位頁。
 - `src/lib/`：無 feature 歸屬的純工具函式。
 - `src/theme/tokens.ts`：唯一的 design token 來源。
 - `src/theme/theme.ts`：唯一的 MUI theme 與全域 component overrides。
@@ -55,9 +56,14 @@ pnpm start
 
 架構比照 CKS_Acceptance_System：`requests`（純函式）→ `queries`（TanStack Query hooks）→ 元件。除簽到表原型外，畫面都透過這一層呼叫後端。
 
-登入與 session 不在本專案處理：由外部流程建立 session（後端以 HttpOnly cookie 下發），這一層只負責帶著 cookie 呼叫其他 API。
+員工登入不在本專案處理：由外部流程建立 session（後端以 HttpOnly cookie 下發），這一層只負責帶著 cookie 呼叫其他 API。唯一例外是 Super user 隱藏維護登入，見下方「隱藏維護登入」。
 
-例外：`src/proxy.ts` 在進入員工頁面（`src/app/(main)`）前，於伺服器端以 `API_PROXY_TARGET` 呼叫 `GET /api/auth/session`，401 時改寫成 404，顯示 `src/app/not-found.tsx`。不要改在 layout 判斷：layout 與頁面同時渲染，頁面內容仍會出現在 RSC 回應裡。`(main)` 新增頂層路由時要同步加進 proxy 的 `matcher`。這個 404 頁只放饗賓 LOGO 與「404 不好意思，系統找不到您需要的服務」（網頁標題「404 找不到網站」），不要加入系統名稱、登入提示或連結。
+例外：`src/proxy.ts` 在渲染前於伺服器端判斷。matcher 會出現在公開的 `_clientMiddlewareManifest.js`，所以只排除靜態資源、不列路徑，要處理的路徑寫在程式裡：
+
+- 員工頁面（`EMPLOYEE_PAGE`，`(main)` 新增頂層路由時同步更新）：以 `API_PROXY_TARGET` 呼叫 `GET /api/auth/session`，401 時改寫成 404，顯示 `src/app/not-found.tsx`。不要改在 layout 判斷：layout 與頁面同時渲染，頁面內容仍會出現在 RSC 回應裡。
+- `/api`：只依來源網路加上標記（見「隱藏維護登入」），其他路徑（公開頁、靜態檔）直接通過；兩者都不查 session、不多呼叫後端。
+
+這個 404 頁只放饗賓 LOGO 與「404 不好意思，系統找不到您需要的服務」（網頁標題「404 找不到網站」），不要加入系統名稱、登入提示或連結。
 
 | 檔案 | 用途 |
 |---|---|
@@ -71,9 +77,19 @@ pnpm start
 
 - 新增一支 API 的順序：`endpoints` → `types` → `requests` →（讀取類）`queries` + `query-keys` + `query-options`；各資料夾的 `index.ts` 一併匯出。
 - 讀取用 `useGetXxxQuery`；寫入在元件內直接 `useMutation({ mutationFn: xxx })`，成功後 `queryClient.invalidateQueries({ queryKey: [queryKeys.XXX] })` 更新相關資料。
-- query 與 mutation 失敗會由 `ReactQueryProvider` 統一以 Snackbar 顯示；需要自行處理錯誤的 mutation 設定 `meta: { suppressGlobalErrorToast: true }`。元件要顯示自己的訊息時用 `useSnackbar()`。
+- query 與 mutation 失敗會由 `ReactQueryProvider` 統一以 Snackbar 顯示，401 開「登入已過期」提示；需要自行顯示錯誤的 mutation 設定 `meta: { suppressGlobalErrorToast: true }`（401 仍開提示），連 401 也由自己處理時設定 `meta: { handlesOwnErrors: true }`。元件要顯示自己的訊息時用 `useSnackbar()`。
 - 這一層只能在 Client Component 使用（相對路徑 `/api` 需要瀏覽器的同源環境）；Server Component 不要直接呼叫。
 - 後端新增錯誤碼（`server/src/common/errors/app-error-code.ts`）時，同步更新 `api/errorCodes.ts`。
+
+## 隱藏維護登入（Spec 027）
+
+不知道入口的人（含已登入員工）不能從公開資源或 HTTP 回應看出它存在（使用者 2026-11-06 要求）。
+
+- 程式碼只放在 `features/super-user-login/`（表單；`api.ts` 放請求、路徑與型別）與 `app/ops-access-page/[entryKey]`，只由隱藏頁引用。共用模組保持通用：身分 banner 只看 `user === null` 與後端給的 `displayName`，表單用通用的 `meta.handlesOwnErrors`。
+- 公開網址 `/ops-access/<入口>` 沒有頁面。proxy 確認來源網路與入口都有效，才改寫到 `/ops-access-page/<入口>` 並加上 Referrer-Policy、X-Robots-Tag、frame-ancestors；其餘情況不改寫，由 Next 當作不存在的網址回 404（改寫到 `/_not-found` 會多出 `x-middleware-rewrite` 與不同的 Cache-Control，可被分辨）。直接開 `/ops-access-page/*` 回 404。
+- 隱藏 API：來源網路不允許時，proxy 對每個 `/api` 請求（不分大小寫，與 `next.config.ts` rewrite 同範圍）加上 `x-entry-network-denied` 照常轉給後端，由後端 `SuperUserEntryGuard` 回與不存在路由相同的 404。不比對隱藏 API 的路徑：後端會解碼百分比編碼（如 `%73uper-user-entries`），只比對路徑會被繞過。
+- 來源網路：`SUPER_USER_ALLOWED_CIDRS`（server-only），只看 `X-Real-IP`（正式環境由主機 Nginx 覆寫）；未設定時維護登入停用，格式錯誤時 proxy 載入失敗、所有請求 500。Next 會對 proxy 改寫後的路徑再執行一次 proxy，改寫目標的路徑要能通過同樣的判斷。本機沒有 Nginx，手動驗證與 Playwright 自帶 `X-Real-IP`（文件用位址，見 `.env.example`）。
+- 入口值就是存取條件：proxy 與頁面的錯誤訊息只帶 HTTP 狀態，`next.config.ts` 的 `logging.incomingRequests.ignore` 讓 dev log 不記入口網址。
 
 ## 資料與業務不變量
 

@@ -6,14 +6,11 @@ import {
 } from './helpers/await-initiation';
 import { EsignJobProducerService } from '#app/features/esign/services/esign-job-producer.service';
 import type { SendInternalGroupMailInput } from '#app/infrastructure/mail/invitation-mail-sender.port';
-import { HttpService } from '@nestjs/axios';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { In } from 'typeorm';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
@@ -31,6 +28,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('Spec016 內部發起與邀請', () => {
   let ctx: SecurityE2eContext;
@@ -38,7 +36,6 @@ describe('Spec016 內部發起與邀請', () => {
   let users: User[];
   let documentId: string;
   const origin = 'http://localhost:3000';
-  const http = { get: jest.fn(), post: jest.fn() };
   const detail = async () =>
     apiData<{
       status: string;
@@ -92,9 +89,7 @@ describe('Spec016 內部發起與邀請', () => {
       email: `external${index}@example.test`,
     }));
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(HttpService).useValue(http),
-    );
+    ctx = await createSecurityE2eApp();
     mailFixture(ctx).allowEmails([
       'external0@example.test',
       'external1@example.test',
@@ -117,12 +112,9 @@ describe('Spec016 內部發起與邀請', () => {
         }),
       ),
     );
-    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
+    cookie = await employeeSessionCookie(ctx.app, users[0].id);
   });
   beforeEach(async () => {
-    http.post.mockReset().mockImplementation(() => {
-      throw new Error('本機發起流程不得呼叫人資來源');
-    });
     await ctx.app
       .get(MysqlService)
       .getManager()
@@ -243,9 +235,7 @@ describe('Spec016 內部發起與邀請', () => {
         await ctx.app
           .get(EsignExpiryService)
           .expireByDeadline(Number(documentId));
-      http.post.mockClear();
       await reopen(end).expect(201);
-      expect(http.post).not.toHaveBeenCalled();
       expect((await detail()).signers.map((s) => s.invitationDelivery)).toEqual(
         ['pending', 'pending', 'pending'],
       );
@@ -273,12 +263,12 @@ describe('Spec016 內部發起與邀請', () => {
     '真正補簽交易隔離在途舊邀請結果（SMTP失敗=%s）',
     async (failure) => {
       const initiated = apiData<{ signEndAt: string }>(
-      await completeInitiation(
-        ctx,
-        initiate(externalSigners(), 60000).expect(202),
-        cookie,
-      ),
-    );
+        await completeInitiation(
+          ctx,
+          initiate(externalSigners(), 60000).expect(202),
+          cookie,
+        ),
+      );
       const [oldLog] = await notificationLogs();
       let rotated: Awaited<ReturnType<typeof invitations>> = [];
       const worker = invitationWorker(async () => {
@@ -308,12 +298,12 @@ describe('Spec016 內部發起與邀請', () => {
     '任一待簽者缺少%s，補簽409且不留下部分變更',
     async (column) => {
       const initiated = apiData<{ signEndAt: string }>(
-      await completeInitiation(
-        ctx,
-        initiate(externalSigners(), 60000).expect(202),
-        cookie,
-      ),
-    );
+        await completeInitiation(
+          ctx,
+          initiate(externalSigners(), 60000).expect(202),
+          cookie,
+        ),
+      );
       await ctx.app
         .get(MysqlService)
         .getManager()
@@ -589,7 +579,6 @@ describe('Spec016 內部發起與邀請', () => {
         errorCode: 'ESIGN_INITIATION_EMPLOYEE_UNAVAILABLE',
       });
       expect(await detail()).toEqual(before);
-      expect(http.post).not.toHaveBeenCalled();
     } finally {
       read.mockRestore();
       await ctx.app
@@ -665,10 +654,10 @@ describe('Spec016 內部發起與邀請', () => {
       );
       const mysql = ctx.app.get(MysqlService);
       const [log] = await mysql
-      .getManager()
-      .query<
-        Array<{ id: number }>
-      >('SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? LIMIT 1', [documentId]);
+        .getManager()
+        .query<
+          Array<{ id: number }>
+        >('SELECT l.id FROM esign_notification_logs l JOIN esign_notification_batches b ON b.id=l.batch_id WHERE b.document_id=? LIMIT 1', [documentId]);
       await mysql
         .getManager()
         .query(
@@ -695,10 +684,10 @@ describe('Spec016 內部發起與邀請', () => {
   );
   it('SMTP 失敗保持 active、留下可重試寄送狀態且不洩漏錯誤內容', async () => {
     await completeInitiation(
-        ctx,
-        initiate(externalSigners()).expect(202),
-        cookie,
-      );
+      ctx,
+      initiate(externalSigners()).expect(202),
+      cookie,
+    );
     const mysql = ctx.app.get(MysqlService);
     const [log] = await mysql
       .getManager()
@@ -720,8 +709,8 @@ describe('Spec016 內部發起與邀請', () => {
       ),
     );
     await worker.process({ data: { notificationLogId: log.id } } as Job<{
-        notificationLogId: number;
-      }>);
+      notificationLogId: number;
+    }>);
     const result = await detail();
     expect(result.status).toBe('active');
     expect(result.signers.map((s) => s.invitationDelivery)).toContain('failed');
@@ -804,7 +793,6 @@ describe('Spec016 內部發起與邀請', () => {
           email: null,
           invitationDelivery: 'skipped',
         });
-        expect(http.post).not.toHaveBeenCalled();
         const mailer = new FakeInvitationMailSender();
         const worker = new ExternalInvitationProcessor(
           ctx.app.get(MysqlService),
@@ -882,7 +870,6 @@ describe('Spec016 內部發起與邀請', () => {
       });
     try {
       await completeInitiation(ctx, initiate().expect(202), cookie);
-      expect(http.post).not.toHaveBeenCalled();
     } finally {
       read.mockRestore();
       await other.query('SET SESSION innodb_lock_wait_timeout=DEFAULT');
@@ -995,11 +982,14 @@ describe('Spec016 內部發起與邀請', () => {
             'ESIGN_INITIATION_TRANSIENT_FAILURE',
           );
           expect(jobs[index].nextAttemptAt).not.toBeNull();
-          await ctx.app.get(MysqlService).getManager().update(
-            EsignInitiationJob,
-            { publicId: jobs[index].jobId },
-            { nextAttemptAt: new Date(Date.now() - 1000) },
-          );
+          await ctx.app
+            .get(MysqlService)
+            .getManager()
+            .update(
+              EsignInitiationJob,
+              { publicId: jobs[index].jobId },
+              { nextAttemptAt: new Date(Date.now() - 1000) },
+            );
           jobs[index] = await driveInitiation(ctx, accepted[index], cookie);
         }
         expect(jobs[index].attemptCount).toBeLessThanOrEqual(3);
@@ -1017,13 +1007,12 @@ describe('Spec016 內部發起與邀請', () => {
           (row) => row.status === 'active' && Number(row.signers) === 2,
         ),
       ).toBe(true);
-      expect(http.post).not.toHaveBeenCalled();
     } finally {
       documentId = firstId;
     }
   });
   it('零內部名單不查 HR，非建立人不查 HR', async () => {
-    const other = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[1].id)).token}`;
+    const other = await employeeSessionCookie(ctx.app, users[1].id);
     const saved = cookie;
     cookie = other;
     try {
@@ -1031,7 +1020,6 @@ describe('Spec016 內部發起與邀請', () => {
     } finally {
       cookie = saved;
     }
-    expect(http.post).not.toHaveBeenCalled();
     await completeInitiation(
       ctx,
       initiate([
@@ -1039,7 +1027,6 @@ describe('Spec016 內部發起與邀請', () => {
       ]).expect(202),
       cookie,
     );
-    expect(http.post).not.toHaveBeenCalled();
   });
   it('內部SMTP結果不明公開unknown，不誤顯示為pending', async () => {
     await completeInitiation(ctx, initiate().expect(202), cookie);
@@ -1165,9 +1152,7 @@ describe('Spec016 內部發起與邀請', () => {
       })
       .expect(201);
     atDeadline(new Date(initiated.signEndAt));
-    http.post.mockClear();
     await reopen(new Date(initiated.signEndAt)).expect(201);
-    expect(http.post).not.toHaveBeenCalled();
     const [after] = await manager.query<Array<{ payload: string | object }>>(
       'SELECT signing_payload_json payload FROM esign_documents WHERE id=?',
       [documentId],

@@ -1,15 +1,11 @@
 import { completeInitiation } from './helpers/await-initiation';
-import { HttpService } from '@nestjs/axios';
 import { getQueueToken } from '@nestjs/bullmq';
 import { type INestApplicationContext } from '@nestjs/common';
 import { type Job, type Queue } from 'bullmq';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { PDFDocument } from 'pdf-lib';
-import { of } from 'rxjs';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
@@ -44,6 +40,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 interface Task {
   signerPublicId: string;
@@ -61,20 +58,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
   const queues: Queue[] = [];
   const origin = 'http://localhost:3000';
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(HttpService).useValue({
-        post: (_url: string, body: { person_empids: string[] }) =>
-          of({
-            data: {
-              success: true,
-              data: body.person_empids.map((person_empid) => ({
-                person_empid,
-                email: 'copy@example.test',
-              })),
-            },
-          }),
-      }),
-    );
+    ctx = await createSecurityE2eApp();
     mailFixture(ctx).allowEmails([
       'copy@example.test',
       'copy0@example.test',
@@ -84,7 +68,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     // 真實 worker 由測試逐次驅動，避免背景 consumer 搶先產製或清除邀請密文。
     for (const name of [
       ESIGN_DOCUMENT_INITIATION_QUEUE,
-  ESIGN_DOCUMENT_FINALIZATION_QUEUE,
+      ESIGN_DOCUMENT_FINALIZATION_QUEUE,
       ESIGN_EXTERNAL_INVITATION_QUEUE,
       ESIGN_MAINTENANCE_QUEUE,
     ]) {
@@ -107,7 +91,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         }),
       ),
     );
-    creatorCookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
+    creatorCookie = await employeeSessionCookie(ctx.app, users[0].id);
   });
   afterAll(async () => {
     if (worker) await worker.close();
@@ -269,14 +253,14 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       .set('Origin', origin)
       .send(signed.body)
       .expect(403);
-    const employeeCookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[1].id)).token}`;
+    const employeeCookie = await employeeSessionCookie(ctx.app, users[1].id);
     await manager.query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
       new Date(Date.now() - 1000),
       f.document.id,
     ]);
     await ctx.app
-          .get(EsignExpiryService)
-          .expireByDeadline(Number(f.document.id));
+      .get(EsignExpiryService)
+      .expireByDeadline(Number(f.document.id));
     const copy = await request(ctx.server)
       .post(
         `/api/esign/signing-tasks/${f.signers[0].publicId}/completed-file/downloads`,
@@ -297,8 +281,8 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     );
     expect(after.signature).toEqual(evidence.signature);
     expect(after.document.signedSourceSha256).toBe(
-        evidence.document.signedSourceSha256,
-      );
+      evidence.document.signedSourceSha256,
+    );
   });
   it('補簽只輪替待簽者；已簽者原邀請重新 OTP 取得相同 PDF 與不可變證據', async () => {
     const f = await fixture();
@@ -320,8 +304,8 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         f.document.id,
       ]);
     await ctx.app
-          .get(EsignExpiryService)
-          .expireByDeadline(Number(f.document.id));
+      .get(EsignExpiryService)
+      .expireByDeadline(Number(f.document.id));
     await request(ctx.server)
       .post(`/api/esign/documents/${f.document.id}/reopenings`)
       .set('Cookie', creatorCookie)
@@ -336,8 +320,8 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     await requestOtp(ctx, f.signers[1].token).expect(401);
     const renewed = await openExternalSession(ctx, f.signers[0].token);
     expect((await downloadCopy(renewed).expect(200)).body).toEqual(
-        original.body,
-      );
+      original.body,
+    );
     const after = apiData<SignatureVerification>(
       await getSignatureVerification(ctx.server, signed.verificationUrl).expect(
         200,
@@ -345,11 +329,11 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
     );
     expect(after.signature).toEqual(evidence.signature);
     expect(after.document.signedSourceSha256).toBe(
-        evidence.document.signedSourceSha256,
-      );
+      evidence.document.signedSourceSha256,
+    );
     expect(after.document.completedPdfSha256).toBe(
-        evidence.document.completedPdfSha256,
-      );
+      evidence.document.completedPdfSha256,
+    );
   });
   it('內部員工同次 OTP 存取可輪詢 pending→ready，取得與建立人完全相同的真實 PDF', async () => {
     const f = await fixture();

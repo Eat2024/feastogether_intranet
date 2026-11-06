@@ -1,12 +1,8 @@
 import { completeInitiation } from './helpers/await-initiation';
-import { HttpService } from '@nestjs/axios';
 import { randomBytes } from 'node:crypto';
-import { of } from 'rxjs';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import type { Job } from 'bullmq';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { ExternalInvitationProcessor } from '#app/worker/esign/external-invitation.processor';
@@ -22,13 +18,13 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('Spec016 內部 BCC 新發起與通知結果', () => {
   let ctx: SecurityE2eContext;
   let cookie: string;
   let users: User[];
   const origin = 'http://localhost:3000';
-  const http = { get: jest.fn(), post: jest.fn() };
   const jobs = {
     enqueueInitiation: jest.fn(),
     enqueueInvitations: jest.fn(),
@@ -36,11 +32,7 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
   };
   beforeAll(async () => {
     ctx = await createSecurityE2eApp((builder) =>
-      builder
-        .overrideProvider(HttpService)
-        .useValue(http)
-        .overrideProvider(EsignJobProducerService)
-        .useValue(jobs),
+      builder.overrideProvider(EsignJobProducerService).useValue(jobs),
     );
     mailFixture(ctx).allowEmails([
       'shared@example.test',
@@ -63,19 +55,7 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
     mailFixture(ctx).allowEmails(
       users.map((user) => `${user.empid.toLowerCase()}@example.test`),
     );
-    cookie = `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(users[0].id)).token}`;
-    http.post.mockImplementation(
-      (_url: string, body: { person_empids: string[] }) =>
-        of({
-          data: {
-            success: true,
-            data: body.person_empids.map((person_empid) => ({
-              person_empid,
-              email: `${person_empid.toLowerCase()}@example.test`,
-            })),
-          },
-        }),
-    );
+    cookie = await employeeSessionCookie(ctx.app, users[0].id);
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);

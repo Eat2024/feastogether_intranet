@@ -170,6 +170,11 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
         });
     }
     if (db) {
+      // WebView activation 寫入的安全事件以 FK 指向會話與員工，須先刪。
+      await db.query(
+        'DELETE FROM auth_security_events WHERE actor_user_id IN (SELECT id FROM users WHERE empid LIKE ?)',
+        [prefix + '%'],
+      );
       await db.query(
         'DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE empid LIKE ?)',
         [prefix + '%'],

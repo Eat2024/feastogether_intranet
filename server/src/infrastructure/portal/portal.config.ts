@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 /**
  * Portal MySQL 唯讀連線設定（PORTAL_MYSQL_*）。
  *
- * 照 FeastogetherConfig 採延遲驗證：取用時才檢查必填值，設定缺漏不影響 HTTP 與 worker 啟動，
+ * 採延遲驗證：取用時才檢查必填值，設定缺漏不影響 HTTP 與 worker 啟動，
  * 只讓查詢 Portal 的功能失敗。缺漏時拋一般 Error，由呼叫端轉成各自的錯誤碼；訊息只含變數名稱。
  */
 @Injectable()

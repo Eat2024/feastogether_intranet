@@ -7,7 +7,6 @@ import { AppModule } from '#app/app.module';
 import { WorkerModule } from '#app/worker.module';
 import { validateAppEnvironment } from '#app/config/app.environment';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
-import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { GuardedInvitationMailSender } from '#app/infrastructure/mail/guarded-invitation-mail-sender.service';
 import {
@@ -29,15 +28,6 @@ describe.each([
       const empid = `WIRE${randomBytes(4).toString('hex')}`;
       const allowedEmail = `${empid.toLowerCase()}@example.test`;
       const blockedEmail = 'unregistered@example.test';
-      // 寄信白名單只讀本機資料：任何饗賓人呼叫（含 hr/*）都直接失敗，結尾另確認呼叫數為 0。
-      const upstream = {
-        get: jest.fn((path: string) => {
-          throw new Error(`寄信白名單不得呼叫饗賓人 ${path}`);
-        }),
-        post: jest.fn((path: string) => {
-          throw new Error(`寄信白名單不得呼叫饗賓人 ${path}`);
-        }),
-      };
       // Nodemailer 真正建立 envelope，傳輸層只在記憶體回報結果，不開 socket。
       const envelopes: string[][] = [];
       const capturedTransport = nodemailer.createTransport({
@@ -87,8 +77,6 @@ describe.each([
       const module = await Test.createTestingModule({ imports: [rootModule] })
         .overrideProvider(ConfigService)
         .useValue(config)
-        .overrideProvider(FeastogetherClient)
-        .useValue(upstream)
         .compile();
       const manager = module.get(MysqlService).getManager();
       let readRules: jest.SpyInstance | undefined;
@@ -165,8 +153,6 @@ describe.each([
           await sender.send({ ...invitation, recipientEmail: blockedEmail });
           await sender.sendOtp({ ...otp, recipientEmail: blockedEmail });
           expect(readRules).not.toHaveBeenCalled();
-          expect(upstream.get).not.toHaveBeenCalled();
-          expect(upstream.post).not.toHaveBeenCalled();
           expect(envelopes).toEqual([
             [allowedEmail],
             [allowedEmail],
@@ -206,9 +192,6 @@ describe.each([
             expect(fakeSend).not.toHaveBeenCalled();
           }
         }
-        // 員編規則不需組織樹，也不得逐人查詢資格；所有寄送種類均適用。
-        expect(upstream.get).not.toHaveBeenCalled();
-        expect(upstream.post).not.toHaveBeenCalled();
       } finally {
         readRules?.mockRestore();
         await manager.delete(MailRecipientWhitelist, {

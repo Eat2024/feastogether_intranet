@@ -3,8 +3,6 @@ import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AuthService } from '#app/features/auth/services/auth.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
@@ -25,6 +23,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('022 草稿版本完整性', () => {
   jest.setTimeout(60000);
@@ -57,7 +56,7 @@ describe('022 草稿版本完整性', () => {
     pdf = Buffer.from(await source.save());
   });
   async function session(userId: number) {
-    return `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(userId)).token}`;
+    return await employeeSessionCookie(ctx.app, userId);
   }
   async function newDoc() {
     const id = apiData<{ id: string }>(
@@ -158,8 +157,8 @@ describe('022 草稿版本完整性', () => {
       .send({ fields: [{ ...body().fields[0], xPercent: 35 }] })
       .expect(200);
     expect(apiError(await retry(doc, parent).expect(409)).code).toBe(
-        'ESIGN_INITIATION_DOCUMENT_CHANGED',
-      );
+      'ESIGN_INITIATION_DOCUMENT_CHANGED',
+    );
     expect(await version(doc)).not.toBe(before);
   });
 
@@ -244,8 +243,8 @@ describe('022 草稿版本完整性', () => {
     const before = await version(doc);
     await edit(doc, kind);
     expect(apiError(await retry(doc, parent).expect(409)).code).toBe(
-        'ESIGN_INITIATION_DOCUMENT_CHANGED',
-      );
+      'ESIGN_INITIATION_DOCUMENT_CHANGED',
+    );
     expect((await version(doc)) > before).toBe(true);
   });
   async function databaseClock(timestamp: number) {

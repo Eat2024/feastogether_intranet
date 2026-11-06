@@ -1,13 +1,11 @@
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import { createHash } from 'node:crypto';
 import { REDIS_MAIN } from '#app/infrastructure/database/redis/redis.provider';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import { EsignSignerCandidateService } from '#app/features/esign/services/esign-signer-candidate.service';
-import { AuthService } from '#app/features/auth/services/auth.service';
+import { SessionService } from '#app/features/auth/services/session.service';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
-import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { assertTestRedisDb } from '#app/infrastructure/database/test/ensure-test-redis';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
@@ -106,27 +104,16 @@ describe('組織樹 API（合成 Portal）', () => {
   let sources: jest.SpyInstance[];
   const sourceCalls = () =>
     sources.reduce((total, spy) => total + spy.mock.calls.length, 0);
-  // 饗賓人 client 一被呼叫就失敗；afterEach 另外確認呼叫數為 0（app 內的錯誤可能被轉成 502）。
-  const feastogether = {
-    get: jest.fn((path: string) => {
-      throw new Error(`測試不得呼叫饗賓人 ${path}`);
-    }),
-    post: jest.fn((path: string) => {
-      throw new Error(`測試不得呼叫饗賓人 ${path}`);
-    }),
-  };
   const createApp = (config?: PortalConfig) =>
     createSecurityE2eApp((builder) => {
-      builder
-        .overrideProvider(FeastogetherClient)
-        .useValue(feastogether)
-        .overrideProvider(AuthService)
-        .useValue({
-          verifySessionToken: (token: string) =>
-            Promise.resolve(
-              token === 'synthetic-session' ? { userId: 1 } : null,
-            ),
-        });
+      builder.overrideProvider(SessionService).useValue({
+        authenticate: (token: string) =>
+          Promise.resolve(
+            token === 'synthetic-session'
+              ? { actor: { kind: 'employee', userId: 1 }, user: {} }
+              : null,
+          ),
+      });
       return config
         ? builder.overrideProvider(PortalConfig).useValue(config)
         : builder;
@@ -235,9 +222,10 @@ describe('組織樹 API（合成 Portal）', () => {
     );
     client = ctx.app.get<Redis>(REDIS_MAIN);
     key = orgChartKey(ctx.app.get(PortalConfig));
+    // 饗賓人來源時期的命名空間是 sha256([NODE_ENV, 饗賓 API base URL])；該設定已移除，以合成網址代表。
     const feastogetherNamespace = sha256([
       environment(),
-      ctx.app.get(ConfigService).get<string>('FEASTOGETHER_BASE_URL'),
+      'https://synthetic.invalid',
     ]);
     legacyKeys = [
       `esign:org-chart:v2:${feastogetherNamespace}`,
@@ -251,11 +239,6 @@ describe('組織樹 API（合成 Portal）', () => {
   beforeEach(async () => {
     await client.del(key, ...legacyKeys);
     for (const spy of sources) spy.mockClear();
-  });
-
-  afterEach(() => {
-    expect(feastogether.get).not.toHaveBeenCalled();
-    expect(feastogether.post).not.toHaveBeenCalled();
   });
 
   afterAll(async () => {
@@ -392,10 +375,10 @@ describe('組織樹 API（合成 Portal）', () => {
         1800,
       );
     const response = await ctx.app.inject({
-        method: 'GET',
-        url: route,
-        headers,
-      });
+      method: 'GET',
+      url: route,
+      headers,
+    });
     expect(response.statusCode).toBe(200);
     expect(response.json<{ data: unknown }>().data).toEqual(expectedTree);
     expect(sourceCalls()).toBe(1);
@@ -530,9 +513,9 @@ describe('組織樹 API（合成 Portal）', () => {
       });
       expect(response.statusCode).toBe(502);
       expect(response.json<unknown>()).toMatchObject({
-      success: false,
-      error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
-    });
+        success: false,
+        error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
+      });
       expect(await client.get(key)).toBeNull();
     } finally {
       await portal.query(
@@ -555,11 +538,11 @@ describe('組織樹 API（合成 Portal）', () => {
       for (const response of responses) {
         expect(response.statusCode).toBe(502);
         expect(response.json<unknown>()).toMatchObject({
-      success: false,
-      error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
-    });
+          success: false,
+          error: { code: 'ORG_CHART_UPSTREAM_UNAVAILABLE' },
+        });
         for (const value of [config.host, config.user, config.database])
-      expect(response.body).not.toContain(value);
+          expect(response.body).not.toContain(value);
         expect(response.body).not.toContain('chi_department');
       }
       expect(sourceCalls()).toBe(50);

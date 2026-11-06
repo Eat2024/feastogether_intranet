@@ -244,6 +244,11 @@ describe('e-sign schema database constraints', () => {
           [database],
         );
         expect(checks.map(({ CONSTRAINT_NAME }) => CONSTRAINT_NAME)).toEqual([
+          'chk_auth_security_events_actor_kind',
+          'chk_auth_security_events_actor_user',
+          'chk_auth_security_events_event_type',
+          'chk_auth_sessions_active_session',
+          'chk_auth_sessions_actor',
           'chk_auth_sessions_status',
           'chk_esign_document_fields_bounds',
           'chk_esign_document_fields_page',
@@ -273,6 +278,9 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_signers_terminal_times',
           'chk_mail_recipient_whitelist_type',
           'chk_mail_recipient_whitelist_value',
+          'chk_super_user_access_credential_generation',
+          'chk_super_user_access_entry_generation',
+          'chk_super_user_access_singleton',
         ]);
       } finally {
         await ds.destroy();

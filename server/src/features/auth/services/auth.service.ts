@@ -10,16 +10,12 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { EntityManager } from 'typeorm';
 import { AppException } from '#app/common/errors/app.exception';
-import {
-  AUTH_SESSION_STATUS,
-  type AuthSession as AuthSessionEntity,
-} from '#app/features/auth/entities/auth-session.entity';
+import type { AuthSession as AuthSessionEntity } from '#app/features/auth/entities/auth-session.entity';
 import { AuthSessionRepository } from '#app/features/auth/repositories/auth-session.repository';
 import { isDuplicateEntryError } from '#app/features/auth/repositories/oauth-identity.repository';
 import { User } from '#app/features/users/entities/user.entity';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
-import { FeastogetherAuthService } from '#app/infrastructure/http-client/feastogether/services/feastogether-auth.service';
 import type { StaffLookupDto } from '../dto/staff-lookup.dto';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import {
@@ -27,9 +23,12 @@ import {
   WEBVIEW_JWT_MAX_TTL_SECONDS,
   WEBVIEW_JWT_TYPE,
   WEBVIEW_LAUNCH_TTL_SECONDS,
-  WEBVIEW_SESSION_TTL_SECONDS,
 } from '../auth.constants';
 import { WebviewLaunchView } from '../dto/webview-launch.dto';
+import {
+  AuthSecurityEventService,
+  EMPLOYEE_INELIGIBLE_EVENT,
+} from './auth-security-event.service';
 import { EligibleStaffService } from './eligible-staff.service';
 
 interface LaunchClaims {
@@ -41,23 +40,6 @@ interface LaunchClaims {
   nbf: number;
   exp: number;
   name?: string;
-}
-
-export interface AuthSession {
-  user: {
-    id: number;
-    empId: string;
-    name: string;
-    departmentName: string | null;
-    titleName: string | null;
-    lastLoginAt: Date | null;
-  };
-  expiresAt: Date;
-}
-
-export interface VerifiedIdentity {
-  userId: number;
-  expiresAt: Date;
 }
 
 @Injectable()
@@ -74,38 +56,13 @@ export class AuthService {
     private readonly mysql: MysqlService,
     private readonly eligibleStaff: EligibleStaffService,
     private readonly logger: AppLoggerService,
-    private readonly passwordAuth: FeastogetherAuthService,
+    private readonly events: AuthSecurityEventService,
   ) {
     const webviewConfig = this.getConfig(config);
     this.issuer = webviewConfig.iss;
     this.audience = webviewConfig.aud;
     this.publicKey = this.readPublicKey(webviewConfig.key);
     this.launchOrigin = webviewConfig.launch;
-  }
-
-  /** 帳密驗證後沿用 WebView 的員工資格與本地帳號規則，再發本系統 session。 */
-  async login(
-    empId: string,
-    password: string,
-  ): Promise<{ token: string; session: AuthSession }> {
-    await this.passwordAuth.authenticate(empId, password);
-    const staff = await this.eligibleStaff.lookupEligibleStaff(empId);
-    const saveUser = () =>
-      this.mysql.transaction((manager) =>
-        this.findOrCreateUser(empId, staff, new Date(), manager),
-      );
-    let user: User;
-    try {
-      user = await saveUser();
-    } catch (error) {
-      if (!this.isUserCreationRace(error)) throw error;
-      user = await saveUser();
-    }
-    const issued = await this.issueSession(Number(user.id));
-    return {
-      token: issued.token,
-      session: this.buildSession(user, issued.expiresAt),
-    };
   }
 
   async createWebviewLaunch(token: string): Promise<WebviewLaunchView> {
@@ -139,141 +96,14 @@ export class AuthService {
       return issued;
     } catch (error) {
       await this.failClaim(Number(session.id), this.failureCode(error));
-      if (error instanceof AppException) throw error;
-      throw this.databaseUnavailable();
-    }
-  }
-
-  async activateWebviewSession(code: string): Promise<string> {
-    if (!this.isOpaqueCredential(code)) throw this.exchangeFailed();
-    const token = this.createCredential();
-    const now = new Date();
-    try {
-      await this.mysql.transaction(async (manager) => {
-        const session = await this.sessions.findPendingForUpdate(
-          this.digest(code),
-          now,
-          manager,
-        );
-        if (!session || !session.userId) {
-          this.audit('auth.launch_code_rejected');
-          throw this.exchangeFailed();
-        }
-        session.status = AUTH_SESSION_STATUS.ACTIVE;
-        session.sessionTokenHash = this.digest(token);
-        session.activatedAt = now;
-        session.expiresAt = new Date(
-          now.getTime() + WEBVIEW_SESSION_TTL_SECONDS * 1000,
-        );
-        await this.sessions.save(session, manager);
-      });
-    } catch (error) {
-      if (error instanceof AppException) throw error;
-      throw this.databaseUnavailable();
-    }
-    this.audit('auth.session_created');
-    return token;
-  }
-
-  async verifySessionToken(token: string): Promise<VerifiedIdentity | null> {
-    if (!this.isOpaqueCredential(token)) return null;
-    try {
-      const session = await this.sessions.findActive(
-        this.digest(token),
-        new Date(),
-        this.mysql.getManager(),
-      );
-      const user = session?.user;
-      if (
-        !session?.userId ||
-        !session.expiresAt ||
-        !user ||
-        !user.isActive ||
-        user.deletedAt
-      ) {
-        this.audit('auth.session_rejected');
-        return null;
+      if (!(error instanceof AppException)) throw this.databaseUnavailable();
+      // JWT 與 jti 已通過：Portal 判定不可登入、本機帳號停用或已刪除（4xx）記匿名 login.rejected，
+      // 等 failClaim 之後、員工列鎖已釋放才寫；Portal 查詢失敗（502）是系統故障，不記。
+      if (error.getStatus() < 500) {
+        await this.events.recordRejection(EMPLOYEE_INELIGIBLE_EVENT);
       }
-      return { userId: Number(session.userId), expiresAt: session.expiresAt };
-    } catch {
-      throw this.databaseUnavailable();
+      throw error;
     }
-  }
-
-  async getMe(
-    userId: number,
-    cookieToken: string | null,
-  ): Promise<AuthSession> {
-    if (!Number.isInteger(userId) || !cookieToken) {
-      throw this.unauthorized();
-    }
-    const identity = await this.verifySessionToken(cookieToken);
-    if (!identity || identity.userId !== userId) throw this.unauthorized();
-    let user: User | null;
-    try {
-      user = await this.users.findById(userId, this.mysql.getManager());
-    } catch {
-      throw this.databaseUnavailable();
-    }
-    if (!user?.isActive || user.deletedAt) throw this.unauthorized();
-    return this.buildSession(user, identity.expiresAt);
-  }
-
-  async logout(
-    cookieToken: string | null,
-  ): Promise<{ localLogout: 'completed' }> {
-    if (!cookieToken || !this.isOpaqueCredential(cookieToken)) {
-      return { localLogout: 'completed' };
-    }
-    try {
-      const revoked = await this.mysql.transaction((manager) =>
-        this.sessions.revoke(this.digest(cookieToken), new Date(), manager),
-      );
-      if (revoked) this.audit('auth.session_revoked');
-    } catch {
-      throw this.databaseUnavailable();
-    }
-    return { localLogout: 'completed' };
-  }
-
-  /** 供 OAuth 登入共用同一 MySQL session；開發登入仍未註冊於 runtime。 */
-  async issueSession(
-    userId: number,
-  ): Promise<{ token: string; expiresAt: Date }> {
-    const token = this.createCredential();
-    const now = new Date();
-    const expiresAt = new Date(
-      now.getTime() + WEBVIEW_SESSION_TTL_SECONDS * 1000,
-    );
-    try {
-      await this.mysql.transaction((manager) =>
-        this.sessions.createActive(
-          userId,
-          this.digest(`local\0${this.createCredential()}`),
-          this.digest(token),
-          now,
-          expiresAt,
-          manager,
-        ),
-      );
-    } catch {
-      throw this.databaseUnavailable();
-    }
-    return { token, expiresAt };
-  }
-
-  buildSession(user: User, expiresAt: Date): AuthSession {
-    return {
-      user: {
-        id: Number(user.id),
-        empId: user.empid,
-        name: user.name,
-        departmentName: user.departmentName ?? null,
-        titleName: user.titleName ?? null,
-        lastLoginAt: user.lastLoginAt ?? null,
-      },
-      expiresAt,
-    };
   }
 
   private getConfig(config: ConfigService) {
@@ -475,10 +305,6 @@ export class AuthService {
     return randomBytes(32).toString('base64url');
   }
 
-  private isOpaqueCredential(value: string): boolean {
-    return /^[A-Za-z0-9_-]{43}$/.test(value);
-  }
-
   private digest(value: string): string {
     return createHash('sha256').update(value).digest('hex');
   }
@@ -512,10 +338,6 @@ export class AuthService {
 
   private exchangeFailed(): AppException {
     return new AppException(...AppErrors.AUTH_EXCHANGE_FAILED);
-  }
-
-  private unauthorized(): AppException {
-    return new AppException(...AppErrors.AUTH_SESSION_INVALID);
   }
 
   private databaseUnavailable(): AppException {

@@ -31,18 +31,12 @@ export const AppErrorCode = {
   NOT_FOUND: 'NOT_FOUND',
   /** 員工查詢或匯入失敗，不透露上游員工狀態。 */
   STAFF_LOOKUP_FAILED: 'STAFF_LOOKUP_FAILED',
-  /** 登入身分無效（使用者不存在、已停用或 session 已失效） */
-  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
   /** 帳號已停用（P2） */
   ACCOUNT_DISABLED: 'ACCOUNT_DISABLED',
   /** 請求過於頻繁（認證端點速率限制） */
   REFUSE_SERVICE: 'REFUSE_SERVICE',
   /** 請求 Origin 不在允許清單（跨站請求防護） */
   CSRF_ORIGIN_REJECTED: 'CSRF_ORIGIN_REJECTED',
-  /** 饗賓 API 連線設定未就緒（缺 FEASTOGETHER_* 環境變數） */
-  EXTERNAL_AUTH_UNAVAILABLE: 'EXTERNAL_AUTH_UNAVAILABLE',
-  /** 外部資料服務（饗賓 brand/department/hr/字典）不可用（003） */
-  EATOGETHER_API_SERVICE_UNAVAILABLE: 'EATOGETHER_API_SERVICE_UNAVAILABLE',
   /** 電子簽 PDF 格式、大小、加密或頁數不符合規格。 */
   ESIGN_INVALID_PDF: 'ESIGN_INVALID_PDF',
   /** 電子簽資源不存在或目前身分無權存取。 */
@@ -79,6 +73,16 @@ export const AppErrorCode = {
   AUTH_EXCHANGE_FAILED: 'AUTH_EXCHANGE_FAILED',
   /** MySQL 無法安全建立或驗證認證狀態。 */
   AUTH_DB_UNAVAILABLE: 'AUTH_DB_UNAVAILABLE',
+  /** 同一瀏覽器的舊會話已被另一次登入取代。 */
+  AUTH_SESSION_REPLACED: 'AUTH_SESSION_REPLACED',
+  /** Super user 入口尚未初始化，或本機帳密設定不是目前啟用的版本。 */
+  AUTH_SUPER_USER_UNAVAILABLE: 'AUTH_SUPER_USER_UNAVAILABLE',
+  /** Super user 帳號或密碼錯誤（統一回應，不透露帳號是否存在）。 */
+  AUTH_SUPER_USER_CREDENTIALS_INVALID: 'AUTH_SUPER_USER_CREDENTIALS_INVALID',
+  /** 啟用帳密時提供的 expectedGeneration 不是目前啟用版本（REPL）。 */
+  AUTH_SUPER_USER_GENERATION_CONFLICT: 'AUTH_SUPER_USER_GENERATION_CONFLICT',
+  /** 目前身分不能使用此端點（例如 Super user 存取尚未接入授權的員工業務）；不是登入過期。 */
+  AUTH_ACTOR_NOT_ALLOWED: 'AUTH_ACTOR_NOT_ALLOWED',
   /** 未預期錯誤（既有 handler 預設） */
   ESIGN_EXPORT_SOURCE_FAILED: 'ESIGN_EXPORT_SOURCE_FAILED',
   ESIGN_EXPORT_EMPTY: 'ESIGN_EXPORT_EMPTY',

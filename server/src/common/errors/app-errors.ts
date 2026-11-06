@@ -206,9 +206,9 @@ export const AppErrors = {
     '帳號已停用',
     HttpStatus.FORBIDDEN,
   ],
-  ACCOUNT_DISABLED_CONTACT_IT: [
-    AppErrorCode.ACCOUNT_DISABLED,
-    '帳號已停用，請聯絡資訊人員',
+  AUTH_ACTOR_NOT_ALLOWED: [
+    AppErrorCode.AUTH_ACTOR_NOT_ALLOWED,
+    '目前身分無法使用此功能',
     HttpStatus.FORBIDDEN,
   ],
   AUTH_DB_UNAVAILABLE: [
@@ -241,10 +241,25 @@ export const AppErrors = {
     '系統拒絕服務，請聯絡IT人員',
     HttpStatus.TOO_MANY_REQUESTS,
   ],
-  AUTH_SESSION_INVALID: [
-    AppErrorCode.UNAUTHORIZED,
-    '登入狀態無效或已到期',
+  AUTH_SESSION_REPLACED: [
+    AppErrorCode.AUTH_SESSION_REPLACED,
+    '登入身分已更新，請重新整理',
+    HttpStatus.CONFLICT,
+  ],
+  AUTH_SUPER_USER_CREDENTIALS_INVALID: [
+    AppErrorCode.AUTH_SUPER_USER_CREDENTIALS_INVALID,
+    '帳號或密碼錯誤',
     HttpStatus.UNAUTHORIZED,
+  ],
+  AUTH_SUPER_USER_GENERATION_CONFLICT: [
+    AppErrorCode.AUTH_SUPER_USER_GENERATION_CONFLICT,
+    'expectedGeneration 不是目前的帳密啟用版本，請以 credentialStatus() 確認後再啟用',
+    HttpStatus.CONFLICT,
+  ],
+  AUTH_SUPER_USER_UNAVAILABLE: [
+    AppErrorCode.AUTH_SUPER_USER_UNAVAILABLE,
+    '維護登入暫時無法使用',
+    HttpStatus.SERVICE_UNAVAILABLE,
   ],
   AUTH_TOKEN_INVALID: [
     AppErrorCode.UNAUTHORIZED,
@@ -260,11 +275,6 @@ export const AppErrors = {
     AppErrorCode.CSRF_ORIGIN_REJECTED,
     '請求來源不允許',
     HttpStatus.FORBIDDEN,
-  ],
-  EMPLOYEE_ID_INVALID: [
-    AppErrorCode.INVALID_REQUEST,
-    '請輸入有效的員工編號',
-    HttpStatus.BAD_REQUEST,
   ],
   ESIGN_COMPLETED_DOCUMENT_NOT_READY: [
     AppErrorCode.ESIGN_STATE_CONFLICT,
@@ -542,35 +552,10 @@ export const AppErrors = {
     '查無此簽章或驗證碼無效',
     HttpStatus.NOT_FOUND,
   ],
-  FEASTOGETHER_CONFIG_MISSING: [
-    AppErrorCode.EXTERNAL_AUTH_UNAVAILABLE,
-    '饗賓 API 未設定（缺少連線環境變數）',
-    HttpStatus.BAD_GATEWAY,
-  ],
-  FEASTOGETHER_UNAUTHORIZED: [
-    AppErrorCode.UNAUTHORIZED,
-    '饗賓授權已失效，請重新登入',
-    HttpStatus.UNAUTHORIZED,
-  ],
-  FEASTOGETHER_UNAVAILABLE: [
-    AppErrorCode.EATOGETHER_API_SERVICE_UNAVAILABLE,
-    '饗賓服務暫時無法使用',
-    HttpStatus.BAD_GATEWAY,
-  ],
-  INVALID_CREDENTIALS: [
-    AppErrorCode.INVALID_CREDENTIALS,
-    '員工編號或密碼錯誤',
-    HttpStatus.UNAUTHORIZED,
-  ],
   LOGIN_REQUIRED: [
     AppErrorCode.UNAUTHORIZED,
     '需登入才能操作',
     HttpStatus.UNAUTHORIZED,
-  ],
-  LOGIN_UNAVAILABLE: [
-    AppErrorCode.EXTERNAL_AUTH_UNAVAILABLE,
-    '登入服務暫時無法使用，請稍後再試',
-    HttpStatus.BAD_GATEWAY,
   ],
   NOT_FOUND: [AppErrorCode.NOT_FOUND, '找不到資源', HttpStatus.NOT_FOUND],
   OAUTH_CODE_MISSING: [
@@ -612,11 +597,6 @@ export const AppErrors = {
     AppErrorCode.OAUTH_UNAVAILABLE,
     '登入服務暫時無法使用，請稍後再試',
     HttpStatus.SERVICE_UNAVAILABLE,
-  ],
-  PASSWORD_REQUIRED: [
-    AppErrorCode.INVALID_REQUEST,
-    '請輸入密碼',
-    HttpStatus.BAD_REQUEST,
   ],
   REQUEST_FORMAT_INVALID: [
     AppErrorCode.INVALID_REQUEST,

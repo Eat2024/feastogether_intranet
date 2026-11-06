@@ -24,7 +24,7 @@ const ENV = {
  */
 @Injectable()
 export class OauthConfig {
-  /** 統一登入是否已設定（登入頁依此顯示統一登入按鈕）。 */
+  /** 統一登入是否已設定；未設定時 OAuth 入口回 503，不影響 WebView。 */
   readonly configured: boolean;
 
   constructor(private readonly config: ConfigService) {

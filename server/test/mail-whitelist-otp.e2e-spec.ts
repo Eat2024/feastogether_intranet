@@ -7,7 +7,6 @@ import { EsignSigner } from '#app/features/esign/entities/esign-signer.entity';
 import { EsignTokenService } from '#app/features/esign/services/esign-token.service';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
-import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
 import { FakeInvitationMailSender } from '#app/infrastructure/mail/fake-invitation-mail-sender.service';
 import { GuardedInvitationMailSender } from '#app/infrastructure/mail/guarded-invitation-mail-sender.service';
 import { INVITATION_MAIL_SENDER } from '#app/infrastructure/mail/invitation-mail-sender.port';
@@ -30,19 +29,8 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
   const empid = `OTP${randomBytes(4).toString('hex')}`;
   const email = `${empid.toLowerCase()}@example.test`;
   const transport = jest.spyOn(FakeInvitationMailSender.prototype, 'sendOtp');
-  const hr = {
-    get: jest.fn(() => {
-      throw new Error('OTP 白名單不得逐人查詢資格');
-    }),
-    post: jest.fn(() => {
-      throw new Error('不得呼叫 HR');
-    }),
-  };
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp(
-      (builder) => builder.overrideProvider(FeastogetherClient).useValue(hr),
-      null,
-    );
+    ctx = await createSecurityE2eApp(undefined, null);
     const manager = ctx.app.get(MysqlService).getManager();
     await manager.insert(User, {
       empid,
@@ -76,17 +64,13 @@ describe('Spec018 OTP 白名單 HTTP 與寄送結果', () => {
     sourceFailed = false;
     const manager = ctx.app.get(MysqlService).getManager();
     await manager.delete(MailRecipientWhitelist, {
-        type: 'employee',
-        value: empid,
-      });
+      type: 'employee',
+      value: empid,
+    });
     await manager.delete(MailRecipientWhitelist, {
-        type: 'email',
-        value: email,
-      });
-  });
-  afterEach(() => {
-    expect(hr.get).not.toHaveBeenCalled();
-    expect(hr.post).not.toHaveBeenCalled();
+      type: 'email',
+      value: email,
+    });
   });
   afterAll(async () => {
     transport.mockRestore();

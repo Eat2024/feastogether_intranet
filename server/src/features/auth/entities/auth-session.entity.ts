@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { User } from '#app/features/users/entities/user.entity';
 import { AuditableEntity } from '#app/infrastructure/database/auditable.entity';
+import type { ActorKind, SessionSource } from '../auth.types';
 
 export const AUTH_SESSION_STATUS = {
   VALIDATING: 'validating',
@@ -26,11 +27,22 @@ export type AuthSessionStatus =
   'chk_auth_sessions_status',
   "`status` IN ('validating','pending','active','failed','revoked')",
 )
+@Check(
+  'chk_auth_sessions_actor',
+  "(`actor_kind` = 'employee' AND `credential_generation` IS NULL AND `source` IN ('webview','oauth') AND (`status` IN ('validating','failed') OR `user_id` IS NOT NULL)) OR (`actor_kind` = 'super_user' AND `user_id` IS NULL AND `credential_generation` IS NOT NULL AND `source` = 'super_user' AND `status` NOT IN ('validating','pending'))",
+)
+@Check(
+  'chk_auth_sessions_active_session',
+  "`status` <> 'active' OR (`session_token_hash` IS NOT NULL AND `activated_at` IS NOT NULL AND `expires_at` IS NOT NULL)",
+)
 @Index('uq_auth_sessions_source_jti_hash', ['sourceJtiHash'], { unique: true })
 @Index('uq_auth_sessions_launch_code_hash', ['launchCodeHash'], {
   unique: true,
 })
 @Index('uq_auth_sessions_session_token_hash', ['sessionTokenHash'], {
+  unique: true,
+})
+@Index('uq_auth_sessions_replacement_session_id', ['replacementSessionId'], {
   unique: true,
 })
 @Index('idx_auth_sessions_status_launch_expires_at', [
@@ -39,6 +51,11 @@ export type AuthSessionStatus =
 ])
 @Index('idx_auth_sessions_status_expires_at', ['status', 'expiresAt'])
 @Index('idx_auth_sessions_user_created_at', ['userId', 'createdAt'])
+@Index('idx_auth_sessions_actor_generation_status', [
+  'actorKind',
+  'credentialGeneration',
+  'status',
+])
 @Index('idx_auth_sessions_deleted_at', ['deletedAt'])
 export class AuthSession extends AuditableEntity {
   @PrimaryGeneratedColumn({
@@ -48,6 +65,15 @@ export class AuthSession extends AuditableEntity {
     comment: '認證流程流水號',
   })
   id!: number;
+
+  @Column({
+    name: 'actor_kind',
+    type: 'varchar',
+    length: 20,
+    default: 'employee',
+    comment: '操作者類型',
+  })
+  actorKind!: ActorKind;
 
   @Column({
     name: 'user_id',
@@ -70,7 +96,16 @@ export class AuthSession extends AuditableEntity {
     length: 20,
     comment: '認證來源',
   })
-  source!: 'webview';
+  source!: SessionSource;
+
+  @Column({
+    name: 'credential_generation',
+    type: 'bigint',
+    unsigned: true,
+    nullable: true,
+    comment: 'Super user 帳密啟用版本',
+  })
+  credentialGeneration!: number | null;
 
   @Column({ name: 'status', type: 'varchar', length: 20, comment: '認證狀態' })
   status!: AuthSessionStatus;
@@ -159,6 +194,22 @@ export class AuthSession extends AuditableEntity {
     comment: 'Session 撤銷時間',
   })
   revokedAt!: Date | null;
+
+  @Column({
+    name: 'replacement_session_id',
+    type: 'bigint',
+    unsigned: true,
+    nullable: true,
+    comment: '取代本會話的新會話 ID',
+  })
+  replacementSessionId!: number | null;
+
+  @ManyToOne(() => AuthSession, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'replacement_session_id',
+    foreignKeyConstraintName: 'fk_auth_sessions_replacement',
+  })
+  replacementSession?: AuthSession | null;
 
   @Column({
     name: 'failure_code',

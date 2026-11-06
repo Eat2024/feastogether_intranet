@@ -30,47 +30,30 @@ import configPath from '#app/config/config.path';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import {
   clearAuthCookie,
+  clearOauthTxCookie,
   setAuthCookie,
 } from '#app/features/auth/helpers/auth-cookie';
+import { AllowSuperUser } from '#app/framework/decorators/allow-super-user.decorator';
 import { Public } from '#app/framework/decorators/public.decorator';
-import { LoginDto } from '../dto/login.dto';
-import { AuthThrottlerGuard } from '#app/framework/guards/auth-throttler.guard';
+import type { AuthenticatedRequest } from '#app/framework/guards/auth.guard';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import {
   EmbedOriginsView,
   WebviewLaunchView,
   WebviewSessionDto,
 } from '../dto/webview-launch.dto';
+import { toSessionView, type SessionView } from '../dto/session-view.dto';
 import { AuthService } from '../services/auth.service';
-
-type AuthedRequest = FastifyRequest & { user?: { id: string } };
+import { SessionService } from '../services/session.service';
 
 @ApiTags('auth')
 @Controller(configPath.AUTH)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
+    private readonly sessions: SessionService,
     private readonly config: ConfigService,
   ) {}
-
-  // 以員工編號與密碼驗證身分並建立登入 session。
-  @Public()
-  @UseGuards(OriginGuard, AuthThrottlerGuard)
-  @Post('login')
-  @HttpCode(HttpStatus.OK)
-  @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: '以員工編號與密碼登入電子簽' })
-  async login(
-    @Body() dto: LoginDto,
-    @Res({ passthrough: true }) reply: FastifyReply,
-  ) {
-    const { token, session } = await this.authService.login(
-      dto.empId,
-      dto.password,
-    );
-    setAuthCookie(reply, this.config, token);
-    return session;
-  }
 
   // 驗證主平台 JWT 並建立一次性 WebView 啟動網址。
   @Public()
@@ -136,13 +119,14 @@ export class AuthController {
       .send(this.renderWebviewBridge(code, nonce));
   }
 
-  // 消耗一次性 WebView 啟動碼並建立員工 session。
+  // 消耗一次性 WebView 啟動碼，原子替換瀏覽器目前的會話為該員工。
   @Public()
   @Post(configPath.AUTH_SESSION)
   @ApiBody({ type: WebviewSessionDto })
-  @ApiOperation({ summary: '消耗一次性啟動碼並建立員工 Session' })
+  @ApiOperation({ summary: '消耗一次性啟動碼並以員工 Session 替換目前會話' })
   async createSession(
     @Body() body: unknown,
+    @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     this.setBridgeHeaders(reply);
@@ -155,7 +139,11 @@ export class AuthController {
       return;
     }
     try {
-      const token = await this.authService.activateWebviewSession(code);
+      const { token } = await this.sessions.replace(
+        cookieTokenFromMap(request.cookies, AUTH_COOKIE_NAME),
+        { kind: 'webview_launch', launchCode: code },
+      );
+      // 替換交易 commit 後才設定 cookie；失敗時不動原 cookie。
       setAuthCookie(reply, this.config, token);
       reply.redirect('/', HttpStatus.SEE_OTHER);
     } catch (error) {
@@ -166,29 +154,21 @@ export class AuthController {
       reply
         .status(status)
         .type('text/html; charset=utf-8')
-        .send(
-          this.errorPage(
-            status === Number(AppErrors.AUTH_DB_UNAVAILABLE[2])
-              ? AppErrors.AUTH_DB_UNAVAILABLE[1]
-              : AppErrors.AUTH_LAUNCH_INVALID[1],
-          ),
-        );
+        .send(this.errorPage(this.activationFailureMessage(status)));
     }
   }
 
-  // 取得目前登入員工的 session 資訊。
+  // 取得目前身分（員工或 Super user）；會話已由 AuthGuard 驗證。
+  @AllowSuperUser()
   @Get(configPath.AUTH_SESSION)
   @Header('Cache-Control', 'no-store')
   @ApiCookieAuth('sessionCookie')
-  @ApiOperation({ summary: '取得目前電子簽員工 Session' })
-  getSession(@Req() request: AuthedRequest) {
-    return this.authService.getMe(
-      Number(request.user?.id),
-      cookieTokenFromMap(request.cookies, AUTH_COOKIE_NAME),
-    );
+  @ApiOperation({ summary: '取得目前電子簽 Session' })
+  getSession(@Req() request: AuthenticatedRequest): SessionView {
+    return toSessionView(request.authSession!);
   }
 
-  // 撤銷目前員工 session 並清除登入 cookie。
+  // 撤銷目前 session（員工或 Super user）後清除登入與 OAuth 交易 cookie；撤銷失敗時不清，可重試。
   @Public()
   @UseGuards(OriginGuard)
   @Delete(configPath.AUTH_SESSION)
@@ -199,9 +179,23 @@ export class AuthController {
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const token = cookieTokenFromMap(request.cookies, AUTH_COOKIE_NAME);
+    await this.sessions.revoke(
+      cookieTokenFromMap(request.cookies, AUTH_COOKIE_NAME),
+    );
     clearAuthCookie(reply, this.config);
-    return this.authService.logout(token);
+    clearOauthTxCookie(reply, this.config);
+    return { localLogout: 'completed' as const };
+  }
+
+  /** 啟動頁是 HTML，只顯示固定文案；同一舊會話已被其他登入取代時請使用者重新整理。 */
+  private activationFailureMessage(status: number): string {
+    if (status === Number(AppErrors.AUTH_DB_UNAVAILABLE[2])) {
+      return AppErrors.AUTH_DB_UNAVAILABLE[1];
+    }
+    if (status === Number(AppErrors.AUTH_SESSION_REPLACED[2])) {
+      return AppErrors.AUTH_SESSION_REPLACED[1];
+    }
+    return AppErrors.AUTH_LAUNCH_INVALID[1];
   }
 
   private credentialFromObject(value: unknown): string | null {

@@ -74,27 +74,13 @@ describe('OauthConfig', () => {
     expect(thrownBy(() => config.issuer)).toMatchObject(UNAVAILABLE);
   });
 
-  it('DEVMOD 開放且完全未設定 → 可開機、configured=false，取設定時才回 OAUTH_UNAVAILABLE', () => {
+  it('只有 .env.example 預設的 redirect URI → 可開機、configured=false，取設定時才回 OAUTH_UNAVAILABLE', () => {
     const config = build({
-      DEVMOD: 'true',
-      // .env.example 預設帶的 redirect URI 不算「有設定」
       OAUTH_REDIRECT_URI: 'http://localhost:3000/oauth/callback',
     });
 
     expect(config.configured).toBe(false);
     expect(thrownBy(() => config.issuer)).toMatchObject(UNAVAILABLE);
-  });
-
-  it('DEVMOD 開放但只設一半 → 仍建構失敗（設定錯誤不放過）', () => {
-    expect(
-      thrownBy(() =>
-        build({ DEVMOD: 'true', OAUTH_ISSUER: 'https://auth.example.com' }),
-      ),
-    ).toMatchObject(UNAVAILABLE);
-  });
-
-  it('DEVMOD 開放且完整設定 → configured=true', () => {
-    expect(build({ ...validEnv(), DEVMOD: 'true' }).configured).toBe(true);
   });
 
   it('production 未設定 OAuth 時仍可提供 WebView SSO', () => {

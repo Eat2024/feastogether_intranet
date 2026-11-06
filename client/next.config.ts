@@ -21,6 +21,13 @@ const nextConfig: NextConfig = {
     turbopackFileSystemCacheForDev: false,
   },
 
+  // 隱藏維護入口的網址含入口值：開發時不記這類 request log（正式環境 next start 本來就不記 request log）。
+  logging: {
+    incomingRequests: {
+      ignore: [/^\/ops-access\//, /^\/api\/auth\/super-user-entries\//],
+    },
+  },
+
   // 電子簽頁面已移到 /esign 底下，舊網址（書籤、既有連結）轉到新位置；
   // 不設為永久轉址，避免瀏覽器長期快取
   async redirects() {

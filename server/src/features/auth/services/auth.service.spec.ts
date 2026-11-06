@@ -1,7 +1,9 @@
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
-import { AUTH_SESSION_STATUS } from '../entities/auth-session.entity';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
+import { EMPLOYEE_INELIGIBLE_EVENT } from './auth-security-event.service';
 import { AuthService } from './auth.service';
 
 describe('AuthService WebView SSO', () => {
@@ -21,23 +23,10 @@ describe('AuthService WebView SSO', () => {
       WEBVIEW_LAUNCH_ORIGIN: 'https://esign.example.test',
     };
     const config = { get: jest.fn((key: string) => configValues[key]) };
-    const pendingSession = {
-      id: 1,
-      userId: 7,
-      status: AUTH_SESSION_STATUS.PENDING,
-      sessionTokenHash: null,
-      activatedAt: null,
-      expiresAt: null,
-    };
     const sessions = {
       createValidating: jest.fn().mockResolvedValue({ id: 1 }),
       markPending: jest.fn().mockResolvedValue(undefined),
       markFailed: jest.fn().mockResolvedValue(undefined),
-      findPendingForUpdate: jest.fn().mockResolvedValue(pendingSession),
-      save: jest.fn().mockImplementation((value) => Promise.resolve(value)),
-      findActive: jest.fn(),
-      revoke: jest.fn().mockResolvedValue(undefined),
-      createActive: jest.fn().mockResolvedValue({ id: 2 }),
     };
     const user = {
       id: 7,
@@ -53,7 +42,6 @@ describe('AuthService WebView SSO', () => {
       findByEmpidForUpdate: jest.fn().mockResolvedValue(null),
       create: jest.fn((fields) => ({ ...fields })),
       save: jest.fn().mockResolvedValue(user),
-      findById: jest.fn().mockResolvedValue(user),
     };
     const mysql = {
       transaction: jest.fn((run) => run(manager)),
@@ -72,132 +60,26 @@ describe('AuthService WebView SSO', () => {
       lookupEligibleStaff: jest.fn().mockResolvedValue(staff),
     };
     const logger = { info: jest.fn() };
-    const passwordAuth = {
-      authenticate: jest.fn().mockResolvedValue(undefined),
-    };
+    const events = { recordRejection: jest.fn() };
     return {
       service: new AuthService(
         config as never,
-        sessions,
+        sessions as never,
         users as never,
         mysql as never,
         eligibleStaff as never,
         logger as never,
-        passwordAuth as never,
+        events as never,
       ),
       config,
-      passwordAuth,
       sessions,
       users,
       mysql,
       eligibleStaff,
+      events,
       user,
     };
   };
-
-  it('帳密通過且員工符合資格才建立本地 session', async () => {
-    const { service, passwordAuth, eligibleStaff, sessions } = setup();
-    const result = await service.login('00123', 'synthetic-password');
-    expect(passwordAuth.authenticate).toHaveBeenCalledWith(
-      '00123',
-      'synthetic-password',
-    );
-    expect(eligibleStaff.lookupEligibleStaff).toHaveBeenCalledWith('00123');
-    expect(sessions.createActive).toHaveBeenCalledTimes(1);
-    expect(result.session.user.empId).toBe('00123');
-    expect(result.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-  });
-
-  it.each(['001a_B-02', 'IT'])(
-    '新增帳號保存可信部門原字串 %s',
-    async (code) => {
-      const { service, eligibleStaff, users } = setup();
-      eligibleStaff.lookupEligibleStaff.mockResolvedValue({
-        person_empid: '00123',
-        person_name: '合成員工',
-        person_status: 1,
-        person_status_name: '正式',
-        department_id: code,
-        department_name: '合成部門',
-        title: null,
-      });
-      await service.login('00123', 'synthetic-password');
-      expect(users.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          departmentCode: code,
-          departmentName: '合成部門',
-        }),
-        manager,
-      );
-    },
-  );
-
-  it('缺部門（EligibleStaffService 給 null）清除既有代碼與名稱，不沿用舊授權', async () => {
-    const { service, eligibleStaff, users, user } = setup();
-    users.findByEmpidForUpdate.mockResolvedValue({
-      ...user,
-      departmentId: 42,
-      departmentCode: 'OLD',
-      departmentName: '舊部門',
-    });
-    eligibleStaff.lookupEligibleStaff.mockResolvedValue({
-      person_empid: '00123',
-      person_name: '合成員工',
-      person_status: 1,
-      person_status_name: '正式',
-      department_id: null,
-      department_name: null,
-      title: null,
-    });
-    await service.login('00123', 'synthetic-password');
-    expect(users.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        departmentId: 42,
-        departmentCode: null,
-        departmentName: null,
-      }),
-      manager,
-    );
-  });
-
-  it('登入同步不寫入未選取的 email，登入回應也不揭露信箱', async () => {
-    const { service, users, user } = setup();
-    users.findByEmpidForUpdate.mockResolvedValue({ ...user });
-    users.save.mockResolvedValue({ ...user, email: 'private@example.test' });
-    const result = await service.login('00123', 'synthetic-password');
-    const saved: unknown = users.save.mock.calls[0][0];
-    expect(saved).not.toHaveProperty('email');
-    expect(result.session.user).not.toHaveProperty('email');
-    expect(JSON.stringify(result)).not.toContain('private@example.test');
-  });
-
-  it('員工資料查詢失敗不寫入帳號或建立 session', async () => {
-    const { service, eligibleStaff, users, sessions } = setup();
-    const failure = new Error('合成上游失敗');
-    eligibleStaff.lookupEligibleStaff.mockRejectedValue(failure);
-    await expect(service.login('00123', 'synthetic-password')).rejects.toBe(
-      failure,
-    );
-    expect(users.save).not.toHaveBeenCalled();
-    expect(sessions.createActive).not.toHaveBeenCalled();
-  });
-
-  it('錯誤密碼不查員工也不建立 session', async () => {
-    const { service, passwordAuth, eligibleStaff, sessions } = setup();
-    passwordAuth.authenticate.mockRejectedValue(new Error('驗證失敗'));
-    await expect(service.login('00123', 'wrong')).rejects.toThrow('驗證失敗');
-    expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
-    expect(sessions.createActive).not.toHaveBeenCalled();
-  });
-
-  it('上游帳密正確但本地停用仍不得登入', async () => {
-    const { service, users, user, sessions } = setup();
-    users.findByEmpidForUpdate.mockResolvedValue({ ...user, isActive: false });
-    await expect(
-      service.login('00123', 'synthetic-password'),
-    ).rejects.toMatchObject({ status: 401 });
-    expect(sessions.createActive).not.toHaveBeenCalled();
-  });
 
   const jwt = (overrides: Record<string, unknown> = {}, header = {}) => {
     const now = Math.floor(Date.now() / 1000);
@@ -243,7 +125,7 @@ describe('AuthService WebView SSO', () => {
           dependencies.mysql as never,
           dependencies.eligibleStaff as never,
           { info: jest.fn() } as never,
-          dependencies.passwordAuth as never,
+          dependencies.events as never,
         ),
     ).toThrow('WEBVIEW_JWT_PUBLIC_KEY_B64 必須是有效 RSA 公鑰 PEM');
   });
@@ -364,35 +246,102 @@ describe('AuthService WebView SSO', () => {
     expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
   });
 
-  it('啟動 code 只能消耗一次並建立獨立 8 小時 opaque session', async () => {
-    const { service, sessions } = setup();
-    const token = await service.activateWebviewSession('a'.repeat(43));
-    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(sessions.save).toHaveBeenCalledWith(
+  it.each(['001a_B-02', 'IT'])(
+    '新增帳號保存可信部門原字串 %s',
+    async (code) => {
+      const { service, eligibleStaff, users } = setup();
+      eligibleStaff.lookupEligibleStaff.mockResolvedValue({
+        person_empid: '00123',
+        person_name: '合成員工',
+        person_status: 1,
+        person_status_name: '正式',
+        department_id: code,
+        department_name: '合成部門',
+        title: null,
+      });
+      await service.createWebviewLaunch(jwt());
+      expect(users.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          departmentCode: code,
+          departmentName: '合成部門',
+        }),
+        manager,
+      );
+    },
+  );
+
+  it('缺部門（EligibleStaffService 給 null）清除既有代碼與名稱，不沿用舊授權', async () => {
+    const { service, eligibleStaff, users, user } = setup();
+    users.findByEmpidForUpdate.mockResolvedValue({
+      ...user,
+      departmentId: 42,
+      departmentCode: 'OLD',
+      departmentName: '舊部門',
+    });
+    eligibleStaff.lookupEligibleStaff.mockResolvedValue({
+      person_empid: '00123',
+      person_name: '合成員工',
+      person_status: 1,
+      person_status_name: '正式',
+      department_id: null,
+      department_name: null,
+      title: null,
+    });
+    await service.createWebviewLaunch(jwt());
+    expect(users.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        status: AUTH_SESSION_STATUS.ACTIVE,
-        sessionTokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-        expiresAt: expect.any(Date),
+        departmentId: 42,
+        departmentCode: null,
+        departmentName: null,
       }),
       manager,
     );
   });
 
-  it('有效 DB session 回傳白名單 User 與固定 expiresAt', async () => {
-    const { service, sessions, user } = setup();
-    const expiresAt = new Date(Date.now() + 60_000);
-    sessions.findActive.mockResolvedValue({ userId: 7, expiresAt, user });
-    await expect(service.getMe(7, 'a'.repeat(43))).resolves.toEqual({
-      user: {
-        id: 7,
-        empId: '00123',
-        name: '王小明',
-        departmentName: '資訊部',
-        titleName: '工程師',
-        lastLoginAt: user.lastLoginAt,
-      },
-      expiresAt,
+  it('登入同步不寫入未選取的 email', async () => {
+    const { service, users, user } = setup();
+    users.findByEmpidForUpdate.mockResolvedValue({ ...user });
+    await service.createWebviewLaunch(jwt());
+    const saved = (users.save.mock.calls[0] as unknown[])[0];
+    expect(saved).not.toHaveProperty('email');
+  });
+
+  it.each([
+    [
+      'Portal 查詢失敗',
+      new AppException(...AppErrors.STAFF_LOOKUP_FAILED),
+      HttpStatus.BAD_GATEWAY,
+    ],
+    ['未預期錯誤', new Error('合成上游失敗'), HttpStatus.SERVICE_UNAVAILABLE],
+  ])(
+    '員工資料%s不寫入帳號，launch 標記失敗，不記拒絕事件',
+    async (_case, failure, status) => {
+      const { service, eligibleStaff, users, sessions, events } = setup();
+      eligibleStaff.lookupEligibleStaff.mockRejectedValue(failure);
+      await expect(service.createWebviewLaunch(jwt())).rejects.toMatchObject({
+        status,
+      });
+      expect(users.save).not.toHaveBeenCalled();
+      expect(sessions.markPending).not.toHaveBeenCalled();
+      expect(sessions.markFailed).toHaveBeenCalled();
+      expect(events.recordRejection).not.toHaveBeenCalled();
+    },
+  );
+
+  it('Portal 判定不可登入：launch 先標記失敗再記匿名拒絕事件', async () => {
+    const { service, eligibleStaff, sessions, events } = setup();
+    eligibleStaff.lookupEligibleStaff.mockRejectedValue(
+      new AppException(...AppErrors.AUTH_EXCHANGE_FAILED),
+    );
+    await expect(service.createWebviewLaunch(jwt())).rejects.toMatchObject({
+      code: AppErrorCode.AUTH_EXCHANGE_FAILED,
     });
+    expect(events.recordRejection).toHaveBeenCalledWith(
+      EMPLOYEE_INELIGIBLE_EVENT,
+    );
+    expect(sessions.markFailed.mock.invocationCallOrder[0]).toBeLessThan(
+      events.recordRejection.mock.invocationCallOrder[0],
+    );
   });
 
   it('既有 User 只更新員工資料白名單欄位並保留 departmentId', async () => {
@@ -441,29 +390,24 @@ describe('AuthService WebView SSO', () => {
   it.each([
     { isActive: false, deletedAt: null },
     { isActive: true, deletedAt: new Date() },
-  ])('inactive／soft-deleted User fail closed：%p', async (state) => {
-    const { service, users, sessions } = setup();
-    users.findByEmpidForUpdate.mockResolvedValue({
-      id: 7,
-      empid: '00123',
-      name: '王小明',
-      ...state,
-    });
-    await expect(service.createWebviewLaunch(jwt())).rejects.toMatchObject({
-      code: AppErrorCode.AUTH_EXCHANGE_FAILED,
-    });
-    expect(sessions.markPending).not.toHaveBeenCalled();
-    expect(sessions.markFailed).toHaveBeenCalled();
-  });
-
-  it('DB session 查詢失敗明確回 503', async () => {
-    const { service, sessions } = setup();
-    sessions.findActive.mockRejectedValue(new Error('db down'));
-    await expect(
-      service.verifySessionToken('a'.repeat(43)),
-    ).rejects.toMatchObject({
-      code: AppErrorCode.AUTH_DB_UNAVAILABLE,
-      status: HttpStatus.SERVICE_UNAVAILABLE,
-    });
-  });
+  ])(
+    'inactive／soft-deleted User fail closed 並記匿名拒絕事件：%p',
+    async (state) => {
+      const { service, users, sessions, events } = setup();
+      users.findByEmpidForUpdate.mockResolvedValue({
+        id: 7,
+        empid: '00123',
+        name: '王小明',
+        ...state,
+      });
+      await expect(service.createWebviewLaunch(jwt())).rejects.toMatchObject({
+        code: AppErrorCode.AUTH_EXCHANGE_FAILED,
+      });
+      expect(sessions.markPending).not.toHaveBeenCalled();
+      expect(sessions.markFailed).toHaveBeenCalled();
+      expect(events.recordRejection).toHaveBeenCalledWith(
+        EMPLOYEE_INELIGIBLE_EVENT,
+      );
+    },
+  );
 });

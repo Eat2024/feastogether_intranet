@@ -4,26 +4,22 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
-import { AuthService } from '#app/features/auth/services/auth.service';
+import { AuthSecurityEventService } from '#app/features/auth/services/auth-security-event.service';
 import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { OauthIdentityService } from '#app/features/auth/services/oauth-identity.service';
 import { OauthLoginService } from '#app/features/auth/services/oauth-login.service';
 import { OauthTransactionService } from '#app/features/auth/services/oauth-transaction.service';
+import { SessionService } from '#app/features/auth/services/session.service';
+import { SuperUserConfigService } from '#app/features/auth/services/super-user-config.service';
 import { InfrastructureModule } from '#app/infrastructure/infrastructure.module';
 import { OauthModule } from '#app/infrastructure/http-client/oauth/oauth.module';
-import { FeastogetherModule } from '#app/infrastructure/http-client/feastogether/feastogether.module';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import { FrameworkModule } from '#app/framework/framework.module';
 import * as oidcStub from './stubs/openid-client.stub';
 
 @Module({
-  imports: [
-    FrameworkModule,
-    InfrastructureModule,
-    OauthModule,
-    FeastogetherModule,
-  ],
+  imports: [FrameworkModule, InfrastructureModule, OauthModule],
   providers: [
     EligibleStaffService,
     OauthIdentityService,
@@ -42,7 +38,9 @@ import * as oidcStub from './stubs/openid-client.stub';
         },
       },
     },
-    AuthService,
+    SessionService,
+    SuperUserConfigService,
+    AuthSecurityEventService,
     OauthLoginService,
   ],
 })
@@ -92,7 +90,7 @@ describe('dormant SSO/session testing module', () => {
     const dataSource = testingModule.get<DataSource>(MYSQL_MAIN);
     try {
       const login = testingModule.get(OauthLoginService);
-      const auth = testingModule.get(AuthService);
+      const sessions = testingModule.get(SessionService);
       const userRepository = testingModule.get(UserRepository);
 
       const started = await login.start('/documents');
@@ -105,29 +103,35 @@ describe('dormant SSO/session testing module', () => {
       const completed = await login.getAccessTokenAndUserInfo(
         { code: 'synthetic-code', state: state! },
         started.browserToken,
+        null,
       );
       expect(completed.session.user.empId).toBe(empid);
       await expect(
-        auth.verifySessionToken(completed.accessToken),
-      ).resolves.toMatchObject({ userId: completed.session.user.id });
+        sessions.authenticate(completed.accessToken),
+      ).resolves.toMatchObject({
+        actor: { kind: 'employee', userId: completed.session.user.id },
+      });
 
       await expect(
         login.getAccessTokenAndUserInfo(
           { code: 'synthetic-code', state: state! },
           started.browserToken,
+          null,
         ),
       ).rejects.toMatchObject({ code: AppErrorCode.OAUTH_TRANSACTION_INVALID });
 
-      await expect(auth.logout(completed.accessToken)).resolves.toMatchObject({
-        localLogout: 'completed',
-      });
+      await sessions.revoke(completed.accessToken);
       await expect(
-        auth.verifySessionToken(completed.accessToken),
+        sessions.authenticate(completed.accessToken),
       ).resolves.toBeNull();
 
       const user = await userRepository.findByEmpid(empid, dataSource.manager);
       expect(user).toMatchObject({ empid, isActive: true });
     } finally {
+      await dataSource.query(
+        'DELETE FROM auth_security_events WHERE actor_user_id = (SELECT id FROM users WHERE empid = ?)',
+        [empid],
+      );
       await dataSource.query(
         'DELETE FROM auth_sessions WHERE user_id = (SELECT id FROM users WHERE empid = ?)',
         [empid],

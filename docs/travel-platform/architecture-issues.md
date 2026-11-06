@@ -334,9 +334,17 @@ intranet 已經用 nestjs-cls 記錄操作者（`server/src/infrastructure/datab
   - **權限矩陣**：PRD 的權限矩陣是「功能項目 × 查看／新增／修改／刪除／匯出」，有些格子不適用。程式目錄要補分組、功能、動作、排序等顯示用資訊。
   - **管理畫面**：028 和 029 都不做角色和員工的管理畫面，但 PRD 的 phase 1 就要角色管理和帳號管理頁。這些頁面由旅遊平台實作，可以參考 CKS client 的角色與帳號管理頁，並套用上面的 module 管理 API。
 - **A2 OAuth 瀏覽器入口與首頁**：
-  - 027 FR-013 不做 OAuth 登入頁和 callback 頁，目前員工只能從入口網的 WebView 進入。
-  - 投票頁要在手機上使用（RWD，VOTE-PAGE-35），所以 OAuth 前端入口是旅遊平台 phase 1 的前置工作。
-  - 投票入口卡片所在的首頁 PRD（S1-01）還沒寫。同仁從哪裡進入（瀏覽器，還是饗賓人 App 的 WebView）也要和 PM 確認。
+  - 027 FR-013 與 Scope 明確不做 OAuth 登入頁和 callback 頁。
+  - **現況（2026-11-05 查核 dev `4e0c9bc`）**：
+    - client 沒有任何登入頁，員工只能從入口網的 iframe／WebView launch 進入。
+    - server 已有 `POST /api/auth/oauth/start`、`POST /api/auth/oauth/callback`（從 nest_seed 帶過來，intranet 沒有對應的 spec）。
+    - `.env.example` 的 `OAUTH_REDIRECT_URI` 指向 client 的 `/oauth/callback`，但 client 沒有這一頁，所以瀏覽器的 OAuth 登入目前走不完。
+  - **和 feastogether_oauth 對得上的部分**：
+    - intranet 是機密 client，用 `client_secret_post`，OAuth server 有支援。
+    - scope 是 `openid profile email`，員編在 `profile` 的 `employee_number`。
+    - intranet 的 client 註冊時不能設定 `allowed_auds`：設定後 access token 會變成發給該 resource，拿去打 userinfo 會失敗，intranet 就拿不到員編。
+  - 旅遊平台的後台只做 PC 版、不進饗賓人 App；App 的登入目前擱置（〈三、8〉）。所以 OAuth 瀏覽器入口是旅遊平台 phase 1 的前置工作。要做的有 callback 頁、沒有 session 時導去 OAuth 登入、登入後的首頁。
+  - 投票入口卡片所在的首頁 PRD（S1-01）還沒寫。
 - **A3 離職者的「無法登入，請洽人資」**：
   - OAuth server 在離職日當天就拒絕登入，訊息是通用的，intranet 根本收不到這些人。
   - intranet 自己的 Portal 資格檢查失敗時，也只回通用的 `AUTH_EXCHANGE_FAILED`（`server/src/features/auth/services/eligible-staff.service.ts:50-51`）。
@@ -469,6 +477,102 @@ intranet 已經用 nestjs-cls 記錄操作者（`server/src/infrastructure/datab
 - 沿用同一個網域和同一個 Next app，可以避開 cookie 與 basePath 的問題：cookie 是 host-only、`Path=/`。
 - 如果為了 3,000 人要擴到多台主機，檔案要從本機 volume 改成 S3（推論）。
 
+### 8. 登入入口：Portal 與饗賓人 App（擱置）
+
+> **狀態（使用者 2026-11-05）**：饗賓人 App 的登入先擱置，只記下有這件事。它和 OAuth 是兩條不同的路，目前先處理 OAuth 的搬遷。以下是擱置前的討論紀錄，重啟時再確認。
+
+**新需求**
+
+旅遊平台可能要在饗賓人 App 裡開啟，同仁不必再輸入帳密，和 Portal 進電子簽一樣。
+
+**決定**
+
+- 饗賓人 App 比照 Portal 現在的做法，使用 002 的 WebView launch：App 的後端用自己的私鑰簽短效 JWT，伺服器對伺服器交給 intranet。
+- App 的修改由使用者協助。
+- 不在 WebView 裡走 OAuth 登入：App 依 D33 用系統瀏覽器登入 OAuth，這份 cookie 和 WebView 不共用，同仁得再輸入一次帳密。
+- Portal 也維持 002：Portal 是用 iframe 嵌入電子簽（`specs/002-webview-sso-session/contracts/embed-postmessage.md`），OAuth 登入頁設了 `frame-ancestors 'none'`，不能在 iframe 裡開。
+
+**流程**
+
+1. 同仁在 App 點旅遊平台。
+2. App 帶著自己的 Sanctum token 呼叫 App 後端 `feastogether-backend` 的一支新 API。
+3. `feastogether-backend` 依 `main-platform-jwt.md` 簽 JWT：`sub` 是登入者的員編，`iss` 用 App 專屬的值；再 POST 到 intranet 的 `/api/auth/webview-launches`。
+4. intranet 驗證後回 `launchUrl`（60 秒內、只能用一次），`feastogether-backend` 把它交給 App。
+5. App 用 WebView 開 `launchUrl`，經 bridge 取得 intranet 的 session cookie。
+
+**App 後端：`feastogether-backend`（2026-11-05 查核，HEAD `4d5ae25`）**
+
+- Laravel 12 加 Sanctum，是饗賓人 App 的 CMS 後台、API 與推播 API。
+- App 登入（`AuthService::login`）由它轉打 fgapi `/api/v1/staff/login`：
+  - 成功後建立或沿用本地 `users`，`username = person_empid`，`auth_type = 'external'`。
+  - 之後發 Sanctum token 給 App。
+  - 所以這個後端知道登入者的員編，也有可以放私鑰的伺服器環境。
+- 另有 `auth_type = 'local'` 的本地帳號，用本地密碼登入，`username` 不保證是員編。新 API 只能替 `external` 帳號簽 JWT，`local` 帳號一律拒絕。
+  - 否則本地帳號的 `username` 剛好等於某個員編時，就能冒用那位員工登入 intranet。
+  - intranet 的 Portal 在職檢查擋不住這種情況。
+- 私鑰放在 `feastogether-backend` 的環境設定，不能打包進 App。
+- 簽章可以用 `firebase/php-jwt`：目前只是間接依賴，使用時要直接列進 `composer.json`。
+- 呼叫外部服務的寫法可以比照既有的 `ExternalApiService`。
+- 員工離職後，App 的 Sanctum token 可能仍然有效。intranet 在 launch 時會查 Portal，離職者會被擋下，所以 App 後端不必另外判斷。
+
+**intranet 要改的**
+
+| 項目 | 現況 | 要改成 |
+|---|---|---|
+| 信任的簽發者 | 只有一組 `WEBVIEW_JWT_ISSUER`／`WEBVIEW_JWT_PUBLIC_KEY_B64` | 依 `iss` 選對應的公鑰，Portal、App 各一組。要新增環境變數，實作前取得同意 |
+| 登入後的頁面 | launch 一律導到 `/`；Portal 再用 `postMessage` 的 `esign:navigate` 換頁 | WebView 沒有父頁面可以送 `postMessage`。目前依簽發者固定落地頁：App 一律導到旅遊平台前台首頁（S1-01 活動總覽，投票和報名入口都在這裡）。推播要直接開某個活動時，再讓 launch 帶站內相對路徑（之後規劃） |
+| 登入來源 | Portal 和 OAuth 都寫 `webview` | 記錄是哪一個簽發者，Portal 和 App 分得出來（配合 027 的 `source`） |
+| 資格規則 | 各入口各自呼叫 | OAuth、Portal、App 三個入口共用同一個「查 Portal、擋停用、更新部門」的 service |
+
+**旅遊平台在 WebView 裡要處理的**
+
+- App 只開投票頁和報名頁給同仁；管理頁面不進 App（使用者 2026-11-05 確認）。投票頁以手機為主（VOTE-PAGE，iPhone 15 Pro）；後台只做 PC 版（ACCT-61、ROLE-47）。
+- 「查看行程」（VOTE-PAGE-16）要另開新分頁開網址或檔案，但 WebView 沒有分頁：
+  - App 要處理 `target=_blank` 和檔案下載。
+  - 如果交給系統瀏覽器開，系統瀏覽器沒有 intranet 的 cookie，需要登入才能讀的行程檔會打不開。
+  - 要決定在 WebView 內開，或改用短效的簽名網址。
+- session 固定 8 小時：App 每次開旅遊平台都重新 launch；使用中途到期就在頁面提示重新開啟。
+- 投票開放時的尖峰：每次 launch 都會多打一次 App 後端和一次 Portal 查詢，壓測要一起算進去。
+
+**之後改用 OAuth**
+
+等 Portal 和 App 都改用 OAuth 登入，兩邊一起把 JWT 換成 OAuth 發的、收件者是 intranet 的 access token，launch、bridge、session 都不變。到時要做的：
+
+- OAuth：
+  - client 的 `allowed_auds` 加上 intranet。
+  - intranet 用的 token 要帶 `employee_number`。收件者是 intranet 的 token 不能拿去打 userinfo，所以員編要直接放在 token 裡。
+- client 端：同一個 client 有兩個收件者後，沒指定收件者的請求會被拒絕（`invalid_target: select one resource`，見 feastogether_oauth `resource-token.service.ts`）。所以既有的登入與換 token 請求都要明確帶 `resource`，要和 client 同步上線。
+- intranet：改用 OAuth 的 JWKS 驗證，保留 `jti` 防重放；只剩 OAuth 一個簽發者後，移除 Portal、App 的公鑰設定。
+
+**auth 細節**
+
+- **前台只看 session 與資格名單**：
+  - 投票、報名只需要有效 session，再依活動的資格名單比對員編（ROLE-38），不需要 `travel_accounts`。
+  - 所以 App 進來的同仁不必有旅遊平台帳號。
+- **不依登入來源限制權限**：
+  - 從 App 進來的 session 和其他入口相同；管理者從 App 進來，畫面上只是沒有後台入口。
+  - 不另外做「App 來的 session 不能進後台」，因為目前沒有這個需求。
+- **共用手機與換帳號**：
+  - App 的 WebView 會保留 intranet 的 cookie。
+  - App 每次開旅遊平台都重新 launch，新的 cookie 會蓋掉舊的。
+  - App 登出時清掉 WebView 裡 intranet 的 cookie，或呼叫 `DELETE /api/auth/session`。
+  - 這樣下一位登入同一支手機的人，不會看到前一個人的投票頁。
+- **限流不受影響**：
+  - App 的 launch 全部從 `feastogether-backend` 同一個 IP 發出。
+  - intranet 依 IP 的登入限流（`AuthThrottlerGuard`）只套在員工帳密登入，027 會移除該入口；`webview-launches` 和 bridge 的 `POST /api/auth/session` 都沒有掛。
+  - 所以同一個 IP 不會被擋。
+- **契約只換 `iss` 與金鑰**：
+  - App 沿用 002 的 `typ`（`FT-ESIGN-LAUNCH+JWT`）和 `aud`（`feastogether-esign`）。名稱雖然是電子簽，但要改就得 Portal 一起改，所以先不動。
+  - App 用自己的一組 RSA 金鑰。App 後端的金鑰外洩時，只要撤換這一組，不影響 Portal。
+- **登入資格和投票資格不同**（待 PM 確認）：
+  - 能登入的只有 Portal 狀態為試用或正式的員工（`PORTAL_ACTIVE_STATUS_NAMES`）。
+  - 投票資格名單上的人如果不在這兩種狀態（例如留職停薪），連登入都進不去，也就看不到「您目前不具備本次投票資格」的提示，只會看到登入失敗。
+  - 建議維持登入門檻，並請 PM 確認名單只會匯入在職員工。
+
+**之後再規劃**
+
+- 饗賓人推播直接開啟某個投票活動：屆時 launch 要能帶站內相對路徑，存在待啟動紀錄裡，不放進 `launchUrl`；驗證沿用 `safeLoginReturnPath`。
+
 ---
 
 ## 四、feastogether_oauth 還要配合的事
@@ -477,6 +581,7 @@ intranet 已經用 nestjs-cls 記錄操作者（`server/src/infrastructure/datab
 - **離職訊息**：在 OAuth 登入頁顯示「無法登入，請洽人資」，要先決定是否修改防帳號枚舉規則（A3）。
 - **登入尖峰**：3,000 人同時登入的承載要和 intranet 一起壓測。
 - **同步時間**：OAuth 04:00、intranet 04:00、PRD 05:00，三者的先後與失敗語意要對齊。
+- **WebView 入口改用 OAuth（之後）**：Portal 和饗賓人 App 改用 OAuth 登入後，要替 intranet 發帶員編的 access token，client 也要明確帶 `resource`。見〈三、8〉。
 
 ## 五、建議的處理順序
 
@@ -491,4 +596,6 @@ intranet 已經用 nestjs-cls 記錄操作者（`server/src/infrastructure/datab
 3. **HR 鏡像**：決定語意與來源，另開 spec 修訂 024。
 4. **spike**：加密 xlsx；3,000 人投票與登入的壓測原型。
 5. **第一個旅遊功能開工前**：定好錯誤代碼表、toast、axios timeout、通用寄信介面、共用表格。
-6. **入口**：OAuth 瀏覽器入口和首頁 PRD，排在投票頁之前。
+6. **入口**：
+   - OAuth 瀏覽器入口和首頁 PRD，排在投票頁之前。
+   - 饗賓人 App 的 WebView launch（〈三、8〉）：目前擱置。

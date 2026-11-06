@@ -4,7 +4,7 @@ import { DataSource, In } from 'typeorm';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { User } from '#app/features/users/entities/user.entity';
 import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
-import { FeastogetherClient } from '#app/infrastructure/http-client/feastogether/feastogether.client';
+import { PortalConfig } from '#app/infrastructure/portal/portal.config';
 import { apiData, apiError } from './api-response.helper';
 import {
   closeSecurityE2eApp,
@@ -13,8 +13,10 @@ import {
 } from './security-e2e.helper';
 import {
   createSyntheticPortal,
+  startUnresponsivePortal,
   type SyntheticPerson,
   type SyntheticPortal,
+  type UnresponsivePortal,
 } from './synthetic-portal.helper';
 
 interface LaunchView {
@@ -29,8 +31,6 @@ describe('WebView session happy path', () => {
   let portal: SyntheticPortal;
   const documentIds: number[] = [];
   const rejectedEmpids: string[] = [];
-  // 員工資料來自合成 Portal；饗賓人 hr/staff_lookup 不得再被呼叫。
-  const feastogether = { get: jest.fn(), post: jest.fn() };
 
   const setStaff = (fields: Partial<SyntheticPerson>) =>
     portal.query('UPDATE sys_person SET ? WHERE person_empid = ?', [
@@ -50,18 +50,20 @@ describe('WebView session happy path', () => {
         title: '工程師',
       },
     ]);
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(FeastogetherClient).useValue(feastogether),
-    );
+    ctx = await createSecurityE2eApp();
     db = ctx.app.get<DataSource>(MYSQL_MAIN);
   });
-
-  afterEach(() => expect(feastogether.get).not.toHaveBeenCalled());
 
   afterAll(async () => {
     if (ctx) {
       if (documentIds.length)
         await db.manager.delete(EsignDocument, { id: In(documentIds) });
+      // 登出寫入的 session.revoked 事件以 FK 指向會話，須先刪；資格拒絕的匿名事件不帶員工 ID，另外刪。
+      await db.query(
+        `DELETE FROM auth_security_events WHERE actor_user_id = (SELECT id FROM users WHERE empid = ?)
+          OR (actor_kind = 'anonymous' AND outcome_code = 'employee_ineligible')`,
+        [empid],
+      );
       await db.query(
         'DELETE FROM auth_sessions WHERE user_id = (SELECT id FROM users WHERE empid = ?)',
         [empid],
@@ -356,6 +358,34 @@ describe('WebView session happy path', () => {
     },
   );
 
+  it('Portal 姓名無法解碼（U+FFFD）時 launch 回 STAFF_LOOKUP_FAILED，不改本機資料、不建立啟動碼', async () => {
+    const before = await db.manager.findOneByOrFail(User, { empid });
+    const launches = () =>
+      db.query<Array<{ total: string }>>(
+        'SELECT COUNT(*) total FROM auth_sessions WHERE user_id = ?',
+        [before.id],
+      );
+    const count = await launches();
+    await setStaff({ person_name: '測試�員工' });
+    let failed: request.Response;
+    try {
+      failed = await request(ctx.server)
+        .post('/api/auth/webview-launches')
+        .set('Authorization', `Bearer ${createLaunchJwt(empid)}`)
+        .expect(502);
+    } finally {
+      await setStaff({ person_name: '測試員工' });
+    }
+    expect(apiError(failed)).toEqual({
+      code: 'STAFF_LOOKUP_FAILED',
+      message: '系統有錯，請詢問IT部門',
+    });
+    expect(await db.manager.findOneByOrFail(User, { id: before.id })).toEqual(
+      before,
+    );
+    expect(await launches()).toEqual(count);
+  });
+
   it.each([
     { column: 'is_active', value: 0, restore: 1 },
     { column: 'deleted_at', value: new Date(), restore: null },
@@ -388,6 +418,62 @@ describe('WebView session happy path', () => {
     );
     return rows[0]?.status ?? '';
   }
+});
+
+/** 員工資格只信任 Portal：Portal 不回應時 fail closed，不用本機舊資料放行。 */
+describe('WebView launch：Portal 不回應', () => {
+  const empid = 'E2EWVSTALE';
+  let ctx: SecurityE2eContext;
+  let db: DataSource;
+  let unresponsive: UnresponsivePortal;
+
+  beforeAll(async () => {
+    unresponsive = await startUnresponsivePortal();
+    ctx = await createSecurityE2eApp((builder) =>
+      builder.overrideProvider(PortalConfig).useValue(unresponsive.config),
+    );
+    db = ctx.app.get<DataSource>(MYSQL_MAIN);
+  });
+
+  afterAll(async () => {
+    await unresponsive?.close();
+    if (ctx) {
+      await db.query(
+        'DELETE FROM auth_sessions WHERE user_id = (SELECT id FROM users WHERE empid = ?)',
+        [empid],
+      );
+      await db.query('DELETE FROM users WHERE empid = ?', [empid]);
+      await closeSecurityE2eApp(ctx);
+    }
+  });
+
+  it('15 秒內回 STAFF_LOOKUP_FAILED，錯誤不含 Portal 連線資訊，也不建立啟動碼', async () => {
+    await db.manager.insert(User, {
+      empid,
+      name: '本機舊資料',
+      isActive: true,
+    });
+    const startedAt = Date.now();
+    const response = await request(ctx.server)
+      .post('/api/auth/webview-launches')
+      .set('Authorization', `Bearer ${createLaunchJwt(empid)}`)
+      .expect(502);
+    expect(Date.now() - startedAt).toBeLessThan(15_000);
+    expect(apiError(response)).toEqual({
+      code: 'STAFF_LOOKUP_FAILED',
+      message: '系統有錯，請詢問IT部門',
+    });
+    const config = unresponsive.config;
+    for (const value of [config.host, config.user, config.database]) {
+      expect(response.text).not.toContain(value);
+    }
+    const [pending] = await db.query<Array<{ total: string }>>(
+      `SELECT COUNT(*) total FROM auth_sessions a JOIN users u ON u.id = a.user_id
+        WHERE u.empid = ? AND a.status IN ('pending', 'active')`,
+      [empid],
+    );
+    expect(Number(pending.total)).toBe(0);
+  }, 20_000);
 });
 
 function createLaunchJwt(empid: string): string {

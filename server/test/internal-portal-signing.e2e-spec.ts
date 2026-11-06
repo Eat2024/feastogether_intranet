@@ -1,11 +1,8 @@
 import { completeInitiation } from './helpers/await-initiation';
-import { HttpService } from '@nestjs/axios';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { of } from 'rxjs';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { AuthSession } from '#app/features/auth/entities/auth-session.entity';
-import { AuthService } from '#app/features/auth/services/auth.service';
 import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { User } from '#app/features/users/entities/user.entity';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
@@ -21,29 +18,15 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { employeeSessionCookie } from './employee-session.helper';
 
 describe('Spec016 員工 session 本人簽署', () => {
   let ctx: SecurityE2eContext;
   let users: User[];
   let cookies: string[];
   const origin = 'http://localhost:3000';
-  const http = {
-    get: jest.fn(),
-    post: (_url: string, body: { person_empids: string[] }) =>
-      of({
-        data: {
-          success: true,
-          data: body.person_empids.map((person_empid) => ({
-            person_empid,
-            email: 'shared@example.test',
-          })),
-        },
-      }),
-  };
   beforeAll(async () => {
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(HttpService).useValue(http),
-    );
+    ctx = await createSecurityE2eApp();
     const manager = ctx.app.get(MysqlService).getManager();
     const prefix = randomBytes(5).toString('hex');
     users = await manager.save(
@@ -59,10 +42,7 @@ describe('Spec016 員工 session 本人簽署', () => {
       ),
     );
     cookies = await Promise.all(
-      users.map(
-        async (user) =>
-          `${AUTH_COOKIE_NAME}=${(await ctx.app.get(AuthService).issueSession(user.id)).token}`,
-      ),
+      users.map(async (user) => await employeeSessionCookie(ctx.app, user.id)),
     );
   });
   afterAll(async () => {
@@ -166,19 +146,17 @@ describe('Spec016 員工 session 本人簽署', () => {
     });
     await request(ctx.server).post(path(id)).set('Origin', origin).expect(401);
     await post(path(id), {}, `${AUTH_COOKIE_NAME}=expired`).expect(401);
-    const expired = await ctx.app.get(AuthService).issueSession(users[0].id);
+    const expired = await employeeSessionCookie(ctx.app, users[0].id);
     await manager().update(
       AuthSession,
       {
         sessionTokenHash: createHash('sha256')
-          .update(expired.token)
+          .update(expired.slice(`${AUTH_COOKIE_NAME}=`.length))
           .digest('hex'),
       },
       { expiresAt: new Date(Date.now() - 1000) },
     );
-    await post(path(id), {}, `${AUTH_COOKIE_NAME}=${expired.token}`).expect(
-      401,
-    );
+    await post(path(id), {}, expired).expect(401);
     await post(path(id), {}, cookies[2]).expect(404);
     await request(ctx.server)
       .get(path(id) + '/source-file')

@@ -1,5 +1,8 @@
 import { HttpStatus } from '@nestjs/common';
 import { AppErrorCode } from '#app/common/errors/app-error-code';
+import { AppErrors } from '#app/common/errors/app-errors';
+import { AppException } from '#app/common/errors/app.exception';
+import { EMPLOYEE_INELIGIBLE_EVENT } from './auth-security-event.service';
 import { OauthIdentityService } from './oauth-identity.service';
 
 describe('OauthIdentityService', () => {
@@ -20,17 +23,20 @@ describe('OauthIdentityService', () => {
     const mysql = {
       transaction: jest.fn((run: (value: never) => unknown) => run(manager)),
     };
+    const events = { recordRejection: jest.fn() };
     return {
       service: new OauthIdentityService(
         repo,
         logger as never,
         mysql as never,
         eligibleStaff as never,
+        events as never,
       ),
       repo,
       eligibleStaff,
       logger,
       mysql,
+      events,
     };
   };
 
@@ -118,19 +124,35 @@ describe('OauthIdentityService', () => {
     );
   });
 
-  it('員工資料查詢失敗原樣拒絕且不開資料庫交易', async () => {
-    const { service, eligibleStaff, mysql, repo } = setup();
-    const failure = new Error('合成上游失敗');
-    eligibleStaff.lookupEligibleStaff.mockRejectedValue(failure);
-    repo.createUser.mockResolvedValue({ id: 9, empid: '00123' });
-    await expect(service.resolve(profile)).rejects.toBe(failure);
-    expect(mysql.transaction).not.toHaveBeenCalled();
-    expect(repo.createUser).not.toHaveBeenCalled();
-    expect(repo.saveUser).not.toHaveBeenCalled();
+  it.each([
+    ['Portal 查詢失敗', new AppException(...AppErrors.STAFF_LOOKUP_FAILED)],
+    ['未預期錯誤', new Error('合成上游失敗')],
+  ])(
+    '員工資料%s原樣拒絕、不開資料庫交易，也不記拒絕事件',
+    async (_case, failure) => {
+      const { service, eligibleStaff, mysql, repo, events } = setup();
+      eligibleStaff.lookupEligibleStaff.mockRejectedValue(failure);
+      repo.createUser.mockResolvedValue({ id: 9, empid: '00123' });
+      await expect(service.resolve(profile)).rejects.toBe(failure);
+      expect(mysql.transaction).not.toHaveBeenCalled();
+      expect(repo.createUser).not.toHaveBeenCalled();
+      expect(repo.saveUser).not.toHaveBeenCalled();
+      expect(events.recordRejection).not.toHaveBeenCalled();
+    },
+  );
+
+  it('Portal 判定不可登入時記匿名拒絕事件並原樣拒絕', async () => {
+    const { service, eligibleStaff, events } = setup();
+    const rejected = new AppException(...AppErrors.AUTH_EXCHANGE_FAILED);
+    eligibleStaff.lookupEligibleStaff.mockRejectedValue(rejected);
+    await expect(service.resolve(profile)).rejects.toBe(rejected);
+    expect(events.recordRejection).toHaveBeenCalledWith(
+      EMPLOYEE_INELIGIBLE_EVENT,
+    );
   });
 
-  it('缺員編時拒絕', async () => {
-    const { service, eligibleStaff } = setup();
+  it('缺員編時拒絕並記匿名拒絕事件', async () => {
+    const { service, eligibleStaff, events } = setup();
     await expect(
       service.resolve({ ...profile, userNumber: null }),
     ).rejects.toMatchObject({
@@ -138,13 +160,16 @@ describe('OauthIdentityService', () => {
       status: HttpStatus.UNAUTHORIZED,
     });
     expect(eligibleStaff.lookupEligibleStaff).not.toHaveBeenCalled();
+    expect(events.recordRejection).toHaveBeenCalledWith(
+      EMPLOYEE_INELIGIBLE_EVENT,
+    );
   });
 
   it.each([
     [{ isActive: false, deletedAt: null }],
     [{ isActive: true, deletedAt: new Date() }],
-  ])('停用或 soft-deleted User 拒絕：%p', async (state) => {
-    const { service, repo } = setup();
+  ])('停用或 soft-deleted User 拒絕並記匿名拒絕事件：%p', async (state) => {
+    const { service, repo, events } = setup();
     repo.findUserByEmpIdForUpdate.mockResolvedValue({
       id: 9,
       empid: '00123',
@@ -154,6 +179,9 @@ describe('OauthIdentityService', () => {
     await expect(service.resolve(profile)).rejects.toMatchObject({
       code: AppErrorCode.ACCOUNT_DISABLED,
     });
+    expect(events.recordRejection).toHaveBeenCalledWith(
+      EMPLOYEE_INELIGIBLE_EVENT,
+    );
   });
 
   it('既有 User 只更新受信任姓名與 last_login_at', async () => {

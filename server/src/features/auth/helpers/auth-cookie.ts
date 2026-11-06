@@ -59,7 +59,7 @@ export function setOauthTxCookie(
   });
 }
 
-/** 清除登入 cookie（登出、改密碼、登入失敗共用；屬性須與寫入時一致，iframe 內的跨站回應才清得掉）。 */
+/** 清除登入 cookie（登出用；屬性須與寫入時一致，iframe 內的跨站回應才清得掉）。 */
 export function clearAuthCookie(
   reply: FastifyReply,
   config: ConfigService,
@@ -67,7 +67,10 @@ export function clearAuthCookie(
   reply.clearCookie(AUTH_COOKIE_NAME, authCookieOptions(config));
 }
 
-/** 清除交易 cookie（回呼完成或登出時；使尚未完成的登入交易無法再回呼）。 */
-export function clearOauthTxCookie(reply: FastifyReply): void {
-  reply.clearCookie(OAUTH_TX_COOKIE_NAME, { path: '/' });
+/** 清除交易 cookie（回呼完成或登出時；使尚未完成的登入交易無法再回呼）。屬性與寫入時一致。 */
+export function clearOauthTxCookie(
+  reply: FastifyReply,
+  config: ConfigService,
+): void {
+  reply.clearCookie(OAUTH_TX_COOKIE_NAME, baseCookieOptions(config));
 }

@@ -3,7 +3,7 @@
   "info": {
     "title": "Intranet Spec 027 維護登入與會話增量契約",
     "version": "0.1.0",
-    "description": "已依 027 實作校正（027-08）；僅列新增與修改操作。OAuth／WebView路徑沿原契約，POST /api/auth/login移除回404。Cache-Control: no-store 由 handler 設定，只出現在成功回應與 handler 內的錯誤；guard 與框架層提前拒絕的回應（Origin、限流、入口、會話驗證、body 上限）不帶 Cache-Control。完整行為見api-behavior.md。"
+    "description": "已依 027 實作校正（027-08）；僅列新增與修改操作。OAuth／WebView路徑沿原契約，POST /api/auth/login移除回404。Cache-Control: no-store 由 handler 設定，只出現在成功回應與 handler 內的錯誤；guard 與框架層提前拒絕的回應（Origin、限流、入口、會話驗證、body 上限）不帶 Cache-Control。完整行為見api-behavior.md。 兩支 super-user-entries 操作不列在後端 Swagger（@ApiExcludeController），以本檔為準。來源網路不允許、入口無效或尚未初始化時，回應與不存在的路由相同的 404；guard 順序為入口 → Origin → 限流，403／429 只出現在有效入口。（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）"
   },
   "servers": [
     {
@@ -75,7 +75,7 @@
             }
           },
           "404": {
-            "description": "入口不存在、已輪換或格式不符",
+            "description": "入口不存在、已輪換、格式不符、尚未初始化，或 client proxy 判定來源網路不允許；與不存在的路由相同（狀態、body、標頭）",
             "content": {
               "application/json": {
                 "schema": {
@@ -93,7 +93,7 @@
             }
           },
           "503": {
-            "description": "尚未初始化或入口已停用回 AUTH_SUPER_USER_UNAVAILABLE；DB 不可用回 AUTH_DB_UNAVAILABLE（登入服務暫時無法使用）",
+            "description": "DB 不可用回 AUTH_DB_UNAVAILABLE（登入服務暫時無法使用）；尚未初始化改回 404",
             "content": {
               "application/json": {
                 "schema": {
@@ -102,8 +102,8 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_SUPER_USER_UNAVAILABLE",
-                    "message": "維護登入暫時無法使用"
+                    "code": "AUTH_DB_UNAVAILABLE",
+                    "message": "登入服務暫時無法使用"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
                 }
@@ -117,7 +117,7 @@
       "post": {
         "operationId": "createSuperUserSession",
         "summary": "驗證專用帳密並原子替換目前瀏覽器會話",
-        "description": "可攜帶既有session cookie但不是必要認證；Origin、IP限流與目前入口都需驗證。不得自動重試。輪換先commit則舊入口404；並發替換失敗409且不Set-Cookie。",
+        "description": "可攜帶既有session cookie但不是必要認證；guard 依序驗目前入口、Origin、IP限流：錯誤入口不論 Origin、限流狀態或 body 都回與不存在路由相同的 404，403／429 只出現在有效入口。不得自動重試。輪換先commit則舊入口404；並發替換失敗409且不Set-Cookie。",
         "security": [],
         "parameters": [
           {
@@ -137,7 +137,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "精確比對受信任前端origin；Sec-Fetch-Site須同源，特殊null規則沿既有OriginGuard。"
+            "description": "精確比對受信任前端origin；Sec-Fetch-Site須同源，特殊null規則沿既有OriginGuard。只在入口有效後檢查。"
           }
         ],
         "requestBody": {
@@ -245,7 +245,7 @@
             }
           },
           "403": {
-            "description": "請求來源不允許",
+            "description": "有效入口上請求來源不允許",
             "content": {
               "application/json": {
                 "schema": {
@@ -263,7 +263,7 @@
             }
           },
           "404": {
-            "description": "入口不存在、已輪換或格式不符；早於 body 驗證",
+            "description": "入口不存在、已輪換、格式不符、尚未初始化，或 client proxy 判定來源網路不允許；早於 Origin、限流與 body 驗證，與不存在的路由相同",
             "content": {
               "application/json": {
                 "schema": {
@@ -307,7 +307,7 @@
             }
           },
           "413": {
-            "description": "body 超過 8 KiB",
+            "description": "body 超過 1 MiB（Fastify 預設；不存在的路由也相同）",
             "content": {
               "application/json": {
                 "schema": {
@@ -325,7 +325,7 @@
             }
           },
           "429": {
-            "description": "同一 IP 60 秒 10 次或 300 秒 50 次；不隨 entryKey 變動，早於入口檢查",
+            "description": "有效入口上同一 IP 60 秒 10 次或 300 秒 50 次；不隨 entryKey 變動，錯誤入口不計入",
             "headers": {
               "Retry-After": {
                 "schema": {
@@ -352,7 +352,7 @@
             }
           },
           "503": {
-            "description": "尚未初始化、本機帳密設定不是啟用版本、無法取得 client IP 或限流儲存不可用回 AUTH_SUPER_USER_UNAVAILABLE；DB 不可用回 AUTH_DB_UNAVAILABLE",
+            "description": "有效入口上本機帳密設定不是啟用版本、無法取得 client IP 或限流儲存不可用回 AUTH_SUPER_USER_UNAVAILABLE；DB 不可用回 AUTH_DB_UNAVAILABLE",
             "content": {
               "application/json": {
                 "schema": {

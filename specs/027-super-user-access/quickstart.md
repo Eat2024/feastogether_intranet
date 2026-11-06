@@ -34,9 +34,9 @@ root lint可能包含server自動修正，執行前確認工作目錄；不能�
 pnpm -C server repl:dev
 ```
 
-REPL依序 `await auth.initialize()`、`await auth.credentialStatus()`、`await auth.currentEntry()`。首次一列／一組初始化事件；再次initialize不換網址、不改版本。以同源瀏覽器開回傳path、輸入帳密；成功顯示Super user、cookie為HttpOnly。登入後URL回 `/`，頁面不殘留密碼。
+REPL依序 `await auth.initialize()`、`await auth.credentialStatus()`、`await auth.currentEntry()`。首次一列／一組初始化事件；再次initialize不換網址、不改版本。以同源瀏覽器開回傳path（本機沒有 Nginx：client 設 `SUPER_USER_ALLOWED_CIDRS` 並自帶清單內的 `X-Real-IP`，見 `client/README.md`）、輸入帳密；成功顯示Super user、cookie為HttpOnly。登入後URL回 `/`，頁面不殘留密碼。
 
-測試錯密碼、未知帳號、無效／舊入口、超限、8KiB超限、缺Origin／跨站、缺trusted IP、Redis不可用、DB不可用。預期狀態見 [API契約](contracts/api-behavior.md)；錯密碼不撤原員工會話，不將登入401當成全站員工過期。
+測試錯密碼、未知帳號、無效／舊入口、未初始化、來源網路不允許、超限、缺Origin／跨站、缺trusted IP、Redis不可用、DB不可用。無效入口、未初始化與來源網路不允許時，回應須與不存在的網址／路由相同（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）。預期狀態見 [API契約](contracts/api-behavior.md)；錯密碼不撤原員工會話，不將登入401當成全站員工過期。
 
 ## 2. 會話相容與替換（US2）
 
@@ -64,7 +64,7 @@ same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟�
 
 ## 5. UI與紀錄邊界
 
-- 無效entry的HTML與RSC都不能含帳密表單，pre-render proxy檢查不可只放layout；entry驗證GET無Set-Cookie及DB寫入。
+- 無效entry的HTML與RSC都不能含帳密表單，pre-render proxy檢查不可只放layout；entry驗證GET無Set-Cookie及DB寫入。無效入口與來源網路不允許的 HTML／RSC 須與不存在的網址相同；`pnpm -C client build && pnpm -C client check:bundle` 確認公開靜態檔不含隱藏登入的程式碼。（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）
 - 正常登入、401／404／409／429／503、guard及SSR例外，檢查Nest log、Next log、nginx access/error log沒有入口原值、密碼或cookie；REPL currentEntry是唯一指定主動揭露。
 - 頁面no-store／no-referrer／noindex且不能iframe；此限制不得套到WebView或一般嵌入頁。
 - 身分切換清舊query cache，Super user標示與登出可用；與入口網不匹配時按既有EmbedBridge流程重新launch。
@@ -488,3 +488,101 @@ client 沒有 test script，未宣稱跑過 client 自動測試。
 - 員工 e2e 會在測試庫累積 `login.succeeded` 事件，之後該庫的 `migration:revert` 會被 down 拒絕，需要重建測試庫。
 - UAT 自動部署在 migration 與啟動之間不暫停，`initialize()` 在部署成功後執行；期間維護登入 503、worker 記 `auth.entry_rotation_uninitialized`。
 - 範圍外觀察（未處理）：standalone 下 Next 404 頁（包括無效入口與未登入的 `/forms`）帶 `Cache-Control: s-maxage=31536000`，是既有 not-found 靜態頁的行為；目前部署前面沒有共用快取。
+
+### 027-h 隱藏維護登入的存在與來源網路限制（使用者 2026-11-06 要求）
+
+使用者 2026-11-06 要求：不得從公開資源看出維護登入存在；同日確認隱藏頁與其 API 只開放公司網路。本節取代 027-04／027-08 紀錄中與此衝突的行為：尚未初始化回 503、body 8 KiB 回 413、POST 的 403／429 早於入口檢查、`next.config.ts` 對維護頁加標頭、proxy 把無效入口改寫到 `/_not-found`。
+
+**修正前的洩漏**
+
+- 公開 JS：root layout 的 `ReactQueryProvider` 把 `apiError.ts`、`errorCodes.ts` 帶進共用 chunk，含 `AUTH_SUPER_USER_*`、「維護登入暫時無法使用」與 `isSuperUserCredentialsInvalid`。共用 API chunk 含 `createSuperUserSession` 與 `super-user-entries` 路徑。`CurrentActorBanner` 含 `'super_user'`。
+- `_clientMiddlewareManifest.js` 列出 `/ops-access/:entryKey`。
+- `next.config.ts` 的 `headers()` 讓錯誤入口也帶 Referrer-Policy／X-Robots-Tag／frame-ancestors。proxy 改寫到 `/_not-found` 多出 `x-middleware-rewrite` 與 `s-maxage` Cache-Control，與不存在的網址不同。
+- 後端：
+  - POST guard 順序是 Origin → 限流 → 入口，錯誤入口會回 403／429，且帶 `x-ratelimit-*`。
+  - 9 KiB body 回 413。
+  - 未初始化時 GET／POST 回 503「維護登入暫時無法使用」，頁面回 500。
+  - Swagger（UAT `NODE_ENV=staging` 開放）列出這兩支路由。
+
+**修正**：見 [api-behavior.md](contracts/api-behavior.md)「新入口」「來源網路」與 UI 段落。
+
+**自動驗證**（`server/.env.test`：`feastogether_intranet_test_h`、`REDIS_DB=6`）
+
+| 指令 | 結果 |
+| --- | --- |
+| `pnpm -C server lint:check` | 0 errors、271 warnings；本次改動的檔案都不在 warning 清單 |
+| `pnpm -C server test --runInBand` | 123 suites／1266 tests 通過 |
+| `pnpm -C server build` | 成功 |
+| `pnpm -C server test:e2e:security` | 20 suites／171 tests 通過（含新的 `security-super-user-entry-concealment`） |
+| `pnpm -C server test:e2e` | 559 passed、1 skipped、1 failed；唯一失敗是既有 `api-coverage` 的 `GET /api/esign/documents/1/history`，未修 |
+| `pnpm test:deploy` | Compose 與部署流程測試通過 |
+| `pnpm -C client lint` | 0 problems |
+| `pnpm -C client test` | 5 tests 通過（來源網路判斷：允許、拒絕、缺 header、空清單、IPv6、偽造 X-Forwarded-For、格式錯誤） |
+| `API_PROXY_TARGET=http://localhost:3011 pnpm -C client build` | 成功，0 warning |
+| `pnpm -C client check:bundle` | 通過；排除隱藏頁專用 chunk 1 個；放入含 `super-user` 的假檔時失敗（反向驗證） |
+
+`next.config.ts` 的 `/api` rewrite 目標在 build 時寫入 `routes-manifest.json`。本機 standalone 要帶 `API_PROXY_TARGET` build，否則 rewrite 會打到預設的 3001。
+
+**實測比對**
+
+環境：開發庫 `feastogether_intranet_027h`、Redis DB 9；server 3011，client 3010；允許清單為文件用位址 `203.0.113.0/24,198.51.100.7/32,2001:db8::/32`。比對時排除 `date`、`connection`、`keep-alive`、`transfer-encoding`、`x-request-id`，以及 body 的 `timestamp`。
+
+- 頁面：與 `/no-such-page/<隨機 43 字元>` 比對 HTML 與 RSC（`RSC: 1`＋`?_rsc=x`）。
+  - standalone：以下情況的 headers 與 body 都逐位元組相同：
+    - 錯誤入口（允許的 IP）；
+    - 有效入口但 IP 不在清單（IPv4，以及不在 `2001:db8::/32` 內的 IPv6）；
+    - 沒有 `X-Real-IP`；
+    - 只偽造 `X-Forwarded-For: 203.0.113.10`；
+    - 多一層路徑；
+    - 鄰近位址 `198.51.100.8`；
+    - 允許清單未設定，但帶允許的 IP。
+  - `next dev`：headers 相同。dev 每次請求有隨機 React key，而且會把網址路徑寫進 not-found 內容，兩個不同的不存在網址原始 body 也不同；把這兩類值換成佔位後，body 相同。
+  - 有效入口＋`203.0.113.10`／`198.51.100.7`／`2001:db8::5`：200、有密碼欄位，帶 `Referrer-Policy: no-referrer`、`X-Robots-Tag: noindex, nofollow`、`Content-Security-Policy: frame-ancestors 'none'`。
+- API：經 Next 送 14 種請求，與 `/api/no-such-route/<隨機>` 比對：
+  - 請求：GET 入口、GET sessions；POST 分別帶 JSON＋Origin、缺 Origin、惡意 Origin、跨站、空 body、壞 JSON、text/plain、form、9 KiB、1.1 MiB；PUT；OPTIONS。
+  - 以下情況的 status、headers、body 都相同：
+    - 錯誤入口；
+    - 有效入口但 IP 不在清單（IPv4／IPv6）；
+    - 沒有 `X-Real-IP`；
+    - 只偽造 `X-Forwarded-For`；
+    - 自帶拒絕標記；
+    - 允許清單未設定；
+    - `/api/auth/%73uper-user-entries/<入口>`；
+    - `/API/auth/super-user-entries/<入口>`。
+  - 實測的反應：壞 JSON 兩者都是 400，超過 1 MiB 兩者都是 413，OPTIONS 兩者都是 204。
+- 路徑變體：
+  - 反斜線與雙斜線會由 Next 308 轉到正規網址。
+  - `/x/../ops-access/<入口>` 由 Next 正規化。
+  - `/%6Fps-access/…` 與 `/ops-access-page` 的編碼變體都是 404，沒有表單。
+  - 修正過程中實測到兩個繞過，修正後都回 404：
+    - `/api/auth/%73uper-user-entries/<入口>`：後端會解碼；
+    - `/API/…`：Next config rewrite 不分大小寫。
+- 公開頁：`/verify/abc`、`/embed`、未登入的 `/esign/forms` 與 `/no-such-page/abc`，與修改前的 headers（ETag 除外）及 body 大小相同。`/embed` 仍可被嵌入。
+- 後端呼叫：`/verify`、`/embed` 與被拒的隱藏頁都沒有呼叫後端；`/api/health` 只有 rewrite 本身那一次。
+- 允許清單格式錯誤（`203.0.113.0/24,not-a-cidr`、`198.51.100.7`）：
+  - `next dev` 以 exit code 1 結束；
+  - standalone 記錄「An error occurred while loading instrumentation hook: SUPER_USER_ALLOWED_CIDRS 必須是逗號分隔的 CIDR」後仍在執行，但每個請求（含 `/api/health`）都回 500，UAT 部署 smoke 會失敗並回復。
+  - 輸出不含設定值。
+- 瀏覽器（Playwright Chromium，repo 外暫存腳本）：standalone 與 `next dev` 最終版各 23/23。
+  - 允許清單外：有效入口 404 且沒有表單。
+  - 未登入時 `/`、`/esign/forms`、`/travel/permissions` 都是 404。
+  - `/verify`、外部簽署頁、`/embed` 照常開啟。
+  - 允許清單外的 107 個 JS、員工頁的 23 個 JS 都不含隱藏登入痕跡。
+  - 允許清單內（`extraHTTPHeaders` 帶 `X-Real-IP: 203.0.113.10`）：
+    - 錯誤入口 404；
+    - 有效入口 200 並帶安全標頭；
+    - 帳密錯誤 401，在表單內顯示「帳號或密碼錯誤」，沒有「登入已過期」；
+    - iframe WebView 員工登入，員工畫面沒有 banner；
+    - employee→Super user 後顯示「目前身分：Super user」，舊員工 cookie 401，網址不含入口；
+    - EmbedBridge 遇 Super user 為 mismatch，撤銷後收到 `launch-required`；
+    - super→employee 後舊 Super user cookie 401，同員工 navigate 收到 `navigated`；
+    - banner 登出後會話撤銷，回根路徑 404，舊身分不恢復。
+- REPL、輪換、雙實例撤銷：`security-super-user-credentials` 等 suite 在 `test:e2e:security` 內通過。本次沒有改 REPL 與 worker。
+
+**無法消除或未處理的差異**
+
+- 直接開內部路徑 `/ops-access-page/*`：body 與不存在的網址相同，但 headers 多 `x-middleware-rewrite: /_not-found`，Cache-Control 是 `s-maxage=31536000`。這和未登入的員工頁相同，只看得出「這裡有需要條件的頁面」。內部名稱只出現在 repo 與有效入口回應的 `x-middleware-rewrite`。
+- DB 故障：入口查驗回 503 `AUTH_DB_UNAVAILABLE`，頁面 500。只在故障期間出現，不洩漏入口。
+- 時間差：允許網路內的錯誤入口會查一次 DB；不存在的網址不會。未量測，也未處理。
+- 隱藏頁的 chunk 是靜態檔，知道檔名就能下載。檔名是 build hash，只出現在有效入口的頁面裡。
+- 既有行為：未登入員工頁的 404 是 rewrite，可看出「需要登入」；不在本次範圍。

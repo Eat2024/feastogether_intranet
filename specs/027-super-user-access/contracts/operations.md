@@ -39,7 +39,7 @@ Job不帶entryKey或帳密，僅空payload；attempts=3，exponential backoff初
 
 ## 明確生效與部署順序
 
-首次：準備兩設定 → 停止舊HTTP／worker並備份 → 套增量migration → 新REPL initialize → 新HTTP／worker → REPL查入口與身分驗證 → 開流量。Nginx／ALB 完整入口 URL 遮罩完成前不得 initialize（部署阻擋）。UAT 自動部署在 migration 與啟動之間不暫停，改為部署成功後才 initialize 與登入驗證；期間員工照常使用，維護登入回503。Portal／OAuth設定維持，移除員工密碼登入依賴，但不得誤刪其他仍用到的上游HTTP client。
+首次：準備兩設定 → 停止舊HTTP／worker並備份 → 套增量migration → 新REPL initialize → 新HTTP／worker → REPL查入口與身分驗證 → 開流量。Nginx／ALB 完整入口 URL 遮罩完成前不得 initialize（部署阻擋）。UAT 自動部署在 migration 與啟動之間不暫停，改為部署成功後才 initialize 與登入驗證；期間員工照常使用，維護入口與無效入口相同回404（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）。隱藏頁與 API 只開放公司網路：client 的 `SUPER_USER_ALLOWED_CIDRS` 與主機 Nginx 覆寫 `X-Real-IP` 都完成前，維護登入一律404（使用者 2026-11-06 確認）。Portal／OAuth設定維持，移除員工密碼登入依賴，但不得誤刪其他仍用到的上游HTTP client。
 
 換帳密：新env與程式部署準備好 → 在新設定的REPL讀credentialStatus → activateCredentials(expectedGeneration) commit，此刻即生效 → 舊維護session失效、舊配置實例無法接受維護登入 → 完成所有HTTP／worker設定更新並重啟、每個實例 `credentialStatus()` 都是 `localConfigMatches:true`、實際入口登入成功 → 宣告完成。未啟用的新實例維護登入回503，employee仍可服務；混跑期間維護操作可能503，不能宣稱零中斷維護登入。
 

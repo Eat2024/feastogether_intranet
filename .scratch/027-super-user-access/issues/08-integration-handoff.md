@@ -68,3 +68,57 @@
 已合入整合分支 `027-super-user-access`（2026-11-05，fast-forward）：
 - `e1cb4cf docs: 補 Super user 設定、REPL、部署與回復操作文件`
 - `258089c docs(specs): 027 契約依實作校正，記錄 027-08 整合驗收與交付摘要`
+
+## 後續：隱藏維護登入的存在（使用者 2026-11-06 要求）
+
+使用者 2026-11-06 要求：不知道入口的人（匿名或已登入的一般員工）不能從公開前端資源或 HTTP 回應看出 Super user／維護登入存在。同日追加：隱藏頁與其 API 只開放公司網路（VPN 與辦公室固定出口 IP）。分支 `027-hide-maintenance-traces`（從 `027-super-user-access` `9561be2`）。
+
+**洩漏與處理**
+
+| 洩漏 | 處理 |
+| --- | --- |
+| root layout 的 `ReactQueryProvider` 把 `apiError.ts`／`errorCodes.ts` 帶進共用 chunk（`AUTH_SUPER_USER_*`、「維護…」、`isSuperUserCredentialsInvalid`） | 移除；帳密錯誤改用通用 mutation `meta.handlesOwnErrors`，錯誤碼判斷留在 `SuperUserLoginForm` |
+| 共用 API chunk 含 `SUPER_USER_ENTRY_SESSIONS`、`createSuperUserSession` | 移到 `features/super-user-login/api.ts`，只由隱藏頁引用 |
+| `CurrentActorBanner` 含 `'super_user'` | 改成 `user === null` 就顯示後端給的 `displayName`；型別改為 `EmployeeSession \| OtherActorSession` |
+| `_clientMiddlewareManifest.js` 列出 `/ops-access/:entryKey` | matcher 改成只排除靜態資源，路徑判斷寫在 proxy 程式裡 |
+| `next.config.ts` 的 `headers()` 讓錯誤入口也帶安全標頭；改寫到 `/_not-found` 多出 `x-middleware-rewrite` 與 `s-maxage` | 移除 `headers()`；`/ops-access/*` 不再有頁面，有效時才改寫到 `app/ops-access-page/[entryKey]` 並由 proxy 加標頭，其餘交給 Next 當不存在的網址 |
+| POST guard 順序 Origin → 限流 → 入口（錯誤入口 403／429） | 改為入口 → Origin → 限流 |
+| 自訂 8 KiB bodyLimit 的 413 | 移除，沿用 Fastify 預設 1 MiB（不存在的路由也相同） |
+| 未初始化回 503「維護登入暫時無法使用」（UAT 部署後到 `initialize()` 前可見） | 改回 404 |
+| Swagger 列出隱藏路由（UAT staging 開放） | `@ApiExcludeController()`；auth session 摘要不再提 Super user |
+
+來源網路的做法：
+- client `SUPER_USER_ALLOWED_CIDRS` 以 `node:net` 的 `BlockList` 比對 `X-Real-IP`。未設定時停用；格式錯誤時 `instrumentation.ts` 讓啟動失敗，訊息只帶變數名。
+- 頁面在網路檢查通過後才向後端驗入口。
+- `/api`（不分大小寫，與 rewrite 同範圍）不允許時加上 `x-entry-network-denied`，由 `SuperUserEntryGuard` 回後端不存在路由的 404。
+- UAT 的 client 讀主機 `client.env`。Nginx 要在所有轉給 client 的 location 覆寫 `X-Real-IP`；只覆寫兩個 location 會被 `/API/...` 繞過。
+
+**驗證**（細節見 quickstart「027-h」）
+
+- server：
+  - `lint:check` 0 errors／271 warnings，改動檔案無 warning；
+  - `test --runInBand` 123 suites／1266 tests；`build` 成功；
+  - `test:e2e:security` 20 suites／171 tests；
+  - `test:e2e` 559 passed、1 skipped、1 failed（既有 `api-coverage` history）；
+  - `pnpm test:deploy` 通過。
+- client：`lint` 0、`test` 5/5、`build` 0 warning、`check:bundle` 通過（另以假檔反向驗證會失敗）。
+- 實測比對（standalone）：
+  - 隱藏頁：錯誤入口、IP 不在清單、缺 `X-Real-IP`、只偽造 `X-Forwarded-For`、IPv6 不在清單、允許清單未設定，HTML／RSC 都與不存在的網址逐位元組相同。
+  - 隱藏 API：上述情況加上 `%73` 編碼與 `/API/` 路徑，14 種請求都與不存在路由相同。
+- `next dev`：headers 相同；body 去掉 dev 隨機 key 與路徑後相同。
+- 公開頁 headers 與修改前相同（ETag 除外）。
+- Playwright 在 standalone 與 dev 各 23/23。
+
+**無法消除的差異**
+
+- 直接開內部路徑 `/ops-access-page/*` 的 headers 與未登入員工頁相同（rewrite），與不存在的網址不同。
+- DB 故障時入口查驗 503／頁面 500。
+- 允許網路內錯誤入口多一次 DB 查詢的時間差，未量測。
+- 隱藏頁 chunk 知道 hash 檔名即可下載。
+- standalone 遇到格式錯誤的允許清單時，程序不結束，而是所有請求 500（`next dev` 會直接結束）。
+
+**commits**
+- `b497407 fix(auth): 錯誤入口與不存在路由回應相同，隱藏入口不列在 Swagger`
+- `e7ffee5 fix(client): 公開前端資源不含隱藏維護登入，並限制隱藏頁與 API 只開放公司網路`
+- `9024e9f ci(deploy): UAT client 讀取主機 client.env 的維護登入來源網路`
+- 文件 commit（spec、契約、quickstart、README、AGENTS、UAT 文件與本節）

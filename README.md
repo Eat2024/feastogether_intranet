@@ -91,6 +91,8 @@ await auth.hashPassword('在自己的終端機換成明碼密碼') // 回傳可�
 
 REPL 只載入設定、logging 與 MySQL，不啟動 HTTP 或 queue consumer。入口原值與帳密不寫進 Git、ticket、PR 或 log。
 
+隱藏頁與其 API 只開放公司網路：client 的 `SUPER_USER_ALLOWED_CIDRS`（逗號分隔的 CIDR）比對 `X-Real-IP`，未設定時維護登入停用。本機開發在 `client/.env.local` 設定並自帶 header，見 [client README](client/README.md)。不在清單內、入口錯誤或尚未初始化時，回應與不存在的網址／API 路由相同。
+
 Spec 028 接入業務授權前，Super user 只能讀取目前身分與登出；登入後經 `/` 轉到 `/esign/forms` 並顯示「目前身分無法使用此功能」。部署順序、輪換、換帳密與部署阻擋見 [UAT CI/CD 操作文件](docs/deployment/uat-cicd.md)的「Super user 維護登入」。
 
 ## UAT CI/CD

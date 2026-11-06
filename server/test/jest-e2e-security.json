@@ -2,7 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "(?:^|/)(?:security-esign-department|mail-whitelist-runtime|mail-whitelist-otp|internal-portal-completion|internal-portal-signing|internal-email-copy|internal-email-signing|esign-document-delivery-security|security-headers|security-harness|security-oauth-login|security-webview-session|security-core-esign-flow|security-signature-verification|security-actor-session|security-super-user-access|security-session-replacement|security-super-user-credentials|security-employee-login-rejection)\\.e2e-spec\\.ts$",
+  "testRegex": "(?:^|/)(?:security-esign-department|mail-whitelist-runtime|mail-whitelist-otp|internal-portal-completion|internal-portal-signing|internal-email-copy|internal-email-signing|esign-document-delivery-security|security-headers|security-harness|security-oauth-login|security-webview-session|security-core-esign-flow|security-signature-verification|security-actor-session|security-super-user-access|security-super-user-entry-concealment|security-session-replacement|security-super-user-credentials|security-employee-login-rejection)\\.e2e-spec\\.ts$",
   "globalSetup": "<rootDir>/test/global-setup.ts",
   "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
   "transform": {

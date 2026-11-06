@@ -26,7 +26,6 @@ export async function registerFastifyPlugins(
   app: NestFastifyApplication,
 ): Promise<void> {
   registerSecurityHeaders(app);
-  registerRouteBodyLimits(app);
   await app.register(fastifyCookie);
   await app.register(fastifyFormbody);
   // Spec 03：單一 PDF 上限 20 MiB；其他文字欄位仍由 DTO 驗證。
@@ -47,19 +46,6 @@ function registerSecurityHeaders(app: NestFastifyApplication): void {
       void reply.header('X-Frame-Options', 'DENY');
     }
     done();
-  });
-}
-
-/**
- * Nest 只把 `@RouteConfig()` 放進 Fastify route 的 config，不轉交 bodyLimit；
- * 在路由建立前把 `config.bodyLimit` 套為該路由的 Fastify bodyLimit（超限由 Fastify 在 guard 前回 413）。
- * 須在 app.init() 註冊路由前呼叫。
- */
-function registerRouteBodyLimits(app: NestFastifyApplication): void {
-  const fastify = app.getHttpAdapter().getInstance();
-  fastify.addHook('onRoute', (route) => {
-    const { bodyLimit } = (route.config ?? {}) as { bodyLimit?: number };
-    if (bodyLimit !== undefined) route.bodyLimit = bodyLimit;
   });
 }
 

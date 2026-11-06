@@ -34,7 +34,7 @@ describe('員工帳密登入已移除', () => {
     },
   );
 
-  it('Swagger 的 /api/auth 路由只剩 OAuth、WebView、目前會話與 Super user 入口', () => {
+  it('Swagger 的 /api/auth 路由只剩 OAuth、WebView 與目前會話（隱藏入口不列出）', () => {
     const { paths } = SwaggerModule.createDocument(
       ctx.app,
       new DocumentBuilder().build(),
@@ -57,8 +57,6 @@ describe('員工帳密登入已移除', () => {
         'POST /api/auth/session',
         'GET /api/auth/session',
         'DELETE /api/auth/session',
-        'GET /api/auth/super-user-entries/{entryKey}',
-        'POST /api/auth/super-user-entries/{entryKey}/sessions',
       ].sort(),
     );
   });

@@ -68,13 +68,13 @@ describe('SuperUserLoginService', () => {
       );
     });
 
-    it('尚未初始化回 503，不隱式建立入口', async () => {
+    it('尚未初始化（沒有任何有效入口）同樣回 404', async () => {
       const { service, access } = setup();
       access.find.mockResolvedValue(null);
 
       await expect(service.assertEntry(ENTRY)).rejects.toMatchObject({
-        code: AppErrorCode.AUTH_SUPER_USER_UNAVAILABLE,
-        status: 503,
+        code: AppErrorCode.NOT_FOUND,
+        status: 404,
       });
     });
 

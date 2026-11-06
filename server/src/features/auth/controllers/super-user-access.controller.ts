@@ -10,8 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RouteConfig } from '@nestjs/platform-fastify';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeController } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
 import configPath from '#app/config/config.path';
@@ -28,14 +27,12 @@ import { SuperUserEntryGuard } from '../guards/super-user-entry.guard';
 import { setAuthCookie } from '../helpers/auth-cookie';
 import { SuperUserLoginService } from '../services/super-user-login.service';
 
-/** 登入 body 上限 8 KiB：帳號 128 字元＋密碼 1024 bytes 遠小於此。 */
-const LOGIN_BODY_LIMIT_BYTES = 8 * 1024;
-
 /**
- * 隱藏維護入口。入口值只出現在路徑參數，由 SuperUserEntryGuard 在 DTO 驗證前比對，
- * 無效／舊入口一律 404；access log 與 guard log 只記路由模板。
+ * 隱藏維護入口。入口值只出現在路徑參數，由 SuperUserEntryGuard 最先比對（早於 Origin、限流與 DTO 驗證），
+ * 無效／舊入口一律回與不存在路由相同的 404；access log 與 guard log 只記路由模板。
+ * 不列入 Swagger：不知道入口的人不能從 API 文件看出這組路由。
  */
-@ApiTags('auth')
+@ApiExcludeController()
 @Controller(configPath.AUTH_SUPER_USER_ENTRIES)
 export class SuperUserAccessController {
   constructor(
@@ -47,17 +44,18 @@ export class SuperUserAccessController {
   @UseGuards(SuperUserEntryGuard)
   @Get(':entryKey')
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: '確認維護入口目前有效（不寫 DB、不設 cookie）' })
   getEntry(): { available: true } {
     return { available: true };
   }
 
+  /**
+   * guard 依序執行：入口有效後才檢查 Origin 與限流，錯誤入口不會因缺 Origin 或連續嘗試而回 403／429。
+   * 入口是 32 bytes 隨機值，不靠限流擋猜測；限流保護的是有效入口上的帳密嘗試。
+   */
   @Public()
-  @UseGuards(OriginGuard, SuperUserThrottlerGuard, SuperUserEntryGuard)
-  @RouteConfig({ bodyLimit: LOGIN_BODY_LIMIT_BYTES })
+  @UseGuards(SuperUserEntryGuard, OriginGuard, SuperUserThrottlerGuard)
   @Post(':entryKey/sessions')
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: '以 Super user 帳密建立會話並替換目前會話' })
   async createSession(
     @Param('entryKey') entryKey: string,
     @Body() dto: SuperUserLoginDto,

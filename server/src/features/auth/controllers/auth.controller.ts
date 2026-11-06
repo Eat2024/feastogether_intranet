@@ -163,7 +163,7 @@ export class AuthController {
   @Get(configPath.AUTH_SESSION)
   @Header('Cache-Control', 'no-store')
   @ApiCookieAuth('sessionCookie')
-  @ApiOperation({ summary: '取得目前電子簽 Session（員工或 Super user）' })
+  @ApiOperation({ summary: '取得目前電子簽 Session' })
   getSession(@Req() request: AuthenticatedRequest): SessionView {
     return toSessionView(request.authSession!);
   }

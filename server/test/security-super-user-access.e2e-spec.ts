@@ -163,18 +163,18 @@ describe('Super user hidden entry (027-04)', () => {
       expect(await counts()).toEqual(before);
     });
 
-    it('入口尚未初始化（singleton 不存在或已 soft-delete）回 503，不建立入口', async () => {
+    it('入口尚未初始化（singleton 不存在或已 soft-delete）回 404，不建立入口', async () => {
       await db.query(
         'UPDATE super_user_access SET deleted_at = NOW(6) WHERE id = 1',
       );
       try {
-        const response = await getEntry(entryKey).expect(503);
-        expect(apiError(response).code).toBe(
-          AppErrorCode.AUTH_SUPER_USER_UNAVAILABLE,
-        );
+        const before = await counts();
+        const response = await getEntry(entryKey).expect(404);
+        expect(apiError(response).code).toBe(AppErrorCode.NOT_FOUND);
         await login(entryKey, { account: ACCOUNT, password: PASSWORD }).expect(
-          503,
+          404,
         );
+        expect(await counts()).toEqual(before);
       } finally {
         await db.query(
           'UPDATE super_user_access SET deleted_at = NULL WHERE id = 1',
@@ -378,19 +378,11 @@ describe('Super user hidden entry (027-04)', () => {
         .expect(403);
     });
 
-    it('body 超過 8 KiB 回 413', async () => {
-      const response = await login(entryKey, {
-        account: ACCOUNT,
-        password: 'x'.repeat(9 * 1024),
-      }).expect(413);
-
-      expect(apiError(response).code).toBe(AppErrorCode.INVALID_REQUEST);
-    });
-
-    it('同一 IP 超過短視窗額度回 429 與 Retry-After；計數不隨 entryKey 分桶', async () => {
+    it('同一 IP 在有效入口超過短視窗額度回 429 與 Retry-After；錯誤入口不計入', async () => {
       const ip = newIp();
       for (let i = 0; i < AUTH_RATE_LIMIT_SHORT_LIMIT; i++) {
         await login(newEntry(), {}, { ip }).expect(404);
+        await login(entryKey, {}, { ip }).expect(400);
       }
 
       const response = await login(

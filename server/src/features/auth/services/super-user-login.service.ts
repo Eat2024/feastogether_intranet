@@ -24,17 +24,14 @@ export class SuperUserLoginService {
   ) {}
 
   /**
-   * 只讀 singleton 比對入口，不寫 DB。尚未初始化回 503；無效或舊入口回統一 404，
-   * 只記安全 log（不寫事件表，避免猜測無限寫入），log 不含入口值。
+   * 只讀 singleton 比對入口，不寫 DB。無效、舊入口與尚未初始化（沒有任何有效入口）都回與不存在路由相同的 404，
+   * 不讓不知道入口的人看出維護登入存在；只記安全 log（不寫事件表，避免猜測無限寫入），log 不含入口值。
    */
   async assertEntry(entryKey: string): Promise<void> {
     const access = await this.access.find(this.mysql.getManager()).catch(() => {
       throw new AppException(...AppErrors.AUTH_DB_UNAVAILABLE);
     });
-    if (!access) {
-      throw new AppException(...AppErrors.AUTH_SUPER_USER_UNAVAILABLE);
-    }
-    if (!isCurrentSuperUserEntry(entryKey, access.entryKey)) {
+    if (!access || !isCurrentSuperUserEntry(entryKey, access.entryKey)) {
       this.logger.warn({
         context: SuperUserLoginService.name,
         event: 'auth.super_user_entry_rejected',

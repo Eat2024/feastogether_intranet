@@ -957,6 +957,83 @@ describe('Spec009 匯出 API', () => {
     ).toEqual(original.updatedAt);
   });
 
+  it('大型固定快照的進行中工作可重複申請，失敗候選仍只選最新', async () => {
+    const document = await db.manager.save(
+      EsignDocument,
+      db.manager.create(EsignDocument, {
+        docNumber: randomUUID(),
+        title: '合成大型快照選取',
+        status: 'draft',
+        createdByUserId: Number(ownerId),
+        createdByDepartmentCode: 'D009',
+      }),
+    );
+    const snapshot = Array.from({ length: 6000 }, (_, i) => ({
+      recordId: i + 1,
+      signerPublicId: randomUUID(),
+      fileName: `副本_合成-${i}.pdf`,
+      file: {
+        recordId: i + 1,
+        fileId: i + 1,
+        objectKey: `synthetic/${i}.pdf`,
+        objectVersion: null,
+        sha256: 'a'.repeat(64),
+        fileSize: 1040000,
+      },
+    }));
+    const seed = (status: string) =>
+      db.manager.save(
+        EsignExportJob,
+        db.manager.create(EsignExportJob, {
+          publicId: randomUUID(),
+          documentId: document.id,
+          createdByUserId: Number(ownerId),
+          exportType: 'signed_copies_zip',
+          status,
+          scopeDescription: '合成大型快照',
+          snapshotAt: new Date(),
+          snapshotJson: snapshot,
+          snapshotSha256: 'b'.repeat(64),
+          recordCount: snapshot.length,
+          completedAt: null,
+          expiresAt: null,
+        }),
+      );
+    try {
+      const progressing = await seed('processing');
+      const failed = await seed('failed');
+      const make = () =>
+        request(ctx.server)
+          .post(`/api/esign/documents/${document.id}/exports`)
+          .set('Cookie', cookie)
+          .set('Origin', origin)
+          .send({ type: 'signed_copies_zip' });
+      expect(apiData(await make().expect(202))).toMatchObject({
+        id: progressing.publicId,
+        expectedCount: 6000,
+        reused: true,
+      });
+      await db.manager.update(
+        EsignExportJob,
+        { id: progressing.id },
+        { status: 'failed' },
+      );
+      expect(apiData(await make().expect(200))).toMatchObject({
+        id: failed.publicId,
+        status: 'failed',
+        reused: true,
+      });
+      expect(
+        await db.manager.count(EsignExportJob, {
+          where: { documentId: document.id },
+        }),
+      ).toBe(2);
+    } finally {
+      await db.manager.delete(EsignExportJob, { documentId: document.id });
+      await db.manager.delete(EsignDocument, { id: document.id });
+    }
+  });
+
   it('多份歷史固定最新曾成功工作，缺檔或缺完成時間時不能退回較舊產物', async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -987,7 +1064,7 @@ describe('Spec009 匯出 API', () => {
           snapshotJson: [],
           snapshotSha256: 'a'.repeat(64),
           completedAt: new Date(),
-          expiresAt: new Date(0),
+          expiresAt: null,
           recordCount: 0,
         }),
       );
@@ -1010,6 +1087,35 @@ describe('Spec009 匯出 API', () => {
     };
     const older = await seed();
     const newest = await seed();
+    // 升級後的維護與讀取不批次改寫、刪除或打包既有多版。
+    const originalJobs = await db.manager.find(EsignExportJob, {
+      where: { documentId: Number(documentId) },
+      order: { id: 'ASC' },
+    });
+    const maintenanceWorker = await createSyntheticWorker(ctx);
+    try {
+      await maintenanceWorker.get(DocumentExportProcessor).maintain();
+      expect(
+        await db.manager.find(EsignExportJob, {
+          where: { documentId: Number(documentId) },
+          order: { id: 'ASC' },
+        }),
+      ).toEqual(originalJobs);
+      for (const historical of [older, newest]) {
+        expect(await readPrivateFile(storage, historical.file)).toEqual(
+          Buffer.from('synthetic zip'),
+        );
+        expect(
+          (
+            await db.manager.findOneByOrFail(EsignFileObject, {
+              id: historical.file.id,
+            })
+          ).archiveStatus,
+        ).toBe('active');
+      }
+    } finally {
+      await maintenanceWorker.close();
+    }
     const make = () =>
       request(ctx.server)
         .post(`/api/esign/documents/${documentId}/exports`)

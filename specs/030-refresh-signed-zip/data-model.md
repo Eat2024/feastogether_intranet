@@ -53,3 +53,7 @@
 - 只清 ZIP 匯出 service／repository 的 expired 判斷與未使用 archiveFile()；未確認其他匯出類型資料前，共用 EsignExportStatus 與歷史頁保留 Excel／PDF 的 expired 相容，不能用 ZIP 查詢結果推論全部。
 - 保留 expires_at、idx_esign_export_jobs_expires_at、idx_esign_exports_reuse 中原欄位及 API expiresAt（新 ZIP 仍為 null），不做 schema migration。本輪未查驗所有 export_type 的非 null expires_at，亦未查驗全部檔案 archive_status 分布，不能宣稱可全域刪除。
 - 若另案要移除所有匯出 expired／expires_at，需先唯讀盤點全部 export_type/status、file_purpose/archive_status 及非 null expires_at，再明確規劃 migration 與相容切換；不納入 030。
+
+## 大型快照查詢限制（T029 實測補充）
+
+current/work 先聚合候選 ID，再依主鍵取得摘要，避免 MySQL 對含數 MB JSON 的工作列做 filesort；work 保持「進行中優先，其次 id 大於 current 的最新未成功 failed」。申請／重試內兩步讀取都在既有文件鎖與同一交易內。取代舊版先只讀 ID，再按數字 ID 逐筆鎖讀／確認 completed；不排序整份快照。maintain／pendingCleanup 候選只投影 ID，慢 I/O 與清理依原交易邊界執行。無 schema、索引或 DB 設定變更。

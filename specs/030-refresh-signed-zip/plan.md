@@ -110,3 +110,7 @@ server/test/{esign-export,esign-export-history,export-retention,s3-export}.e2e-s
 - 只清 ZIP 匯出 service／repository 的 expired 判斷與未使用 archiveFile()；未確認其他匯出類型資料前，共用 EsignExportStatus 與歷史頁保留 Excel／PDF 的 expired 相容，不能用 ZIP 查詢結果推論全部。
 - 保留 expires_at、idx_esign_export_jobs_expires_at、idx_esign_exports_reuse 中原欄位及 API expiresAt（新 ZIP 仍為 null），不做 schema migration。本輪未查驗所有 export_type 的非 null expires_at，亦未查驗全部檔案 archive_status 分布，不能宣稱可全域刪除。
 - 若另案要移除所有匯出 expired／expires_at，需先唯讀盤點全部 export_type/status、file_purpose/archive_status 及非 null expires_at，再明確規劃 migration 與相容切換；不納入 030。
+
+### T029 實證補充：大 JSON 避免排序
+
+6,000 份固定快照使 work CASE 排序及 supersedeOlder 全列排序出現 MySQL `ER_OUT_OF_SORTMEMORY`；單純改 ORDER BY id/LIMIT 仍不足。實作改採 current/work 聚合候選 ID 後主鍵讀摘要、取代候選只讀 ID 後逐筆鎖讀；maintain 同樣只投影候選 ID。維持原狀態優先序與文件→工作鎖順序，無新 schema／index／設定／泛用重試。回歸涵蓋大型進行中與較新失敗的優先序，以及大型舊版發布／清理；實際 6,000→6,001 流程驗證完整性與刪檔。

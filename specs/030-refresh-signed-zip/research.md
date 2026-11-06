@@ -56,3 +56,10 @@
 - 只清 ZIP 匯出 service／repository 的 expired 判斷與未使用 archiveFile()；未確認其他匯出類型資料前，共用 EsignExportStatus 與歷史頁保留 Excel／PDF 的 expired 相容，不能用 ZIP 查詢結果推論全部。
 - 保留 expires_at、idx_esign_export_jobs_expires_at、idx_esign_exports_reuse 中原欄位及 API expiresAt（新 ZIP 仍為 null），不做 schema migration。本輪未查驗所有 export_type 的非 null expires_at，亦未查驗全部檔案 archive_status 分布，不能宣稱可全域刪除。
 - 若另案要移除所有匯出 expired／expires_at，需先唯讀盤點全部 export_type/status、file_purpose/archive_status 及非 null expires_at，再明確規劃 migration 與相容切換；不納入 030。
+
+## 2026-11-06：6,000 份更新驗收發現 MySQL filesort 限制
+
+- 真 HTTP／背景 worker 更新到 6,000 份，處理中追加簽署後再次申請回 500；縮小為 `ExportJobRepository.work()` 真 DB 查詢，錯誤 `ER_OUT_OF_SORTMEMORY`。即使只投影摘要，CASE 優先序排序仍帶入大型 JSON row；移除 CASE 而只排序 id/LIMIT，也在 failed 候選重現，不能依賴 optimizer 選主鍵。
+- 決策：current 以 MAX(id) 選最新成功；work 以 COALESCE(進行中 MAX(id), 較目前成果新且未成功的 failed MAX(id)) 選 ID，再依主鍵讀摘要。申請／重試沿用原文件鎖與同交易；不調 sort_buffer、不新增索引、不加入重試掩蓋。
+- 另以 6,000→6,001 驗到 supersedeOlder 的全 entity ORDER BY 同樣失敗。改為只選 ID、不 SQL 排序，在應用程式依數字 ID 排序後逐筆鎖讀並核對 completed。既有文件鎖、發布同交易及清理交易外的邊界不變。
+- maintain 只需要候選 ID，改為投影 ID 後逐筆鎖讀；pendingCleanup 已採 ID 投影及 50 筆有界排序。大型 metadata 的公開 API／processor 回歸先 RED 後 GREEN；完整容量原流程必須重跑，不用縮小快照或增大 DB sort buffer 充當修正。

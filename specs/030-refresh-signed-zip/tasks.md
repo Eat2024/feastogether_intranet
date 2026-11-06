@@ -71,9 +71,9 @@
 
 三個故事均完成才能交付；本輪只產生任務，不執行以下驗收或部署。
 
-- [ ] T029 在 server/test/esign-export.e2e-spec.ts 完成既有多版／最新缺檔相容與無批次重包測試，加入 6,000 份代表性 PDF 的背景更新驗證，記錄耗時／峰值記憶體與產物完整性至 specs/030-refresh-signed-zip/validation.md。
-- [ ] T030 [P] 在 docs/deployment/uat-cicd.md 記錄 030 同版 client/API/worker 切換、舊 worker 停止消費／退出、既有資料不批次變更、修正版回復及已刪 ZIP 不可復原；無新增 env／migration，不執行部署。
-- [ ] T031 依 specs/030-refresh-signed-zip/quickstart.md 執行最終跨故事瀏覽器驗收、非授權及資料邊界檢查；涵蓋雙 session 取代、名字獨立、舊連結與刪檔恢復，把實際證據追加至 specs/030-refresh-signed-zip/validation.md。
+- [x] T029 在 server/test/esign-export.e2e-spec.ts 完成既有多版／最新缺檔相容與無批次重包測試，加入 6,000 份代表性 PDF 的背景更新驗證，記錄耗時／峰值記憶體與產物完整性至 specs/030-refresh-signed-zip/validation.md。
+- [x] T030 [P] 在 docs/deployment/uat-cicd.md 記錄 030 同版 client/API/worker 切換、舊 worker 停止消費／退出、既有資料不批次變更、修正版回復及已刪 ZIP 不可復原；無新增 env／migration，不執行部署。
+- [x] T031 依 specs/030-refresh-signed-zip/quickstart.md 執行最終跨故事瀏覽器驗收、非授權及資料邊界檢查；涵蓋雙 session 取代、名字獨立、舊連結與刪檔恢復，把實際證據追加至 specs/030-refresh-signed-zip/validation.md。
 - [ ] T032 完成對應 server unit/e2e/storage、client lint、root pnpm build／pnpm lint，核對所有結果並更新 specs/030-refresh-signed-zip/validation.md 與 specs/030-refresh-signed-zip/quickstart.md；未能執行的 DB/S3/容量驗證明列限制，不標通過。
 
 ## Dependencies & Execution Order

@@ -29,24 +29,36 @@ export class ExportJobRepository {
     });
   }
   /** 只選未被取代的最新曾成功版；缺檔不可退回更舊成果。 */
-  current(documentId: number, manager: EntityManager) {
-    const query = this.summaryQuery(documentId, manager)
+  async current(documentId: number, manager: EntityManager) {
+    const row = await this.summaryQuery(documentId, manager)
+      .select('MAX(job.id)', 'id')
       .andWhere("job.status <> 'superseded'")
       .andWhere("(job.completedAt IS NOT NULL OR job.status = 'completed')")
-      .orderBy('job.id', 'DESC');
-    return query.getOne();
+      .getRawOne<{ id: number | string | null }>();
+    if (!row?.id) return null;
+    return this.summaryQuery(documentId, manager)
+      .andWhere('job.id = :id', { id: row.id })
+      .getOne();
   }
 
   /** 進行中優先；失敗工作必須比目前成果新，才可等待重試。 */
-  work(documentId: number, manager: EntityManager, currentId = 0) {
-    const query = this.summaryQuery(documentId, manager)
-      .andWhere(
-        "(job.status IN ('pending','waiting','processing') OR (job.status = 'failed' AND job.id > :currentId AND job.completedAt IS NULL))",
-        { currentId },
+  async work(documentId: number, manager: EntityManager, currentId = 0) {
+    // 先聚合候選 ID，再依主鍵讀摘要。ORDER BY 即使未投影 JSON，
+    // MySQL 的 filesort 仍可能將大型快照列帶入而耗盡 sort buffer。
+    const row = await this.summaryQuery(documentId, manager)
+      .select(
+        `COALESCE(
+        MAX(CASE WHEN job.status IN ('pending','waiting','processing') THEN job.id END),
+        MAX(CASE WHEN job.status = 'failed' AND job.id > :currentId AND job.completedAt IS NULL THEN job.id END)
+      )`,
+        'id',
       )
-      .orderBy("CASE WHEN job.status = 'failed' THEN 1 ELSE 0 END", 'ASC')
-      .addOrderBy('job.id', 'DESC');
-    return query.getOne();
+      .setParameter('currentId', currentId)
+      .getRawOne<{ id: number | string | null }>();
+    if (!row?.id) return null;
+    return this.summaryQuery(documentId, manager)
+      .andWhere('job.id = :id', { id: row.id })
+      .getOne();
   }
 
   async reusable(documentId: number, manager: EntityManager) {
@@ -348,6 +360,7 @@ export class ExportJobRepository {
   maintenance(now: Date, manager: EntityManager) {
     return manager
       .createQueryBuilder(EsignExportJob, 'job')
+      .select(['job.id'])
       .where('job.snapshotJson IS NOT NULL')
       .andWhere(
         "((job.status IN ('pending','waiting') AND (job.nextAttemptAt IS NULL OR job.nextAttemptAt <= :now)) OR (job.status='processing' AND job.leaseExpiresAt <= :now))",
@@ -391,6 +404,7 @@ export class ExportJobRepository {
   /** 文件鎖已由呼叫端持有；只取代同文件較舊的成功 ZIP。 */
   async supersedeOlder(current: EsignExportJob, manager: EntityManager) {
     const older = await manager.find(EsignExportJob, {
+      select: { id: true },
       where: {
         documentId: current.documentId!,
         exportType: 'signed_copies_zip',
@@ -398,10 +412,11 @@ export class ExportJobRepository {
         status: 'completed',
         snapshotJson: Not(IsNull()),
       },
-      order: { id: 'ASC' },
-      lock: { mode: 'pessimistic_write' },
     });
-    for (const job of older) {
+    // 候選先只讀 ID，不令 filesort 搬動多 MB 的歷史快照；文件鎖仍由呼叫端持有。
+    for (const candidate of older.sort((a, b) => a.id - b.id)) {
+      const job = await this.byId(candidate.id, manager, true);
+      if (!job || job.status !== 'completed') continue;
       job.status = 'superseded';
       job.nextAttemptAt = null;
       await this.save(job, manager);

@@ -1,6 +1,6 @@
 # Quickstart：Spec 030 驗證指南
 
-本文件是完整功能的驗證指南。US1 已完成的隔離驗證及後續待驗項目見 [validation.md](validation.md)，不代表完整功能可發布。
+本文件是完整功能的驗證指南。各票已執行的隔離驗證、容量數據與部署限制見 [validation.md](validation.md)，不代表完整功能可發布。
 
 ## 前置條件
 
@@ -41,7 +41,7 @@ pnpm lint
 | 權限 | 非同部門、未登入、已刪文件、錯 document/file/job 關聯均不得下載或更新 | FR-014 |
 | 舊資料 | 多份舊 completed，最新缺檔不退回舊版；有新增可明確更新；升級不自動打包或刪檔 | FR-015 |
 | 同數異集合 | 相同總人數、不同紀錄 ID 可辨識新增；僅改名或 PDF ready 不視為新簽署 | FR-003 |
-| 容量 | 6,000 份具代表性大小／頁數的不同 PDF，量測耗時與峰值記憶體，離頁返回仍能取得進度與成果 | SC-008 |
+| 容量 | 24 種代表性 PDF 平衡形成 6,000 份、明列重複／熱快取限制；實際舊版→更新、處理中新增、完整內容核對及產品刪舊檔；量測耗時與記憶體 | SC-008 |
 
 storage 測試須覆蓋 local 及 S3 真實刪除語意：S3 以完整版本 reference 驗證原版本不存在，不以 delete marker 或 mock 成功代替。故障以隔離 fixture／stub 注入，不手動毀損共享檔案。
 
@@ -73,3 +73,8 @@ storage 測試須覆蓋 local 及 S3 真實刪除語意：S3 以完整版本 ref
 - 只清 ZIP 匯出 service／repository 的 expired 判斷與未使用 archiveFile()；未確認其他匯出類型資料前，共用 EsignExportStatus 與歷史頁保留 Excel／PDF 的 expired 相容，不能用 ZIP 查詢結果推論全部。
 - 保留 expires_at、idx_esign_export_jobs_expires_at、idx_esign_exports_reuse 中原欄位及 API expiresAt（新 ZIP 仍為 null），不做 schema migration。本輪未查驗所有 export_type 的非 null expires_at，亦未查驗全部檔案 archive_status 分布，不能宣稱可全域刪除。
 - 若另案要移除所有匯出 expired／expires_at，需先唯讀盤點全部 export_type/status、file_purpose/archive_status 及非 null expires_at，再明確規劃 migration 與相容切換；不納入 030。
+
+
+## Ticket 04 容量重跑
+
+使用 [容量 README](../../server/test/performance/README.md#spec030既有-zip-的按需更新) 的 `esign-zip-refresh-benchmark.ts`，不是 Spec009 的首次匯出 benchmark。流程涵蓋 1→6,000，處理中新增第 6,001 而不自動重包；最後再明確更新 6,001 驗證大型舊版清理。每次都必須使用新隔離 DB、storage 與 output，並獨占測試 Redis。失敗即停止，保留證據；不得調大 sort buffer、手刪產品 ZIP 或只跑小檔就標示通過。

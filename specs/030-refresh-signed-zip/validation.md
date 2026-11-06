@@ -148,3 +148,57 @@ SC-003 的 10 session 共用與 SC-004 的固定 13→14／離頁恢復已有證
 - Merger 核對 80d336f 相對 d741b5f 的發布、補清理、錯誤契約與 UI 差異，並比對 local 117/117、S3 5/5、409 舊頁及 reconnect 各 1/1 的實際日誌，fast-forward 整合成功。
 - 原子發布失敗保留舊版；COMMIT 回覆不明不誤刪 active 新版；完整物件版本刪除、50 工作有界掃描／60 秒延後與參照保護均有針對性故障案例。清理不進入產製 failed catch。
 - 未重複執行共享資料庫測試；整合狀態 commit 完整執行既有 lint/unit hooks。預設 root build 與 6,000 份容量依 ticket04 執行。
+
+## Ticket 04：大量更新與整合交付（2026-11-06）
+
+使用 `impl/030-04`，起點 f9f3312；隔離 MySQL／Redis／local storage，未連線 UAT 或操作正式資料。部署文件補入 client/API/worker 同版、停止新申請並排空舊 worker、修正版回復；目前部署腳本會自動回退 image，不會辨識 ZIP 新狀態，因此首次切換須受控操作，不能宣稱腳本已自動提供此保護。無 migration、環境變數或 dependency 變更。
+
+### 大型快照 RED → GREEN
+
+- 完整容量首兩輪 a/b 在 6,000 份 processing 期間新增簽署後重複 POST 回 500。縮小至真 DB `work()` 查詢（約 0.4 秒）確認 `ER_OUT_OF_SORTMEMORY`；CASE 排序即使只選摘要，仍使 MySQL filesort 搬動含數 MB JSON 的列。只換 ORDER BY id/LIMIT 在 failed 分支仍失敗。
+- 新增公開 API 回歸：6,000 metadata 的較舊 processing 與較新 failed 並存，重複申請仍選 processing；全 failed 後選最新 failed，工作數保持 2。先 RED（500），改成聚合候選 ID 再依主鍵讀摘要後 GREEN；current 同樣採 MAX(id)，保留文件鎖及同交易。
+- c 輪 1→6,000 已通過完整驗證，但延伸 6,000→6,001 在發布時 failed。最小查詢確認 `supersedeOlder` 全 entity ORDER BY 同樣耗盡 sort buffer；新增真 processor／DB 的大型歷史 metadata 發布與清理回歸先 RED 後 GREEN。候選只選 ID、應用程式固定數字順序，再逐筆鎖讀／確認 completed；沒有增加 DB sort buffer 或重試掩蓋錯誤。
+- maintain 只投影候選 ID，接續原逐筆鎖讀；pendingCleanup 既有 ID 投影及 50 工作上限保留。故障測試只放大歷史 metadata，不能當成實際 6,000 PDF 容量證據；容量另以下述 d 輪完整重跑。
+- 最終既有多版測試增加 maintain 前後所有歷史工作欄位相同、兩版實體檔案仍存在且 active；最新缺檔／缺 completedAt 仍不退回舊產物。未做 expired 相容或批次回填。
+
+本機 RED／GREEN：`/tmp/spec030-ticket04-sort-{red,green}.log`、`/tmp/spec030-ticket04-publish-{red,green}.log`；容量失敗輪 `/tmp/spec030-capacity-run-{a,b,c}.log` 保留，未列為成功。
+
+### SC-008 完整容量結果
+
+d 輪使用新的 `feastogether_intranet_test_capacity_030d`／`/tmp/esign009-capacity-030d`。Apple M5 Pro／24 GiB／Node 26.4，開始前可用空間 626 GiB。真 Fastify HTTP/session、MySQL migration、Redis BullMQ、獨立 WorkerModule 與 local storage；不使用 Moto 大檔或記憶體 sink。
+
+1. 真正先完成 1 份舊 ZIP，再加入至 6,000 份。查預覽缺 5,999，工作仍只有 1，沒有自動打包。
+2. 明確申請更新固定 6,000，觀察到 processing 後加入第 6,001；再次 POST 仍為同 ID、6,000 份。完成後 work=null、缺 1、工作數 2，沒有自動續包。
+3. 6,000 份來源 **6,244,040,250 bytes**，STORE ZIP **6,245,350,572 bytes**。Python 獨立逐筆驗檔名集合、重複名稱、bytes、CRC、完整 SHA-256 及 ZIP64，全部吻合，耗時 **2.729 秒**。
+4. 真 HTTP 下載超過 8 MiB 後中斷，以 Range/If-Range 續傳並驗全檔 SHA/bytes。匿名下載 401，舊成果 Range 409。舊工作 superseded、舊檔 deleted 且實體不存在；6,001 個個人 PDF 保留。沒有手刪產品 ZIP。
+5. 再明確更新到 6,001，產物 **6,245,368,097 bytes**，全部 6,001 entries CRC/SHA 與 ZIP64 通過（2.599 秒）；前一份 6.245 GB ZIP 由正式流程刪除，最新缺 0，最終工作數 3。這一步驗證大型舊快照的取代／清理，不只是小舊版。
+
+| 6,000 份更新量測 | 本次值 |
+| --- | ---: |
+| POST 受理 latency | 346.09 ms |
+| 受理至 observed completed | 12.714 s |
+| observed processing 至 completed | 12.143 s |
+| 獨立 worker peak RSS | 421.27 MiB |
+| API＋fixture/orchestrator peak RSS | 421.67 MiB |
+
+RSS 每 250 ms 取樣，只取 processing 至 completed 區間，包含 ts-node 成本，不等於 production compiled runtime sizing。24 種有效合成 PDF（文字向量、JPEG、PNG、混合，頁數與尺寸不同）各平衡重複 250 次、hardlink、熱 filesystem cache；不是 6,000 種獨特內容或 production 人資分布，也不是部署 S3 吞吐/SLO 保證。沒有宣稱簽署服務在此負載的 p95；新增簽署紀錄用隔離 fixture 寫入，簽署端驗權由既有 e2e 覆蓋。
+
+持久證據：[結果](capacity-evidence/result.json)、[6,000 完整性](capacity-evidence/verify.json)、[6,001 完整性](capacity-evidence/verify-next.json)、[採樣](capacity-evidence/resources.json)、[來源 manifest](capacity-evidence/corpus-manifest.json)、[版本與 hash](capacity-evidence/provenance.json)。原始兩份 expected 名單、最終產物及日誌在 `/tmp/spec030-capacity-result-d`、`/tmp/spec030-capacity-run-d.log`。重跑入口是 `server/test/performance/esign-zip-refresh-benchmark.ts`，步驟見容量 README；不以舊 Spec009 首次匯出 benchmark 代替。
+
+### 最終跨故事瀏覽器與邊界
+
+- Chromium 153／真 Next 3030 → API 3031、合成員工 session、MySQL/Redis/worker/local storage，沒有攔截或 mock API 回應。新增整合場景：第二 session 更新時注入 worker storage 寫入故障；顯示失敗且仍能下載原 1 份 ZIP。再加入第 3 人，解除 storage 故障並重試，保留原工作 ID／snapshot hash／2 份範圍，下載實際只有 2 個 PDF，提示缺 1。
+- 兩個 session 分別填「第一人下載」「第二人更新」，下載實際檔名各自正確，不新增工作。舊 panel 與 history 準備下載皆真正收到 409，重新取得最新資料；舊列顯示已取代且沒有下載／重試，總工作仍 2。
+- 最終 1/1 passed（14.4 秒），`/tmp/spec030-ticket04-browser-final.log`；harness `/tmp/spec030-browser/ticket04-browser.e2e-spec.ts`，截圖 `ticket04-refreshed.png`／`ticket04-history.png`。前一輪 Next dev 自動重載未保留舊頁而逾時，下一輪時計凍結後未恢復導致刷新逾時，兩輪不列通過；最後僅關閉 HMR WebSocket、暫停舊頁時計以保留舊狀態，在真 409 後恢復，後端／另一 session 持續真實執行。
+- 最新／過時／處理中／離頁返回及直接讀到 superseded 的 reconnect 沿用 Ticket 01–03 已通過的 browser 證據；本輪補跨故事失敗與名稱獨立，不重複無變更場景。
+- 相關 e2e 覆蓋未登入、跨部門、錯文件／工作／檔案關聯、刪除文件、只投影數量不回傳快照或 objectKey；6,000 容量另外實際驗匿名 401 與舊 Range 409。文件 expired、共用非 ZIP expired、expiresAt/index/API 均保留。
+
+### 最終命令與狀態
+
+- `pnpm --config.verify-deps-before-run=false -C server test --runInBand`：119 suites／1204 tests 通過，`/tmp/spec030-ticket04-unit-final.log`。
+- `pnpm --config.verify-deps-before-run=false -C server test:e2e --runTestsByPath test/esign-export.e2e-spec.ts test/esign-export-history.e2e-spec.ts test/export-retention.e2e-spec.ts`：3 suites／119 tests 通過，`/tmp/spec030-ticket04-e2e-final.log`。包含新增的兩項大型快照回歸、歷史無批次改寫，以及原提交結果不明、原子發布回滾與清理恢復案例。
+- 全套第一輪新增的大歷史 metadata 留在共用測試 DB，使舊 normalize-export-retention 工具全表排序的 8 項測試失敗；新增 fixture finally 還原自己的 metadata／刪除純快照案例資料後全過。未修改舊 expired 工具、測試門檻或 DB sort buffer。該舊工具不屬於 030 部署步驟，本次沒有執行資料遷移。
+- root `pnpm lint`：server 0 errors／310 warnings、client lint 通過，`/tmp/spec030-ticket04-root-lint-final.log`。並發 e2e 仍有既有 MaxListeners 警告，未隱藏警告或調門檻。
+- Nest build 與 Next webpack build 通過，`/tmp/spec030-ticket04-server-build.log`、`/tmp/spec030-ticket04-client-build.log`。worktree 使用外部 node_modules symlink；預設 root `pnpm build` 由 merger 在整合工作區執行，T032 在該檢查前維持未完成，不把 webpack 結果冒稱 Turbopack 通過。
+- 真瀏覽器、worker 已停止，暫存 server browser test 與 Next 自動 AGENTS 區塊已移除；不提交環境檔、symlink、Playwright dependency 或合成 PDF/ZIP 大檔。
+- `PATH=/tmp/esign019-moto/bin:$PATH pnpm --config.verify-deps-before-run=false -C server test:s3`：9/9 通過（`/tmp/spec030-ticket04-storage.log`）。同前綴 `test:s3:e2e --runTestsByPath test/s3-export.e2e-spec.ts`：5/5 通過（`/tmp/spec030-ticket04-s3-e2e.log`），含指定 objectVersion 刪除與中斷恢復；Moto 只跑小量協定驗證，未拿來做 >4 GiB 容量。

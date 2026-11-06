@@ -513,6 +513,47 @@ describe('Spec030 ZIP 取代與補清理', () => {
       files: [],
     });
   });
+  it('大型歷史快照不因資料庫排序失敗而阻止發布及清理', async () => {
+    const document = await documentFixture();
+    await addSigned(document, 1);
+    const old = await generate(document);
+    const previous = await db.manager.findOneByOrFail(EsignExportJob, {
+      publicId: old.id,
+    });
+    // 單獨放大歷史 metadata 的真 DB 回歸；實際 6000 PDF 完整性另由容量 harness 驗證。
+    const entry = previous.snapshotJson![0];
+    try {
+      await db.manager.update(
+        EsignExportJob,
+        { id: previous.id },
+        {
+          snapshotJson: Array.from({ length: 6000 }, (_, i) => ({
+            ...entry,
+            recordId: i === 0 ? entry.recordId : 800000000 + i,
+            signerPublicId: randomUUID(),
+          })),
+        },
+      );
+      await addSigned(document, 2);
+      const next = await generate(document);
+      expect(next.status).toBe('completed');
+      const file = await db.manager.findOneByOrFail(EsignFileObject, {
+        id: Number(old.files[0].id),
+      });
+      expect(file.archiveStatus).toBe('deleted');
+      await expect(storage.stat(file)).rejects.toThrow();
+      expect(
+        (await db.manager.findOneByOrFail(EsignExportJob, { id: previous.id }))
+          .status,
+      ).toBe('superseded');
+    } finally {
+      await db.manager.update(
+        EsignExportJob,
+        { id: previous.id },
+        { snapshotJson: previous.snapshotJson },
+      );
+    }
+  });
   it('發布前 storage 驗證失敗保留舊成果，新工作可明確重試', async () => {
     const document = await documentFixture();
     await addSigned(document, 1);

@@ -202,3 +202,10 @@ RSS 每 250 ms 取樣，只取 processing 至 completed 區間，包含 ts-node 
 - Nest build 與 Next webpack build 通過，`/tmp/spec030-ticket04-server-build.log`、`/tmp/spec030-ticket04-client-build.log`。worktree 使用外部 node_modules symlink；預設 root `pnpm build` 由 merger 在整合工作區執行，T032 在該檢查前維持未完成，不把 webpack 結果冒稱 Turbopack 通過。
 - 真瀏覽器、worker 已停止，暫存 server browser test 與 Next 自動 AGENTS 區塊已移除；不提交環境檔、symlink、Playwright dependency 或合成 PDF/ZIP 大檔。
 - `PATH=/tmp/esign019-moto/bin:$PATH pnpm --config.verify-deps-before-run=false -C server test:s3`：9/9 通過（`/tmp/spec030-ticket04-storage.log`）。同前綴 `test:s3:e2e --runTestsByPath test/s3-export.e2e-spec.ts`：5/5 通過（`/tmp/spec030-ticket04-s3-e2e.log`），含指定 objectVersion 刪除與中斷恢復；Moto 只跑小量協定驗證，未拿來做 >4 GiB 容量。
+
+### Ticket 04 整合驗證
+
+- Merger 核對 4c415c85 相對 f9f3312 的差異與回歸／容量證據；provenance 的四份 source SHA-256 逐檔符合候選，兩份本機 expected 名單 hash 亦吻合。fast-forward 整合成功。
+- 在真整合工作區執行原預設 `pnpm build`，Nest 與 Next Turbopack 均成功（未傳 webpack）；日誌 `/tmp/spec030-merge04-build.log`。AGENTS.md 無生成變更，原有未追蹤文件未修改。
+- T032 完成，T001–T032 全部已驗收；四張 tickets 均已整合 resolved。整體 code-review 仍由主代理獨立執行，不將此合併核對冒稱最終雙軸 review。
+- 狀態紀錄 commit 仍完整執行既有 lint/unit hooks，不重複已通過且沒有變更的共享資料庫測試。

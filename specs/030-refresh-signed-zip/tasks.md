@@ -25,9 +25,9 @@
 
 完成後才能開始使用者故事；只是擴充型別與契約，不開啟刪檔。
 
-- [ ] T003 在 server/src/features/esign/entities/esign-export-job.entity.ts、server/src/features/esign/entities/esign-file-object.entity.ts 定義／說明新狀態；遵守「status/archiveStatus 既有 varchar 足夠」、「受理後不可變；重試不擴大名單」及「保留完整 reference，deleted 後也不硬刪 metadata」；不新增欄位或 migration。
+- [ ] T003 在 server/src/features/esign/entities/esign-export-job.entity.ts、server/src/features/esign/entities/esign-file-object.entity.ts 定義／說明新狀態並移除 ZIP expired 相容分支；遵守「status/archiveStatus 既有 varchar 足夠」、「受理後不可變；重試不擴大名單」及「保留完整 reference，deleted 後也不硬刪 metadata」；不新增欄位或 migration。
 - [ ] T004 在 server/src/features/esign/dto/export.dto.ts、server/src/features/esign/dto/esign-common.dto.ts 定義 exportState 的 current/work（ExportJobView 或 null）、兩個非負新增數（對應 null 時為 0）及 superseded 投影；保持 exportSummary 相容且不暴露快照。
-- [ ] T005 [P] 在 client/src/api/types/esignExports.ts、client/src/api/types/esignDocuments.ts 同步 exportState 與 superseded 型別，保持既有下載及名稱欄位，不新增 force／名單輸入。
+- [ ] T005 [P] 在 client/src/api/types/esignExports.ts、client/src/api/types/esignDocuments.ts 同步 exportState 與 superseded 型別並移除 ZIP expired 狀態／畫面，保持既有下載及名稱欄位，不新增 force／名單輸入。
 
 ## Phase 3: User Story 1 — 有需求才更新 ZIP（P1）
 
@@ -35,7 +35,7 @@
 
 - [ ] T006 [US1] 先在 server/src/features/esign/services/esign-export.service.spec.ts 補按需申請與摘要測試：無新增沿用、同數不同 ID、PDF ready／改名不重包、只讀不寫入、舊 current 與新 work 分離，確認舊行為失敗。
 - [ ] T007 [P] [US1] 在 server/test/esign-export.e2e-spec.ts 補無簽署、1→2 人、只讀新增 100 簽署不建工作、最新下載 10 次無新歷史及舊 ZIP 缺檔的測試；解壓驗證正確個人 PDF，替換永久沿用的舊斷言。
-- [ ] T008 [US1] 在 server/src/features/esign/repositories/export-job.repository.ts 拆分 current/work 選取與窄 ID 查詢，排除 superseded，遵守「缺檔／expired 仍保持其識別供錯誤呈現，不退回較舊成果」；舊 failed 不遮住較新成功版。
+- [ ] T008 [US1] 在 server/src/features/esign/repositories/export-job.repository.ts 拆分 current/work 選取與窄 ID 查詢，排除 superseded，遵守「缺檔仍保持其識別供錯誤呈現，不退回較舊成果」；舊 failed 不遮住較新成功版。
 - [ ] T009 [US1] 在 server/src/features/esign/services/esign-export.service.ts 實作後端紀錄 ID 差集、單次名單固定及按需建立；依文件鎖驗權並先共用進行中工作，latest failed 回原工作供重試；有新增可更新缺檔 current，無新增缺檔回不可用。
 - [ ] T010 [US1] 在 server/src/features/esign/services/esign-document-query.service.ts 與 server/src/features/esign/services/esign-export.service.ts 組合一致性 exportState、exportSummary=work??current 和列表 latestExportSummary；新增數只在匯出預覽計算，避免歷史或輪詢載全份 metadata。
 - [ ] T011 [US1] 在 server/src/features/esign/controllers/exports.controller.ts 更新 POST 回應與 OpenAPI：進行中／新工作 202、completed／failed 沿用 200；failed 不宣稱產檔成功，GET 不觸發產製。
@@ -71,7 +71,7 @@
 
 三個故事均完成才能交付；本輪只產生任務，不執行以下驗收或部署。
 
-- [ ] T029 在 server/test/esign-export.e2e-spec.ts 完成既有多版／expired／最新缺檔相容與無批次重包測試，加入 6,000 份代表性 PDF 的背景更新驗證，記錄耗時／峰值記憶體與產物完整性至 specs/030-refresh-signed-zip/validation.md。
+- [ ] T029 在 server/test/esign-export.e2e-spec.ts 完成既有多版／最新缺檔相容與無批次重包測試，加入 6,000 份代表性 PDF 的背景更新驗證，記錄耗時／峰值記憶體與產物完整性至 specs/030-refresh-signed-zip/validation.md。
 - [ ] T030 [P] 在 docs/deployment/uat-cicd.md 記錄 030 同版 client/API/worker 切換、舊 worker 停止消費／退出、既有資料不批次變更、修正版回復及已刪 ZIP 不可復原；無新增 env／migration，不執行部署。
 - [ ] T031 依 specs/030-refresh-signed-zip/quickstart.md 執行最終跨故事瀏覽器驗收、非授權及資料邊界檢查；涵蓋雙 session 取代、名字獨立、舊連結與刪檔恢復，把實際證據追加至 specs/030-refresh-signed-zip/validation.md。
 - [ ] T032 完成對應 server unit/e2e/storage、client lint、root pnpm build／pnpm lint，核對所有結果並更新 specs/030-refresh-signed-zip/validation.md 與 specs/030-refresh-signed-zip/quickstart.md；未能執行的 DB/S3/容量驗證明列限制，不標通過。

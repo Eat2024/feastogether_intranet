@@ -6,7 +6,7 @@
 
 **對應 Tasks:** T020–T028
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 新版成功前舊版可下；發布失敗不能先停用或刪除舊成果。
 - [x] 成功切換後舊連結、準備下載及續傳請求拒絕舊版，不冒充提供新版。
@@ -27,3 +27,5 @@
 - 2026-11-06：在 impl/030-03（基準 d741b5f）開始，以已確認 public API／processor／storage seams 逐案例 red→green。
 
 - 2026-11-06：T020–T028 完成，待整合；117 個 local/API/history e2e、5 個 S3 e2e、119 suites／1204 unit、真 Chromium 409／reconnect 情境通過。包含 COMMIT 已成功但回覆中斷、參照查詢故障的 red→green，不能誤刪已發布新版。完整證據見 specs/030-refresh-signed-zip/validation.md。
+
+- 2026-11-06 merger：已將 impl/030-03 的 80d336f fast-forward 整合至 impl/030-integration。核對發布交易、清理與產製錯誤隔離、COMMIT 成功回覆丟失的 active/staging 參照保護、objectVersion、delete_pending 恢復、50 工作／60 秒重試，以及歷史 409／瀏覽器重新連線證據；117/117 local/API/history e2e、5/5 S3 e2e、兩組真 Chromium 情境通過。保留文件期限與共用狀態、expiresAt/index/API，無 schema 變更；容量與最終交付驗證留 ticket04。

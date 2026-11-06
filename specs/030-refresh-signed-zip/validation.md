@@ -142,3 +142,9 @@ SC-003 的 10 session 共用與 SC-004 的固定 13→14／離頁恢復已有證
 
 - root `pnpm lint` 通過（server 0 errors／310 warnings，包含測試中的 bind／既有 any 警告；client lint 通過），日誌 `/tmp/spec030-ticket03-final-lint.log`。
 - Nest build、Next webpack build 通過（`/tmp/spec030-ticket03-final-build.log`、`/tmp/spec030-ticket03-client-build.log`）。工作區依賴仍為外部 symlink，預設 Turbopack root build 留待整合工作區執行；沒有提交 symlink、Next 生成 AGENTS 區塊或 browser 暫存 harness。
+
+### Ticket 03 整合驗證
+
+- Merger 核對 80d336f 相對 d741b5f 的發布、補清理、錯誤契約與 UI 差異，並比對 local 117/117、S3 5/5、409 舊頁及 reconnect 各 1/1 的實際日誌，fast-forward 整合成功。
+- 原子發布失敗保留舊版；COMMIT 回覆不明不誤刪 active 新版；完整物件版本刪除、50 工作有界掃描／60 秒延後與參照保護均有針對性故障案例。清理不進入產製 failed catch。
+- 未重複執行共享資料庫測試；整合狀態 commit 完整執行既有 lint/unit hooks。預設 root build 與 6,000 份容量依 ticket04 執行。

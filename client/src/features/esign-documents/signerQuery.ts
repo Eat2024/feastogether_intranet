@@ -2,6 +2,7 @@
 import type { EsignReadonlySignerView, EsignSignerStatus, EsignSignerView } from '@/api/types';
 import { PAGE_SIZE, paginate, parsePage } from '@/lib/paginate';
 import { nextSortState, parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export const SIGNER_STATUS_TABS = [
   { key: 'all', label: '全部' },
@@ -73,7 +74,7 @@ export function signerHref(documentId: string, query: SignerQuery, change: Parti
   }
   if (next.page > 1) qs.set('page', String(next.page));
   const s = qs.toString();
-  return s ? `/esign/forms/${documentId}?${s}` : `/esign/forms/${documentId}`;
+  return s ? `${ESIGN_ROUTES.forms.href}/${documentId}?${s}` : `${ESIGN_ROUTES.forms.href}/${documentId}`;
 }
 
 export const nextSignerSort = nextSortState<SignerSortKey>;

@@ -45,11 +45,13 @@ import {
   type ExportQuery,
   type FieldKey,
 } from "./exportQuery";
-import { DOCUMENT_STATUS_META, periodText } from "./listQuery";
+
+import { ESIGN_ROUTES } from "@/constants/routes/esign";
 import ZipExportPanel, {
-  ZipActionButtons,
   useZipExport,
+  ZipActionButtons,
 } from "./ZipExportPanel";
+import { DOCUMENT_STATUS_META, periodText } from "./listQuery";
 
 type ContentType = "list" | "docs";
 
@@ -432,7 +434,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
       )}
 
       <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
-        <Button size="large" variant="outlined" href="/esign/forms">
+        <Button size="large" variant="outlined" href={ESIGN_ROUTES.forms.href}>
           取消
         </Button>
         {content === "list" && (
@@ -448,7 +450,11 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
           </Button>
         )}
         {content === "docs" && (
-          <ZipActionButtons zip={zip} signedCount={signed} fileName={fileName} />
+          <ZipActionButtons
+            zip={zip}
+            signedCount={signed}
+            fileName={fileName}
+          />
         )}
       </Box>
     </>

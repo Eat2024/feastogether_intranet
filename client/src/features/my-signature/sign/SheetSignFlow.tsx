@@ -18,6 +18,7 @@ import { signDocument } from '../actions';
 import SignaturePadDialog from './SignaturePadDialog';
 import TermsStep from './TermsStep';
 import { SIGN_TERMS, SIGN_TERMS_VERSION } from './terms';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 const SHEET_SIGN_STEPS = ['同意授權條款', '簽到', '確認送出'];
 
@@ -63,7 +64,7 @@ export default function SheetSignFlow({
           docName={form.name}
           terms={SIGN_TERMS}
           version={SIGN_TERMS_VERSION}
-          backHref="/esign/my-signature"
+          backHref={ESIGN_ROUTES.mySignature.href}
           onAgree={() => {
             setConsent({ version: SIGN_TERMS_VERSION, agreedAt: nowStr() });
             window.scrollTo({ top: 0 });
@@ -136,7 +137,7 @@ export default function SheetSignFlow({
       </Typography>
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-        <Button size="large" variant="outlined" href="/esign/my-signature" disabled={pending}>
+        <Button size="large" variant="outlined" href={ESIGN_ROUTES.mySignature.href} disabled={pending}>
           取消
         </Button>
         <Button

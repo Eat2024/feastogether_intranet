@@ -36,6 +36,7 @@ import { clampFieldSize, fieldSize } from "../signLayout";
 import { isPdfFile, MAX_PDF_BYTES, openPdf } from "../pdf/pdfjs";
 import { usePdfDocument, usePdfRenders } from "../pdf/usePdf";
 import type { UploadField, UploadInfo } from "../types";
+import { ESIGN_ROUTES } from "@/constants/routes/esign";
 
 // 目前只在瀏覽器端以 pdf.js 讀取 PDF；Word 需串接後端轉檔後才支援
 const ACCEPT = ".pdf,application/pdf";
@@ -344,7 +345,7 @@ export default function UploadEditor({
     meta: { suppressGlobalErrorToast: true },
     onSuccess: ({ id }) => {
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
-      router.push(`/esign/forms/${id}/signers`);
+      router.push(`${ESIGN_ROUTES.forms.href}/${id}/signers`);
     },
     onError: (err) => setErrors({ submit: getErrorMessage(err, "建立文件失敗，請稍後再試") }),
   });
@@ -354,7 +355,7 @@ export default function UploadEditor({
     onSuccess: ({ id }) => {
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENTS] });
       void queryClient.invalidateQueries({ queryKey: [queryKeys.ESIGN_DOCUMENT, id] });
-      router.push(`/esign/forms/${id}/signers`);
+      router.push(`${ESIGN_ROUTES.forms.href}/${id}/signers`);
     },
     onError: (err) => setErrors({ submit: getErrorMessage(err, "儲存失敗，請稍後再試") }),
   });
@@ -975,7 +976,7 @@ export default function UploadEditor({
         <Button
           size="large"
           variant="outlined"
-          href="/esign/forms"
+          href={ESIGN_ROUTES.forms.href}
           disabled={saving}
         >
           {locked ? "返回列表" : "取消"}

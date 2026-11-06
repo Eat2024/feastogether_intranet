@@ -21,6 +21,7 @@ import {
 } from './rules';
 import SheetFieldList, { type SheetFieldItem } from './SheetFieldList';
 import SheetView from './SheetView';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 // 預覽時示意用的列數
 const PREVIEW_ROWS = 3;
@@ -158,7 +159,7 @@ export default function SheetEditor({ form, locked = false }: { form?: EFormDoc;
       {error && <Alert severity="error">{error}</Alert>}
 
       <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-        <Button size="large" variant="outlined" href="/esign/forms" disabled={pending}>
+        <Button size="large" variant="outlined" href={ESIGN_ROUTES.forms.href} disabled={pending}>
           取消
         </Button>
         {!locked && (

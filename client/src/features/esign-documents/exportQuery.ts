@@ -3,6 +3,7 @@
 // 產生前先以 POST /api/esign/history/export 記錄匯出（Spec 015）。
 import type { EsignSignerStatus, EsignSignerView, ExcelExportField } from '@/api/types';
 import dayjs from 'dayjs';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export const STATUS_OPTIONS = [
   { key: 'pending', label: '待簽署' },
@@ -144,5 +145,5 @@ export function exportPageHref(documentId: string, query: ExportQuery, page = 1)
   if (query.fields.join(',') !== DEFAULT_FIELDS.join(',')) qs.set('fields', query.fields.join(','));
   if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
-  return s ? `/esign/forms/${documentId}/export?${s}` : `/esign/forms/${documentId}/export`;
+  return s ? `${ESIGN_ROUTES.forms.href}/${documentId}/export?${s}` : `${ESIGN_ROUTES.forms.href}/${documentId}/export`;
 }

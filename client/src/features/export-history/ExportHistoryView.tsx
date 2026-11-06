@@ -63,6 +63,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import HistoryDownloadButton from "./HistoryDownloadButton";
+import { ESIGN_ROUTES } from "@/constants/routes/esign";
 
 type HistoryTab = ExportHistoryType | "sheet";
 
@@ -139,7 +140,7 @@ const historyHref = (
   }
   if (page > 1) qs.set("page", String(page));
   const s = qs.toString();
-  return s ? `/esign/export-history?${s}` : "/esign/export-history";
+  return s ? `${ESIGN_ROUTES.exportHistory.href}?${s}` : ESIGN_ROUTES.exportHistory.href;
 };
 
 const ZIP_STATUS_META: Record<

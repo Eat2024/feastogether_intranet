@@ -16,6 +16,7 @@ import type { EFormDoc, OrgDept } from '../types';
 import DeadlineRangePicker from './DeadlineRangePicker';
 import EmailSignerInput, { type EmailSigner } from './EmailSignerInput';
 import StaffTreePicker from './StaffTreePicker';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 const DEADLINE_REQUIRED = '請選擇簽署期間的開始日與結束日';
 
@@ -206,7 +207,7 @@ export default function SignersEditor({
         <Button
           size="large"
           variant="outlined"
-          href={`/esign/forms/${form.id}/edit`}
+          href={`${ESIGN_ROUTES.forms.href}/${form.id}/edit`}
           disabled={busy}
         >
           {form.docType === 'sheet' ? '上一步，回到簽到表資訊' : '上一步，回到上傳文件'}
@@ -222,7 +223,7 @@ export default function SignersEditor({
         </Button>
         {/* 取消與主要動作靠右，主鈕在最右 */}
         <Box sx={{ display: 'flex', gap: 1, ml: 'auto' }}>
-          <Button size="large" variant="outlined" href="/esign/forms" disabled={busy}>
+          <Button size="large" variant="outlined" href={ESIGN_ROUTES.forms.href} disabled={busy}>
             取消
           </Button>
           <Button

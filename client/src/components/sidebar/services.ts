@@ -1,9 +1,9 @@
 import type { SvgIconComponent } from "@mui/icons-material";
 import DrawRoundedIcon from "@mui/icons-material/DrawRounded";
 import FlightTakeoffRoundedIcon from "@mui/icons-material/FlightTakeoffRounded";
-import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
-import ListAltRoundedIcon from "@mui/icons-material/ListAltRounded";
+import { esignMenu } from "@/constants/menu/esign";
 import { travelMenu } from "@/constants/menu/travel";
+import { ESIGN_ROUTES } from "@/constants/routes/esign";
 import { TRAVEL_ROUTES } from "@/constants/routes/travel";
 
 /** 側邊欄第一層選單；有 children 時為群組，href 是群組底下頁面共用的路徑前綴 */
@@ -38,17 +38,8 @@ export const SERVICES: ServiceDefinition[] = [
     key: "esign",
     name: "電子簽署",
     icon: DrawRoundedIcon,
-    pathPrefixes: ["/esign"],
-    menu: [
-      { key: "forms", label: "電子簽列表", href: "/esign/forms", icon: ListAltRoundedIcon },
-      { key: "my-signature", label: "我的電子簽", href: "/esign/my-signature", icon: DrawRoundedIcon },
-      {
-        key: "export-history",
-        label: "歷史匯出文件",
-        href: "/esign/export-history",
-        icon: HistoryRoundedIcon,
-      },
-    ],
+    pathPrefixes: [ESIGN_ROUTES.home.href],
+    menu: esignMenu,
   },
   {
     key: "travel",

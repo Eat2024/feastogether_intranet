@@ -4,6 +4,7 @@ import type { EsignDocumentListItem, EsignDocumentStatus } from '@/api/types';
 import { parseSortParams, sortByValue, type Sort, type SortValue } from '@/lib/tableSort';
 import type { ChipProps } from '@mui/material/Chip';
 import dayjs from 'dayjs';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 /** 列表顯示的狀態：直接使用後端狀態（「已到期」由後端判斷） */
 export type DocumentListStatus = EsignDocumentStatus;
@@ -183,5 +184,5 @@ export function documentsHref(opts: { filters: DocumentFilters; sort: DocumentSo
   }
   if (page > 1) qs.set('page', String(page));
   const s = qs.toString();
-  return s ? `/esign/forms?${s}` : '/esign/forms';
+  return s ? `${ESIGN_ROUTES.forms.href}?${s}` : ESIGN_ROUTES.forms.href;
 }

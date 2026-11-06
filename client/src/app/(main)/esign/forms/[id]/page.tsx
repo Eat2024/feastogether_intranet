@@ -33,6 +33,7 @@ import { pageHrefs } from '@/lib/paginate';
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
+import { ESIGN_ROUTES } from '@/constants/routes/esign';
 
 export const metadata: Metadata = { title: '文件簽署狀態' };
 export const dynamic = 'force-dynamic';
@@ -57,7 +58,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
     return (
       <>
         <Box>
-          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
+          <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href={ESIGN_ROUTES.forms.href}>
             返回電子簽列表
           </Button>
         </Box>
@@ -73,7 +74,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
   const stored = getForm(id);
   if (!stored || stored.docType !== 'sheet') notFound();
   // 草稿尚無簽署進度，請改用「編輯」或「發起簽署」
-  if (stored.status === 'draft') redirect('/esign/forms');
+  if (stored.status === 'draft') redirect(ESIGN_ROUTES.forms.href);
 
   // 建立人檢視：簽名圖檔不需要傳給畫面
   const form = toClientForm(stored);
@@ -92,7 +93,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
   return (
     <>
       <Box>
-        <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href="/esign/forms">
+        <Button variant="text" startIcon={<ArrowBackRoundedIcon />} href={ESIGN_ROUTES.forms.href}>
           返回電子簽列表
         </Button>
       </Box>
@@ -115,7 +116,7 @@ export default async function FormDetailPage({ params, searchParams }: PageProps
               size="large"
               variant="outlined"
               startIcon={<EditRoundedIcon />}
-              href={`/esign/forms/${id}/edit`}
+              href={`${ESIGN_ROUTES.forms.href}/${id}/edit`}
               disabled={!canEdit}
             >
               編輯

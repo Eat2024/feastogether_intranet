@@ -9,12 +9,14 @@
  * 只接受白名單 target 與合法員編；訊息只影響畫面與「是否需要重新 launch」，不授予任何權限。
  */
 
+import { ESIGN_ROUTES } from "@/constants/routes/esign";
+
 /** 入口網以 esign:navigate 指定頁面時可用的代碼白名單（須與入口網 controllers/hr/Esign.php 的 $page_target 一致）。 */
 export const EMBED_TARGET_PATHS = {
-  "forms-new": "/esign/forms/new",
-  forms: "/esign/forms",
-  "my-signature": "/esign/my-signature",
-  "export-history": "/esign/export-history",
+  "forms-new": ESIGN_ROUTES.createForm.href,
+  forms: ESIGN_ROUTES.forms.href,
+  "my-signature": ESIGN_ROUTES.mySignature.href,
+  "export-history": ESIGN_ROUTES.exportHistory.href,
 } as const;
 
 export type EmbedTarget = keyof typeof EMBED_TARGET_PATHS;

@@ -122,7 +122,7 @@ export function filterDocuments(docs: EsignDocumentListItem[], filters: Document
 
 // ── 排序 ──────────────────────────────────────────────
 
-export const DOCUMENT_SORT_KEYS = ['name', 'docNumber', 'startAt', 'endAt', 'status', 'progress', 'createdBy'] as const;
+export const DOCUMENT_SORT_KEYS = ['name', 'docNumber', 'createdAt', 'startAt', 'endAt', 'status', 'progress', 'createdBy'] as const;
 export type DocumentSortKey = (typeof DOCUMENT_SORT_KEYS)[number];
 export type DocumentSort = Sort<DocumentSortKey>;
 
@@ -137,6 +137,9 @@ const sortValue = (key: DocumentSortKey) => (d: EsignDocumentListItem): SortValu
       return d.title;
     case 'docNumber':
       return d.docNumber || null;
+    // ISO 時間可直接以字串比較
+    case 'createdAt':
+      return d.createdAt;
     case 'startAt':
       return display.signStartAt;
     // 已發起但未設結束時間（不限）視為最晚；尚未發起才是無值

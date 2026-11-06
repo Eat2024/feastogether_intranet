@@ -23,7 +23,7 @@ export const TRAVEL_ROUTES = {
   },
   myTravel: {
     href: "/travel/myTravel",
-    label: "我的資料與行程",
+    label: "我的行程",
   },
   tripRegistration: {
     href: "/travel/myTravel/tripRegistration",
@@ -79,7 +79,7 @@ export const TRAVEL_ROUTES = {
   },
   contentManagement: {
     href: "/travel/contentManagement",
-    label: "公告、條款與通知管理",
+    label: "公告管理",
   },
   noticeAndConsentManagement: {
     href: "/travel/contentManagement/noticeAndConsentManagement",

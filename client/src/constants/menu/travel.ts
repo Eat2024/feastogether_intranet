@@ -1,16 +1,17 @@
-import type { SvgIconComponent } from "@mui/icons-material";
-import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
-import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
-import EventRoundedIcon from "@mui/icons-material/EventRounded";
-import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
-import HowToRegRoundedIcon from "@mui/icons-material/HowToRegRounded";
-import HowToVoteRoundedIcon from "@mui/icons-material/HowToVoteRounded";
 import type { NavItem, NavSubItem } from "@/components/sidebar/services";
 import { TRAVEL_ROUTES } from "@/constants/routes/travel";
+import type { SvgIconComponent } from "@mui/icons-material";
+import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
+import EditNotificationsIcon from "@mui/icons-material/EditNotifications";
+import EventRoundedIcon from "@mui/icons-material/EventRounded";
+import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
+import HowToVoteRoundedIcon from "@mui/icons-material/HowToVoteRounded";
+import WhereToVoteIcon from "@mui/icons-material/WhereToVote";
 
 type TravelRoute = (typeof TRAVEL_ROUTES)[keyof typeof TRAVEL_ROUTES];
 
-const getLastPathSegment = (path: string) => path.split("/").filter(Boolean).pop() ?? "";
+const getLastPathSegment = (path: string) =>
+  path.split("/").filter(Boolean).pop() ?? "";
 
 const toSubItem = (route: TravelRoute): NavSubItem => ({
   key: getLastPathSegment(route.href),
@@ -18,7 +19,11 @@ const toSubItem = (route: TravelRoute): NavSubItem => ({
   href: route.href,
 });
 
-const toGroup = (route: TravelRoute, icon: SvgIconComponent, children: TravelRoute[]): NavItem => ({
+const toGroup = (
+  route: TravelRoute,
+  icon: SvgIconComponent,
+  children: TravelRoute[],
+): NavItem => ({
   ...toSubItem(route),
   icon,
   children: children.map(toSubItem),
@@ -48,7 +53,7 @@ export const travelMenu: NavItem[] = [
     TRAVEL_ROUTES.votingEventSettings,
     TRAVEL_ROUTES.tripVoting,
   ]),
-  toGroup(TRAVEL_ROUTES.registrationManagement, HowToRegRoundedIcon, [
+  toGroup(TRAVEL_ROUTES.registrationManagement, WhereToVoteIcon, [
     TRAVEL_ROUTES.registrationSettings,
     TRAVEL_ROUTES.tripSessionManagement,
     TRAVEL_ROUTES.departureLocationManagement,
@@ -56,7 +61,7 @@ export const travelMenu: NavItem[] = [
     TRAVEL_ROUTES.registrationOrderQuery,
     TRAVEL_ROUTES.batchDownloadHistory,
   ]),
-  toGroup(TRAVEL_ROUTES.contentManagement, CampaignRoundedIcon, [
+  toGroup(TRAVEL_ROUTES.contentManagement, EditNotificationsIcon, [
     TRAVEL_ROUTES.noticeAndConsentManagement,
     TRAVEL_ROUTES.standardContractManagement,
     TRAVEL_ROUTES.downloadFormManagement,

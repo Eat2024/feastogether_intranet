@@ -390,13 +390,6 @@ export class ExportJobRepository {
       )
       .getExists();
   }
-  async archiveFile(id: number, manager: EntityManager) {
-    const file = await manager.findOneBy(EsignFileObject, { id });
-    if (file) {
-      file.archiveStatus = 'expired';
-      await manager.save(file);
-    }
-  }
   documentExists(id: number, manager: EntityManager) {
     return manager.findOneBy(EsignDocument, { id, deletedAt: IsNull() });
   }

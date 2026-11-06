@@ -12,7 +12,7 @@
 - ZIP 解開後確認兩個 entry：`副本__合成簽署人_<publicId>.pdf`、`副本_後來簽署_<publicId>.pdf`，分別逐 byte 比對不同的有效 PDF 來源。
 - Chromium 真實 Next/API/worker 整合：1 人完成 → 加第 2 人 → 過時提示 → 點更新 → 2 份結果與下載；未 mock network。1 test 通過，畫面顯示 2/2 簽署、2 份 ZIP、「下載本次成果」。
 - server lint：0 errors／291 warnings（包含既有 warnings）；client lint、server build、client webpack build 通過。
-- 使用者確認沒有 ZIP expired 資料後，移除本票 ZIP 工作狀態相容分支與對應斷言；文件期限及來源檔案 archive 狀態不受影響。
+- 使用者確認沒有 ZIP expired 資料後，移除本票 ZIP service／repository 工作狀態相容分支與對應斷言，以及無 caller 的 archiveFile。依後續澄清，保留共用 EsignExportStatus／ExportHistoryView 的 expired（不推斷 Excel／PDF 資料），保留 expiresAt 欄位／index／API，不做 migration。文件期限及來源檔案 archive 狀態不受影響。
 
 ### 執行命令
 

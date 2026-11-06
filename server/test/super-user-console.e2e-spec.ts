@@ -111,6 +111,7 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
       'rotateEntryIfDue',
       'securityEvents',
       'activateCredentials',
+      'hashPassword',
     ]);
   });
 

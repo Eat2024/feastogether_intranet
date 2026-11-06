@@ -1,6 +1,10 @@
 import { start } from 'node:repl';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import {
+  hashSuperUserPassword,
+  SUPER_USER_PASSWORD_MAX_BYTES,
+} from '#app/features/auth/helpers/super-user-password';
 import { AuthSecurityEventService } from '#app/features/auth/services/auth-security-event.service';
 import { SuperUserAccessService } from '#app/features/auth/services/super-user-access.service';
 import { SuperUserCredentialsService } from '#app/features/auth/services/super-user-credentials.service';
@@ -25,6 +29,19 @@ export function createAuthConsole(app: INestApplicationContext) {
     /** 只啟用本機已驗格式的設定；不接受帳密參數，expectedGeneration 取自 credentialStatus()。 */
     activateCredentials: (input: { expectedGeneration: number }) =>
       credentials.activate(input),
+    /** 只產生 hash，不更改環境設定或 DB 的啟用版本。 */
+    hashPassword: async (password: string): Promise<string> => {
+      if (
+        typeof password !== 'string' ||
+        Buffer.byteLength(password, 'utf8') === 0 ||
+        Buffer.byteLength(password, 'utf8') > SUPER_USER_PASSWORD_MAX_BYTES
+      ) {
+        throw new Error(
+          `密碼須為字串且長度為 1～${SUPER_USER_PASSWORD_MAX_BYTES} UTF-8 bytes，未產生 hash。`,
+        );
+      }
+      return hashSuperUserPassword(password);
+    },
   };
 }
 

@@ -84,7 +84,10 @@ pnpm -C server repl:dev   # 開發；建置後用 pnpm -C server repl，容器�
 ```js
 await auth.initialize()   // 套用 migration 後執行一次，建立入口與第 1 版帳密
 await auth.currentEntry() // 取得 path，以前端 origin＋path 在瀏覽器開啟
+await auth.hashPassword('在自己的終端機換成明碼密碼') // 回傳可填入 SUPER_USER_PASSWORD_HASH 的 hash
 ```
+
+`auth.hashPassword()` 只產生 hash，不寫入 `.env` 或啟用 DB 帳密版本；同一密碼每次會因隨機 salt 產生不同 hash。密碼原樣使用，長度限制為 1～1024 UTF-8 bytes。REPL 輸入會顯示在終端機；需要隱藏輸入時使用 `pnpm -s -C server super-user:hash-password`。REPL 仍需現有有效設定與 MySQL 才能啟動，首次設定請使用上述離線指令。
 
 REPL 只載入設定、logging 與 MySQL，不啟動 HTTP 或 queue consumer。入口原值與帳密不寫進 Git、ticket、PR 或 log。
 

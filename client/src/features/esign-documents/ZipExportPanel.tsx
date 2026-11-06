@@ -31,7 +31,8 @@ function formatSize(bytes: number) {
 
 const IN_PROGRESS: EsignExportJob['status'][] = ['pending', 'waiting', 'processing'];
 
-export default function ZipExportPanel({ documentId, signedCount, exportSummary, fileName = '' }: { fileName?: string; documentId: string; signedCount: number; exportSummary: EsignExportJob | null }) {
+/** ZIP 匯出的狀態與動作；「產生 ZIP」按鈕放在頁面底部操作列，與 Excel 的匯出按鈕同一位置，所以由頁面呼叫後傳給面板 */
+export function useZipExport(documentId: string, exportSummary: EsignExportJob | null) {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
   // 詳情已選定固定工作；首次申請後改用回傳的工作。
@@ -75,25 +76,55 @@ export default function ZipExportPanel({ documentId, signedCount, exportSummary,
   });
 
   const data = job.data ?? exportSummary;
+  const busy = request.isPending || retry.isPending || download.isPending;
+  // 還沒產生過（沒有固定沿用的工作）才可產生
+  const canGenerate = !exportId;
+  return { documentId, exportId, job, data, request, retry, download, busy, canGenerate };
+}
+
+export type ZipExport = ReturnType<typeof useZipExport>;
+
+/** 底部操作列的 ZIP 按鈕（與 Excel 的匯出按鈕同一位置）：還沒產生過顯示「產生 ZIP」，完成後顯示「下載 ZIP」 */
+export function ZipActionButtons({ zip, signedCount, fileName }: { zip: ZipExport; signedCount: number; fileName: string }) {
+  const { data, busy } = zip;
+  if (zip.canGenerate) {
+    return (
+      <Button
+        size="large"
+        variant="contained"
+        startIcon={<FolderZipRoundedIcon />}
+        loading={zip.request.isPending}
+        disabled={busy || signedCount === 0}
+        onClick={() => zip.request.mutate(zip.documentId)}
+      >
+        產生 ZIP（{signedCount} 份已簽署）
+      </Button>
+    );
+  }
+  if (zip.job.isError || data?.status !== 'completed') return null;
+  // 直接以瀏覽器下載：檔案可能很大，且支援續傳
+  return data.files.map((f, index) => (
+    <Button
+      key={f.id}
+      size="large"
+      variant="contained"
+      startIcon={<FileDownloadRoundedIcon />}
+      loading={zip.download.isPending && zip.download.variables?.fileId === f.id}
+      disabled={busy}
+      onClick={() => zip.download.mutate({ exportId: data.id, fileId: f.id, fileName })}
+    >
+      {data.files.length > 1 ? `下載 ZIP（${index + 1}/${data.files.length}）` : '下載 ZIP'}
+    </Button>
+  ));
+}
+
+export default function ZipExportPanel({ zip, signedCount, fileName = '' }: { zip: ZipExport; signedCount: number; fileName?: string }) {
+  const { documentId, exportId, job, data, retry, busy } = zip;
   // 預覽本次下載名稱；實際下載仍由後端驗證並回傳最終檔名。
   const requestedFileName = fileName.trim();
   const downloadFileName = requestedFileName
     ? `${requestedFileName.replace(/\.(xlsx|zip)$/i, '')}.zip`
     : null;
-  const busy = request.isPending || retry.isPending || download.isPending;
-  const generateButton = (label: string) => (
-    <Button
-      size="large"
-      variant="contained"
-      startIcon={<FolderZipRoundedIcon />}
-      loading={request.isPending}
-      disabled={busy || signedCount === 0}
-      onClick={() => request.mutate(documentId)}
-    >
-      {label}
-    </Button>
-  );
-
   return (
     <Stack spacing={2}>
       <Typography variant="description">
@@ -109,16 +140,12 @@ export default function ZipExportPanel({ documentId, signedCount, exportSummary,
       ) : job.isError ? (
         <Alert severity="error">無法取得匯出狀態：{getErrorMessage(job.error)}</Alert>
       ) : !data ? (
-        // 還沒產生過
-        <Box>
-          {signedCount === 0 ? (
-            <Alert severity="info" variant="outlined">
-              目前還沒有人完成簽署，沒有可匯出的已簽署文件。
-            </Alert>
-          ) : (
-            generateButton(`產生 ZIP（${signedCount} 份已簽署）`)
-          )}
-        </Box>
+        // 還沒產生過；產生按鈕在頁面底部操作列
+        signedCount === 0 && (
+          <Alert severity="info" variant="outlined">
+            目前還沒有人完成簽署，沒有可匯出的已簽署文件。
+          </Alert>
+        )
       ) : IN_PROGRESS.includes(data.status) ? (
         <Stack spacing={1}>
           <Typography variant="content">
@@ -133,32 +160,20 @@ export default function ZipExportPanel({ documentId, signedCount, exportSummary,
             value={data.expectedCount ? (data.processedCount / data.expectedCount) * 100 : 0}
           />
           <Typography variant="helper">
-            已處理 {data.processedCount}／{data.expectedCount} 份；完成後即可在此下載，可以先離開此頁。
+            已處理 {data.processedCount}／{data.expectedCount} 份；完成後即可下載，可以先離開此頁。
           </Typography>
         </Stack>
       ) : data.status === 'completed' ? (
         <Stack spacing={1.5}>
           {data.files.map((f) => (
-            <Box key={f.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-              <Box sx={{ mr: 'auto' }}>
-                <Typography variant="content" component="div">
-                  {downloadFileName ?? f.fileName}
-                </Typography>
-                <Typography variant="helper" component="div">
-                  {data.expectedCount} 份・{formatSize(f.size)}・{formatDateTime(data.snapshotAt) ?? '—'} 的簽署資料
-                </Typography>
-              </Box>
-              {/* 直接以瀏覽器下載：檔案可能很大，且支援續傳 */}
-              <Button
-                size="large"
-                variant="contained"
-                startIcon={<FileDownloadRoundedIcon />}
-                loading={download.isPending}
-                disabled={busy}
-                onClick={() => download.mutate({ exportId: data.id, fileId: f.id, fileName })}
-              >
-                下載 ZIP
-              </Button>
+            // 下載按鈕在頁面底部操作列
+            <Box key={f.id}>
+              <Typography variant="content" component="div">
+                {downloadFileName ?? f.fileName}
+              </Typography>
+              <Typography variant="helper" component="div">
+                {data.expectedCount} 份・{formatSize(f.size)}・{formatDateTime(data.snapshotAt) ?? '—'} 的簽署資料
+              </Typography>
             </Box>
           ))}
           {signedCount > data.expectedCount && (

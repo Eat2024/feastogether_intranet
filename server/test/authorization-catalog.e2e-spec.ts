@@ -132,3 +132,47 @@ it('隔離 ConsoleModule 只以閉包提供 authz，同服務初始化且無 HTT
     }
   });
 });
+
+it('REPL 唯讀查詢與 resolver 一致，明確角色與 baseline 重疊時兩種來源都保留', async () => {
+  await withAuthorizationDatabase(async (db) => {
+    const { catalog, repository, events } =
+      await initializeAuthorizationOperator(db);
+    await catalog.syncCatalog();
+    await db.query(
+      "INSERT INTO users (empid,name) VALUES ('AZ-CONSOLE','合成維運查詢員工')",
+    );
+    const admin = (await repository.roles(db.manager)).find(
+      (r) => r.roleCode === 'esign_admin',
+    )!;
+    await db.transaction((m) =>
+      repository.replaceUserRoles(1, 'esign', [admin.id], m),
+    );
+    const app = await Test.createTestingModule({ imports: [ConsoleModule] })
+      .overrideProvider(MYSQL_MAIN)
+      .useValue(db)
+      .compile();
+    try {
+      await app.init();
+      const authz = createAuthorizationConsole(app);
+      const before = await events.list(db.manager, { limit: 100 });
+      const view = await authz.userPermissions(1);
+      expect(view.sources.baseline[0].permissions).toEqual([
+        'esign.document.read',
+        'esign.signing.copy',
+        'esign.signing.read',
+        'esign.signing.submit',
+      ]);
+      expect(view.sources.explicit[0].permissions).toContain(
+        'esign.signing.copy',
+      );
+      expect(view.sources.explicit[0].permissions).toHaveLength(11);
+      expect(view.modules[0].permissions).toHaveLength(11);
+      expect(await events.list(db.manager, { limit: 100 })).toEqual(before);
+      await expect(
+        authz.userPermissions(Number.MAX_SAFE_INTEGER + 1),
+      ).rejects.toThrow();
+    } finally {
+      await app.close();
+    }
+  });
+});

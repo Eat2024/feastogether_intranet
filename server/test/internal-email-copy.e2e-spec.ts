@@ -446,14 +446,14 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
           .send({ reason: '合成停止驗收' })
           .expect(201);
       } else if (state === 'expired') {
-        // 隔離資料庫的時間邊界 fixture：不可等待真實文件期限。
+        // 與建立時的 signStartAt 使用同一應用程式時鐘，避免 Docker VM 時差造成非法期間。
         await ctx.app
           .get(MysqlService)
           .getManager()
-          .query(
-            'UPDATE esign_documents SET sign_end_at=DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 SECOND) WHERE id=?',
-            [f.document.id],
-          );
+          .query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
+            new Date(Date.now() - 1000),
+            f.document.id,
+          ]);
         await ctx.app
           .get(EsignExpiryService)
           .expireByDeadline(Number(f.document.id));

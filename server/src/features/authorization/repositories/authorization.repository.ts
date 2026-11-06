@@ -8,34 +8,45 @@ import { AuthorizationUserRole } from '../entities/authorization-user-role.entit
 /** 集合讀取與關聯差異保存；交易及 users → roles → permissions 鎖序由 service 決定。 */
 @Injectable()
 export class AuthorizationRepository {
-  roles(manager: EntityManager, lock = false): Promise<AuthorizationRole[]> {
+  roles(
+    manager: EntityManager,
+    lock: boolean | 'shared' = false,
+  ): Promise<AuthorizationRole[]> {
     const query = manager
       .createQueryBuilder(AuthorizationRole, 'r')
       .withDeleted()
       .orderBy('r.id', 'ASC');
-    if (lock) query.setLock('pessimistic_write');
+    if (lock)
+      query.setLock(
+        lock === 'shared' ? 'pessimistic_read' : 'pessimistic_write',
+      );
     return query.getMany();
   }
   permissions(
     manager: EntityManager,
-    lock = false,
+    lock: boolean | 'shared' = false,
   ): Promise<AuthorizationPermission[]> {
     const query = manager
       .createQueryBuilder(AuthorizationPermission, 'p')
       .withDeleted()
       .orderBy('p.id', 'ASC');
-    if (lock) query.setLock('pessimistic_write');
+    if (lock)
+      query.setLock(
+        lock === 'shared' ? 'pessimistic_read' : 'pessimistic_write',
+      );
     return query.getMany();
   }
   rolePermissions(
     roleIds: number[],
     manager: EntityManager,
+    currentRead = false,
   ): Promise<AuthorizationRolePermission[]> {
     if (!roleIds.length) return Promise.resolve([]);
     return manager.find(AuthorizationRolePermission, {
       where: { roleId: In(roleIds) },
       withDeleted: true,
       order: { id: 'ASC' },
+      ...(currentRead ? { lock: { mode: 'pessimistic_read' as const } } : {}),
     });
   }
   userRoles(
@@ -58,6 +69,36 @@ export class AuthorizationRepository {
     manager: EntityManager,
   ): Promise<AuthorizationPermission> {
     return manager.save(permission);
+  }
+
+  /** 單次集合查詢有效 grant，複合 scope 條件與 soft-delete/active 同時成立。 */
+  effectiveGrants(
+    userId: number,
+    manager: EntityManager,
+  ): Promise<Array<{ moduleKey: string; permissionKey: string }>> {
+    const query = manager
+      .createQueryBuilder(AuthorizationUserRole, 'ur')
+      .innerJoin(
+        AuthorizationRole,
+        'r',
+        'r.id = ur.role_id AND r.module_key = ur.module_key AND r.is_active = 1 AND r.is_protected = 0 AND r.deleted_at IS NULL',
+      )
+      .innerJoin(
+        AuthorizationRolePermission,
+        'rp',
+        'rp.role_id = r.id AND rp.module_key = r.module_key AND rp.deleted_at IS NULL',
+      )
+      .innerJoin(
+        AuthorizationPermission,
+        'p',
+        'p.id = rp.permission_id AND p.module_key = rp.module_key AND p.assignable = 1 AND p.deleted_at IS NULL',
+      )
+      .select('p.module_key', 'moduleKey')
+      .addSelect('p.permission_key', 'permissionKey')
+      .where('ur.user_id = :userId AND ur.deleted_at IS NULL', { userId });
+    if (manager.queryRunner?.isTransactionActive)
+      query.setLock('pessimistic_read');
+    return query.getRawMany<{ moduleKey: string; permissionKey: string }>();
   }
 
   /** 只恢復或撤銷原列，不重建唯一關聯。呼叫者須先鎖定角色與權限。 */

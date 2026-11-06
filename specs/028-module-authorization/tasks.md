@@ -22,17 +22,17 @@
 - [X] T008 在 `server/src/features/authorization/repositories/authorization.repository.ts`、`authorization-event.repository.ts` 與 `server/src/infrastructure/database/mysql/mysql.module.ts` 實作集合讀取與交易 repository，統一由 MysqlModule 註冊；更新 save、撤銷 soft-delete、重授恢復同列，固定鎖序 users → role id → permission id → relations，不反向鎖 user。
 - [X] T009 在 `server/src/features/authorization/services/authorization-audit.service.ts` 與 `.spec.ts` 實作同交易白名單 audit：只保存角色設定、permission keys、一般 role IDs、本地 user ID；不記員編／憑證／文件／簽名，audit 失敗 rollback、no-op 不重複記錄，不恢復 026 歷程。
 - [X] T010 在 `server/src/features/authorization/services/authorization-catalog.service.ts` 與 `.spec.ts` 實作明確 syncCatalog 交易：初次建立角色、後續不覆蓋一般角色自訂能力／active，移除目錄 soft-delete，protected 同仁隨程式更新，缺失／不相容 catalog 回 unavailable；不在 HTTP startup 或 GET 寫入；將 syncCatalog 接到 `server/src/console/helpers/authorization.helpers.ts` 並在 `server/src/console/console.module.ts` 註冊為明確維護操作，沿 027 active generation 驗證。
-- [ ] T011 在 `server/src/features/authorization/decorators/require-permissions.decorator.ts`、`guards/authorization.guard.ts`、`authorization.module.ts` 及 `server/src/features/feature.module.ts` 接入 actor-aware 能力 guard，支援明確 ALL／候選人 any-of／AuthenticatedOnly／SuperUserOnly；管理資格驗 actor kind，不能只看可指派 permission；電子簽服務尚未 actor 相容前維持 027 的 Super 拒絕保護。
-- [ ] T012 在 `server/src/common/errors/app-error-code.ts`、`app-errors.ts`、`client/src/api/errorCodes.ts` 加入 contracts 定義的授權錯誤；403 不當登入過期，保留資源不可見 404，DB／catalog 故障 503 不 fallback。
+- [X] T011 在 `server/src/features/authorization/decorators/require-permissions.decorator.ts`、`guards/authorization.guard.ts`、`authorization.module.ts` 及 `server/src/features/feature.module.ts` 接入 actor-aware 能力 guard，支援明確 ALL／候選人 any-of／AuthenticatedOnly／SuperUserOnly；管理資格驗 actor kind，不能只看可指派 permission；電子簽服務尚未 actor 相容前維持 027 的 Super 拒絕保護。
+- [X] T012 在 `server/src/common/errors/app-error-code.ts`、`app-errors.ts`、`client/src/api/errorCodes.ts` 加入 contracts 定義的授權錯誤；403 不當登入過期，保留資源不可見 404，DB／catalog 故障 503 不 fallback。
 
 ## Phase 3: US1 — 員工基本資格 (P1)
 
 **Goal**：既有及新員工共享 session，得到唯讀推導同仁與本人能力查詢，基本簽署正常且沒有多餘管理權。
 **Independent Test**：零額外角色員工以 OAuth／WebView session 查能力、同部門文件與本人跨部門簽署；建立、一般匯出與他人副本全部拒絕，GET 無業務寫入。
 
-- [ ] T013 [P] [US1] 在 `server/test/authorization-baseline.e2e-spec.ts` 建立新／舊 session、零指派、停用／刪除員工、缺部門、GET 無寫入及最小 response 契約案例。
-- [ ] T014 [US1] 在 `server/src/features/authorization/services/authorization-resolver.service.ts` 與 `.spec.ts` 實作有效員工固定 baseline，Super 回 compiled 全集；當前 DB 狀態與 catalog 必須有效，無逐人隱含指派寫入、無逐請求 Portal 或 cookie 權限；為一般 role 聯集保留同一解析入口，下一階段擴充。
-- [ ] T015 [US1] 在 `server/src/features/authorization/controllers/current-authorization.controller.ts`、`dto/authorization-view.dto.ts` 提供 GET /api/me/authorization；employee actor 僅 kind/userId（沿 027 安全整數 number），super 僅 kind/displayName，modules／permissions 排序去重、空 module 省略，no-store、不帶 roles／憑證／他人資料；未登入 401、不可用 503。
+- [X] T013 [P] [US1] 在 `server/test/authorization-baseline.e2e-spec.ts` 建立新／舊 session、零指派、停用／刪除員工、缺部門、GET 無寫入及最小 response 契約案例。
+- [X] T014 [US1] 在 `server/src/features/authorization/services/authorization-resolver.service.ts` 與 `.spec.ts` 實作有效員工固定 baseline，Super 回 compiled 全集；當前 DB 狀態與 catalog 必須有效，無逐人隱含指派寫入、無逐請求 Portal 或 cookie 權限；為一般 role 聯集保留同一解析入口，下一階段擴充。
+- [X] T015 [US1] 在 `server/src/features/authorization/controllers/current-authorization.controller.ts`、`dto/authorization-view.dto.ts` 提供 GET /api/me/authorization；employee actor 僅 kind/userId（沿 027 安全整數 number），super 僅 kind/displayName，modules／permissions 排序去重、空 module 省略，no-store、不帶 roles／憑證／他人資料；未登入 401、不可用 503。
 - [ ] T016 [US1] 依矩陣在 `server/src/features/esign/controllers/documents.controller.ts`、`signing-tasks.controller.ts`、`signer-candidates.controller.ts`、`initiation-jobs.controller.ts`、`notification-batches.controller.ts`、`exports.controller.ts`、`export-history.controller.ts` 完整宣告所需能力；詳情 export view、匯出下載記錄分支於 service 重驗，候選人只允許 create/manage any-of，零角色員工寫入／一般匯出不得漏口。
 - [ ] T017 [US1] 在 `server/src/features/esign/services/esign-access-policy.service.ts`、`esign-document-query.service.ts` 驗證 document.read 的原有同部門／原建立人閱讀例外，無可信部門 fail-closed，簽名／邀請裁切及不可見 404 不變；此任務只做基本閱讀，跨部門管理由 US4 擴充。
 - [ ] T018 [US1] 在 `server/src/features/esign/services/esign-completion-access.service.ts`、`esign-signing-task.service.ts`、`esign-signing.service.ts`、`esign-rejection.service.ts` 及 `esign-export-history.service.ts` 將本人簽署／拒簽／departmentFile／pdf 歷史副本入口限定 employee 本人指派，保留期限、條款、證據、外部憑證隔離；一般匯出另走 export 能力。
@@ -42,10 +42,10 @@
 
 **Independent Test**：以測試 fixtures 建立兩 module 同名角色與互補／重複 grant；兩 HTTP 實例的同一舊 session 在撤權提交後下一請求立即更新。此 US 可用 fixture 不依賴管理 UI 或 US3 API。
 
-- [ ] T020 [P] [US2] 在 `server/src/features/authorization/services/authorization-resolver.service.spec.ts` 增加同功能聯集、重複 grant、跨 module、停用／刪除／移出 catalog、不依名稱與未知 permission 拒絕案例。
-- [ ] T021 [US2] 擴充 `server/src/features/authorization/services/authorization-resolver.service.ts` 與 `repositories/authorization.repository.ts`，每請求集合讀取有效一般角色／權限與 compiled catalog 交集再疊 baseline；無 N+1、無 Redis／session 快取、無 deny 或優先序。
-- [ ] T022 [US2] 在 `server/src/features/authorization/services/authorization.service.ts` 提供業務 service 交易內目前讀授權核對，採目前讀／READ COMMITTED，撤權提交後開始的新請求不得沿長交易舊快照；明確區分已受理工作不倒退取消。
-- [ ] T023 [US2] 在 `server/test/authorization-revocation.e2e-spec.ts` 驗證兩實例舊 session 的 role 停用／permission 修改／撤指派即時生效、重複 grant 尚存仍有效；用 fixtures 驗證 schema 跨 scope 偽造失敗，管理 API 完成後再以正式變更路徑重跑。
+- [X] T020 [P] [US2] 在 `server/src/features/authorization/services/authorization-resolver.service.spec.ts` 增加同功能聯集、重複 grant、跨 module、停用／刪除／移出 catalog、不依名稱與未知 permission 拒絕案例。
+- [X] T021 [US2] 擴充 `server/src/features/authorization/services/authorization-resolver.service.ts` 與 `repositories/authorization.repository.ts`，每請求集合讀取有效一般角色／權限與 compiled catalog 交集再疊 baseline；無 N+1、無 Redis／session 快取、無 deny 或優先序。
+- [X] T022 [US2] 在 `server/src/features/authorization/services/authorization.service.ts` 提供業務 service 交易內目前讀授權核對，採目前讀／READ COMMITTED，撤權提交後開始的新請求不得沿長交易舊快照；明確區分已受理工作不倒退取消。
+- [X] T023 [US2] 在 `server/test/authorization-revocation.e2e-spec.ts` 驗證兩實例舊 session 的 role 停用／permission 修改／撤指派即時生效、重複 grant 尚存仍有效；用 fixtures 驗證 schema 跨 scope 偽造失敗，管理 API 完成後再以正式變更路徑重跑。
 
 ## Phase 5: US3 — Super user 授權管理與預先指派 (P1)
 
@@ -90,7 +90,7 @@
 **Independent Test**：保留既有員工／文件／會話的測試副本中，兩次 sync、核定名單指派、停舊實例後切換；既有會話只有同仁、無歷史升權，查詢結果與 HTTP 一致。
 
 - [ ] T052 [P] [US5] 在 `server/test/authorization-cutover.e2e-spec.ts` 建立既有員工／文件／證據／session fixture，驗證重跑 seed 不覆寫自訂角色、無歷史行為升權、關聯與證據保持、無新舊放行混跑的切換驗收。
-- [ ] T053 [US5] 在 `server/src/console/helpers/authorization.helpers.ts` 接上唯讀 userPermissions：userPermissions 與 HTTP 同 resolver 並標 baseline／explicit；無 raw employee、無 read 自動 sync、不要求 console 啟動 Portal 可用。
+- [X] T053 [US5] 在 `server/src/console/helpers/authorization.helpers.ts` 接上唯讀 userPermissions：userPermissions 與 HTTP 同 resolver 並標 baseline／explicit；無 raw employee、無 read 自動 sync、不要求 console 啟動 Portal 可用。
 - [ ] T054 [US5] 在 `server/src/features/authorization/services/authorization-readiness.service.ts` 與 `.spec.ts`、`server/src/worker.module.ts` 接入 catalog 完整性及 endpoint 宣告掃描，漏 Public／AuthenticatedOnly／RequirePermissions 或版本不符拒絕啟用；HTTP／worker 不接受流量且不 fallback，不新增 env／flag／排程。
 - [ ] T055 [US5] 在 `specs/028-module-authorization/contracts/operations.md` 與 `quickstart.md` 記錄可執行的備份副本演練、核定名單預指派／resolver核對、停止舊HTTP與worker、migration與sync、同版本啟動順序；僅空且無新受保護資料可down，其餘向前修復或一致備份回復，repo 不存員編名單。
 - [ ] T056 [US5] 在 `server/test/authorization-cutover.e2e-spec.ts` 完成 T052 導入及維運驗收，保留舊 session、所有原 user ID 與證據、核定額外權限與 baseline 差異、audit 不可遺失；舊角色設定與 no-op 指派重跑冪等。

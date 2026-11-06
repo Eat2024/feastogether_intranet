@@ -111,3 +111,30 @@ console 以 `ConsoleModule`、`createAuthConsole` 的窄 context 為基礎；本
 - schema 快照由獨立空測試庫套全部 migrations 後，以專案 `dump-schema.ts` 產生，只有五張授權表增量。舊 schema 測試的最新版本、表數／時間欄數／CHECK 清單已更新；027 歷史回填測試固定在其 migration／entity 版本，不因後續表增加而改變測試意義。
 - 測試使用獨立 MySQL 8.4 容器 `intranet-spec028-mysql`（loopback 13328）與 `feastogether_intranet_test_a*`；沒有寫入開發／UAT／正式 DB。既有 `.env.test` 連線認證失敗後改用此隔離環境，未修改已追蹤設定或新增環境變數。
 - T010 所需 `AUTHORIZATION_UNAVAILABLE` 已提前同步 server／client；其餘 T012 錯誤由 028-02 補齊。HTTP 授權 guards、角色管理 API、業務 actor、正式切換仍屬後續 tickets，這一票不代表 028 已上線。未執行全套業務 e2e 或正式 Portal 連線；本票沒有改既有業務控制器行為。
+
+
+## 028-02 本人能力與即時聯集（2026-11-07）
+
+完成 T011～T015、T020～T023、T053。`GET /api/me/authorization` 沿真實 MySQL session 回最小 actor union 與排序去重 modules/permissions，成功回應 `Cache-Control: no-store`。所有有效員工固定疊四項同仁能力，缺部門不影響本人能力查詢；一般有效角色採集合 JOIN，排除停用／刪除／跨 scope／非可指派／未知能力。Super 回 compiled 全集但不具任何員工簽署資格。GET 不建立隱含指派。
+
+### 後續實作接縫
+
+- `AuthorizationModule` 是 HTTP／worker／console 共用核心，沒有 controller、APP_GUARD 或啟動寫入。`AuthorizationHttpModule` 才提供本人能力路由及全域能力 guard；`FeatureModule` 先載入既有 `AuthModule`，正式 AppModule 測試確認先驗 session 再驗能力。
+- `RequirePermissions(...keys)` 為 ALL，`RequireAnyPermission(...keys)` 為明確 ANY。兩者不自動放行 Super；業務 actor 相容完成後另標 `AllowSuperUser()`。`AuthenticatedOnly()` 與 `SuperUserOnly()` 明確接受 Super，後者另外驗 actor kind 及平台管理能力。
+- `CurrentActor` 位於 `framework/decorators/current-actor.decorator.ts`，只取 `AuthGuard` 已驗證的 request session。
+- `AuthorizationService.requirePermissions(actor, keys, manager?, mode='all')` 與 `requireSuperUser(actor, manager?)` 供業務／管理使用。業務交易必須傳本次 manager；resolver 不另換交易，對 user、roles、permissions、relations 採共享 current read，即使 caller 已建立 REPEATABLE READ 舊快照也不能沿用撤權前資料。新業務仍建議 READ COMMITTED。已受理工作是否繼續由工作生命週期處理，不以此取消工作。
+- `authz.userPermissions(userId)` 與 HTTP 同 resolver，額外回 `sources.baseline`／`sources.explicit`；明確角色若同樣授予基本能力，兩種來源均保留。讀取不 sync、不連 Portal、不輸出角色、員編或憑證。
+- 本次補齊 server/client 授權錯誤碼；既有前端仍只有401觸發過期提示，不將403或目標422視為失效登入。
+
+**切換邊界**：本票只提供能力查詢與明確宣告入口的能力檢查。尚未宣告的既有電子簽入口仍由027 AuthGuard保護，Super仍403；此過渡不代表028完整上線。T016接入全業務矩陣、T054/T057完成全路由readiness後才允許切換，禁止把缺宣告的過渡行為當永久例外。
+
+### 驗證與環境
+
+- 單元 `pnpm -C server test --runInBand`：127 suites／1285 tests 通過。
+- 新授權HTTP／catalog／revocation整合：baseline3、revocation2、catalog5 共10項通過；另既有authorization-schema6項證明FK與scope拒絕。HTTP涵蓋OAuth/WebView來源的既有真session（非重新測登入入口）、停用／刪除、無部門、Super裁切、no-store、資料庫查詢故障503、正式AppModule guard順序及未相容Super業務403。
+- 兩個獨立 DataSource pool 與 Fastify instance 共用DB，同一舊cookie在角色停用／軟刪除、permission改動、撤指派提交後立即採最新能力；重複grant撤一仍保留。另先建立RR舊快照再撤權，交易內requirePermissions仍拒絕。角色異動目前以fixtures執行；028-05/T034與最終整合需再以正式管理API路徑覆驗。
+- root `pnpm build`、`pnpm lint`、`pnpm -C client test`（4項）與 `pnpm -C client check:bundle` 通過；lint仍為原有271 warnings、0 errors。
+- 全security首跑22/24 suites、183/188 tests通過；舊department suite遭主機暫停期間5秒hook逾時，定向重跑4項通過。另舊external copy expired fixture混用host與Docker MySQL時鐘（實測差約4分14秒）違反既有sign_period CHECK；只改測試到期值為與建立時相同的應用程式時鐘，未改正式期限或CHECK。兩失敗suite定向重跑19/19通過；修正後全security重跑24 suites／188 tests全數通過（39秒）。
+- 測試使用隔離Docker MySQL 8.4 `intranet-spec028-mysql`（loopback13328），獨立測試庫`feastogether_intranet_test_b`；新增隔離Redis7 `intranet-spec028-redis`（loopback16328），本票使用DB2。連線只在ignored `.env.test`，沒有新增正式env、dependency、cookie或排程。後續worktree須使用不同DB，勿共用清理中的fixtures。
+
+未執行正式Portal/UAT/正式部署或核定名單指派；本票沒有新增migration或變更文件／簽署證據。028-03～09仍待完成。

@@ -668,6 +668,41 @@ export const AppErrors = {
     '來源完整性異常，無法重試',
     HttpStatus.CONFLICT,
   ],
+  AUTHORIZATION_DENIED: [
+    AppErrorCode.AUTHORIZATION_DENIED,
+    '您沒有執行此操作的權限',
+    HttpStatus.FORBIDDEN,
+  ],
+  AUTHORIZATION_PROTECTED_ROLE: [
+    AppErrorCode.AUTHORIZATION_PROTECTED_ROLE,
+    '受保護角色或維護專用權限不可指派或修改',
+    HttpStatus.FORBIDDEN,
+  ],
+  AUTHORIZATION_RESOURCE_NOT_FOUND: [
+    AppErrorCode.AUTHORIZATION_RESOURCE_NOT_FOUND,
+    '找不到指定的授權資源',
+    HttpStatus.NOT_FOUND,
+  ],
+  AUTHORIZATION_VERSION_CONFLICT: [
+    AppErrorCode.AUTHORIZATION_VERSION_CONFLICT,
+    '授權設定已變更，請重新讀取後再操作',
+    HttpStatus.CONFLICT,
+  ],
+  AUTHORIZATION_ROLE_NAME_CONFLICT: [
+    AppErrorCode.AUTHORIZATION_ROLE_NAME_CONFLICT,
+    '此子功能已有同名角色',
+    HttpStatus.CONFLICT,
+  ],
+  AUTHORIZATION_ROLE_IN_USE: [
+    AppErrorCode.AUTHORIZATION_ROLE_IN_USE,
+    '此角色仍有員工使用，請先解除指派',
+    HttpStatus.CONFLICT,
+  ],
+  AUTHORIZATION_EMPLOYEE_INELIGIBLE: [
+    AppErrorCode.AUTHORIZATION_EMPLOYEE_INELIGIBLE,
+    '指定員工不符合授權資格',
+    HttpStatus.UNPROCESSABLE_ENTITY,
+  ],
   AUTHORIZATION_UNAVAILABLE: [
     AppErrorCode.AUTHORIZATION_UNAVAILABLE,
     '授權服務暫時無法使用',

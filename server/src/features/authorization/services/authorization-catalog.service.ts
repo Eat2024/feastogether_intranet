@@ -223,9 +223,16 @@ export class AuthorizationCatalogService {
   private async keysForRole(
     roleId: number,
     manager: EntityManager,
+    currentRead = false,
+    loadedPermissions?: AuthorizationPermission[],
   ): Promise<string[]> {
-    const relations = await this.repository.rolePermissions([roleId], manager);
-    const permissions = await this.repository.permissions(manager);
+    const relations = await this.repository.rolePermissions(
+      [roleId],
+      manager,
+      currentRead,
+    );
+    const permissions =
+      loadedPermissions ?? (await this.repository.permissions(manager));
     return permissions
       .filter(
         (p) =>
@@ -241,9 +248,18 @@ export class AuthorizationCatalogService {
     manager: EntityManager = this.mysql.getManager(),
   ): Promise<void> {
     try {
-      const permissions = (await this.repository.permissions(manager)).filter(
-        (p) => !p.deletedAt,
+      const currentRead = !!manager.queryRunner?.isTransactionActive;
+      // 交易內使用 current read，鎖序保持 roles → permissions → relations。
+      const roles = await this.repository.roles(
+        manager,
+        currentRead ? 'shared' : false,
       );
+      const permissions = (
+        await this.repository.permissions(
+          manager,
+          currentRead ? 'shared' : false,
+        )
+      ).filter((p) => !p.deletedAt);
       if (
         permissions.length !== AUTHORIZATION_PERMISSIONS.length ||
         !AUTHORIZATION_PERMISSIONS.every((d) =>
@@ -257,7 +273,7 @@ export class AuthorizationCatalogService {
         )
       )
         throw new Error('目錄版本不相容');
-      const colleague = (await this.repository.roles(manager)).find(
+      const colleague = roles.find(
         (r) =>
           r.moduleKey === 'esign' &&
           r.roleCode === 'colleague' &&
@@ -266,7 +282,12 @@ export class AuthorizationCatalogService {
           r.isProtected,
       );
       if (!colleague) throw new Error('同仁角色缺失');
-      const keys = await this.keysForRole(colleague.id, manager);
+      const keys = await this.keysForRole(
+        colleague.id,
+        manager,
+        currentRead,
+        permissions,
+      );
       if (
         keys.length !== BASELINE_PERMISSIONS.length ||
         BASELINE_PERMISSIONS.some((k) => !keys.includes(k))

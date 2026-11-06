@@ -18,7 +18,7 @@
 
 - **Decision**：job.status 新增 superseded；ZIP file.archiveStatus 新增 delete_pending／deleted。清理重試時間沿用 superseded job 的 nextAttemptAt，其他狀態既有語意不變。
 - **Rationale**：兩欄皆 varchar(20)，`server/src/infrastructure/database/schema.sql` 無限制其值的 CHECK，已有 status/archiveStatus 索引。保存 file metadata 及完整 object reference 可重入刪除。
-- **Alternatives considered**：expired 混淆被取代與缺檔；刪除資料列會失去重試與歷史；新表、世代欄位或通用版本服務超出必要範圍。
+- **Alternatives considered**：不沿用 expired 表示被取代或缺檔；刪除資料列會失去重試與歷史；新表、世代欄位或通用版本服務超出必要範圍。
 
 ## 4. 發布與清理分開
 
@@ -45,3 +45,7 @@
 - **Alternatives considered**：批次重包／清理違反按需與升級不動既有成果的規格；刪掉歷史不符合已確認保留範圍。
 
 所有設計疑點已收斂；未把本輪靜態盤點宣稱為 runtime／並發／UAT 驗證。
+
+## 2026-11-06 範圍澄清
+
+使用者已確認目前沒有 ZIP 匯出 `expired` 資料，本次移除該歷史狀態的相容分支與驗證，不做資料回填或恢復。文件簽署期限／到期邏輯不在此調整範圍；已完成 ZIP 意外缺檔仍依不可用處理。

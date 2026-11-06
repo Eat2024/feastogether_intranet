@@ -15,7 +15,7 @@ exportState: {
 }
 ```
 
-- current 為最新未取代、曾成功版本；work 為進行中或最新待重試工作，選取規則見 data-model.md。
+- current 為最新 status=completed 的成功版本；work 為進行中或最新待重試工作，選取規則見 data-model.md。
 - 對應值為 null 時新增數回 0；首次可產生份數取文件 signedCount。
 - 新增數由後端對紀錄 ID 做差集，前端不得用 signedCount 減 expectedCount 作權威判斷。
 - 保留原 exportSummary 作 `work ?? current`；文件詳情及 exportable-documents 的 latestExportSummary 亦使用相同選取優先序。匯出操作頁用完整 exportState；非匯出列表不為每個歷史工作計算差集。
@@ -47,7 +47,7 @@ Body 不變：`{ "type": "signed_copies_zip" }`，不新增 force、客戶端人
 - `POST /api/esign/documents/:id/exports/:exportId/retries`：只重試最新適用 failed，沿用快照。存在進行中工作則回該工作；不被舊 completed 攔截。
 - 過時 failed、superseded 或完整性失敗：沿用 ESIGN_EXPORT_RETRY_INVALID；不能讓舊工作復活並覆蓋新成功版。
 - 重試後 pending／進行中沿用 202；所有重試都在 document 鎖下重新確認。
-- ExportJobView.status 的既有值保留，新增 `superseded`。該狀態保留份數／時點／completedAt，但 `files=[]`，無重試入口。
+- ExportJobView.status 保留 pending／waiting／processing／completed／failed，移除 ZIP 的 expired 並新增 `superseded`。該狀態保留份數／時點／completedAt，但 `files=[]`，無重試入口。
 
 ## 4. 指定成果下載
 

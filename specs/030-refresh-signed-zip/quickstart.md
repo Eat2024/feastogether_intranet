@@ -62,3 +62,7 @@ storage 測試須覆蓋 local 及 S3 真實刪除語意：S3 以完整版本 ref
 實作分支 `impl/030-01`，worktree `/private/tmp/feastogether-030-01`。測試使用專用 MySQL `feastogether_intranet_test_030`、Redis DB 13 與 `/private/tmp/feastogether-spec030-storage`；設定只存本機 `.env.test`，不提交帳密。
 
 若 worktree 的既有 node_modules 是 symlink，使用 `pnpm --config.verify-deps-before-run=false` 執行指令，避免 pnpm 誤判依賴需重裝。Next Turbopack 不接受此 symlink，隔離驗證採 `client build --webpack`；最終 root 預設 build 仍需在整合工作區執行。瀏覽器實際重跑入口見 validation。
+
+## 2026-11-06 範圍澄清
+
+使用者已確認目前沒有 ZIP 匯出 `expired` 資料，本次移除該歷史狀態的相容分支與驗證，不做資料回填或恢復。文件簽署期限／到期邏輯不在此調整範圍；已完成 ZIP 意外缺檔仍依不可用處理。

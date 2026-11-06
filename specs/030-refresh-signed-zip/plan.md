@@ -84,14 +84,14 @@ server/test/{esign-export,esign-export-history,export-retention,s3-export}.e2e-s
 2. **申請**：文件鎖 → 驗權 → 找進行中工作 → 處理最新失敗工作 → 讀目前成功版及目前簽署 ID → 有新增才建立快照與工作。進行中直接沿用；失敗工作回傳失敗供明確重試，不能透過重新申請繞過。無新增且成功版缺檔，回不可用，不無聲重建。
 3. **重試**：文件鎖 → 最新待處理工作鎖；已有其他進行中工作回該工作。只允許重試尚未被更新工作超越的失敗工作，保持原名單；較舊失敗、superseded、完整性失敗拒絕。舊 completed 不得搶走新 failed 的重試。
 4. **產製**：保留來源等待、hash 校驗、租約及唯一 generation 物件。接收後的新簽署不參與本次 worker，不自動排下一版。
-5. **發布**：完成儲存並確認新成果大小後，先鎖文件再鎖工作，重驗租約與文件存在，建立新 active file、completed job；同交易將較舊成功／曾成功工作的 ZIP 標 superseded／delete_pending。租約失效或提交失敗只處理本次暫存檔，不清舊成果。
+5. **發布**：完成儲存並確認新成果大小後，先鎖文件再鎖工作，重驗租約與文件存在，建立新 active file、completed job；同交易將較舊 completed 工作的 ZIP 標 superseded／delete_pending。租約失效或提交失敗只處理本次暫存檔，不清舊成果。
 6. **清理**：發布成功後退出產製失敗處理區塊，再以獨立 best-effort 清理。既有 maintain 掃描到期 superseded 且有 delete_pending ZIP 的工作補清理；刪檔成功後條件式標 deleted，失敗保存待清理狀態並延後重試。不可讓清理例外落回 worker 的 failed catch。
 7. **前端**：顯示目前 ZIP 與更新進度；requestedId 固定本次工作。完成後刷新 preview／document／history cache，仍保留「下載本次成果」按鈕。尚有新增者另列「更新並下載 ZIP」，不在下載 handler 內呼叫申請。superseded 清掉舊下載操作並重新讀摘要，不自動更新。
 
 ## 發布、相容與回復
 
 - 無 schema migration；status/archiveStatus 為既有 varchar(20)，無值列舉 CHECK。新增狀態須同步 entity 註解、DTO／client union、查詢與測試；schema.sql 結構無需變動。
-- 不回填、不批次刪既有檔案。舊資料以最新曾成功且未 superseded 的工作作 current；即使該版缺檔也不退回較舊版假稱最新。首次明確更新成功才清該文件較舊成功成果。
+- 不回填、不批次刪既有檔案。既有資料以最新 status=completed 的成功工作作 current；即使該版缺檔也不退回較舊版假稱最新。首次明確更新成功才清該文件較舊成功成果。
 - 既有 API、worker、client 必須同版發布；停止舊 worker 消費並完成／退出舊工作，待新版本接管後才開放更新。不能混跑舊 reusable 語意。
 - 不把直接回退舊 binary 當作安全回復：舊程式會因 completedAt 選回 superseded，且不認新狀態。採含新狀態相容邏輯的修正版；已刪 ZIP 不可復原，個人 PDF 保留。
 - 清理不新增排程；沿用既有 maintenance。local 與 S3 都要驗證，不能只以 mock 刪除成功宣稱已釋放空間。
@@ -99,3 +99,7 @@ server/test/{esign-export,esign-export-history,export-retention,s3-export}.e2e-s
 ## Complexity Tracking
 
 無 constitution 例外。兩個新 file 狀態與一個 job 狀態是跨資料庫／儲存刪除補償所需；不用單純刪檔或覆寫原工作，因為無法安全恢復中斷且會破壞歷史。
+
+## 2026-11-06 範圍澄清
+
+使用者已確認目前沒有 ZIP 匯出 `expired` 資料，本次移除該歷史狀態的相容分支與驗證，不做資料回填或恢復。文件簽署期限／到期邏輯不在此調整範圍；已完成 ZIP 意外缺檔仍依不可用處理。

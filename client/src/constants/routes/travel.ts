@@ -102,3 +102,14 @@ export const TRAVEL_ROUTES = {
     label: "通知信範本維護、寄與確認",
   },
 } as const;
+
+/**
+ * 路徑與名稱的對照表，給麵包屑依網址逐層找名稱用。
+ */
+export const TRAVEL_ROUTE_LABEL_MAP = Object.values(TRAVEL_ROUTES).reduce<Record<string, string>>(
+  (acc, route) => {
+    acc[route.href] = route.label;
+    return acc;
+  },
+  {},
+);

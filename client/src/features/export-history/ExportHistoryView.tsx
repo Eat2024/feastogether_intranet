@@ -36,7 +36,7 @@ import {
   selectedDeptNames,
 } from "@/features/esign-documents/exportQuery";
 import { formatDateTime } from "@/features/esign-documents/listQuery";
-import { getErrorMessage } from "@/lib/apiError";
+import { getErrorCode, getErrorMessage } from "@/lib/apiError";
 import { PAGE_SIZE, pageHrefs, paginate, parsePage } from "@/lib/paginate";
 import {
   nextSortState,
@@ -108,7 +108,7 @@ const ZIP_STATUS_ORDER: EsignExportStatus[] = [
   "processing",
   "completed",
   "failed",
-  "expired",
+  "superseded",
 ];
 
 /** 各欄的排序值（ISO 時間可直接以字串比較）；同名匯出人以員編或 Email 區分 */
@@ -152,7 +152,7 @@ const ZIP_STATUS_META: Record<
   processing: { label: "打包中", color: "info" },
   completed: { label: "可下載", color: "success" },
   failed: { label: "失敗", color: "error" },
-  expired: { label: "檔案已不可用", color: "default" },
+  superseded: { label: "已被新版取代", color: "default" },
 };
 
 const ZIP_IN_PROGRESS: EsignExportStatus[] = [
@@ -223,6 +223,7 @@ function PdfRedownload({ record }: { record: PdfExportHistoryItem }) {
 
 /** ZIP：下載或重試尚未成功的匯出；舊不可用成果不重新產生。 */
 function ZipAction({ record }: { record: ZipExportHistoryItem }) {
+  const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
   const refresh = useRefreshHistory();
   const retry = useMutation({
@@ -248,6 +249,20 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
             exportId: record.id,
             fileId: file.id,
             fileName: record.downloadFileName ?? undefined,
+          }).catch((error: unknown) => {
+            if (getErrorCode(error) === "ESIGN_EXPORT_SUPERSEDED") {
+              refresh();
+              void queryClient.invalidateQueries({
+                queryKey: [queryKeys.ESIGN_DOCUMENT_EXPORT_PREVIEW, record.document.id],
+              });
+              void queryClient.invalidateQueries({
+                queryKey: [queryKeys.ESIGN_DOCUMENT, record.document.id],
+              });
+              void queryClient.invalidateQueries({
+                queryKey: [queryKeys.ESIGN_DOCUMENT_EXPORT, record.document.id, record.id],
+              });
+            }
+            throw error;
           });
           const link = document.createElement("a");
           link.href = preparedExportFileUrl(prepared.downloadPath);
@@ -276,8 +291,8 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
       />
     );
   }
-  if (record.status === "expired") {
-    return <Typography variant="helper">檔案已不可用</Typography>;
+  if (record.status === "superseded") {
+    return <Typography variant="helper">已被新版取代</Typography>;
   }
   return (
     <Typography variant="helper" component="span">

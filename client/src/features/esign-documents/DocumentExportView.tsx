@@ -140,7 +140,7 @@ export default function DocumentExportView({
       </Alert>
     );
   }
-  return <ExportPage doc={doc} />;
+  return <ExportPage key={doc.id} doc={doc} />;
 }
 
 function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
@@ -167,7 +167,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
   );
   const fields = FIELDS.filter((f) => query.fields.includes(f.key));
   const signed = doc.signers.filter((s) => s.status === "signed").length;
-  const zip = useZipExport(doc.id, doc.exportSummary);
+  const zip = useZipExport(doc.id, doc.exportState);
 
   const update = (change: Partial<ExportQuery>) =>
     startTransition(() =>

@@ -49,6 +49,14 @@ export class ExportJobViewDto {
   }[];
 }
 
+/** 同一讀取範圍的目前成果與待處理工作；只回傳差集數量。 */
+export class ExportStateDto {
+  current!: ExportJobViewDto | null;
+  work!: ExportJobViewDto | null;
+  currentNewSignatureCount!: number;
+  workNewSignatureCount!: number;
+}
+
 /** 當次下載設定：不保存檔名，空白沿用既有預設。 */
 export class ExportDownloadFileNameDto {
   @ApiPropertyOptional({

@@ -66,11 +66,35 @@ https://truststore.pki.rds.amazonaws.com/ap-east-2/ap-east-2-bundle.pem
 
 2 核／8 GB EC2 的建置與服務共用資源，migration 有停機窗口，不宣稱零停機。
 
+## Spec 030：ZIP 按需更新的版本切換
+
+本節是發布操作要求，不代表已在 UAT 執行。Spec 030 沒有新增 schema、migration、環境變數或排程；保留 `expires_at`、既有索引與 API `expiresAt`。文件的 `expired`（超過簽署期限且仍有人未簽）維持原規則，前端 ZIP 型別／歷史頁已移除 `expired`；Excel／PDF 歷史沒有 status。Spec 019 一次性保存政策工具已退役，不作為本次部署步驟。
+
+client、API 與 worker 必須使用同一個發布 commit；API 與 worker 使用相同 server digest。新版會將被取代的 ZIP 工作記為 `superseded`，檔案依序記為 `delete_pending`、`deleted`。舊程式不認識這些狀態，不能混跑，也不能因這次沒有 migration 就推論可直接回退舊映像。
+
+首次從不支援 Spec 030 的版本切換時，依序完成：
+
+1. 先以既有維護／流量管制方式停止接受新的 ZIP 產生與更新申請，確認不再新增工作；不要只依靠瀏覽器畫面停用按鈕。
+2. 等待既有 ZIP 的排隊、等待副本與處理中工作完成，確認沒有待消費的 ZIP 工作，再停止舊 worker。若工作無法排空，先處理失敗來源；不要強制刪 queue、工作紀錄或租約來假稱完成。
+3. 確認所有舊 worker 已退出且不再消費，再切換 API、worker、client。工作確定退出後才可由新版依既有租約／維護流程恢復，禁止兩版 worker 同時處理。
+4. 確認各服務的 commit／digest、HTTP smoke 與 worker 啟動狀態一致，才重新開放 ZIP 申請；以合成驗收文件確認過時提醒、明確更新、舊連結失效與歷史顯示。更新前要保留舊 ZIP 的可下載性，成功後才由新版清理舊檔。
+
+若無法排空工作，必須由主機管理員採受控停機切換，並確保失敗處理不會啟動不相容的舊程式。現有部署腳本在沒有 migration 的失敗路徑會嘗試恢復部署前映像，**不會判斷 ZIP 是否已寫入新狀態或刪除舊成果**；本次沒有修改這項自動回退邏輯，不能把一般自動部署流程視為已滿足上述切換保護。
+
+既有 ZIP 不做資料回填、批次重包或批次刪除。升級後仍保留目前成果，只有使用者明確要求更新且新版成功，才清除同文件被取代的 ZIP。原始文件、個人簽署 PDF、簽署證據與匯出歷史保留。打包期間需要同時容納舊版與新版，清理失敗時也可能暫留舊檔，應保留足夠磁碟空間。
+
+### 清理與回復
+
+- 正常更新後，舊歷史顯示「已被新版取代」，舊下載網址與新發出的續傳請求不能再取得舊 ZIP；不要手動將 `superseded` 或 `delete_pending` 改回可用狀態。
+- 清理失敗不影響已成功的新 ZIP；既有 maintenance 會補清理 `delete_pending`。觀察 `esign.export_cleanup_failed`／`esign.export_cleanup_unavailable` 日誌並處理儲存權限或連線問題，不新增清理排程、不手動刪除個人 PDF。
+- 新狀態已寫入後，應部署理解這些狀態的修正版；不要直接回退 Spec 030 之前的 client、API 或 worker。即使尚未刪完舊檔，也不能重新提供已停用的舊成果。
+- 已刪除的舊 ZIP 不可透過換映像、改狀態或 migration 回復。個人 PDF 保留不代表原 ZIP 檔案可復原；如需重新產生內容，應依明確的新工作處理，不冒充原版本。
+
 ## 失敗處理與保留
 
 - build／migration 檢查失敗：不更新服務。
 - 備份工具拉取失敗：不停止服務；備份失敗：不執行 migration，嘗試恢復舊映像。
-- 未執行 migration 的應用更新失敗：嘗試回復部署前 images 並 smoke，workflow 仍失敗。
+- 未執行 migration 的應用更新失敗：腳本會嘗試回復部署前 images 並 smoke，workflow 仍失敗。Spec 030 的狀態相容限制見上節，沒有 migration 不代表舊 images 可安全回復。
 - migration 一旦開始，之後任何失敗都停止應用，交由人工確認；MySQL DDL 可能部分提交，不能假設換 image 或 migration:revert 就能復原。
 - SQL 備份在主機 `backups/<SHA>-<UTC>.sql.gz`，含敏感資料且限制權限。不得直接將備份匯入共用 Aurora cluster，先由 SRE 確認復原目標、其他應用及資料影響。
 - 同機 dump 不能防主機／磁碟遺失；SRE 仍須確認 Aurora 自動備份／PITR、必要時的 cluster snapshot，以及簽署檔案的異地備份與保留期限。

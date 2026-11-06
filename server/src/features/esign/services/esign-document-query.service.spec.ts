@@ -63,7 +63,15 @@ function setup(doc = document()) {
     canExportDocument: jest.fn(() => Promise.resolve(true)),
     checkEsignCreator: jest.fn(),
   };
-  const exports = { documentSummary: jest.fn(() => Promise.resolve(null)) };
+  const exports = {
+    documentSummary: jest.fn(() => Promise.resolve(null)),
+    documentState: jest.fn(async () => ({
+      current: null,
+      work: null,
+      currentNewSignatureCount: 0,
+      workNewSignatureCount: 0,
+    })),
+  };
   const users = {
     findById: jest.fn(() =>
       Promise.resolve(

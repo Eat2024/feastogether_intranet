@@ -34,3 +34,22 @@ node --env-file=.env.test --conditions=development -r ts-node/register \
 24 種 PDF 重複 250 次、hardlink 與熱 filesystem cache，並非真實 6,000 份人資文件；未模擬跨機網路、多租戶或 production log volume。簽署測試是一欄、watermark=false，不代表更多欄或大型原始文件。S3 emulator 小量協定驗證見 ticket08；**禁止用 Moto 跑 >4 GiB**，它會全量累積 multipart。部署 S3 機器/IAM/網路尚未提供，容量與 p95 必須另測。
 
 尚未取得環境的部署 S3 原有容量門檻追蹤於 [ticket11](../../../.scratch/009-esign-document-delivery/issues/11-deployment-s3-capacity.md)，T028 在該驗收完成前維持未勾選。
+
+## Spec030：既有 ZIP 的按需更新
+
+`esign-zip-refresh-benchmark.ts` 沿用 corpus/verifier，但走同一文件的完整更新：先完成 1 份 ZIP → 增至 6,000 份且讀取不建工作 → 明確申請 → 實際 processing 期間加入第 6,001 份、再次申請仍共用固定 6,000 → 完成且提示缺 1 → 正式 worker 刪除舊 ZIP。另明確更新至 6,001，驗證大型舊快照也能取代與清理。每次新版以獨立 manifest 核對全部 entries、bytes、CRC、SHA-256、ZIP64；6,000 成果另做 HTTP 中斷與 Range/If-Range 全檔續傳校驗。
+
+```sh
+# repository root；先確認可用磁碟空間，結果、storage 必須尚未存在。
+node server/test/performance/generate-export-corpus.cjs "$PWD" /tmp/spec030-corpus
+cd server
+DB_MYSQL_DB=feastogether_intranet_test_capacity_030new \
+ESIGN_STORAGE_DRIVER=local ESIGN_STORAGE_ROOT=/tmp/esign009-capacity-030new \
+node --env-file=.env.test --conditions=development -r ts-node/register \
+  test/performance/esign-zip-refresh-benchmark.ts run \
+  /tmp/spec030-results-new /tmp/spec030-corpus 6000
+```
+
+必須獨占測試 Redis，使用新的測試 DB。guard 會拒絕非 capacity DB、非 local 隔離 storage、既有目錄與非空文件資料庫；不修改正式設定、不清空 Redis、不自動 DROP DB。至少預留約 20 GB，保留最終 ZIP 及所有合成個人 PDF；只刪除用來驗證 HTTP 續傳的下載副本，產品 ZIP 的刪除完全由正式清理流程執行。24 只是接線模式，不是容量通過證據；處理過快而未觀察到 processing 會明確失敗。
+
+`result.json`、`resources.json`、`verify.json`、`verify-next.json` 保存量測與斷言。RSS 每 250ms 取樣，worker 為獨立 ts-node 程序；API 程序包含 fixture/orchestrator，不能當 production API sizing。24 種 PDF 各重複 250 次、有不同 signer/path/entry，內容重複與 hardlink/熱快取限制同前述；不是實際 S3 容量或部署 SLO 保證。此 harness 沒有壓縮策略 patch，也不手動刪產品 ZIP 或寫過期時間。

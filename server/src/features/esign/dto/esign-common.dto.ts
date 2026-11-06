@@ -1,4 +1,4 @@
-import { ExportJobViewDto } from './export.dto';
+import { ExportJobViewDto, ExportStateDto } from './export.dto';
 export type EsignDocumentStatus =
   | 'initiating'
   | 'draft'
@@ -174,3 +174,9 @@ export class EsignManagedDocumentDetailDto extends EsignDocumentSummaryDto {
 export type EsignDocumentDetailDto =
   | EsignManagedDocumentDetailDto
   | EsignReadonlyDocumentDetailDto;
+
+/** 匯出預覽附加的 ZIP 狀態；詳細簽署欄位沿用既有匯出投影。 */
+export class EsignExportStateViewDto {
+  exportState!: ExportStateDto;
+  exportSummary!: ExportJobViewDto | null;
+}

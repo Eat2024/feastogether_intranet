@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { type EntityManager, IsNull, In } from 'typeorm';
+import { type EntityManager, IsNull, In, LessThan, Not } from 'typeorm';
 import {
   EsignExportJob,
   type EsignExportType,
@@ -28,7 +28,45 @@ export class ExportJobRepository {
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
-  reusable(documentId: number, manager: EntityManager) {
+  /** 只選未被取代的最新曾成功版；缺檔不可退回更舊成果。 */
+  async current(documentId: number, manager: EntityManager) {
+    const row = await this.summaryQuery(documentId, manager)
+      .select('MAX(job.id)', 'id')
+      .andWhere("job.status <> 'superseded'")
+      .andWhere("(job.completedAt IS NOT NULL OR job.status = 'completed')")
+      .getRawOne<{ id: number | string | null }>();
+    if (!row?.id) return null;
+    return this.summaryQuery(documentId, manager)
+      .andWhere('job.id = :id', { id: row.id })
+      .getOne();
+  }
+
+  /** 進行中優先；失敗工作必須比目前成果新，才可等待重試。 */
+  async work(documentId: number, manager: EntityManager, currentId = 0) {
+    // 先聚合候選 ID，再依主鍵讀摘要。ORDER BY 即使未投影 JSON，
+    // MySQL 的 filesort 仍可能將大型快照列帶入而耗盡 sort buffer。
+    const row = await this.summaryQuery(documentId, manager)
+      .select(
+        `COALESCE(
+        MAX(CASE WHEN job.status IN ('pending','waiting','processing') THEN job.id END),
+        MAX(CASE WHEN job.status = 'failed' AND job.id > :currentId AND job.completedAt IS NULL THEN job.id END)
+      )`,
+        'id',
+      )
+      .setParameter('currentId', currentId)
+      .getRawOne<{ id: number | string | null }>();
+    if (!row?.id) return null;
+    return this.summaryQuery(documentId, manager)
+      .andWhere('job.id = :id', { id: row.id })
+      .getOne();
+  }
+
+  async reusable(documentId: number, manager: EntityManager) {
+    const current = await this.current(documentId, manager);
+    return (await this.work(documentId, manager, current?.id)) ?? current;
+  }
+
+  private summaryQuery(documentId: number, manager: EntityManager) {
     return manager
       .createQueryBuilder(EsignExportJob, 'job')
       .select([
@@ -46,17 +84,49 @@ export class ExportJobRepository {
       .where('job.documentId = :documentId', { documentId })
       .andWhere(
         "job.exportType = 'signed_copies_zip' AND job.snapshotJson IS NOT NULL",
-      )
-      .andWhere(
-        "(job.completedAt IS NOT NULL OR job.status IN ('completed','expired','pending','waiting','processing','failed'))",
-      )
-      .orderBy(
-        "CASE WHEN job.completedAt IS NOT NULL OR job.status IN ('completed','expired') THEN 0 WHEN job.status = 'failed' THEN 2 ELSE 1 END",
-        'ASC',
-      )
-      .addOrderBy('job.id', 'DESC')
-      .getOne();
+      );
   }
+
+  /** 僅投影快照紀錄識別，不將數千份儲存 metadata 載入預覽。 */
+  async snapshotRecordIds(
+    jobId: number,
+    manager: EntityManager,
+  ): Promise<number[]> {
+    const row = await manager
+      .createQueryBuilder(EsignExportJob, 'job')
+      .select("JSON_EXTRACT(job.snapshotJson, '$[*].recordId')", 'recordIds')
+      .where('job.id = :jobId', { jobId })
+      .getRawOne<{ recordIds: number[] | string | null }>();
+    const ids: unknown =
+      typeof row?.recordIds === 'string'
+        ? JSON.parse(row.recordIds)
+        : row?.recordIds;
+    if (ids === null) return [];
+    if (
+      !Array.isArray(ids) ||
+      !ids.every(
+        (id: unknown): id is number =>
+          typeof id === 'number' && Number.isSafeInteger(id),
+      )
+    )
+      throw new Error('匯出快照的紀錄識別無效');
+    return ids;
+  }
+
+  async recordIds(
+    documentId: number,
+    manager: EntityManager,
+  ): Promise<number[]> {
+    const rows = await manager
+      .createQueryBuilder(EsignSignatureRecord, 'record')
+      .innerJoin('record.signer', 'signer')
+      .select('record.id', 'id')
+      .where('signer.documentId = :documentId', { documentId })
+      .andWhere("signer.status = 'signed' AND signer.deletedAt IS NULL")
+      .getRawMany<{ id: number | string }>();
+    return rows.map((row) => Number(row.id));
+  }
+
   records(documentId: number, manager: EntityManager) {
     return (
       manager
@@ -290,6 +360,7 @@ export class ExportJobRepository {
   maintenance(now: Date, manager: EntityManager) {
     return manager
       .createQueryBuilder(EsignExportJob, 'job')
+      .select(['job.id'])
       .where('job.snapshotJson IS NOT NULL')
       .andWhere(
         "((job.status IN ('pending','waiting') AND (job.nextAttemptAt IS NULL OR job.nextAttemptAt <= :now)) OR (job.status='processing' AND job.leaseExpiresAt <= :now))",
@@ -330,14 +401,84 @@ export class ExportJobRepository {
       )
       .getExists();
   }
-  async archiveFile(id: number, manager: EntityManager) {
-    const file = await manager.findOneBy(EsignFileObject, { id });
-    if (file) {
-      file.archiveStatus = 'expired';
-      await manager.save(file);
+  /** 文件鎖已由呼叫端持有；只取代同文件較舊的成功 ZIP。 */
+  async supersedeOlder(current: EsignExportJob, manager: EntityManager) {
+    const older = await manager.find(EsignExportJob, {
+      select: { id: true },
+      where: {
+        documentId: current.documentId!,
+        exportType: 'signed_copies_zip',
+        id: LessThan(current.id),
+        status: 'completed',
+        snapshotJson: Not(IsNull()),
+      },
+    });
+    // 候選先只讀 ID，不令 filesort 搬動多 MB 的歷史快照；文件鎖仍由呼叫端持有。
+    for (const candidate of older.sort((a, b) => a.id - b.id)) {
+      const job = await this.byId(candidate.id, manager, true);
+      if (!job || job.status !== 'completed') continue;
+      job.status = 'superseded';
+      job.nextAttemptAt = null;
+      await this.save(job, manager);
+      const files = await this.files(job.id, manager);
+      for (const file of files) {
+        if (file.archiveStatus !== 'active') continue;
+        file.archiveStatus = 'delete_pending';
+        await manager.save(file);
+      }
     }
   }
-  documentExists(id: number, manager: EntityManager) {
-    return manager.findOneBy(EsignDocument, { id, deletedAt: IsNull() });
+
+  pendingCleanup(now: Date, manager: EntityManager, documentId?: number) {
+    const query = manager
+      .createQueryBuilder(EsignExportJob, 'job')
+      .select(['job.id'])
+      .where(
+        "job.exportType = 'signed_copies_zip' AND job.status = 'superseded'",
+      )
+      .andWhere('(job.nextAttemptAt IS NULL OR job.nextAttemptAt <= :now)', {
+        now,
+      })
+      .andWhere(
+        `EXISTS (${manager
+          .createQueryBuilder(EsignFileObject, 'file')
+          .select('1')
+          .where('file.exportJobId = job.id')
+          .andWhere(
+            "file.filePurpose = 'signed_copies_zip' AND file.archiveStatus = 'delete_pending'",
+          )
+          .getQuery()})`,
+      )
+      .orderBy('job.nextAttemptAt', 'ASC')
+      .addOrderBy('job.id', 'ASC')
+      .take(50);
+    if (documentId !== undefined)
+      query.andWhere('job.documentId = :documentId', { documentId });
+    return query.getMany();
+  }
+
+  cleanupFiles(jobId: number, manager: EntityManager) {
+    return manager.find(EsignFileObject, {
+      where: {
+        exportJobId: jobId,
+        filePurpose: 'signed_copies_zip',
+        archiveStatus: 'delete_pending',
+      },
+    });
+  }
+
+  markFileDeleted(id: number, manager: EntityManager) {
+    return manager.update(
+      EsignFileObject,
+      { id, filePurpose: 'signed_copies_zip', archiveStatus: 'delete_pending' },
+      { archiveStatus: 'deleted' },
+    );
+  }
+
+  documentExists(id: number, manager: EntityManager, lock = false) {
+    return manager.findOne(EsignDocument, {
+      where: { id, deletedAt: IsNull() },
+      ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    });
   }
 }

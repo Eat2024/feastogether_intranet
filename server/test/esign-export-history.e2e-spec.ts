@@ -1856,6 +1856,96 @@ describe('Spec015 歷史匯出紀錄 API', () => {
     });
   });
 
+  it('Spec030 已取代歷史保留原名稱／完成時間，下載先驗權再回 409', async () => {
+    const document = await createDocument('合成已取代歷史');
+    const completedAt = new Date('2026-01-02T03:04:05Z');
+    const job = await insertRecord(
+      {
+        exportType: 'signed_copies_zip',
+        documentId: document.id,
+        createdByUserId: exporter.id,
+        status: 'superseded',
+        snapshotAt: completedAt,
+        snapshotJson: [],
+        snapshotSha256: 'a'.repeat(64),
+        scopeDescription: '原本簽署範圍',
+        recordCount: 1,
+        downloadFileName: '原始下載名稱.zip',
+      },
+      completedAt,
+    );
+    const file = await manager.save(
+      EsignFileObject,
+      manager.create(EsignFileObject, {
+        exportJobId: job.id,
+        filePurpose: 'signed_copies_zip',
+        objectKey: `exports/superseded-${job.publicId}.zip`,
+        originalFileName: '原成果.zip',
+        mimeType: 'application/zip',
+        fileSize: 100,
+        sha256: 'b'.repeat(64),
+        archiveStatus: 'deleted',
+      }),
+    );
+    const before = await manager.findOneByOrFail(EsignExportJob, {
+      id: job.id,
+    });
+    const listed = await history(`type=zip&documentId=${document.id}`);
+    expect(listed.items).toHaveLength(1);
+    expect(listed.items[0]).toMatchObject({
+      id: job.publicId,
+      status: 'superseded',
+      files: [],
+      downloadFileName: '原始下載名稱.zip',
+      scope: '原本簽署範圍',
+      count: 1,
+    });
+    const path = `/api/esign/documents/${document.id}/exports/${job.publicId}/files/${file.id}`;
+    for (const range of [undefined, 'bytes=0-3']) {
+      const get = request(ctx.server).get(path).set('Cookie', viewerCookie);
+      if (range) get.set('Range', range);
+      expect(apiError(await get.expect(409)).code).toBe(
+        'ESIGN_EXPORT_SUPERSEDED',
+      );
+      await request(ctx.server)
+        .get(path)
+        .set('Cookie', outsiderCookie)
+        .expect(404);
+      await request(ctx.server)
+        .get(
+          path.replace(`/documents/${document.id}/`, `/documents/${docB.id}/`),
+        )
+        .set('Cookie', viewerCookie)
+        .expect(404);
+    }
+    const prepare = (documentId: number, auth: string) =>
+      request(ctx.server)
+        .post(`/api/esign/documents/${documentId}/export-downloads`)
+        .set('Cookie', auth)
+        .set('Origin', 'http://localhost:3000')
+        .send({
+          type: 'zip',
+          exportId: job.publicId,
+          fileId: String(file.id),
+          fileName: '不可覆寫',
+        });
+    expect(
+      apiError(await prepare(document.id, viewerCookie).expect(409)).code,
+    ).toBe('ESIGN_EXPORT_SUPERSEDED');
+    await prepare(document.id, outsiderCookie).expect(404);
+    await prepare(docB.id, viewerCookie).expect(404);
+    await request(ctx.server)
+      .post(
+        `/api/esign/documents/${document.id}/exports/${job.publicId}/retries`,
+      )
+      .set('Cookie', viewerCookie)
+      .set('Origin', 'http://localhost:3000')
+      .expect(409);
+    expect(
+      await manager.findOneByOrFail(EsignExportJob, { id: job.id }),
+    ).toEqual(before);
+  });
+
   describe('ZIP 不受 excel／pdf 紀錄影響', () => {
     const origin = 'http://localhost:3000';
     interface ZipJob {

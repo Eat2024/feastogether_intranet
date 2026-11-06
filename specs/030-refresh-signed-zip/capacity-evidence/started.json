@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-06T07:40:59.679Z",
+  "count": 6000,
+  "machine": {
+    "cpu": "Apple M5 Pro",
+    "cores": 15,
+    "ram": 25769803776,
+    "os": "darwin",
+    "release": "25.6.0",
+    "node": "v26.4.0"
+  },
+  "corpus": "24 種合成 PDF 平衡重複，hardlink、熱快取；不是 6000 份獨特真實文件"
+}

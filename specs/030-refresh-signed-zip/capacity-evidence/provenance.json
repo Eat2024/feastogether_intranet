@@ -1,0 +1,19 @@
+{
+  "baseCommit": "f9f33121000f9864b2b8a73a9432912ec94a310f",
+  "note": "含本票未提交修正；hash以交付格式化後檔案計算，行為不變。原始expected全部6000/6001筆保留本機output，不提交約2MB重複名單。",
+  "sourceSha256": {
+    "server/src/features/esign/repositories/export-job.repository.ts": "a5ebfddebd2b97a20fed3b525a16da126dca95a359300d4b16e0b3a06e9c3b70",
+    "server/src/worker/esign/document-export.processor.ts": "0261efb750258fc0789a42bdbac5f26d0145a01235d5d5d59f3cbb0cb802c439",
+    "server/test/performance/esign-zip-refresh-benchmark.ts": "a4d46cfa122811d3b1d105569bfb0af6d3b494ca2afa7a516e5b4fc01bae534e",
+    "server/test/performance/verify-export-zip.py": "fc819592faf4cd68efd60c92511a74bb107c05d25993c7b2e8f4f2cc5596967f"
+  },
+  "expectedSha256": {
+    "expected.json": "362f7bfcc80d7d893b21a569c4768435470755c449ba29f09281564ff602c3ea",
+    "expected-next.json": "05943663291d0101bb8f808f61ab9c801f2cc26b1aa7e7edba1fcfac463050fe"
+  },
+  "workerVersion": {
+    "compression": "store",
+    "sourceHash": "0261efb750258fc0789a42bdbac5f26d0145a01235d5d5d59f3cbb0cb802c439",
+    "node": "v26.4.0"
+  }
+}

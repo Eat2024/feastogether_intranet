@@ -12,7 +12,9 @@ export function getRequestUrl(request: UrlSource | FastifyRequest): string {
 }
 
 export function getRequestPath(request: UrlSource | FastifyRequest): string {
-  const path = getRequestUrl(request).split('?')[0] || '/';
+  // Fastify 比對路由前會先解碼百分比編碼；遮罩與各處路徑判斷要用同一個解碼後的路徑，
+  // 否則 /api/auth/%73uper-user-entries/… 會命中路由卻繞過遮罩、Origin 與 body 不記錄的判斷。
+  const path = decodePath(getRequestUrl(request).split('?')[0] || '/');
   // 路徑本身就是憑證或隱藏入口的端點，log 一律正規化，不留完整 token／入口
   return path
     .replace(
@@ -23,4 +25,13 @@ export function getRequestPath(request: UrlSource | FastifyRequest): string {
       /^(\/api)?\/auth\/super-user-entries\/.*?(\/sessions)?$/,
       '$1/auth/super-user-entries/:entryKey$2',
     );
+}
+
+/** 編碼格式錯誤的路徑不會命中任何路由（Fastify 回 400），保留原字串供錯誤 log 使用。 */
+function decodePath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 }

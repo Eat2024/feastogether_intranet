@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request, { type Response } from 'supertest';
 import { DataSource } from 'typeorm';
+import { AppErrorCode } from '#app/common/errors/app-error-code';
 import { AUTH_RATE_LIMIT_SHORT_LIMIT } from '#app/features/auth/auth.constants';
 import { ENTRY_NETWORK_DENIED_HEADER } from '#app/features/auth/guards/super-user-entry.guard';
 import { SuperUserConfigService } from '#app/features/auth/services/super-user-config.service';
@@ -11,6 +12,7 @@ import {
   createSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
+import { apiError } from './api-response.helper';
 
 const ORIGIN = 'http://localhost:3000';
 const newEntry = () => randomBytes(32).toString('base64url');
@@ -169,6 +171,12 @@ describe('Super user 錯誤入口與不存在路由的回應相同', () => {
       snapshot(await login(missing)),
     );
     await request(ctx.server).get(valid).expect(200);
+  });
+
+  it('百分比編碼的有效入口路徑同樣要求 Origin（Fastify 解碼後命中同一路由）', async () => {
+    const encoded = `/api/auth/%73uper-user-entries/${entryKey}/sessions`;
+    const response = await post(encoded).send(credentials).expect(403);
+    expect(apiError(response).code).toBe(AppErrorCode.CSRF_ORIGIN_REJECTED);
   });
 
   it('尚未初始化（沒有任何有效入口）時，GET 與 POST 也與不存在路由相同', async () => {

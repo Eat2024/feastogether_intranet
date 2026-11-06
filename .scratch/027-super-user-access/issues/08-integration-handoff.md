@@ -71,7 +71,7 @@
 
 ## 後續：隱藏維護登入的存在（使用者 2026-11-06 要求）
 
-使用者 2026-11-06 要求：不知道入口的人（匿名或已登入的一般員工）不能從公開前端資源或 HTTP 回應看出 Super user／維護登入存在。同日追加：隱藏頁與其 API 只開放公司網路（VPN 與辦公室固定出口 IP）。分支 `027-hide-maintenance-traces`（從 `027-super-user-access` `9561be2`）。
+使用者 2026-11-06 要求：不知道入口的人（匿名或已登入的一般員工）不能從公開前端資源或 HTTP 回應看出 Super user／維護登入存在。同日追加：隱藏頁與其 API 只開放公司網路（VPN 與辦公室固定出口 IP）。分支 `027-hide-maintenance-traces`（從 `027-super-user-access` `8f53def`）。
 
 **洩漏與處理**
 
@@ -92,13 +92,14 @@
 - 頁面在網路檢查通過後才向後端驗入口。
 - `/api`（不分大小寫，與 rewrite 同範圍）不允許時加上 `x-entry-network-denied`，由 `SuperUserEntryGuard` 回後端不存在路由的 404。
 - UAT 的 client 讀主機 `client.env`。Nginx 要在所有轉給 client 的 location 覆寫 `X-Real-IP`；只覆寫兩個 location 會被 `/API/...` 繞過。
+- review 時另修既有問題：`getRequestPath` 原本以未解碼的路徑遮罩與判斷，`/api/auth/%73uper-user-entries/<入口>` 會命中路由，但 access log 留下明文入口、`OriginGuard` 不要求 Origin。改為先解碼再比對（格式錯誤的編碼保留原字串）。
 
 **驗證**（細節見 quickstart「027-h」）
 
 - server：
   - `lint:check` 0 errors／271 warnings，改動檔案無 warning；
-  - `test --runInBand` 123 suites／1266 tests；`build` 成功；
-  - `test:e2e:security` 20 suites／171 tests；
+  - `test` 123 suites／1276 tests（rebase 到 `8f53def` 後）；`build` 成功；
+  - `test:e2e:security` 20 suites／172 tests；
   - `test:e2e` 559 passed、1 skipped、1 failed（既有 `api-coverage` history）；
   - `pnpm test:deploy` 通過。
 - client：`lint` 0、`test` 5/5、`build` 0 warning、`check:bundle` 通過（另以假檔反向驗證會失敗）。
@@ -118,7 +119,8 @@
 - standalone 遇到格式錯誤的允許清單時，程序不結束，而是所有請求 500（`next dev` 會直接結束）。
 
 **commits**
-- `b497407 fix(auth): 錯誤入口與不存在路由回應相同，隱藏入口不列在 Swagger`
-- `e7ffee5 fix(client): 公開前端資源不含隱藏維護登入，並限制隱藏頁與 API 只開放公司網路`
-- `9024e9f ci(deploy): UAT client 讀取主機 client.env 的維護登入來源網路`
+- `9aab70b fix(auth): 錯誤入口與不存在路由回應相同，隱藏入口不列在 Swagger`
+- `47277c5 fix(client): 公開前端資源不含隱藏維護登入，並限制隱藏頁與 API 只開放公司網路`
+- `73cf89b ci(deploy): UAT client 讀取主機 client.env 的維護登入來源網路`
 - 文件 commit（spec、契約、quickstart、README、AGENTS、UAT 文件與本節）
+- `fix(server)` commit：路徑先解碼再遮罩與判斷（review 時補）

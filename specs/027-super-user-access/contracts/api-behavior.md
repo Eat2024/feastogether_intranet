@@ -72,7 +72,7 @@ UI 公開網址 `/ops-access/<入口>` 本身沒有頁面，實際頁面在 `app
 
 ## Logging contract
 
-將前端 /ops-access/* 與後端 /api/auth/super-user-entries/* 正規化為路由模板；同時禁止原始url、query、body、Referer、Set-Cookie被一般log記錄。覆蓋正常、404、guard、429、exception及SSR錯誤。反向代理須使用遮罩後URI或為此路徑關閉raw access log；Next production及開發request log亦需檢查／關閉此類raw記錄，不僅修改Nest masker。
+將前端 /ops-access/* 與後端 /api/auth/super-user-entries/* 正規化為路由模板；同時禁止原始url、query、body、Referer、Set-Cookie被一般log記錄。覆蓋正常、404、guard、429、exception及SSR錯誤。Fastify 比對路由前會解碼百分比編碼，Nest 的路徑正規化與各處路徑判斷（Origin、query／body 不記錄）也先解碼再比對，`/api/auth/%73uper-user-entries/…` 與明文路徑同樣遮罩、同樣要求 Origin。反向代理須使用遮罩後URI或為此路徑關閉raw access log；Next production及開發request log亦需檢查／關閉此類raw記錄，不僅修改Nest masker。
 
 WebView activation 啟動碼無效、過期或已用過只記 `auth.launch_code_rejected`（不含啟動碼、cookie、token 或員編），不寫安全事件；此端點沒有限流。
 

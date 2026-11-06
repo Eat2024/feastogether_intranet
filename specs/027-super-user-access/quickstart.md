@@ -511,9 +511,9 @@ client 沒有 test script，未宣稱跑過 client 自動測試。
 | 指令 | 結果 |
 | --- | --- |
 | `pnpm -C server lint:check` | 0 errors、271 warnings；本次改動的檔案都不在 warning 清單 |
-| `pnpm -C server test --runInBand` | 123 suites／1266 tests 通過 |
+| `pnpm -C server test` | 123 suites／1276 tests 通過（rebase 到 `8f53def` 後；含 review 時補的路徑解碼案例） |
 | `pnpm -C server build` | 成功 |
-| `pnpm -C server test:e2e:security` | 20 suites／171 tests 通過（含新的 `security-super-user-entry-concealment`） |
+| `pnpm -C server test:e2e:security` | 20 suites／172 tests 通過（含新的 `security-super-user-entry-concealment`；百分比編碼的有效入口缺 Origin 回 403） |
 | `pnpm -C server test:e2e` | 559 passed、1 skipped、1 failed；唯一失敗是既有 `api-coverage` 的 `GET /api/esign/documents/1/history`，未修 |
 | `pnpm test:deploy` | Compose 與部署流程測試通過 |
 | `pnpm -C client lint` | 0 problems |
@@ -557,6 +557,7 @@ client 沒有 test script，未宣稱跑過 client 自動測試。
   - 修正過程中實測到兩個繞過，修正後都回 404：
     - `/api/auth/%73uper-user-entries/<入口>`：後端會解碼；
     - `/API/…`：Next config rewrite 不分大小寫。
+  - review 時另修：`getRequestPath` 先解碼再遮罩與判斷。修正前 `/api/auth/%73uper-user-entries/<入口>` 在允許網路內會命中路由，但 access log 記下明文入口、`OriginGuard` 不要求 Origin；新 e2e 在修正前失敗、修正後通過。
 - 公開頁：`/verify/abc`、`/embed`、未登入的 `/esign/forms` 與 `/no-such-page/abc`，與修改前的 headers（ETag 除外）及 body 大小相同。`/embed` 仍可被嵌入。
 - 後端呼叫：`/verify`、`/embed` 與被拒的隱藏頁都沒有呼叫後端；`/api/health` 只有 rewrite 本身那一次。
 - 允許清單格式錯誤（`203.0.113.0/24,not-a-cidr`、`198.51.100.7`）：

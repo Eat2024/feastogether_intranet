@@ -82,3 +82,9 @@ AUTH_TRUSTED_ORIGINS=http://localhost:3030 CORS_ORIGIN=http://localhost:3030 pnp
 命令同 Ticket 01（server test、指定 e2e、兩端 lint/build）。本機日誌 `/tmp/spec030-02-{unit-red,unit-green,unit,unit-all,e2e-fixed,e2e-all,browser-red,browser-green,server-lint,client-lint,server-build,client-build}.log`。瀏覽器 harness 位於 `/tmp/spec030-browser/ticket02-browser.e2e-spec.ts`，截圖 `/tmp/spec030-browser/ticket02-fixed-13.png`；以 Ticket 01 的步驟複製為臨時測試並啟動 Next 3030/API 3031，即可重跑。harness 和日誌是本機暫存證據，未提交 secret 或外部 Playwright dependency。
 
 SC-003 的 10 session 共用與 SC-004 的固定 13→14／離頁恢復已有證據。文件 expired、共用非 ZIP expired、expiresAt/index/API 均保持；沒有 migration/config/dependency 變更。尚未在本票驗證舊版原子停用／實體刪除、S3 或 6,000 份容量。
+
+### Ticket 02 整合驗證
+
+- Merger 核對 6cf5b47 相對 b7a1840 的 service／UI／測試差異，以及 e2e 8/8、Chromium 1/1 實際日誌，fast-forward 整合成功。
+- read-ahead 測試 sourceKeys 在排工作前收集本案例兩組 64 個來源，spy 仍觀察真實 openReadStream；保留兩 worker、200ms 延遲、peak=1 與 peakReadAhead<64，未放寬門檻或改動 production streaming。
+- 已驗證項目不重複廣跑；整合狀態 commit 仍完整執行既有 lint/unit hooks。

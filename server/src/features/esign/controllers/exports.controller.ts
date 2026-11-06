@@ -88,7 +88,17 @@ export class ExportsController {
     return this.exports.listDocuments(query, userId);
   }
 
-  // 由同部門員工申請文件副本 ZIP 匯出，回傳既有或新建的匯出狀態。
+  // 有新增簽署才建立新版；失敗工作回 200 狀態供明確重試，不代表成果可下載。
+  @ApiOperation({
+    summary: '按需產生已簽署副本 ZIP',
+    description:
+      '已有進行中工作時共用該工作；沒有新增簽署時沿用目前成果；有新增才固定受理名單背景產製。最新失敗工作回傳狀態供明確重試，不自動建立替代工作。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '沿用已完成或待重試的失敗工作；是否可下載依 status 判定',
+  })
+  @ApiResponse({ status: 202, description: '已受理新工作或共用進行中工作' })
   @Post('documents/:documentId/exports')
   @UseGuards(OriginGuard)
   async request(
@@ -98,7 +108,7 @@ export class ExportsController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     const result = await this.exports.request(numericId(id), userId);
-    reply.status(result.status === 'completed' ? 200 : 202);
+    reply.status(['completed', 'failed'].includes(result.status) ? 200 : 202);
     return result;
   }
 
@@ -121,7 +131,7 @@ export class ExportsController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     const result = await this.exports.retry(numericId(id), exportId, userId);
-    reply.status(result.status === 'completed' ? 200 : 202);
+    reply.status(['completed', 'failed'].includes(result.status) ? 200 : 202);
     return result;
   }
 

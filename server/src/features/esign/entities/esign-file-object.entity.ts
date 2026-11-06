@@ -234,6 +234,7 @@ export class EsignFileObject {
     default: 'active',
     comment: '封存狀態',
   })
+  /** ZIP 可由 active 轉 delete_pending 再轉 deleted；保留完整物件參照供補清理。 */
   archiveStatus!: string;
 
   @CreateDateColumn({

@@ -297,6 +297,7 @@ export class EsignExportJob {
     length: 20,
     default: 'pending',
     comment: '工作狀態',
+    // superseded 表示成果已被新版取代，保留原完成時間與快照。
   })
   status!: string;
 

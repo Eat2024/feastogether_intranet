@@ -188,7 +188,7 @@ function ExportPage({ doc }: { doc: EsignExportPreviewDocument }) {
 
           {content === 'docs' ? (
             <Section step={2} title="產生與下載">
-              <ZipExportPanel fileName={fileName} documentId={doc.id} signedCount={signed} exportSummary={doc.exportSummary} />
+              <ZipExportPanel fileName={fileName} documentId={doc.id} signedCount={signed} exportState={doc.exportState} />
             </Section>
           ) : (
             <>

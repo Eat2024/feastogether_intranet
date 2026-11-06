@@ -1,3 +1,4 @@
+import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { User } from '#app/features/users/entities/user.entity';
 import { rm, writeFile } from 'node:fs/promises';
@@ -203,11 +204,14 @@ describe('Spec009 匯出 API', () => {
       }),
     );
     const storage = ctx.app.get<PrivateFileStorage>(PRIVATE_FILE_STORAGE);
+    const firstPdf = await PDFDocument.create();
+    firstPdf.addPage().drawText('First signed copy');
+    const firstBytes = Buffer.from(await firstPdf.save());
     const stored = await storage.store({
       directory: `documents/export-test-${id}`,
       extension: 'pdf',
       mimeType: 'application/pdf',
-      bytes: Buffer.from('%PDF synthetic signed bytes'),
+      bytes: firstBytes,
     });
     await db.manager.save(
       EsignFileObject,
@@ -437,7 +441,7 @@ describe('Spec009 匯出 API', () => {
         )
         .set('Cookie', other)
         .expect(404);
-      // 在固定快照之後增加簽署：往後仍不新增工作或混入新副本。
+      // Spec030：新簽署僅使成果過時，明確申請才產生完整新版。
       const secondSigner = await db.manager.save(
         EsignSigner,
         db.manager.create(EsignSigner, {
@@ -454,7 +458,7 @@ describe('Spec009 匯出 API', () => {
           sortOrder: 2,
         }),
       );
-      await db.manager.save(
+      const addedRecord = await db.manager.save(
         EsignSignatureRecord,
         db.manager.create(EsignSignatureRecord, {
           signerId: secondSigner.id,
@@ -466,75 +470,125 @@ describe('Spec009 匯出 API', () => {
           signedAtUtc: new Date(),
         }),
       );
-      expect(apiData(await make(other).expect(200))).toMatchObject({
-        id: job.id,
-        expectedCount: 1,
-      });
-      const before = await db.manager.findOneByOrFail(EsignExportJob, {
-        publicId: job.id,
-      });
-      await request(ctx.server)
-        .get(`/api/esign/documents/${id}/exports/${job.id}`)
-        .set('Cookie', other)
-        .expect(200);
-      expect(
-        (await db.manager.findOneByOrFail(EsignExportJob, { publicId: job.id }))
-          .updatedAt,
-      ).toEqual(before.updatedAt);
-      expect(before.expiresAt).toBeNull();
-      // 舊期限也不再阻擋成果，maintenance 經過一年仍保留原檔。
-      await db.manager.update(
-        EsignExportJob,
-        { id: before.id },
-        {
-          expiresAt: new Date(Date.now() - 1),
-        },
-      );
-      for (const days of [8, 365]) {
-        await worker
-          .get(DocumentExportProcessor)
-          .maintain(new Date(Date.now() + days * 24 * 60 * 60_000));
-        expect(apiData(await make(other).expect(200))).toMatchObject({
-          id: job.id,
-          expectedCount: 1,
-          expiresAt: null,
-        });
-        await request(ctx.server)
-          .get(file.downloadPath)
-          .set('Cookie', other)
-          .set('Range', 'bytes=0-3')
-          .expect(206);
-      }
-      const newerFailure = await db.manager.save(
-        EsignExportJob,
-        db.manager.create(EsignExportJob, {
-          publicId: randomUUID(),
-          documentId: Number(id),
-          createdByUserId: Number(ownerId),
-          exportType: 'signed_copies_zip',
-          status: 'failed',
-          scopeDescription: '合成失敗工作',
-          snapshotAt: new Date(),
-          snapshotJson: before.snapshotJson,
-          snapshotSha256: before.snapshotSha256,
-          recordCount: 1,
-          processedCount: 0,
-          waitingCount: 0,
-          attemptCount: 0,
-        }),
-      );
-      const detail = apiData<{ exportSummary: { id: string } }>(
-        await request(ctx.server)
-          .get(`/api/esign/documents/${id}`)
-          .set('Cookie', cookie)
-          .expect(200),
-      );
-      expect(detail.exportSummary.id).toBe(job.id);
       await db.query(
         "UPDATE esign_documents SET status='active',sign_start_at=UTC_TIMESTAMP(),sign_end_at=DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY) WHERE id=?",
         [id],
       );
-      // Spec017 × Spec019：同部門唯讀與匯出預覽採同一固定工作。
+      const preview = async () =>
+        apiData<{
+          exportState: {
+            current: { id: string };
+            work: unknown;
+            currentNewSignatureCount: number;
+          };
+        }>(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}?view=export`)
+            .set('Cookie', other)
+            .expect(200),
+        );
+      expect((await preview()).exportState).toMatchObject({
+        current: { id: job.id },
+        work: null,
+        currentNewSignatureCount: 1,
+      });
+      // 讀取不建立工作；副本變 ready 也不是新增簽署。
+      expect(
+        await db.manager.count(EsignExportJob, {
+          where: { documentId: Number(id) },
+        }),
+      ).toBe(1);
+      const secondPdf = await PDFDocument.create();
+      secondPdf.addPage().drawText('Second signed copy');
+      const secondBytes = Buffer.from(await secondPdf.save());
+      const secondStored = await storage.store({
+        directory: `documents/export-second-${id}`,
+        extension: 'pdf',
+        mimeType: 'application/pdf',
+        bytes: secondBytes,
+      });
+      await db.manager.save(
+        EsignFileObject,
+        db.manager.create(EsignFileObject, {
+          ...secondStored,
+          signatureRecordId: addedRecord.id,
+          filePurpose: 'completed_pdf',
+          archiveStatus: 'active',
+        }),
+      );
+      await db.manager.update(
+        EsignSigner,
+        { id: secondSigner.id },
+        {
+          completionStatus: 'ready',
+          completionReadyAt: new Date(),
+          completionLeaseToken: null,
+          completionLeaseExpiresAt: null,
+        },
+      );
+      const updated = apiData<{
+        id: string;
+        expectedCount: number;
+        reused: boolean;
+      }>(await make(other).expect(202));
+      expect(updated).toMatchObject({ expectedCount: 2, reused: false });
+      expect(updated.id).not.toBe(job.id);
+      let updatedResult:
+        | { status: string; files: Array<{ downloadPath: string }> }
+        | undefined;
+      for (let i = 0; i < 100; i++) {
+        updatedResult = apiData(
+          await request(ctx.server)
+            .get(`/api/esign/documents/${id}/exports/${updated.id}`)
+            .set('Cookie', other)
+            .expect(200),
+        );
+        if (
+          updatedResult?.status === 'completed' ||
+          updatedResult?.status === 'failed'
+        )
+          break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      expect(updatedResult?.status).toBe('completed');
+      const updatedJob = await db.manager.findOneByOrFail(EsignExportJob, {
+        publicId: updated.id,
+      });
+      const zipFile = await db.manager.findOneByOrFail(EsignFileObject, {
+        exportJobId: updatedJob.id,
+      });
+      const entries = storedZipEntries(await readPrivateFile(storage, zipFile));
+      expect(entries.map((entry) => entry.name).sort()).toEqual(
+        [
+          `副本__合成簽署人_${signer.publicId}.pdf`,
+          `副本_後來簽署_${secondSigner.publicId}.pdf`,
+        ].sort(),
+      );
+      expect(
+        entries.find((entry) => entry.name.includes(signer.publicId))?.bytes,
+      ).toEqual(firstBytes);
+      expect(
+        entries.find((entry) => entry.name.includes(secondSigner.publicId))
+          ?.bytes,
+      ).toEqual(secondBytes);
+      expect((await preview()).exportState).toMatchObject({
+        current: { id: updated.id },
+        work: null,
+        currentNewSignatureCount: 0,
+      });
+      const beforeDownloadCount = await db.manager.count(EsignExportJob);
+      for (let i = 0; i < 10; i++) {
+        await request(ctx.server)
+          .get(updatedResult!.files[0].downloadPath)
+          .set('Cookie', other)
+          .expect(200);
+      }
+      expect(apiData(await make(other).expect(200))).toMatchObject({
+        id: updated.id,
+        reused: true,
+      });
+      expect(await db.manager.count(EsignExportJob)).toBe(beforeDownloadCount);
+      // Spec017 × Spec030：同部門唯讀與匯出預覽採同一最新工作。
       for (const suffix of ['', '?view=export']) {
         const peer = apiData<{ exportSummary: { id: string } }>(
           await request(ctx.server)
@@ -542,7 +596,7 @@ describe('Spec009 匯出 API', () => {
             .set('Cookie', other)
             .expect(200),
         );
-        expect(peer.exportSummary.id).toBe(job.id);
+        expect(peer.exportSummary.id).toBe(updated.id);
         await request(ctx.server)
           .get(`/api/esign/documents/${id}${suffix}`)
           .set('Cookie', outsider)
@@ -574,50 +628,39 @@ describe('Spec009 匯出 API', () => {
         );
       }
 
-      expect(
-        apiData(
-          await request(ctx.server)
-            .post(
-              `/api/esign/documents/${id}/exports/${newerFailure.publicId}/retries`,
-            )
-            .set('Cookie', other)
-            .set('Origin', origin)
-            .expect(200),
-        ),
-      ).toMatchObject({ id: job.id });
-      // 原成果遺失後，即使有其他工作也不能重建或重新選取。
-      const lost = await db.manager.findOneByOrFail(EsignFileObject, {
-        exportJobId: before.id,
-        filePurpose: 'signed_copies_zip',
-      });
-      await storage.delete(lost);
-      await Promise.all([make(other).expect(503), make(cookie).expect(503)]);
-      await request(ctx.server)
-        .get(file.downloadPath)
-        .set('Cookie', other)
-        .expect(503);
-      await request(ctx.server)
-        .post(
-          `/api/esign/documents/${id}/exports/${newerFailure.publicId}/retries`,
-        )
-        .set('Cookie', other)
-        .set('Origin', origin)
-        .expect(503);
+      // 有效版本無時間到期；新版損壞且無新簽署時不得退回舊版或另建。
       await db.manager.update(
         EsignExportJob,
-        { id: before.id },
-        { status: 'expired' },
+        { id: updatedJob.id },
+        { expiresAt: new Date(0) },
       );
+      expect(apiData(await make(other).expect(200))).toMatchObject({
+        id: updated.id,
+        expiresAt: null,
+      });
+      await storage.delete(zipFile);
       await make(other).expect(503);
-      expect(
-        apiData(
-          await request(ctx.server)
-            .get(`/api/esign/documents/${id}/exports/${job.id}`)
-            .set('Cookie', other)
-            .expect(200),
-        ),
-      ).toMatchObject({ status: 'expired', files: [] });
+      await request(ctx.server)
+        .get(updatedResult!.files[0].downloadPath)
+        .set('Cookie', other)
+        .expect(503);
 
+      // 還原第二人的待產製狀態，讓下列獨立復原文件驗證來源等待。
+      await db.manager.update(
+        EsignFileObject,
+        { signatureRecordId: addedRecord.id },
+        { archiveStatus: 'expired' },
+      );
+      await db.manager.update(
+        EsignSigner,
+        { id: secondSigner.id },
+        {
+          completionStatus: 'processing',
+          completionReadyAt: null,
+          completionLeaseToken: randomUUID(),
+          completionLeaseExpiresAt: new Date(Date.now() + 60_000),
+        },
+      );
       // 後續 worker 復原測試使用另一份合成文件，不再靠到期建立第二個工作。
       const freshDocument = async () => {
         const oldId = id;
@@ -718,14 +761,13 @@ describe('Spec009 匯出 API', () => {
         mimeType: 'application/pdf',
         bytes: Buffer.from('%PDF second copy'),
       });
-      await db.manager.save(
+      await db.manager.update(
         EsignFileObject,
-        db.manager.create(EsignFileObject, {
+        { signatureRecordId: secondRecord.id },
+        {
           ...secondFile,
-          signatureRecordId: secondRecord.id,
-          filePurpose: 'completed_pdf',
           archiveStatus: 'active',
-        }),
+        },
       );
       await db.manager.update(
         EsignSigner,
@@ -818,6 +860,102 @@ describe('Spec009 匯出 API', () => {
     }
   });
 
+  it('新增100筆簽署及反覆讀取只標示過時，不建立匯出工作', async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const docId = apiData<{ id: string }>(
+      await request(ctx.server)
+        .post('/api/esign/documents')
+        .set('Cookie', cookie)
+        .set('Origin', origin)
+        .field('title', '只讀過時狀態')
+        .attach('file', Buffer.from(await pdf.save()), {
+          filename: 'read.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(201),
+    ).id;
+    await db.query(
+      "UPDATE esign_documents SET status='active',sign_start_at=UTC_TIMESTAMP(),sign_end_at=DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY) WHERE id=?",
+      [docId],
+    );
+    let firstRecordId = 0;
+    for (let n = 0; n < 101; n++) {
+      const signer = await db.manager.save(
+        EsignSigner,
+        db.manager.create(EsignSigner, {
+          publicId: randomUUID(),
+          documentId: Number(docId),
+          signerType: 'email',
+          email: `readonly${n}@example.test`,
+          nameSnapshot: `合成${n}`,
+          status: 'signed',
+          signedAt: new Date(),
+          completionStatus: 'pending',
+          sortOrder: n,
+        }),
+      );
+      const record = await db.manager.save(
+        EsignSignatureRecord,
+        db.manager.create(EsignSignatureRecord, {
+          signerId: signer.id,
+          documentSha256: 'a'.repeat(64),
+          signingPayloadSha256: 'b'.repeat(64),
+          consentVersion: 'test',
+          authenticationMethod: 'test',
+          authenticationEventId: randomUUID(),
+          signedAtUtc: new Date(),
+        }),
+      );
+      if (n === 0) firstRecordId = record.id;
+    }
+    const original = await db.manager.save(
+      EsignExportJob,
+      db.manager.create(EsignExportJob, {
+        publicId: randomUUID(),
+        documentId: Number(docId),
+        createdByUserId: Number(ownerId),
+        exportType: 'signed_copies_zip',
+        status: 'completed',
+        completedAt: new Date(),
+        scopeDescription: '合成只讀過時狀態',
+        snapshotJson: [
+          {
+            recordId: firstRecordId,
+            signerPublicId: 'fixture',
+            fileName: 'first.pdf',
+          },
+        ],
+        snapshotAt: new Date(),
+        snapshotSha256: 'a'.repeat(64),
+        recordCount: 1,
+      }),
+    );
+    for (let n = 0; n < 3; n++) {
+      const value = apiData<{
+        exportState: { currentNewSignatureCount: number; work: unknown };
+      }>(
+        await request(ctx.server)
+          .get(`/api/esign/documents/${docId}?view=export`)
+          .set('Cookie', other)
+          .expect(200),
+      );
+      expect(value.exportState).toMatchObject({
+        currentNewSignatureCount: 100,
+        work: null,
+      });
+    }
+    expect(
+      await db.manager.count(EsignExportJob, {
+        where: { documentId: Number(docId) },
+      }),
+    ).toBe(1);
+    expect(
+      (await db.manager.findOneByOrFail(EsignExportJob, { id: original.id }))
+        .updatedAt,
+    ).toEqual(original.updatedAt);
+  });
+
   it('多份歷史固定最新曾成功工作，缺檔或缺完成時間時不能退回較舊產物', async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -894,12 +1032,6 @@ describe('Spec009 匯出 API', () => {
       { completedAt: null },
     );
     await make().expect(503);
-    await db.manager.update(
-      EsignExportJob,
-      { id: newest.job.id },
-      { status: 'expired', completedAt: new Date() },
-    );
-    await make().expect(503);
   });
 
   it('兩個 worker 仍只有一個匯出，慢目的端不會預先打開全部小副本', async () => {
@@ -937,7 +1069,8 @@ describe('Spec009 匯出 API', () => {
       const read = jest
         .spyOn(adapter, 'openReadStream')
         .mockImplementation((reference, options) => {
-          if (!consuming) {
+          // 僅計算目的端已開啟但尚未消費時的預讀；來源完整性驗證不屬串流預讀。
+          if (active > 0 && !consuming) {
             beforeConsumption += 1;
             peakReadAhead = Math.max(peakReadAhead, beforeConsumption);
           }
@@ -979,17 +1112,17 @@ describe('Spec009 匯出 API', () => {
             }),
           );
           const record = await db.manager.save(
-      EsignSignatureRecord,
-      db.manager.create(EsignSignatureRecord, {
-        signerId: signer.id,
-        documentSha256: 'a'.repeat(64),
-        signingPayloadSha256: 'b'.repeat(64),
-        consentVersion: 'test',
-        authenticationMethod: 'test',
-        authenticationEventId: randomUUID(),
-        signedAtUtc: new Date(),
-      }),
-    );
+            EsignSignatureRecord,
+            db.manager.create(EsignSignatureRecord, {
+              signerId: signer.id,
+              documentSha256: 'a'.repeat(64),
+              signingPayloadSha256: 'b'.repeat(64),
+              consentVersion: 'test',
+              authenticationMethod: 'test',
+              authenticationEventId: randomUUID(),
+              signedAtUtc: new Date(),
+            }),
+          );
           const file = await storage.store({
             directory: `documents/bounded-${documentId}`,
             extension: 'pdf',
@@ -1222,4 +1355,29 @@ function createLaunchJwt(empid: string): string {
     privateKey,
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
+}
+
+/** 解析本測試小型 store-mode ZIP 的 central directory，驗證真實檔名與內容。 */
+function storedZipEntries(zip: Buffer): Array<{ name: string; bytes: Buffer }> {
+  const entries: Array<{ name: string; bytes: Buffer }> = [];
+  const signature = Buffer.from([0x50, 0x4b, 0x01, 0x02]);
+  let offset = zip.indexOf(signature);
+  while (offset >= 0 && zip.readUInt32LE(offset) === 0x02014b50) {
+    expect(zip.readUInt16LE(offset + 10)).toBe(0);
+    const size = zip.readUInt32LE(offset + 20);
+    const nameLength = zip.readUInt16LE(offset + 28);
+    const extraLength = zip.readUInt16LE(offset + 30);
+    const commentLength = zip.readUInt16LE(offset + 32);
+    const local = zip.readUInt32LE(offset + 42);
+    const start =
+      local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
+    entries.push({
+      name: zip
+        .subarray(offset + 46, offset + 46 + nameLength)
+        .toString('utf8'),
+      bytes: zip.subarray(start, start + size),
+    });
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
 }

@@ -1,6 +1,6 @@
 # Quickstart：Spec 030 驗證指南
 
-本文件是實作後的驗證計畫；目前僅完成設計，以下測試尚未執行，不代表功能完成。
+本文件是完整功能的驗證指南。US1 已完成的隔離驗證及後續待驗項目見 [validation.md](validation.md)，不代表完整功能可發布。
 
 ## 前置條件
 
@@ -56,3 +56,9 @@ storage 測試須覆蓋 local 及 S3 真實刪除語意：S3 以完整版本 ref
 ## 交付證據
 
 記錄環境、指令、結果與未執行原因；保存無個資的 ZIP entries、工作 ID／數量、狀態轉移與檔案存在斷言。容量報告記錄實際文件量與負載，不能只複製極小 PDF 宣稱通過。部署前確認所有服務及 worker 同版，採修正版回復而非回退不識別新狀態的舊程式。
+
+## Ticket 01 隔離實作入口
+
+實作分支 `impl/030-01`，worktree `/private/tmp/feastogether-030-01`。測試使用專用 MySQL `feastogether_intranet_test_030`、Redis DB 13 與 `/private/tmp/feastogether-spec030-storage`；設定只存本機 `.env.test`，不提交帳密。
+
+若 worktree 的既有 node_modules 是 symlink，使用 `pnpm --config.verify-deps-before-run=false` 執行指令，避免 pnpm 誤判依賴需重裝。Next Turbopack 不接受此 symlink，隔離驗證採 `client build --webpack`；最終 root 預設 build 仍需在整合工作區執行。瀏覽器實際重跑入口見 validation。

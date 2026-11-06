@@ -15,6 +15,7 @@ import {
 import { readPrivateFile } from '#app/infrastructure/file-storage/read-private-file';
 import type {
   EsignDocumentDetailDto,
+  EsignExportStateViewDto,
   EsignSourceFileDto,
   EsignInvitationDelivery,
 } from '../dto/esign-common.dto';
@@ -359,9 +360,14 @@ export class EsignDocumentQueryService {
       this.users.findById(document.createdByUserId, manager),
       this.signers.findByDocument(documentId, manager),
     ]);
+    const exportState = await this.exports.documentState(documentId, userId);
+    const exportView: EsignExportStateViewDto = {
+      exportState,
+      exportSummary: exportState.work ?? exportState.current,
+    };
     return {
       ...this.mapper.excelExportDocument(document, creator, signers),
-      exportSummary: await this.exports.documentSummary(documentId, userId),
+      ...exportView,
       status: this.mapper.documentSummary(document, this.count(signers)).status,
     };
   }

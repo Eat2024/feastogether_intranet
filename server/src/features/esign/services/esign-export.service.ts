@@ -24,7 +24,12 @@ import {
   type EsignExportJob,
   type ExportSnapshotEntry,
 } from '../entities/esign-export-job.entity';
-import { type ExportQueryDto, type ExportJobViewDto } from '../dto/export.dto';
+import {
+  type ExportQueryDto,
+  type ExportJobViewDto,
+  type ExportStateDto,
+} from '../dto/export.dto';
+import type { EsignSignatureRecord } from '../entities/esign-signature-record.entity';
 import {
   ESIGN_EXPORT_QUEUE,
   exportJobArguments,
@@ -65,8 +70,8 @@ export class EsignExportService {
     if (body.type === 'excel') {
       if (body.exportId !== undefined || body.fileId !== undefined)
         throw new AppException(
-        ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
-      );
+          ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
+        );
       return { type: 'excel', fileName };
     }
     if (!body.exportId || !body.fileId)
@@ -118,10 +123,21 @@ export class EsignExportService {
     );
     await this.access.checkDepartmentDocument(document, userId, manager);
 
-    const reusable = await this.jobs.reusable(documentId, manager);
-    if (reusable) return { job: reusable, reused: true };
+    const current = await this.jobs.current(documentId, manager);
+    const work = await this.jobs.work(documentId, manager, current?.id);
+    if (work) return { job: work, reused: true };
 
-    const snapshot = await this.createExportSnapshot(documentId, manager);
+    // 此一次讀取就是受理名單；建立快照時不得重新選取簽署人。
+    const records = await this.jobs.records(documentId, manager);
+    if (
+      current &&
+      this.newSignatureCount(
+        records.map((record) => record.id),
+        await this.jobs.snapshotRecordIds(current.id, manager),
+      ) === 0
+    )
+      return { job: current, reused: true };
+    const snapshot = await this.createExportSnapshot(records, manager);
     const job = this.createPendingExportJob(
       documentId,
       userId,
@@ -131,12 +147,19 @@ export class EsignExportService {
     return { job: await this.jobs.save(job, manager), reused: false };
   }
 
+  private newSignatureCount(
+    recordIds: number[],
+    includedIds: number[],
+  ): number {
+    const included = new Set(includedIds);
+    return recordIds.filter((id) => !included.has(id)).length;
+  }
+
   /** 固定此次匯出的簽署人與完成檔 metadata，尚未產製的副本保留為等待項目。 */
   private async createExportSnapshot(
-    documentId: number,
+    records: EsignSignatureRecord[],
     manager: EntityManager,
   ): Promise<ExportSnapshotEntry[]> {
-    const records = await this.jobs.records(documentId, manager);
     if (!records.length)
       throw new AppException(...AppErrors.ESIGN_EXPORT_EMPTY);
 
@@ -204,7 +227,7 @@ export class EsignExportService {
 
   /** 已完成工作先確認成果仍可用；等待中的工作則確保已送入 queue。 */
   private async ensureAvailableOrEnqueue(job: EsignExportJob): Promise<void> {
-    if (job.completedAt || ['completed', 'expired'].includes(job.status))
+    if (job.completedAt || job.status === 'completed')
       await this.assertAvailable(job);
     if (['pending', 'waiting'].includes(job.status)) await this.enqueue(job.id);
   }
@@ -248,7 +271,7 @@ export class EsignExportService {
       if (
         other &&
         (other.completedAt ||
-          ['completed', 'expired'].includes(other.status) ||
+          other.status === 'completed' ||
           (other.id !== original.id && other.status !== 'failed'))
       )
         return other;
@@ -296,8 +319,11 @@ export class EsignExportService {
     };
   }
 
-  async view(job: EsignExportJob): Promise<ExportJobViewDto> {
-    const files = await this.jobs.files(job.id, this.mysql.getManager());
+  async view(
+    job: EsignExportJob,
+    manager = this.mysql.getManager(),
+  ): Promise<ExportJobViewDto> {
+    const files = await this.jobs.files(job.id, manager);
     return {
       id: job.publicId!,
       documentId: String(job.documentId),
@@ -320,6 +346,38 @@ export class EsignExportService {
             }))
           : [],
     };
+  }
+
+  async documentState(
+    documentId: number,
+    userId: number,
+  ): Promise<ExportStateDto> {
+    return this.mysql.transaction(async (manager) => {
+      await this.access.checkDepartmentDocument(
+        await this.documents.findById(documentId, manager),
+        userId,
+        manager,
+      );
+      const current = await this.jobs.current(documentId, manager);
+      const work = await this.jobs.work(documentId, manager, current?.id);
+      const ids = await this.jobs.recordIds(documentId, manager);
+      return {
+        current: current ? await this.view(current, manager) : null,
+        work: work ? await this.view(work, manager) : null,
+        currentNewSignatureCount: current
+          ? this.newSignatureCount(
+              ids,
+              await this.jobs.snapshotRecordIds(current.id, manager),
+            )
+          : 0,
+        workNewSignatureCount: work
+          ? this.newSignatureCount(
+              ids,
+              await this.jobs.snapshotRecordIds(work.id, manager),
+            )
+          : 0,
+      };
+    });
   }
 
   async documentSummary(documentId: number, userId: number) {
@@ -345,7 +403,7 @@ export class EsignExportService {
     const files = await this.jobs.files(job.id, this.mysql.getManager());
     const file = files.find((f) => f.id === fileId);
     if (!file) throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
-    if (job.completedAt || ['completed', 'expired'].includes(job.status))
+    if (job.completedAt || job.status === 'completed')
       await this.assertAvailable(job);
     if (job.status !== 'completed')
       throw new AppException(...AppErrors.ESIGN_EXPORT_NOT_READY);

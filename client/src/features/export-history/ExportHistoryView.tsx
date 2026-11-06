@@ -106,7 +106,7 @@ const ZIP_STATUS_ORDER: EsignExportStatus[] = [
   "processing",
   "completed",
   "failed",
-  "expired",
+  "superseded",
 ];
 
 /** 各欄的排序值（ISO 時間可直接以字串比較）；同名匯出人以員編或 Email 區分 */
@@ -148,7 +148,7 @@ const ZIP_STATUS_META: Record<
   processing: { label: "打包中", color: "info" },
   completed: { label: "可下載", color: "success" },
   failed: { label: "失敗", color: "error" },
-  expired: { label: "檔案已不可用", color: "default" },
+  superseded: { label: "已被新版取代", color: "default" },
 };
 
 const ZIP_IN_PROGRESS: EsignExportStatus[] = [
@@ -271,9 +271,6 @@ function ZipAction({ record }: { record: ZipExportHistoryItem }) {
         }
       />
     );
-  }
-  if (record.status === "expired") {
-    return <Typography variant="helper">檔案已不可用</Typography>;
   }
   return (
     <Typography variant="helper" component="span">

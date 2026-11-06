@@ -209,3 +209,10 @@ RSS 每 250 ms 取樣，只取 processing 至 completed 區間，包含 ts-node 
 - 在真整合工作區執行原預設 `pnpm build`，Nest 與 Next Turbopack 均成功（未傳 webpack）；日誌 `/tmp/spec030-merge04-build.log`。AGENTS.md 無生成變更，原有未追蹤文件未修改。
 - T032 完成，T001–T032 全部已驗收；四張 tickets 均已整合 resolved。整體 code-review 仍由主代理獨立執行，不將此合併核對冒稱最終雙軸 review。
 - 狀態紀錄 commit 仍完整執行既有 lint/unit hooks，不重複已通過且沒有變更的共享資料庫測試。
+
+## 最終獨立審查與工作區整理
+
+- 2026-11-06：以 29469e7...7165290 進行獨立 Standards／Spec 雙軸 review，兩軸均 0 項發現，詳見 [review.md](review.md)。4 張 tickets resolved、T001–T032 全部完成。
+- 整合分支為 impl/030-integration；未建立遠端 PR、未 push、未部署。文件 expired、非 ZIP 共用 expired、expiresAt 欄位／索引／API 保留。
+- 本次 implementer worktrees 將於交付前移除；node_modules 僅移除本次建立的符號連結，不刪共用依賴或其他既有 worktree。
+- 專用測試設定另留本機 /tmp/spec030-test.env（0600，不提交、不含於報告），供重現測試使用；root 原環境檔未修改。容量資料與原始驗證產物留既有隔離 /tmp 路徑，已提交去識別摘要、來源 hash 與限制。

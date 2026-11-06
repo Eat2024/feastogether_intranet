@@ -4,7 +4,7 @@
 
 **Blocked by:** [028-01](01-catalog-initialization.md)、[027-04](../../027-super-user-access/issues/04-hidden-login.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Source:** [Spec](../../../specs/028-module-authorization/spec.md)、[Plan](../../../specs/028-module-authorization/plan.md)、[Tasks](../../../specs/028-module-authorization/tasks.md)、[API 契約](../../../specs/028-module-authorization/contracts/api-behavior.md)、[權限目錄](../../../specs/028-module-authorization/contracts/permissions.md)、[維運契約](../../../specs/028-module-authorization/contracts/operations.md)
 
@@ -33,3 +33,8 @@
 - 全單元127 suites/1285 tests；root build/lint與client bundle通過。授權定向10項、全security重跑24 suites/188 tests均通過；環境時鐘失敗與修正詳見quickstart「028-02」。
 - 未宣告的舊入口仍保留027保護；完整esign矩陣與readiness待後續票，不宣稱可正式切換。正式管理API變更路徑的雙實例覆驗由028-05/T034接續。
 - status保留claimed，等待整合分支合併後由merger標resolved。
+
+### 2026-11-07 整合紀錄
+
+- 實作 commit `3ae12bb`（`028-02-permissions`）已 fast-forward 合入 `028-module-authorization`；已核對上述驗收與 quickstart 紀錄，本票狀態改為 `resolved`。
+- 後續 028-03／028-04 可基於此整合版本開始；正式管理 API 的雙實例覆驗與全電子簽保護仍依後續 tickets 完成，不代表完整 028 已可正式切換。

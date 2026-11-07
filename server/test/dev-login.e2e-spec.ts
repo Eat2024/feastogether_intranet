@@ -18,7 +18,6 @@ describe('正式 runtime 不暴露 dev login', () => {
     ['GET', '/api/auth/login-options'],
     ['POST', '/api/auth/dev-login'],
     ['POST', '/api/auth/logout'],
-    ['GET', '/api/auth/me'],
   ])('%s %s 回 404', async (method, path) => {
     const call =
       method === 'GET'

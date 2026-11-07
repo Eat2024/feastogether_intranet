@@ -96,6 +96,7 @@ function setup(doc = document()) {
     records as never,
     {} as never,
     exports as never,
+    { requirePermissions: () => Promise.resolve() } as never,
   );
   return {
     service,

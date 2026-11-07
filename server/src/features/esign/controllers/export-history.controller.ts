@@ -1,3 +1,4 @@
+import { RequirePermissions } from '#app/features/authorization/decorators/require-permissions.decorator';
 import {
   Body,
   Controller,
@@ -34,6 +35,7 @@ import { ExportDownloadFileNameDto } from '../dto/export.dto';
 import { exportFileName } from '../helpers/export-file-name';
 import { EsignExportHistoryService } from '../services/esign-export-history.service';
 
+@RequirePermissions('esign.export.read')
 @Controller('esign/history/export')
 @ApiCookieAuth('sessionCookie')
 export class ExportHistoryController {
@@ -85,6 +87,7 @@ export class ExportHistoryController {
   }
 
   // 新匯出 Excel 前回報並寫入紀錄；歷史重新下載不呼叫此端點。
+  @RequirePermissions('esign.export.create')
   @Post()
   @UseGuards(OriginGuard)
   @ApiOperation({
@@ -183,7 +186,7 @@ export class ExportHistoryController {
     summary: '從 PDF 紀錄重新下載已簽署副本',
     description: [
       '**權限**',
-      '- 需有效員工 session 與同源請求，同部門員工可重新下載該文件的 `pdf` 紀錄',
+      '- 需有效員工 session、export.read 能力與同源請求；僅該內部指派的本人可重新下載 `pdf` 紀錄，不依賴部門資格',
       '- 外部簽署 session 一律拒絕',
       '',
       '**回應**',
@@ -209,7 +212,7 @@ export class ExportHistoryController {
   })
   @ApiResponse({
     status: 404,
-    description: 'ESIGN_RESOURCE_NOT_FOUND：不是 pdf 紀錄或不存在',
+    description: 'ESIGN_RESOURCE_NOT_FOUND：不是 pdf 紀錄、不存在或非本人指派',
   })
   @ApiResponse({
     status: 409,

@@ -1,3 +1,4 @@
+import { grantDocumentCreator } from './helpers/authorization-business-fixtures';
 import { completeInitiation } from './helpers/await-initiation';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
@@ -41,9 +42,16 @@ describe('Spec016 員工 session 本人簽署', () => {
         }),
       ),
     );
+    await grantDocumentCreator(ctx.app, users[0].id);
     cookies = await Promise.all(
       users.map(async (user) => await employeeSessionCookie(ctx.app, user.id)),
     );
+  });
+  afterEach(async () => {
+    if (users)
+      await manager().update(User, users[0].id, {
+        departmentCode: 'TEST017-0',
+      });
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
@@ -133,10 +141,11 @@ describe('Spec016 員工 session 本人簽署', () => {
       })),
     };
   }
-  it('本人無 Email／邀請仍可讀檔及簽署；匿名、過期 session、跨人與外部指派不可存取', async () => {
+  it('本人缺部門、無 Email／邀請仍可讀檔及簽署；匿名、過期 session、跨人與外部指派不可存取', async () => {
     const f = await fixture();
     const signer = f.signers[0]!;
     const id = signer.publicId;
+    await manager().update(User, users[0].id, { departmentCode: null });
     // 模擬既有無可用信箱及邀請的內部指派，發起時無 Email 的改動由 ticket08 覆蓋。
     await manager().update(EsignSigner, signer.id, {
       email: null,

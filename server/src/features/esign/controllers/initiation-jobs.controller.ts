@@ -1,3 +1,4 @@
+import { RequirePermissions } from '#app/features/authorization/decorators/require-permissions.decorator';
 import {
   InitiationJobResponseDto,
   LatestInitiationJobResponseDto,
@@ -35,6 +36,7 @@ import {
 import { EsignInitiationJobService } from '../services/esign-initiation-job.service';
 
 @ApiCookieAuth('sessionCookie')
+@RequirePermissions('esign.document.manage')
 @Controller('esign/documents/:documentId/initiation-jobs')
 export class InitiationJobsController {
   constructor(private readonly jobs: EsignInitiationJobService) {}

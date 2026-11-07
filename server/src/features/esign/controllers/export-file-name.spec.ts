@@ -1,3 +1,4 @@
+import { AuthorizationService } from '#app/features/authorization/services/authorization.service';
 import { ExportHistoryController } from './export-history.controller';
 import { EsignExportHistoryService } from '../services/esign-export-history.service';
 import { InitiationJobRepository } from '../repositories/initiation-job.repository';
@@ -66,6 +67,11 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     const module = await Test.createTestingModule({
       controllers: [ExportsController, ExportHistoryController],
       providers: [
+        // 本套件只驗檔名契約；能力矩陣由真 HTTP/DB 的 authorization-colleague 測試負責。
+        {
+          provide: AuthorizationService,
+          useValue: { requirePermissions: () => Promise.resolve() },
+        },
         { provide: EsignExportHistoryService, useValue: { redownloadPdf } },
         {
           provide: InitiationJobRepository,

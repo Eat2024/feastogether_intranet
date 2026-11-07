@@ -140,6 +140,16 @@ console 以 `ConsoleModule`、`createAuthConsole` 的窄 context 為基礎；本
 未執行正式Portal/UAT/正式部署或核定名單指派；本票沒有新增migration或變更文件／簽署證據。028-03～09仍待完成。
 
 
+## 028-03 同仁入口與本人資格（2026-11-07）
+
+- 完成 T016–T019。documents、signing-tasks、candidates、initiation-jobs、notification-batches、exports、export-history 全部內部入口宣告能力。`view=export` 驗 export.read；`export-downloads` 在 service 依 Excel／ZIP 驗 export.create／export.read，controller any-of 不能單獨授權。未完成 actor 改造的 Super 入口繼續403。
+- 基本同部門閱讀維持敏感欄位裁切、來源檔與不可見404；缺 export.read 時詳情 canExport=false 且不回 exportSummary。本人簽署／拒簽／副本不以部門為資格，文件 completed-file 及 pdf history 必須是指派本人；pdf history 同時仍需 export.read。管理員／Super 不具代簽或取他人個人副本資格。
+- `authorization-colleague-boundaries.e2e-spec.ts` 使用真 AppModule、MySQL、Redis 驗 OAuth／WebView session、34受限入口、分支能力、跨部門／缺部門本人及他人副本／代簽負例。既有 internal portal／email／department／delivery security 套件覆蓋實際簽署、來源 PDF、worker 副本、證據與外部憑證隔離。
+- `security-e2e.helper.ts` 明確 seed 測試目錄；`authorization-business-fixtures.ts` 只在各測試明確呼叫時授 document_creator。employeeSessionCookie 不升權。seed 若暫建 Super singleton，完成僅刪自己的 singleton，保留既有授權事件。這些均不是正式啟動副作用。
+- server build、lint（0 errors；既有271 warnings）、unit 127 suites／1285 tests 通過。完整 security 25 suites／191 tests 通過（使用 `caffeinate -i pnpm -C server test:e2e:security` 防主機休眠；前兩輪分別遇固定port衝突及主機長時間暫停，未放寬timeout或正式規則）。
+- 交接後續 tickets：一般文件／匯出 actor 改造屬06–08；T054 readiness 上線前，未使用 security helper 的舊 AppModule e2e 必須補明確 catalog seed，寫入流程逐一明確授角色。此票未執行全業務 `test:e2e`，不能把 security 回歸視為全業務切換驗收。
+
+
 ## 028-04：Super 角色／權限管理與稽核（2026-11-07）
 
 T024、T026～T028、T032、T033 已實作。管理API只有有效Super可用，寫入必驗Origin；未帶Origin與跨站請求拒絕。以下REPL操作使用同一服務及DTO，不直接暴露repository：

@@ -1,3 +1,4 @@
+import { grantDocumentCreator } from './helpers/authorization-business-fixtures';
 import { completeInitiation } from './helpers/await-initiation';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
@@ -47,6 +48,7 @@ describe('Spec016 舊內部邀請切換與外部 OTP 授權', () => {
         }),
       ),
     );
+    await grantDocumentCreator(ctx.app, users[0].id);
     cookies = await Promise.all(
       users.map(async (user) => await employeeSessionCookie(ctx.app, user.id)),
     );

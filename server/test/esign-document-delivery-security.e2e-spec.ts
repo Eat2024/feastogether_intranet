@@ -1,3 +1,4 @@
+import { grantDocumentCreator } from './helpers/authorization-business-fixtures';
 import { completeInitiation } from './helpers/await-initiation';
 import { LocalZipExports1792454403000 } from '#app/infrastructure/database/migrations/1792454403000-LocalZipExports';
 import { createHash, createPrivateKey, randomUUID, sign } from 'node:crypto';
@@ -142,6 +143,7 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       "SELECT id FROM users WHERE empid = 'E2E00910'",
     );
     userId = String(rows[0].id);
+    await grantDocumentCreator(ctx.app, Number(userId));
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
@@ -229,6 +231,10 @@ describe('Spec009 跨故事與管理安全邊界', () => {
       .type('form')
       .send({ code })
       .expect(303);
+    const [other] = await db.query<Array<{ id: number }>>(
+      "SELECT id FROM users WHERE empid = 'E2E00910B'",
+    );
+    await grantDocumentCreator(ctx.app, other.id);
     return String(session.headers['set-cookie'][0]);
   }
   const read = async (id: string) =>

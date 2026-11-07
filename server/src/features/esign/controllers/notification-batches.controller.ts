@@ -1,3 +1,4 @@
+import { RequirePermissions } from '#app/features/authorization/decorators/require-permissions.decorator';
 import { ApiOperation } from '@nestjs/swagger';
 import {
   Body,
@@ -20,6 +21,7 @@ import {
 } from '../dto/notification-batch.dto';
 import { EsignReminderService } from '../services/esign-reminder.service';
 
+@RequirePermissions('esign.document.manage')
 @Controller('esign/documents/:documentId/notification-batches')
 export class NotificationBatchesController {
   constructor(private readonly reminders: EsignReminderService) {}

@@ -1,3 +1,4 @@
+import { AuthorizationService } from '#app/features/authorization/services/authorization.service';
 import { exportFileName } from '../helpers/export-file-name';
 import type {
   PrepareExportDownloadDto,
@@ -45,6 +46,7 @@ export class EsignExportService {
     @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
     @InjectQueue(ESIGN_EXPORT_QUEUE) private readonly queue: Queue,
     private readonly access: EsignAccessPolicyService,
+    private readonly authorization: AuthorizationService,
   ) {}
 
   /** 準備當次下載；ZIP 在資格與成果驗證成功後保存首次提供的檔名。 */
@@ -53,6 +55,9 @@ export class EsignExportService {
     userId: number,
     body: PrepareExportDownloadDto,
   ): Promise<PreparedExportDownloadDto> {
+    await this.authorization.requirePermissions({ kind: 'employee', userId }, [
+      body.type === 'excel' ? 'esign.export.create' : 'esign.export.read',
+    ]);
     const manager = this.mysql.getManager();
     const document = await this.access.checkDepartmentDocument(
       await this.documents.findById(documentId, manager),
@@ -65,8 +70,8 @@ export class EsignExportService {
     if (body.type === 'excel') {
       if (body.exportId !== undefined || body.fileId !== undefined)
         throw new AppException(
-        ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
-      );
+          ...AppErrors.ESIGN_EXPORT_DOWNLOAD_REFERENCE_INVALID,
+        );
       return { type: 'excel', fileName };
     }
     if (!body.exportId || !body.fileId)

@@ -162,7 +162,7 @@ export class EsignExportHistoryService {
     return this.mapper.excelExportDocument(document, creator, signers);
   }
 
-  /** 同部門員工下載簽署人副本：匯出人為目前員工；副本未產生時沿用建立人下載的錯誤。 */
+  /** 既有文件路徑只供本人下載；部門、建立人或管理角色不構成副本資格。 */
   async downloadDepartmentCopy(
     documentId: number,
     signerPublicId: string,
@@ -195,7 +195,7 @@ export class EsignExportHistoryService {
   }
 
   /**
-   * 從 pdf 紀錄重新下載：同部門員工都能取得該簽署人目前的副本。
+   * 從 pdf 紀錄重新下載：只允許該指派的員工本人，與部門範圍無關。
    * 沿用既有紀錄，不新增或改寫匯出歷史。
    */
   async redownloadPdf(
@@ -203,11 +203,9 @@ export class EsignExportHistoryService {
     userId: number,
   ): Promise<PersonalCopyFile> {
     const manager = this.mysql.getManager();
-    const user = await this.access.requireDepartment(userId, manager);
-    const record = await this.jobs.historyRecord(
+    const record = await this.jobs.personalCopyRecord(
       publicId,
-      EXPORT_TYPE_COLUMN.pdf,
-      user.departmentCode,
+      userId,
       manager,
     );
     const signer = record
@@ -223,6 +221,7 @@ export class EsignExportHistoryService {
       record.documentId !== signer.documentId
     )
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    this.access.assertInternalSigner(document, signer, userId);
     const file = await this.completions.personalCopy(document, signer);
     if (!file)
       throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);

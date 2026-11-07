@@ -1,3 +1,4 @@
+import { grantDocumentCreator } from './helpers/authorization-business-fixtures';
 import { randomUUID } from 'node:crypto';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
@@ -6,7 +7,10 @@ import type { SecurityE2eContext } from './security-e2e.helper';
 import { employeeSessionCookie } from './employee-session.helper';
 
 /** 只建立合成資料，不改登入途徑或既有員工；NULL 舊文件可用 overrides 明確指定。 */
-export async function createDepartmentFixtures(ctx: SecurityE2eContext) {
+export async function createDepartmentFixtures(
+  ctx: SecurityE2eContext,
+  role?: 'document_creator',
+) {
   const manager = ctx.app.get(MysqlService).getManager();
   const prefix = randomUUID().slice(0, 8);
   const definitions = {
@@ -30,6 +34,8 @@ export async function createDepartmentFixtures(ctx: SecurityE2eContext) {
           departmentName: '合成同名部門',
         }),
       );
+      if (role === 'document_creator')
+        await grantDocumentCreator(ctx.app, user.id);
       const cookie = await employeeSessionCookie(ctx.app, user.id);
       return { key, user, cookie };
     }),

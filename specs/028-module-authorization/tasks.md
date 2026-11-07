@@ -33,10 +33,10 @@
 - [X] T013 [P] [US1] 在 `server/test/authorization-baseline.e2e-spec.ts` 建立新／舊 session、零指派、停用／刪除員工、缺部門、GET 無寫入及最小 response 契約案例。
 - [X] T014 [US1] 在 `server/src/features/authorization/services/authorization-resolver.service.ts` 與 `.spec.ts` 實作有效員工固定 baseline，Super 回 compiled 全集；當前 DB 狀態與 catalog 必須有效，無逐人隱含指派寫入、無逐請求 Portal 或 cookie 權限；為一般 role 聯集保留同一解析入口，下一階段擴充。
 - [X] T015 [US1] 在 `server/src/features/authorization/controllers/current-authorization.controller.ts`、`dto/authorization-view.dto.ts` 提供 GET /api/me/authorization；employee actor 僅 kind/userId（沿 027 安全整數 number），super 僅 kind/displayName，modules／permissions 排序去重、空 module 省略，no-store、不帶 roles／憑證／他人資料；未登入 401、不可用 503。
-- [ ] T016 [US1] 依矩陣在 `server/src/features/esign/controllers/documents.controller.ts`、`signing-tasks.controller.ts`、`signer-candidates.controller.ts`、`initiation-jobs.controller.ts`、`notification-batches.controller.ts`、`exports.controller.ts`、`export-history.controller.ts` 完整宣告所需能力；詳情 export view、匯出下載記錄分支於 service 重驗，候選人只允許 create/manage any-of，零角色員工寫入／一般匯出不得漏口。
-- [ ] T017 [US1] 在 `server/src/features/esign/services/esign-access-policy.service.ts`、`esign-document-query.service.ts` 驗證 document.read 的原有同部門／原建立人閱讀例外，無可信部門 fail-closed，簽名／邀請裁切及不可見 404 不變；此任務只做基本閱讀，跨部門管理由 US4 擴充。
-- [ ] T018 [US1] 在 `server/src/features/esign/services/esign-completion-access.service.ts`、`esign-signing-task.service.ts`、`esign-signing.service.ts`、`esign-rejection.service.ts` 及 `esign-export-history.service.ts` 將本人簽署／拒簽／departmentFile／pdf 歷史副本入口限定 employee 本人指派，保留期限、條款、證據、外部憑證隔離；一般匯出另走 export 能力。
-- [ ] T019 [US1] 在 `server/test/authorization-colleague-boundaries.e2e-spec.ts` 驗證同仁所有正負案例與任意管理 actor 代簽／代拒簽／他人副本失敗；覆蓋來源檔、export view、一般歷史／下載、pdf 歷史旁路及缺部門但本人資格仍可獨立判斷。
+- [X] T016 [US1] 依矩陣在 `server/src/features/esign/controllers/documents.controller.ts`、`signing-tasks.controller.ts`、`signer-candidates.controller.ts`、`initiation-jobs.controller.ts`、`notification-batches.controller.ts`、`exports.controller.ts`、`export-history.controller.ts` 完整宣告所需能力；詳情 export view、匯出下載記錄分支於 service 重驗，候選人只允許 create/manage any-of，零角色員工寫入／一般匯出不得漏口。
+- [X] T017 [US1] 在 `server/src/features/esign/services/esign-access-policy.service.ts`、`esign-document-query.service.ts` 驗證 document.read 的原有同部門／原建立人閱讀例外，無可信部門 fail-closed，簽名／邀請裁切及不可見 404 不變；此任務只做基本閱讀，跨部門管理由 US4 擴充。
+- [X] T018 [US1] 在 `server/src/features/esign/services/esign-completion-access.service.ts`、`esign-signing-task.service.ts`、`esign-signing.service.ts`、`esign-rejection.service.ts` 及 `esign-export-history.service.ts` 將本人簽署／拒簽／departmentFile／pdf 歷史副本入口限定 employee 本人指派，保留期限、條款、證據、外部憑證隔離；一般匯出另走 export 能力。
+- [X] T019 [US1] 在 `server/test/authorization-colleague-boundaries.e2e-spec.ts` 驗證同仁所有正負案例與任意管理 actor 代簽／代拒簽／他人副本失敗；覆蓋來源檔、export view、一般歷史／下載、pdf 歷史旁路及缺部門但本人資格仍可獨立判斷。
 
 ## Phase 4: US2 — 子功能隔離、多角色聯集與即時生效 (P1)
 

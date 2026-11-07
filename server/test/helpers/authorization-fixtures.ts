@@ -73,3 +73,20 @@ export async function createAuthorizationScopeFixtures(db: DataSource) {
     "INSERT INTO authorization_permissions (module_key,permission_key,permission_name,assignable) VALUES ('esign','esign.document.read','閱讀文件',1),('test-module','test-module.document.read','測試閱讀',1)",
   );
 }
+
+/** 既有業務 e2e 的明確目錄前置；只在測試 app.init 前執行，不是正式啟動行為。 */
+export async function seedAuthorizationCatalog(db: DataSource) {
+  const services = authorizationServices(db);
+  if ((await services.repository.permissions(db.manager)).length) {
+    await services.catalog.assertReady();
+    return;
+  }
+  const access = new SuperUserAccessRepository();
+  const existing = await access.find(db.manager);
+  if (!existing) await initializeAuthorizationOperator(db);
+  try {
+    await services.catalog.syncCatalog();
+  } finally {
+    if (!existing) await db.query('DELETE FROM super_user_access WHERE id = 1');
+  }
+}

@@ -85,12 +85,14 @@ describe('EsignCompletionAccessService 個人下載', () => {
   }
 
   it.each(['active', 'expired', 'finalizing', 'completed', 'stopped'])(
-    '%s 的 ready 副本供建立人及本人下載',
+    '%s 的 ready 副本僅供本人下載，建立人不能代領',
     async (status) => {
       const f = await setup(status);
-      const creator = await f.service.departmentFile(4, 'person-a', 7);
-      expect(creator.file?.bytes).toEqual(f.bytes);
-      expect(creator.signer).toBe(f.signer);
+      await expect(
+        f.service.departmentFile(4, 'person-a', 7),
+      ).rejects.toMatchObject({ status: 404 });
+      const ownByDocument = await f.service.departmentFile(4, 'person-a', 20);
+      expect(ownByDocument.file?.bytes).toEqual(f.bytes);
       const own = await f.service.signerFile('person-a', 20);
       expect(own.file?.bytes).toEqual(f.bytes);
       expect(own.signer).toBe(f.signer);
@@ -108,7 +110,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
       status: 404,
     });
     await expect(
-      f.service.departmentFile(4, 'person-a', 20),
+      f.service.departmentFile(4, 'person-a', 99),
     ).rejects.toMatchObject({ status: 404 });
     f.signer.documentId = 5;
     await expect(
@@ -123,7 +125,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
       const f = await setup();
       f.signer.completionStatus = status;
       await expect(
-        f.service.departmentFile(4, 'person-a', 7),
+        f.service.departmentFile(4, 'person-a', 20),
       ).resolves.toMatchObject({ file: null });
       expect(f.files.findCompletedFile).not.toHaveBeenCalled();
       expect(f.files.findDocumentFile).not.toHaveBeenCalled();
@@ -179,7 +181,7 @@ describe('EsignCompletionAccessService 個人下載', () => {
       if (change === 'size') f.file.fileSize += 1;
       if (change === 'evidence') f.record.signingPayloadSha256 = '0'.repeat(64);
       await expect(
-        f.service.departmentFile(4, 'person-a', 7),
+        f.service.departmentFile(4, 'person-a', 20),
       ).rejects.toMatchObject({
         status: 409,
       });

@@ -1,3 +1,4 @@
+import { RequirePermissions } from '#app/features/authorization/decorators/require-permissions.decorator';
 import { EsignRejectionService } from '../services/esign-rejection.service';
 import { RejectionDto } from '../dto/rejection.dto';
 import { AppErrors } from '#app/common/errors/app-errors';
@@ -51,6 +52,7 @@ export class SigningTasksController {
     description:
       '本人 session 授權；文件須允許拒簽。首次回 201，同 requestId 與原因重送回 200；非本人回 404、未登入回 401。',
   })
+  @RequirePermissions('esign.signing.submit')
   @Post(':signerPublicId/rejection')
   async reject(
     @Param('signerPublicId') signerPublicId: string,
@@ -73,6 +75,7 @@ export class SigningTasksController {
     description:
       '查詢指派給目前員工的非草稿簽署任務，可依狀態篩選。\n\n前端串接參考：/esign/my-signature 列表透過 listSigningTasks() 讀取；/esign/my-signature/[id] 也從此列表找出指定 signerPublicId 的任務。',
   })
+  @RequirePermissions('esign.signing.read')
   @Get()
   list(
     @CurrentUserId() userId: number,
@@ -88,6 +91,7 @@ export class SigningTasksController {
     description:
       '以員工 session 開啟本人任務（唯讀）；非本人或外部指派回 404、未登入回 401。',
   })
+  @RequirePermissions('esign.signing.read')
   @Post(':signerPublicId')
   open(
     @Param('signerPublicId') signerPublicId: string,
@@ -102,6 +106,7 @@ export class SigningTasksController {
     description:
       '以員工 session 讀取本人 PDF；保留期間與完整性驗證。非本人回 404、未登入回 401。',
   })
+  @RequirePermissions('esign.signing.read')
   @Get(':signerPublicId/source-file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -129,6 +134,7 @@ export class SigningTasksController {
     description:
       '以員工 session 提交本人簽名；首次回 201，同 requestId 重送回 200。非本人回 404、未登入回 401。',
   })
+  @RequirePermissions('esign.signing.submit')
   @Post(':signerPublicId/signatures')
   sign(
     @Param('signerPublicId') signerPublicId: string,
@@ -154,6 +160,7 @@ export class SigningTasksController {
     description:
       '以員工 session 下載本人已簽署且產製完成的 PDF（200 application/pdf 附件），保留證據與檔案完整性驗證。送出前新增一筆 pdf 匯出紀錄（匯出人與範圍都是本人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、未產製完成回 409、非本人回 404、未登入回 401，都不記錄。取代已移除的 GET …/completed-file。',
   })
+  @RequirePermissions('esign.signing.copy')
   @Post(':signerPublicId/completed-file/downloads')
   @CompletedPdfDownload()
   async downloadCompletedFile(

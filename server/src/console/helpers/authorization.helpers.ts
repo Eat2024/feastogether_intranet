@@ -1,3 +1,4 @@
+import { AuthorizationAssignmentService } from '#app/features/authorization/services/authorization-assignment.service';
 import { AuthorizationRoleService } from '#app/features/authorization/services/authorization-role.service';
 import { AuthorizationEventService } from '#app/features/authorization/services/authorization-event.service';
 import { AuthorizationResolverService } from '#app/features/authorization/services/authorization-resolver.service';
@@ -10,8 +11,15 @@ export function createAuthorizationConsole(app: INestApplicationContext) {
   const resolver = app.get(AuthorizationResolverService);
   const roles = app.get(AuthorizationRoleService);
   const events = app.get(AuthorizationEventService);
+  const assignments = app.get(AuthorizationAssignmentService);
   const context = { source: 'repl' } as const;
   return {
+    assignRoles: (moduleKey: string, input: unknown) =>
+      assignments.assign(context, moduleKey, input),
+    employeeRoles: (moduleKey: string, userId: string) =>
+      assignments.employeeRoles(context, moduleKey, userId),
+    roleEmployees: (moduleKey: string, roleId: string, page: unknown = {}) =>
+      assignments.roleEmployees(context, moduleKey, roleId, page),
     modules: () => roles.modules(context),
     permissions: (moduleKey: string) => roles.permissions(context, moduleKey),
     roles: (moduleKey: string, page: unknown = {}) =>

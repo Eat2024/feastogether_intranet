@@ -1,3 +1,4 @@
+import { AuthorizationAssignmentsController } from './controllers/authorization-assignments.controller';
 import { AuthorizationEventsController } from './controllers/authorization-events.controller';
 import { AuthorizationRolesController } from './controllers/authorization-roles.controller';
 import { Module } from '@nestjs/common';
@@ -10,6 +11,7 @@ import { CurrentAuthorizationController } from './controllers/current-authorizat
 @Module({
   imports: [AuthorizationModule],
   controllers: [
+    AuthorizationAssignmentsController,
     CurrentAuthorizationController,
     AuthorizationRolesController,
     AuthorizationEventsController,

@@ -1,3 +1,6 @@
+import { PortalModule } from '#app/infrastructure/portal/portal.module';
+import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
+import { AuthorizationAssignmentService } from './services/authorization-assignment.service';
 import { AuthorizationEventService } from './services/authorization-event.service';
 import { AuthorizationManagementService } from './services/authorization-management.service';
 import { AuthorizationRoleService } from './services/authorization-role.service';
@@ -11,8 +14,10 @@ import { AuthorizationService } from './services/authorization.service';
 
 /** HTTP、worker、console 共用的授權服務；沒有 controller 或啟動寫入。 */
 @Module({
-  imports: [MysqlModule, SuperUserAccessModule],
+  imports: [MysqlModule, SuperUserAccessModule, PortalModule],
   providers: [
+    EligibleStaffService,
+    AuthorizationAssignmentService,
     AuthorizationAuditService,
     AuthorizationManagementService,
     AuthorizationRoleService,
@@ -22,6 +27,7 @@ import { AuthorizationService } from './services/authorization.service';
     AuthorizationService,
   ],
   exports: [
+    AuthorizationAssignmentService,
     AuthorizationAuditService,
     AuthorizationManagementService,
     AuthorizationRoleService,

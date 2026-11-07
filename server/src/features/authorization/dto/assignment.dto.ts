@@ -20,3 +20,14 @@ export class AssignmentDto {
   @IsAuthorizationId({ each: true })
   expectedRoleIds!: string[];
 }
+
+/** 管理 API 使用安全 ID 字串，隱含同仁不混入可修改 roleIds。 */
+export interface EmployeeRolesDto {
+  userId: string;
+  moduleKey: string;
+  roleIds: string[];
+  implicitRoles: Array<{ roleCode: 'colleague'; source: 'baseline' }>;
+}
+export interface AssignmentResultDto extends EmployeeRolesDto {
+  changed: boolean;
+}

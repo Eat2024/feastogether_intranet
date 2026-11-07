@@ -188,3 +188,41 @@ await authz.deleteRole('esign', role.id, disabled.version)
 - server build／lint:check、root build／lint、client test（4項）／check:bundle通過；271既有warnings、0 errors。
 - `caffeinate -i pnpm -C server test:e2e:security`：25 suites／193 tests全部通過（47.865秒）。先前主機休眠造成多次120秒逾時（整套記370／2733秒），已透過防休眠、錯開測試port後完整重跑收斂；沒有修改timeout或正式規則。不同worktree的DB/Redis雖隔離，既有credential測試使用固定3030/3031，因此全套不可並行。
 - 無migration／新環境變數／dependency／管理前端；本票完成不代表完整028可以正式切換。
+
+
+## 028-05：員工預指派、CAS 與即時撤權（2026-11-07）
+
+T025、T029～T031、T034 已完成。管理介面新增：
+
+- `POST /api/authorization/modules/:moduleKey/employee-role-assignments`：員編僅由 body 傳入，查 Portal 唯一且有效的 exact-match，再原子預建／取得同一員工與覆寫一般角色集合。
+- `GET /api/authorization/modules/:moduleKey/employees/:userId/roles`：只回 userId／moduleKey／roleIds／implicitRoles；同仁不混進可修改的 roleIds。
+- `GET /api/authorization/modules/:moduleKey/roles/:roleId/employees`：倒序本地 userId cursor 分頁，成員只回 userId／name，預設20、最多100。
+
+REPL 透過同一服務，不暴露 repository；下面只使用合成示例員編，正式必須依核定名單替換，名單不得入 repository：
+
+```js
+const { items } = await authz.roles('esign')
+const creator = items.find(role => role.roleCode === 'document_creator')
+const assigned = await authz.assignRoles('esign', {
+  empId: 'SYNTHETIC028', roleIds: [creator.id], expectedRoleIds: [],
+})
+await authz.employeeRoles('esign', assigned.userId)
+await authz.roleEmployees('esign', creator.id, { limit: 20 })
+await authz.userPermissions(Number(assigned.userId))
+await authz.assignRoles('esign', {
+  empId: 'SYNTHETIC028', roleIds: [], expectedRoleIds: assigned.roleIds,
+})
+```
+
+`empId`原樣查核，不 trim／轉數字；Portal的大小寫／尾空白候選仍需 exact-match。本地 empid unique key 命中後也必須字元相同，不自動改員編。預建不偽造登入時間，不更新既有員工資料。來源不存在／無效／模糊回422，Portal故障502；本地inactive／deleted回403且不復活，目標錯誤不清除管理者cookie。
+
+指派以 singleton → user → roles ID → permissions ID → relations 鎖序，使用READ COMMITTED及CAS；已是相同目標時冪等成功。初次預建即使目標空集合仍保存一次建檔audit（changed=true），後續相同請求no-op。重授恢復原關聯列，不插入重複關聯。新增user、角色關聯與audit同交易，任一失敗全部回滾；不從歷史文件推導額外權限。
+
+`AuthorizationModule`沿用lazy Portal provider。Console不啟HTTP／worker／Redis／mail／storage，Portal設定缺漏不影響啟動、唯讀授權或syncCatalog；只在assignRoles查上游。所有成功與錯誤結果沿相同API/REPL業務邊界。
+
+### 已執行驗證及後續交接
+
+- 新增assignment與management-concurrency兩套真MySQL／合成Portal測試，共7項。包含正式AppModule、API／REPL、一致錯誤、cursor、首次登入競態、刪role對指派、CAS、稽核故障新user回滾及兩獨立pool舊session即時撤權。
+- `pnpm -C server build`、unit 128 suites／1289 tests、root lint通過。
+- `caffeinate -i pnpm -C server test:e2e:security`：28 suites／203 tests通過（69.4秒）。首輪202／203，唯一舊測試禁止PortalModule，已改驗lazy連線行為後全套通過，沒有放寬正式授權或timeout。
+- 無前端／migration／正式env／dependency變更。只用隔離Docker MySQL與測試庫`feastogether_intranet_test_e`、Redis DB5；未連正式Portal／部署／配置真實核定名單。全業務e2e及完整切換由028-09驗收。

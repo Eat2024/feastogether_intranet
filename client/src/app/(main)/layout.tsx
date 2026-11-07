@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import Box from "@mui/material/Box";
-import CurrentActorBanner from "@/components/CurrentActorBanner";
 import Sidebar from "@/components/sidebar/Sidebar";
 import { SIDEBAR_OPEN_COOKIE } from "@/components/sidebar/constants";
 import InternalIdentityBoundary from "@/features/navigation/InternalIdentityBoundary";
@@ -17,7 +16,6 @@ export default async function MainLayout({ children }: LayoutProps<"/">) {
           component="main"
           sx={{ flexGrow: 1, minWidth: 0, p: 3, display: "flex", flexDirection: "column", gap: 3 }}
         >
-          <CurrentActorBanner />
           {children}
         </Box>
       </Box>

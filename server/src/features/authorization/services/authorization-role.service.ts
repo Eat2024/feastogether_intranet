@@ -20,7 +20,7 @@ import {
 import {
   authorizationInput,
   authorizationIdString,
-  AuthorizationModuleParamsDto,
+  parseAuthorizationModuleKey,
   AuthorizationRoleParamsDto,
   AuthorizationPageDto,
   parseAuthorizationId,
@@ -41,14 +41,6 @@ export class AuthorizationRoleService {
     private readonly catalog: AuthorizationCatalogService,
     private readonly audit: AuthorizationAuditService,
   ) {}
-  private module(moduleKey: unknown): string {
-    const input = authorizationInput(AuthorizationModuleParamsDto, {
-      moduleKey,
-    });
-    if (!AUTHORIZATION_MODULES.some((m) => m.moduleKey === input.moduleKey))
-      throw new AppException(...AppErrors.AUTHORIZATION_REQUEST_FORMAT_INVALID);
-    return input.moduleKey;
-  }
   async modules(context: AuthorizationManagementContext) {
     return this.management.read(context, () =>
       AUTHORIZATION_MODULES.map((m) => ({
@@ -62,7 +54,7 @@ export class AuthorizationRoleService {
     moduleKey: unknown,
   ) {
     return this.management.read(context, () => {
-      const key = this.module(moduleKey);
+      const key = parseAuthorizationModuleKey(moduleKey);
       return AUTHORIZATION_PERMISSIONS.filter((p) => p.moduleKey === key).map(
         (p) => ({
           moduleKey: p.moduleKey,
@@ -79,7 +71,7 @@ export class AuthorizationRoleService {
     query: unknown = {},
   ) {
     return this.management.read(context, async (manager) => {
-      const key = this.module(moduleKey);
+      const key = parseAuthorizationModuleKey(moduleKey);
       const page = authorizationInput(AuthorizationPageDto, query);
       const roles = await this.repository.listRoles(
         key,
@@ -105,7 +97,7 @@ export class AuthorizationRoleService {
         moduleKey,
         roleId,
       });
-      this.module(input.moduleKey);
+      parseAuthorizationModuleKey(input.moduleKey);
       const role = await this.repository.findRole(
         input.moduleKey,
         parseAuthorizationId(input.roleId),
@@ -121,7 +113,7 @@ export class AuthorizationRoleService {
     moduleKey: unknown,
     body: unknown,
   ) {
-    const key = this.module(moduleKey);
+    const key = parseAuthorizationModuleKey(moduleKey);
     const input = authorizationInput(CreateRoleDto, body);
     if (
       !AUTHORIZATION_PERMISSIONS.some(
@@ -201,7 +193,7 @@ export class AuthorizationRoleService {
     body: unknown,
   ) {
     const input = authorizationInput(SetRolePermissionsDto, body);
-    const key = this.module(moduleKey);
+    const key = parseAuthorizationModuleKey(moduleKey);
     if (input.permissionKeys.includes('platform.authorization.manage'))
       throw new AppException(...AppErrors.AUTHORIZATION_PROTECTED_ROLE);
     validateRolePermissions(key, input.permissionKeys);
@@ -261,7 +253,7 @@ export class AuthorizationRoleService {
       moduleKey,
       roleId,
     });
-    const key = this.module(input.moduleKey);
+    const key = parseAuthorizationModuleKey(input.moduleKey);
     const id = parseAuthorizationId(input.roleId);
     try {
       return await this.management.transaction(

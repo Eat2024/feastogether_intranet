@@ -49,3 +49,10 @@
 - 實作與最終驗收 tip `abea097`（`028-09-integration`，包含 legacy fixtures `19d1577` 與輕量重播修復 `bd7a59f`）已 fast-forward 合入 `028-module-authorization`；已核對 quickstart 的實測紀錄，本票 repository 實作與隔離驗收結案為 `resolved`，後續仍進行整合分支 code review。
 - unit 129 suites／1310 tests、business 56 suites／569 tests 與獨立 reconnect 1項、security 38 suites／226 tests、schema 10 suites／49 tests、root build／lint、client test 4項／bundle 均通過。
 - 真實核定名單與實際停止舊服務／切換部署兩項 AC 刻意保留未勾，沿前述外部維運前置交付；此結案不代表正式部署或核定指派已完成，不能以合成驗收替代。
+
+### 2026-11-07 最終雙軸 review 與重構驗證
+
+- Standards review：硬性違規 0 項；唯一低優先建議為角色／指派服務重複的模組鍵驗證，已收斂至既有 DTO 的 `parseAuthorizationModuleKey()`。Spec review：確認缺陷 0 項。
+- 保留原格式驗證、編譯目錄檢查、錯誤碼與驗證順序；純重構沿用既有行為測試，沒有新增抽象層、契約、migration 或設定。
+- server build、lint:check 通過（0 errors／271 既有 warnings）；authorization unit 5 suites／9 tests 通過；角色管理、員工指派及管理併發 e2e 3 suites／12 tests 通過。以 `caffeinate -is`、隔離 MySQL `feastogether_intranet_test_l` 與 Redis DB13 驗證。
+- 規格 metadata 同步為整合分支及 repository 實作／隔離驗收完成；真實核定名單與正式部署兩項前置維持未完成。

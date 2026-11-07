@@ -318,3 +318,10 @@ await authz.assignRoles('esign', {
 | 建置版Swagger | 直接以dist/AppModule產生63條path文件，description/example/enum掃描隱藏入口提示0命中；actor wire union保留 |
 
 安全首輪37/38 suites、225/226 tests，唯一失敗為08加入的公開Swagger「Super user」說明；保留027原嚴格隱匿測試，改中性說明並確認compiled Swagger，再完整重跑全綠。legacy正向本人PDF、Actor DTO與明確grant已修正，未放寬正式資源政策；輕量重播SQL紅測試保留並修正式投影。FR-001～FR-021對應見[tasks需求覆蓋表](tasks.md#requirements-coverage)及上述SC證據；FR-018／SC-006正式名單與部署前置仍依上一節留待維運，不以合成資料冒充上線。
+
+### 2026-11-07 最終雙軸 review 與重構驗證
+
+- Standards review：硬性違規 0 項；唯一低優先建議為角色／指派服務重複的模組鍵驗證，已收斂至既有 DTO 的 `parseAuthorizationModuleKey()`。Spec review：確認缺陷 0 項。
+- 保留原格式驗證、編譯目錄檢查、錯誤碼與驗證順序；純重構沿用既有行為測試，沒有新增抽象層、契約、migration 或設定。
+- server build、lint:check 通過（0 errors／271 既有 warnings）；authorization unit 5 suites／9 tests 通過；角色管理、員工指派及管理併發 e2e 3 suites／12 tests 通過。以 `caffeinate -is`、隔離 MySQL `feastogether_intranet_test_l` 與 Redis DB13 驗證。
+- 規格 metadata 同步為整合分支及 repository 實作／隔離驗收完成；真實核定名單與正式部署兩項前置維持未完成。

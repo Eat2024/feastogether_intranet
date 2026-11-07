@@ -7,7 +7,6 @@ import type { StaffLookupDto } from '#app/features/auth/dto/staff-lookup.dto';
 import { isDuplicateEntryError } from '#app/features/auth/repositories/oauth-identity.repository';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import type { User } from '#app/features/users/entities/user.entity';
-import { AUTHORIZATION_MODULES } from '../authorization.catalog';
 import { AuthorizationRepository } from '../repositories/authorization.repository';
 import {
   AssignmentDto,
@@ -17,7 +16,7 @@ import {
 import {
   authorizationInput,
   authorizationIdString,
-  AuthorizationModuleParamsDto,
+  parseAuthorizationModuleKey,
   AuthorizationUserParamsDto,
   AuthorizationRoleParamsDto,
   AuthorizationPageDto,
@@ -47,7 +46,7 @@ export class AuthorizationAssignmentService {
     moduleKey: unknown,
     body: unknown,
   ): Promise<AssignmentResultDto> {
-    const key = this.module(moduleKey);
+    const key = parseAuthorizationModuleKey(moduleKey);
     const input = authorizationInput(AssignmentDto, body);
     // 查上游前先驗操作者；上游 I/O 不占用本地交易或資料列鎖。
     await this.management.read(context, () => undefined);
@@ -160,7 +159,7 @@ export class AuthorizationAssignmentService {
       moduleKey,
       userId,
     });
-    const key = this.module(input.moduleKey);
+    const key = parseAuthorizationModuleKey(input.moduleKey);
     return this.management.read(context, async (manager) => {
       const user = await this.users.findById(
         parseAuthorizationId(input.userId),
@@ -186,7 +185,7 @@ export class AuthorizationAssignmentService {
       moduleKey,
       roleId,
     });
-    const key = this.module(input.moduleKey);
+    const key = parseAuthorizationModuleKey(input.moduleKey);
     const page = authorizationInput(AuthorizationPageDto, query);
     return this.management.read(context, async (manager) => {
       const role = await this.repository.findRole(
@@ -215,14 +214,6 @@ export class AuthorizationAssignmentService {
     });
   }
 
-  private module(moduleKey: unknown): string {
-    const input = authorizationInput(AuthorizationModuleParamsDto, {
-      moduleKey,
-    });
-    if (!AUTHORIZATION_MODULES.some((m) => m.moduleKey === input.moduleKey))
-      throw new AppException(...AppErrors.AUTHORIZATION_REQUEST_FORMAT_INVALID);
-    return input.moduleKey;
-  }
   private assertAssignableUser(user: User, empId: string) {
     if (!user.isActive || user.deletedAt)
       throw new AppException(...AppErrors.ACCOUNT_DISABLED);

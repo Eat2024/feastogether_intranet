@@ -1,10 +1,10 @@
 # Feature Specification: 多子功能角色權限與電子簽授權
 
-**Feature Branch**: 未建立專用分支；規格編號 `028-module-authorization`
+**Feature Branch**: `028-module-authorization`
 
 **Created**: 2026-11-04
 
-**Status**: Draft — grilling 決策已確認，待 plan
+**Status**: Repository 實作與隔離驗收完成；尚未正式部署
 
 **Input**: 沿用 CKS 角色／權限管理概念，改為子功能隔離與同功能多角色聯集；有效員工固定具備電子簽同仁資格，Super user 全權且獨占授權管理。管理 API 與 REPL 共用業務規則及稽核；本次不做管理畫面。
 

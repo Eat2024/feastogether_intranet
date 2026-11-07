@@ -17,6 +17,7 @@ import {
 } from 'class-validator';
 import { AppException } from '#app/common/errors/app.exception';
 import { AppErrors } from '#app/common/errors/app-errors';
+import { AUTHORIZATION_MODULES } from '../authorization.catalog';
 
 /** 管理 ID 只接受正整數字串；不讓 Number 靜默四捨五入。 */
 export function parseAuthorizationId(value: unknown): number {
@@ -65,6 +66,13 @@ export class AuthorizationModuleParamsDto {
   @Length(1, 50)
   @Matches(/^[a-z][a-z0-9-]*$/)
   moduleKey!: string;
+}
+/** 模組鍵須同時符合輸入格式與編譯目錄。 */
+export function parseAuthorizationModuleKey(moduleKey: unknown): string {
+  const input = authorizationInput(AuthorizationModuleParamsDto, { moduleKey });
+  if (!AUTHORIZATION_MODULES.some((m) => m.moduleKey === input.moduleKey))
+    throw new AppException(...AppErrors.AUTHORIZATION_REQUEST_FORMAT_INVALID);
+  return input.moduleKey;
 }
 export class AuthorizationRoleParamsDto extends AuthorizationModuleParamsDto {
   @IsAuthorizationId() roleId!: string;

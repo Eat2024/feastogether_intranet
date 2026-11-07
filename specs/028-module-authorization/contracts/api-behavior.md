@@ -7,7 +7,7 @@
 | 方法／路徑 | 行為 |
 |---|---|
 | GET /api/authorization/modules | compiled子功能目錄 |
-| GET /api/authorization/modules/{moduleKey}/permissions | 該module權限目錄，含assignable，不能編輯 |
+| GET /api/authorization/modules/{moduleKey}/permissions | 該module權限目錄，含由compiled catalog計算的assignable，不能編輯 |
 | GET /api/authorization/modules/{moduleKey}/roles | 角色分頁，含protected／active／version，預設含未刪除的啟用與停用角色 |
 | POST 同上 | roleName，後端產生不可變roleCode；201 |
 | GET /api/authorization/modules/{moduleKey}/roles/{roleId} | 詳細角色與permissionKeys |
@@ -30,7 +30,7 @@ empId1～32字，保留大小寫與前後字元、不trim或轉數字；Portal e
 
 role變更鎖role並比expectedVersion，成功version+1；no-op不加版也不新增audit。assignment鎖user再role，以expectedRoleIds核對目前explicit集合；目標已一致可冪等成功。role／assignment與audit在同transaction；任何FK、版本或audit失敗不留半套關聯。
 
-平台目錄目前沒有可指派權限，不接受platform一般角色建立；同仁role不得透過任何CRUD／permission／assignment間接改變。自訂角色只能引用assignable權限，禁止platform.authorization.manage。
+平台目錄目前沒有可指派權限，不接受platform一般角色建立；同仁role不得透過任何CRUD／permission／assignment間接改變。自訂角色只能引用compiled catalog標示可指派的權限，禁止platform.authorization.manage；保護與可指派狀態皆不另存DB旗標。
 
 ## 分頁與輸出
 

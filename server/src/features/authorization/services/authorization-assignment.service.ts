@@ -28,6 +28,7 @@ import {
 } from './authorization-management.service';
 import { AuthorizationCatalogService } from './authorization-catalog.service';
 import { AuthorizationAuditService } from './authorization-audit.service';
+import { isProtectedRole } from '../authorization.catalog';
 
 /** 預指派只沿用 Portal 有效身分；員工、一般角色關聯與稽核同交易保存。 */
 @Injectable()
@@ -107,7 +108,7 @@ export class AuthorizationAssignmentService {
                 throw new AppException(
                   ...AppErrors.AUTHORIZATION_RESOURCE_NOT_FOUND,
                 );
-              if (role.isProtected)
+              if (isProtectedRole(role.moduleKey, role.roleCode))
                 throw new AppException(
                   ...AppErrors.AUTHORIZATION_PROTECTED_ROLE,
                 );

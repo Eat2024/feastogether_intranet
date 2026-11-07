@@ -55,14 +55,6 @@ export class AuthorizationRole extends AuditableEntity {
   isActive!: boolean;
 
   @Column({
-    name: 'is_protected',
-    type: 'boolean',
-    comment: '是否受保護',
-    default: false,
-  })
-  isProtected!: boolean;
-
-  @Column({
     name: 'version',
     type: 'int',
     comment: '設定版本',

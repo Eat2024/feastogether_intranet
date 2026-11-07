@@ -67,8 +67,7 @@ export class AuthorizationCatalogService {
               definitions.some(
                 (d) =>
                   d.permissionKey === p.permissionKey &&
-                  d.permissionName === p.permissionName &&
-                  d.assignable === p.assignable,
+                  d.permissionName === p.permissionName,
               ),
           )
           .map((p) => p.permissionKey);
@@ -78,20 +77,28 @@ export class AuthorizationCatalogService {
             (p) => p.permissionKey === definition.permissionKey,
           );
           if (!entity) {
-            entity = manager.create(AuthorizationPermission, definition);
+            entity = manager.create(AuthorizationPermission, {
+              moduleKey: definition.moduleKey,
+              permissionKey: definition.permissionKey,
+              permissionName: definition.permissionName,
+            });
             await this.repository.savePermission(entity, manager);
             permissions.push(entity);
             permissionsChanged = true;
           } else if (
             entity.deletedAt ||
             entity.moduleKey !== definition.moduleKey ||
-            entity.permissionName !== definition.permissionName ||
-            entity.assignable !== definition.assignable
+            entity.permissionName !== definition.permissionName
           ) {
             // 錯誤 scope 不能偷偷重掛既有 FK，應由維運檢查資料。
             if (entity.moduleKey !== definition.moduleKey)
               throw new AppException(...AppErrors.AUTHORIZATION_UNAVAILABLE);
-            Object.assign(entity, definition, { deletedAt: null });
+            Object.assign(entity, {
+              moduleKey: definition.moduleKey,
+              permissionKey: definition.permissionKey,
+              permissionName: definition.permissionName,
+              deletedAt: null,
+            });
             await this.repository.savePermission(entity, manager);
             permissionsChanged = true;
           }
@@ -161,7 +168,6 @@ export class AuthorizationCatalogService {
             moduleKey: definition.moduleKey,
             roleCode: definition.roleCode,
             roleName: definition.roleName,
-            isProtected: definition.isProtected,
             isActive: true,
             version: 1,
           });
@@ -169,11 +175,9 @@ export class AuthorizationCatalogService {
           fresh ||
           !!role.deletedAt ||
           role.roleName !== definition.roleName ||
-          !role.isActive ||
-          role.isProtected !== definition.isProtected;
+          !role.isActive;
         Object.assign(role, {
           roleName: definition.roleName,
-          isProtected: definition.isProtected,
           isActive: true,
           deletedAt: null,
         });
@@ -267,8 +271,7 @@ export class AuthorizationCatalogService {
             (p) =>
               p.moduleKey === d.moduleKey &&
               p.permissionKey === d.permissionKey &&
-              p.permissionName === d.permissionName &&
-              p.assignable === d.assignable,
+              p.permissionName === d.permissionName,
           ),
         )
       )
@@ -278,8 +281,7 @@ export class AuthorizationCatalogService {
           r.moduleKey === 'esign' &&
           r.roleCode === 'colleague' &&
           !r.deletedAt &&
-          r.isActive &&
-          r.isProtected,
+          r.isActive,
       );
       if (!colleague) throw new Error('同仁角色缺失');
       const keys = await this.keysForRole(

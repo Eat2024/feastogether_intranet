@@ -15,11 +15,11 @@
 | esign | esign.document.read-all | 搭配document.read放寬跨部門閱讀；電子簽管理員 |
 | esign | esign.document.manage-all | 搭配document.manage放寬建立人及部門；電子簽管理員 |
 | esign | esign.export.all | 搭配export.read／create放寬匯出部門；電子簽管理員 |
-| platform | platform.authorization.manage | 授權管理；assignable=false，只有Super user |
+| platform | platform.authorization.manage | 授權管理；compiled catalog標示不可指派，只有Super user |
 
 受保護esign/colleague固定前四項。esign/document_creator初始含create/manage/export.read/export.create；esign/esign_admin初始含全部esign權限。員工effective permissions還會聯集同仁。初始化只建立缺少的一般角色，不重寫已調整的設定。Super user列出全部12項已登錄權限，但個人簽署仍因非employee資格遭拒。
 
-role permission配置可選assignable權限，但跨範圍修飾能力缺對應base時不得儲存：read-all需read、manage-all需manage、export.all需export.read或export.create。這個依存驗證以該角色集合計算，避免可孤立的危險修飾碼；一般角色可自行包括基本read/signing能力，不影響全員同仁保證。
+role permission配置只能選compiled catalog標示可指派的權限，但跨範圍修飾能力缺對應base時不得儲存：read-all需read、manage-all需manage、export.all需export.read或export.create。這個依存驗證以該角色集合計算，避免可孤立的危險修飾碼；一般角色可自行包括基本read/signing能力，不影響全員同仁保證。
 
 ## 本人能力契約（029引用）
 

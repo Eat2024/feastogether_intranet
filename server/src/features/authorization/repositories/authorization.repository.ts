@@ -5,6 +5,10 @@ import { AuthorizationRole } from '../entities/authorization-role.entity';
 import { AuthorizationPermission } from '../entities/authorization-permission.entity';
 import { AuthorizationRolePermission } from '../entities/authorization-role-permission.entity';
 import { AuthorizationUserRole } from '../entities/authorization-user-role.entity';
+import {
+  isAssignablePermission,
+  isProtectedRole,
+} from '../authorization.catalog';
 
 /** 集合讀取與關聯差異保存；交易及 users → roles → permissions 鎖序由 service 決定。 */
 @Injectable()
@@ -20,16 +24,20 @@ export class AuthorizationRepository {
       .innerJoin(
         AuthorizationRole,
         'r',
-        'r.id=ur.role_id AND r.module_key=ur.module_key AND r.deleted_at IS NULL AND r.is_protected=0',
+        'r.id=ur.role_id AND r.module_key=ur.module_key AND r.deleted_at IS NULL',
       )
       .select('ur.role_id', 'roleId')
+      .addSelect('r.module_key', 'moduleKey')
+      .addSelect('r.role_code', 'roleCode')
       .where(
         'ur.user_id=:userId AND ur.module_key=:moduleKey AND ur.deleted_at IS NULL',
         { userId, moduleKey },
       )
       .orderBy('ur.role_id', 'ASC')
-      .getRawMany<{ roleId: number }>();
-    return rows.map((row) => row.roleId);
+      .getRawMany<{ roleId: number; moduleKey: string; roleCode: string }>();
+    return rows
+      .filter((row) => !isProtectedRole(row.moduleKey, row.roleCode))
+      .map((row) => row.roleId);
   }
   /** 只提供管理角色成員畫面所需姓名與本地 ID。 */
   roleEmployees(
@@ -142,7 +150,7 @@ export class AuthorizationRepository {
   }
 
   /** 單次集合查詢有效 grant，複合 scope 條件與 soft-delete/active 同時成立。 */
-  effectiveGrants(
+  async effectiveGrants(
     userId: number,
     manager: EntityManager,
   ): Promise<Array<{ moduleKey: string; permissionKey: string }>> {
@@ -151,7 +159,7 @@ export class AuthorizationRepository {
       .innerJoin(
         AuthorizationRole,
         'r',
-        'r.id = ur.role_id AND r.module_key = ur.module_key AND r.is_active = 1 AND r.is_protected = 0 AND r.deleted_at IS NULL',
+        'r.id = ur.role_id AND r.module_key = ur.module_key AND r.is_active = 1 AND r.deleted_at IS NULL',
       )
       .innerJoin(
         AuthorizationRolePermission,
@@ -161,14 +169,26 @@ export class AuthorizationRepository {
       .innerJoin(
         AuthorizationPermission,
         'p',
-        'p.id = rp.permission_id AND p.module_key = rp.module_key AND p.assignable = 1 AND p.deleted_at IS NULL',
+        'p.id = rp.permission_id AND p.module_key = rp.module_key AND p.deleted_at IS NULL',
       )
       .select('p.module_key', 'moduleKey')
       .addSelect('p.permission_key', 'permissionKey')
+      .addSelect('r.role_code', 'roleCode')
       .where('ur.user_id = :userId AND ur.deleted_at IS NULL', { userId });
     if (manager.queryRunner?.isTransactionActive)
       query.setLock('pessimistic_read');
-    return query.getRawMany<{ moduleKey: string; permissionKey: string }>();
+    const rows = await query.getRawMany<{
+      moduleKey: string;
+      permissionKey: string;
+      roleCode: string;
+    }>();
+    return rows
+      .filter(
+        (row) =>
+          !isProtectedRole(row.moduleKey, row.roleCode) &&
+          isAssignablePermission(row.moduleKey, row.permissionKey),
+      )
+      .map(({ moduleKey, permissionKey }) => ({ moduleKey, permissionKey }));
   }
 
   /** 只恢復或撤銷原列，不重建唯一關聯。呼叫者須先鎖定角色與權限。 */

@@ -41,7 +41,4 @@ export class AuthorizationPermission extends AuditableEntity {
     length: 100,
   })
   permissionName!: string;
-
-  @Column({ name: 'assignable', type: 'boolean', comment: '可否指派' })
-  assignable!: boolean;
 }

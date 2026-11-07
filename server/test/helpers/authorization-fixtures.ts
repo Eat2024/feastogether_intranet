@@ -70,7 +70,7 @@ export async function createAuthorizationScopeFixtures(db: DataSource) {
     "INSERT INTO authorization_roles (module_key,role_code,role_name) VALUES ('esign','test-role','同名角色'),('test-module','test-role','同名角色')",
   );
   await db.query(
-    "INSERT INTO authorization_permissions (module_key,permission_key,permission_name,assignable) VALUES ('esign','esign.document.read','閱讀文件',1),('test-module','test-module.document.read','測試閱讀',1)",
+    "INSERT INTO authorization_permissions (module_key,permission_key,permission_name) VALUES ('esign','esign.document.read','閱讀文件'),('test-module','test-module.document.read','測試閱讀')",
   );
 }
 

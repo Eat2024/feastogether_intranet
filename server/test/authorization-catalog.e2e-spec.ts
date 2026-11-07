@@ -65,7 +65,7 @@ describe('028 明確 catalog sync 與交易稽核', () => {
       expect(results.filter((r) => r.changed)).toHaveLength(1);
       expect(await repository.roles(db.manager)).toHaveLength(3);
       await db.query(
-        "INSERT INTO authorization_permissions (module_key,permission_key,permission_name,assignable) VALUES ('esign','esign.retired','已移除',1)",
+        "INSERT INTO authorization_permissions (module_key,permission_key,permission_name) VALUES ('esign','esign.retired','已移除')",
       );
       await db.query(
         "UPDATE authorization_roles SET is_active=0 WHERE role_code='colleague'",

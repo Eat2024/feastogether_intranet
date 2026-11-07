@@ -9,6 +9,7 @@ import { AuthorizationRole } from '../entities/authorization-role.entity';
 import {
   AUTHORIZATION_MODULES,
   AUTHORIZATION_PERMISSIONS,
+  isProtectedRole,
   validateRolePermissions,
 } from '../authorization.catalog';
 import { AuthorizationAuditService } from './authorization-audit.service';
@@ -134,7 +135,6 @@ export class AuthorizationRoleService {
               roleCode: `custom_${randomUUID()}`,
               roleName: input.roleName,
               isActive: true,
-              isProtected: false,
               version: 1,
             }),
             manager,
@@ -270,7 +270,7 @@ export class AuthorizationRoleService {
             throw new AppException(
               ...AppErrors.AUTHORIZATION_RESOURCE_NOT_FOUND,
             );
-          if (role.isProtected)
+          if (isProtectedRole(role.moduleKey, role.roleCode))
             throw new AppException(...AppErrors.AUTHORIZATION_PROTECTED_ROLE);
           if (role.version !== version)
             throw new AppException(...AppErrors.AUTHORIZATION_VERSION_CONFLICT);
@@ -317,7 +317,7 @@ export class AuthorizationRoleService {
       roleCode: role.roleCode,
       roleName: role.roleName,
       isActive: role.isActive,
-      isProtected: role.isProtected,
+      isProtected: isProtectedRole(role.moduleKey, role.roleCode),
       version: role.version,
       permissionKeys: permissions
         .filter(

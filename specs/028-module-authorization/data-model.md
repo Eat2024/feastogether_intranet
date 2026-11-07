@@ -11,19 +11,18 @@
 | role_code | varchar(80), NOT NULL；模組內穩定且不可改 |
 | role_name | varchar(100), trim後1～100字；同模組未刪除角色名稱不可重複，使用下述generated unique鍵 |
 | is_active | boolean NOT NULL default true |
-| is_protected | boolean NOT NULL default false；只有esign/colleague為true，不接受API設定 |
 | version | unsigned int NOT NULL default1；每次實質更動加1 |
 | 共用時間 | AuditableEntity欄位 |
 
-UNIQUE(module_key,role_code)、UNIQUE(module_key,id)。新增generated active_role_name = CASE WHEN deleted_at IS NULL THEN role_name ELSE NULL END，UNIQUE(module_key,active_role_name)，以utf8mb4_0900_bin精確比較，防止並發同名建立；inactive但未刪除也保留名稱。code跨soft-delete不重用，避免歷史指派指向新意義；roleName可在原角色刪除後重用。protected角色無管理寫入入口，權限定義以程式為準。
+UNIQUE(module_key,role_code)、UNIQUE(module_key,id)。新增generated active_role_name = CASE WHEN deleted_at IS NULL THEN role_name ELSE NULL END，UNIQUE(module_key,active_role_name)，以utf8mb4_0900_bin精確比較，防止並發同名建立；inactive但未刪除也保留名稱。code跨soft-delete不重用，避免歷史指派指向新意義；roleName可在原角色刪除後重用。protected狀態不落DB欄位，由compiled initial role catalog依module_key／role_code判定；protected角色無管理寫入入口，權限定義以程式為準。
 
 ## 2. authorization_permissions
 
-id bigint unsigned PK；module_key varchar(50)；permission_key varchar(100)全域唯一；permission_name varchar(100)；assignable boolean；共用時間。UNIQUE(module_key,id)。資料是compiled catalog投影，只能catalog sync寫入；platform.authorization.manage assignable=false，其他esign能力true。移除目錄項soft-delete，執行期再與compiled catalog交集，舊關聯不能授權。
+id bigint unsigned PK；module_key varchar(50)；permission_key varchar(100)全域唯一；permission_name varchar(100)；共用時間。UNIQUE(module_key,id)。資料是compiled catalog投影，只能catalog sync寫入；可否指派不落DB欄位，由compiled permission catalog判定，platform.authorization.manage不可指派、其他esign能力可指派。移除目錄項soft-delete，執行期再與compiled catalog交集，舊關聯不能授權。
 
 ## 3. authorization_role_permissions
 
-id bigint unsigned PK；module_key varchar(50) NOT NULL；role_id bigint unsigned NOT NULL；permission_id bigint unsigned NOT NULL；共用時間。UNIQUE(role_id,permission_id)。複合FK `(module_key,role_id)→roles(module_key,id)`、`(module_key,permission_id)→permissions(module_key,id)` 均RESTRICT；同scope由DB保障。FK不保障active/assignable，service在同交易核對。
+id bigint unsigned PK；module_key varchar(50) NOT NULL；role_id bigint unsigned NOT NULL；permission_id bigint unsigned NOT NULL；共用時間。UNIQUE(role_id,permission_id)。複合FK `(module_key,role_id)→roles(module_key,id)`、`(module_key,permission_id)→permissions(module_key,id)` 均RESTRICT；同scope由DB保障。FK不保障active或compiled catalog的可指派規則，service在同交易核對。
 
 覆寫角色權限時只對差異soft-delete或恢復原列（save），不得插入與歷史唯一鍵碰撞的新列；不可復活已移出compiled catalog的權限。protected同仁內容由受控sync保持，但effective authorization直接採程式固定集，不採可變關聯擴權。
 

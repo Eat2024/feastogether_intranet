@@ -120,6 +120,28 @@ export const INITIAL_ROLES = [
   },
 ] as const;
 
+/** 保護與可指派屬程式目錄規則，不在資料庫保存可被改寫的旗標。 */
+export function isProtectedRole(moduleKey: string, roleCode: string): boolean {
+  return INITIAL_ROLES.some(
+    (role) =>
+      role.moduleKey === moduleKey &&
+      role.roleCode === roleCode &&
+      role.isProtected,
+  );
+}
+
+export function isAssignablePermission(
+  moduleKey: string,
+  permissionKey: string,
+): boolean {
+  return AUTHORIZATION_PERMISSIONS.some(
+    (permission) =>
+      permission.moduleKey === moduleKey &&
+      permission.permissionKey === permissionKey &&
+      permission.assignable,
+  );
+}
+
 /** 同角色內的範圍修飾碼不能孤立存在；一般角色不授予平台維護身分。 */
 export function validateRolePermissions(
   moduleKey: string,

@@ -1,3 +1,5 @@
+import { PortalConfig } from '#app/infrastructure/portal/portal.config';
+import { portalConfigFrom } from './synthetic-portal.helper';
 import { Test } from '@nestjs/testing';
 import { ModulesContainer } from '@nestjs/core';
 import { ConsoleModule } from '#app/console/console.module';
@@ -100,10 +102,12 @@ describe('028 明確 catalog sync 與交易稽核', () => {
   });
 });
 
-it('隔離 ConsoleModule 只以閉包提供 authz，同服務初始化且無 HTTP／worker／外部連線模組', async () => {
+it('隔離 ConsoleModule 只以閉包提供 authz，同服務初始化且不啟 HTTP／worker 或依賴 Portal 可用', async () => {
   await withAuthorizationDatabase(async (db) => {
     await initializeAuthorizationOperator(db);
     const app = await Test.createTestingModule({ imports: [ConsoleModule] })
+      .overrideProvider(PortalConfig)
+      .useValue(portalConfigFrom({}))
       .overrideProvider(MYSQL_MAIN)
       .useValue(db)
       .compile();
@@ -115,7 +119,6 @@ it('隔離 ConsoleModule 只以閉包提供 authz，同服務初始化且無 HTT
       for (const forbidden of [
         'AppModule',
         'WorkerModule',
-        'PortalModule',
         'RedisModule',
         'MailModule',
         'FileStorageModule',
@@ -127,6 +130,14 @@ it('隔離 ConsoleModule 只以閉包提供 authz，同服務初始化且無 HTT
       ).toBe(true);
       await expect(authz.syncCatalog()).resolves.toEqual({ changed: true });
       await expect(authz.syncCatalog()).resolves.toEqual({ changed: false });
+      await expect(authz.modules()).resolves.toHaveLength(2);
+      await expect(
+        authz.assignRoles('esign', {
+          empId: 'AZNOCONFIG',
+          roleIds: ['2'],
+          expectedRoleIds: [],
+        }),
+      ).rejects.toMatchObject({ code: 'STAFF_LOOKUP_FAILED' });
     } finally {
       await app.close();
     }

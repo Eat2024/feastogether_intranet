@@ -55,7 +55,9 @@ describe('e-sign schema migrations', () => {
         const before = await ds.query(
           'SELECT * FROM esign_verification_records',
         );
-        const document = await ds.query('SELECT * FROM esign_documents');
+        const document = await ds.query<Array<Record<string, unknown>>>(
+          'SELECT * FROM esign_documents',
+        );
         await ds.runMigrations();
         expect(await listBusinessTables(ds, database)).not.toContain(
           'esign_audit_events',

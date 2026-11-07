@@ -22,6 +22,7 @@ export const ERROR_CODE_MAP: Record<string, string> = {
 
   // --- Validation ---
   INVALID_REQUEST: '輸入資料格式有誤，請確認後再試',
+  REQUEST_FORMAT_INVALID: '授權請求格式不正確',
 
   // --- 電子簽 ---
   ESIGN_INVALID_PDF: 'PDF 格式、大小或頁數不符合規格',

@@ -9,7 +9,7 @@ import { LoggingModule } from '#app/infrastructure/logging/logging.module';
 /**
  * 維運 REPL 的窄 context：只有設定、CLS、logging 與維護入口服務（經由它載入 MysqlModule）。
  * 不載入 AppModule、WorkerModule 或完整 InfrastructureModule，因此沒有 HTTP、queue consumer、
- * 排程、Portal、mail、storage 或 Redis，也沒有任何啟動寫入。
+ * 排程、mail、storage 或 Redis，也沒有任何啟動寫入；Portal 只在明確預指派時才連線。
  */
 @Module({
   imports: [

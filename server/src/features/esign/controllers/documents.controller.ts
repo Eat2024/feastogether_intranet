@@ -395,17 +395,18 @@ export class DocumentsController {
   @UseGuards(OriginGuard)
   @ApiOperation({ summary: '儲存或清除簽署人的管理備註' })
   @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Patch(':documentId/signers/:signerPublicId/note')
   saveSignerNote(
     @Param('documentId') id: string,
     @Param('signerPublicId') signerPublicId: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body() body: SignerNoteDto,
   ) {
     return this.signerService.saveNote(
       this.id(id),
       signerPublicId,
-      userId,
+      actor,
       body.note,
     );
   }

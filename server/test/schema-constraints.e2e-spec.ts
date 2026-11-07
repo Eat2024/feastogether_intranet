@@ -341,7 +341,6 @@ describe('e-sign schema database constraints', () => {
         ];
         for (const row of rejected) {
           await expect(insertRecord(...row)).rejects.toThrow(
-            'chk_esign_documents_updated_actor',
             'chk_esign_export_jobs_record_type',
           );
         }

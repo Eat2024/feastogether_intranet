@@ -46,25 +46,25 @@ export class EsignSignerService {
   async saveNote(
     documentId: number,
     signerPublicId: string,
-    userId: number,
+    actor: Actor,
     input: unknown,
   ) {
     if (typeof input !== 'string' || Array.from(input.trim()).length > 30) {
       throw new AppException(...AppErrors.ESIGN_SIGNER_NOTE_INVALID);
     }
     const note = input.trim();
-    await this.access.assertCreatorNotInitiating(
+    await this.access.assertManagerNotInitiating(
       documentId,
-      userId,
+      actor,
       this.mysql.getManager(),
     );
     return this.mysql.transaction(async (manager) => {
       // 與簽署、停止及名單變更使用相同鎖順序；草稿註記也使舊發起輸入失效。
-      const document = await this.documents.findByIdForUpdate(
+      const document = await this.access.lockManagedDocument(
         documentId,
+        actor,
         manager,
       );
-      this.access.checkEsignCreator(document, userId);
       await this.access.assertNotInitiating(documentId, manager);
       const signer = await this.signers.findByPublicIdForUpdate(
         signerPublicId,
@@ -74,10 +74,11 @@ export class EsignSignerService {
         throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
       }
       signer.note = note;
-      signer.updatedByUserId = userId;
+      signer.updatedByActorKind = actor.kind;
+      signer.updatedByUserId = actor.kind === 'employee' ? actor.userId : null;
       await this.signers.save(signer, manager);
-      if (document.status === 'draft')
-        await this.documents.touchDraftVersion(documentId, manager);
+      markDocumentUpdated(document, actor);
+      await this.documents.save(document, manager);
       return { signerPublicId: signer.publicId, note };
     });
   }

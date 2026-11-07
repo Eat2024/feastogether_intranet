@@ -1,3 +1,4 @@
+import { User } from '#app/features/users/entities/user.entity';
 import { Injectable } from '@nestjs/common';
 import { In, type EntityManager } from 'typeorm';
 import { AuthorizationRole } from '../entities/authorization-role.entity';
@@ -8,6 +9,75 @@ import { AuthorizationUserRole } from '../entities/authorization-user-role.entit
 /** 集合讀取與關聯差異保存；交易及 users → roles → permissions 鎖序由 service 決定。 */
 @Injectable()
 export class AuthorizationRepository {
+  /** 有效一般指派；停用角色仍保留配置，但不會由 resolver 授權。 */
+  async explicitRoleIds(
+    userId: number,
+    moduleKey: string,
+    manager: EntityManager,
+  ): Promise<number[]> {
+    const rows = await manager
+      .createQueryBuilder(AuthorizationUserRole, 'ur')
+      .innerJoin(
+        AuthorizationRole,
+        'r',
+        'r.id=ur.role_id AND r.module_key=ur.module_key AND r.deleted_at IS NULL AND r.is_protected=0',
+      )
+      .select('ur.role_id', 'roleId')
+      .where(
+        'ur.user_id=:userId AND ur.module_key=:moduleKey AND ur.deleted_at IS NULL',
+        { userId, moduleKey },
+      )
+      .orderBy('ur.role_id', 'ASC')
+      .getRawMany<{ roleId: number }>();
+    return rows.map((row) => row.roleId);
+  }
+  /** 只提供管理角色成員畫面所需姓名與本地 ID。 */
+  roleEmployees(
+    moduleKey: string,
+    roleId: number,
+    limit: number,
+    beforeId: number | undefined,
+    manager: EntityManager,
+  ) {
+    const query = manager
+      .createQueryBuilder(User, 'u')
+      .innerJoin(
+        AuthorizationUserRole,
+        'ur',
+        'ur.user_id=u.id AND ur.module_key=:moduleKey AND ur.role_id=:roleId AND ur.deleted_at IS NULL',
+        { moduleKey, roleId },
+      )
+      .select(['u.id', 'u.name'])
+      .orderBy('u.id', 'DESC')
+      .take(limit);
+    if (beforeId) query.andWhere('u.id<:beforeId', { beforeId });
+    return query.getMany();
+  }
+
+  async roleHasAssignments(
+    roleId: number,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    return manager.exists(AuthorizationUserRole, { where: { roleId } });
+  }
+  listRoles(
+    moduleKey: string,
+    limit: number,
+    beforeId: number | undefined,
+    manager: EntityManager,
+  ) {
+    const query = manager
+      .createQueryBuilder(AuthorizationRole, 'r')
+      .where('r.moduleKey = :moduleKey', { moduleKey })
+      .orderBy('r.id', 'DESC')
+      .take(limit);
+    if (beforeId) query.andWhere('r.id < :beforeId', { beforeId });
+    return query.getMany();
+  }
+  findRole(moduleKey: string, id: number, manager: EntityManager) {
+    return manager.findOneBy(AuthorizationRole, { moduleKey, id });
+  }
+
   roles(
     manager: EntityManager,
     lock: boolean | 'shared' = false,

@@ -137,22 +137,30 @@ export class EsignAccessPolicyService {
       });
   }
 
-  async lockManagedDraft(
+  /** 管理操作先取得能力的 current read，再依既有鎖順序鎖定文件。 */
+  async lockManagedDocument(
     documentId: number,
     actor: Actor,
     manager: EntityManager,
   ): Promise<EsignDocument> {
-    // 先完成授權 current read，再取得文件鎖，避免角色鎖與文件鎖倒置。
     await this.authorization.requirePermissions(
       actor,
       ['esign.document.manage'],
       manager,
     );
-    const document = await this.manageableDocument(
+    return this.manageableDocument(
       await this.documentRepository.findByIdForUpdate(documentId, manager),
       actor,
       manager,
     );
+  }
+
+  async lockManagedDraft(
+    documentId: number,
+    actor: Actor,
+    manager: EntityManager,
+  ): Promise<EsignDocument> {
+    const document = await this.lockManagedDocument(documentId, actor, manager);
     this.documents.checkStillDraft(document);
     await this.assertNotInitiating(documentId, manager);
     return document;

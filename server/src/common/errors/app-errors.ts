@@ -603,6 +603,11 @@ export const AppErrors = {
     '登入服務暫時無法使用，請稍後再試',
     HttpStatus.SERVICE_UNAVAILABLE,
   ],
+  AUTHORIZATION_REQUEST_FORMAT_INVALID: [
+    AppErrorCode.REQUEST_FORMAT_INVALID,
+    '授權請求格式不正確',
+    HttpStatus.BAD_REQUEST,
+  ],
   REQUEST_FORMAT_INVALID: [
     AppErrorCode.INVALID_REQUEST,
     '請求格式錯誤',

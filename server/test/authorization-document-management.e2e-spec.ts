@@ -32,6 +32,66 @@ describe('028 跨部門文件管理', () => {
           const cookie = await createAuthorizationSession(ctx.app, {
             kind: 'super_user',
           });
+          const candidate = await db.manager.save(
+            User,
+            db.manager.create(User, {
+              empid: 'AUTHCAND1',
+              name: '合成候選人',
+              departmentCode: 'AUTH-A',
+              email: 'private@example.test',
+            }),
+          );
+          const listed = await ctx.app.inject({
+            method: 'GET',
+            url: '/api/esign/signer-candidates?q=AUTHCAND1',
+            headers: { cookie },
+          });
+          expect(listed.statusCode).toBe(200);
+          expect(listed.json<{ data: unknown }>().data).toEqual([
+            {
+              id: String(candidate.id),
+              employeeNo: 'AUTHCAND1',
+              name: '合成候選人',
+              department: null,
+              title: null,
+            },
+          ]);
+          const chart = await ctx.app.inject({
+            method: 'GET',
+            url: '/api/esign/signer-candidates/org-chart',
+            headers: { cookie },
+          });
+          expect(chart.statusCode).toBe(200);
+          expect(chart.headers['cache-control']).toContain('no-store');
+          const resolved = await ctx.app.inject({
+            method: 'POST',
+            url: '/api/esign/signer-candidates/resolutions',
+            headers: { cookie, origin },
+            payload: { employeeNos: ['AUTHCAND1'] },
+          });
+          expect(resolved.statusCode).toBe(200);
+          expect(resolved.json<{ data: unknown }>().data).toEqual({
+            items: [
+              {
+                employeeNo: 'AUTHCAND1',
+                userId: String(candidate.id),
+                name: '合成候選人',
+                department: null,
+                title: null,
+                status: 'resolved',
+              },
+            ],
+          });
+          expect(
+            (
+              await ctx.app.inject({
+                method: 'POST',
+                url: '/api/esign/signer-candidates/resolutions',
+                headers: { cookie },
+                payload: { employeeNos: ['AUTHCAND1'] },
+              })
+            ).statusCode,
+          ).toBe(403);
           const pdf = await PDFDocument.create();
           pdf.addPage();
           const bytes = Buffer.from(await pdf.save());
@@ -233,6 +293,45 @@ it('明確管理能力跨部門編輯但保留原建立人，撤權後建立人�
           })
         ).statusCode,
       ).toBe(200);
+      const [noteSigner] = await db.query<Array<{ public_id: string }>>(
+        'SELECT public_id FROM esign_signers WHERE document_id=?',
+        [id],
+      );
+      const noteUrl = `${path}/signers/${noteSigner.public_id}/note`;
+      expect(
+        (
+          await ctx.app.inject({
+            method: 'PATCH',
+            url: noteUrl,
+            headers: { cookie: adminCookie, origin },
+            payload: { note: '管理者備註' },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        await db.query(
+          'SELECT created_by_actor_kind,updated_by_actor_kind,updated_by_user_id,user_id,note FROM esign_signers WHERE public_id=?',
+          [noteSigner.public_id],
+        ),
+      ).toEqual([
+        {
+          created_by_actor_kind: 'super_user',
+          updated_by_actor_kind: 'employee',
+          updated_by_user_id: admin.id,
+          user_id: recipient.id,
+          note: '管理者備註',
+        },
+      ]);
+      expect(
+        (
+          await ctx.app.inject({
+            method: 'PATCH',
+            url: noteUrl,
+            headers: { cookie: superCookie, origin },
+            payload: { note: 'Super 備註' },
+          })
+        ).statusCode,
+      ).toBe(200);
       const [document] = await db.query<Array<Record<string, unknown>>>(
         'SELECT created_by_user_id,created_by_actor_kind,created_by_department_code,updated_by_actor_kind,updated_by_user_id FROM esign_documents WHERE id=?',
         [id],
@@ -265,6 +364,16 @@ it('明確管理能力跨部門編輯但保留原建立人，撤權後建立人�
         'UPDATE authorization_user_roles SET deleted_at=NOW(6) WHERE user_id=?',
         [owner.id],
       );
+      expect(
+        (
+          await ctx.app.inject({
+            method: 'PATCH',
+            url: noteUrl,
+            headers: { cookie: ownerCookie, origin },
+            payload: { note: '撤權後不得寫入' },
+          })
+        ).statusCode,
+      ).toBe(403);
       const readonly = await ctx.app.inject({
         method: 'GET',
         url: path,

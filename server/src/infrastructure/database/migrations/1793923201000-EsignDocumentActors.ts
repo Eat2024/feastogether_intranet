@@ -23,9 +23,9 @@ export class EsignDocumentActors1793923201000 implements MigrationInterface {
     }
   }
   async down(q: QueryRunner): Promise<void> {
-    const [row]: Array<{ total: number }> = await q.query(
+    const [row] = (await q.query(
       "SELECT (SELECT COUNT(*) FROM esign_documents WHERE created_by_actor_kind='super_user' OR updated_by_actor_kind IS NOT NULL)+(SELECT COUNT(*) FROM authorization_events)+(SELECT COUNT(*) FROM esign_document_fields WHERE created_by_actor_kind='super_user' OR updated_by_actor_kind='super_user')+(SELECT COUNT(*) FROM esign_signers WHERE created_by_actor_kind='super_user' OR updated_by_actor_kind='super_user') AS total",
-    );
+    )) as Array<{ total: number }>;
     if (Number(row.total) > 0)
       throw new Error('無法回滾：管理操作者或授權稽核必須保留');
     for (const table of ['esign_document_fields', 'esign_signers'])

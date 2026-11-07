@@ -150,12 +150,93 @@ console 以 `ConsoleModule`、`createAuthConsole` 的窄 context 為基礎；本
 - 交接後續 tickets：一般文件／匯出 actor 改造屬06–08；T054 readiness 上線前，未使用 security helper 的舊 AppModule e2e 必須補明確 catalog seed，寫入流程逐一明確授角色。此票未執行全業務 `test:e2e`，不能把 security 回歸視為全業務切換驗收。
 
 
+## 028-04：Super 角色／權限管理與稽核（2026-11-07）
+
+T024、T026～T028、T032、T033 已實作。管理API只有有效Super可用，寫入必驗Origin；未帶Origin與跨站請求拒絕。以下REPL操作使用同一服務及DTO，不直接暴露repository：
+
+```js
+await authz.modules()
+await authz.permissions('esign')
+const role = await authz.createRole('esign', { roleName: '合成驗收角色' })
+await authz.rolePermissions('esign', role.id)
+await authz.roles('esign', { limit: 20 })
+const granted = await authz.setRolePermissions('esign', role.id, {
+  permissionKeys: ['esign.document.read', 'esign.document.read-all'],
+  expectedVersion: role.version,
+})
+const disabled = await authz.updateRole('esign', role.id, {
+  isActive: false, expectedVersion: granted.version,
+})
+await authz.events({ moduleKey: 'esign', limit: 20 })
+await authz.deleteRole('esign', role.id, disabled.version)
+```
+
+角色ID為字串；`expectedVersion`為正整數。仍有有效指派時刪除回409；停用可保留關聯。protected同仁不能修改，platform無可指派權限不能建立一般角色。HTTP和REPL拒絕相同的未知欄位／非法輸入；body/query/path由共用DTO邊界驗證，400使用契約 `REQUEST_FORMAT_INVALID`，保留其他feature既有 `INVALID_REQUEST`。管理API成功回應no-store，access log不保存管理body/query，audit只保存角色設定與權限差異。
+
+### 後續028-05接縫
+
+- `AuthorizationManagementService.read(context, run)`提供唯讀資格／catalog檢查與安全DB錯誤映射；`transaction(context, run)`開READ COMMITTED交易並先鎖維護singleton、重核fingerprint與active generation。HTTP context由可信Actor產生，console閉包固定source=repl，不接受caller指定actor。
+- 固定鎖序：singleton → users（涉及指派時）→ roles ID升序 → permissions ID升序 → relations。角色服務先取roles排他鎖再進catalog current read；不要先取所有角色shared鎖再升排他。管理寫入與sync共鎖singleton，仍須依序鎖實際資料列並執行CAS。
+- `AuthorizationRoleService`提供modules／permissions／list／detail／create／update／setPermissions／delete。`AuthorizationEventService.list`產出OpenAPI白名單與cursor；沒有稽核修改或刪除入口。
+- `dto/assignment.dto.ts`與`authorization-query.dto.ts`提供員編原樣、兩個最多50角色ID集合、安全ID解析、module／page驗證。assignment服務沿相同transaction邊界並先鎖user，不可反向取得user鎖。
+- `createAuthorizationConsole`只回傳函式閉包。AuthorizationModule仍是窄核心，不啟HTTP、Redis、worker、mail或儲存；本票未新增Portal依賴。
+
+### 已執行驗證及限制
+
+- `pnpm -C server test --runInBand`：128 suites／1289 tests通過。
+- `pnpm -C server test:e2e:security --runTestsByPath test/authorization-role-management.e2e-spec.ts test/authorization-catalog.e2e-spec.ts test/authorization-baseline.e2e-spec.ts test/authorization-revocation.e2e-spec.ts`：4 suites／15 tests通過。
+- server build／lint:check、root build／lint、client test（4項）／check:bundle通過；271既有warnings、0 errors。
+- `caffeinate -i pnpm -C server test:e2e:security`：25 suites／193 tests全部通過（47.865秒）。先前主機休眠造成多次120秒逾時（整套記370／2733秒），已透過防休眠、錯開測試port後完整重跑收斂；沒有修改timeout或正式規則。不同worktree的DB/Redis雖隔離，既有credential測試使用固定3030/3031，因此全套不可並行。
+- 無migration／新環境變數／dependency／管理前端；本票完成不代表完整028可以正式切換。
+
+
+## 028-05：員工預指派、CAS 與即時撤權（2026-11-07）
+
+T025、T029～T031、T034 已完成。管理介面新增：
+
+- `POST /api/authorization/modules/:moduleKey/employee-role-assignments`：員編僅由 body 傳入，查 Portal 唯一且有效的 exact-match，再原子預建／取得同一員工與覆寫一般角色集合。
+- `GET /api/authorization/modules/:moduleKey/employees/:userId/roles`：只回 userId／moduleKey／roleIds／implicitRoles；同仁不混進可修改的 roleIds。
+- `GET /api/authorization/modules/:moduleKey/roles/:roleId/employees`：倒序本地 userId cursor 分頁，成員只回 userId／name，預設20、最多100。
+
+REPL 透過同一服務，不暴露 repository；下面只使用合成示例員編，正式必須依核定名單替換，名單不得入 repository：
+
+```js
+const { items } = await authz.roles('esign')
+const creator = items.find(role => role.roleCode === 'document_creator')
+const assigned = await authz.assignRoles('esign', {
+  empId: 'SYNTHETIC028', roleIds: [creator.id], expectedRoleIds: [],
+})
+await authz.employeeRoles('esign', assigned.userId)
+await authz.roleEmployees('esign', creator.id, { limit: 20 })
+await authz.userPermissions(Number(assigned.userId))
+await authz.assignRoles('esign', {
+  empId: 'SYNTHETIC028', roleIds: [], expectedRoleIds: assigned.roleIds,
+})
+```
+
+`empId`原樣查核，不 trim／轉數字；Portal的大小寫／尾空白候選仍需 exact-match。本地 empid unique key 命中後也必須字元相同，不自動改員編。預建不偽造登入時間，不更新既有員工資料。來源不存在／無效／模糊回422，Portal故障502；本地inactive／deleted回403且不復活，目標錯誤不清除管理者cookie。
+
+指派以 singleton → user → roles ID → permissions ID → relations 鎖序，使用READ COMMITTED及CAS；已是相同目標時冪等成功。初次預建即使目標空集合仍保存一次建檔audit（changed=true），後續相同請求no-op。重授恢復原關聯列，不插入重複關聯。新增user、角色關聯與audit同交易，任一失敗全部回滾；不從歷史文件推導額外權限。
+
+`AuthorizationModule`沿用lazy Portal provider。Console不啟HTTP／worker／Redis／mail／storage，Portal設定缺漏不影響啟動、唯讀授權或syncCatalog；只在assignRoles查上游。所有成功與錯誤結果沿相同API/REPL業務邊界。
+
+### 已執行驗證及後續交接
+
+- 新增assignment與management-concurrency兩套真MySQL／合成Portal測試，共7項。包含正式AppModule、API／REPL、一致錯誤、cursor、首次登入競態、刪role對指派、CAS、稽核故障新user回滾及兩獨立pool舊session即時撤權。
+- `pnpm -C server build`、unit 128 suites／1289 tests、root lint通過。
+- `caffeinate -i pnpm -C server test:e2e:security`：28 suites／203 tests通過（69.4秒）。首輪202／203，唯一舊測試禁止PortalModule，已改驗lazy連線行為後全套通過，沒有放寬正式授權或timeout。
+- 無前端／migration／正式env／dependency變更。只用隔離Docker MySQL與測試庫`feastogether_intranet_test_e`、Redis DB5；未連正式Portal／部署／配置真實核定名單。全業務e2e及完整切換由028-09驗收。
+
+
 ## 028-06 文件管理與 actor 交接
 
-- 文件建立、標題/PDF/欄位、草稿簽署人設定及刪除已接 `CurrentActor`，寫入交易重核目前 create/manage，只有 read-all/manage-all 放寬跨部門範圍。尚未遷移的 lifecycle/export 端點仍拒絕 Super，由 07/08 接續。
-- 新 async policy：`readableForActor`、`manageableDocument`、`canManageDocument`、`assertManagerNotInitiating`、`lockManagedDraft`；全部接受真 Actor 與呼叫端 manager。交易外快拒忙碌不得取悲觀鎖，交易內先完成授權 current read 再鎖文件。舊 numeric lifecycle policy 暫保留，07 不可漏 await 或把 creator 當目前操作者。
+- 文件建立、標題/PDF/欄位、草稿簽署人設定、簽署人備註及刪除已接 `CurrentActor`，寫入交易重核目前 create/manage，只有 read-all/manage-all 放寬跨部門範圍。尚未遷移的 lifecycle/export 端點仍拒絕 Super，由 07/08 接續。
+- 新 async policy：`readableForActor`、`manageableDocument`、`canManageDocument`、`assertManagerNotInitiating`、`lockManagedDocument`、`lockManagedDraft`；全部接受真 Actor 與呼叫端 manager。交易外快拒忙碌不得取悲觀鎖，交易內先完成授權 current read 再鎖文件。舊 numeric lifecycle policy 暫保留，07 不可漏 await 或把 creator 當目前操作者。
 - `prepareSigners`、`updateSigners`、`buildFields` 共用介面改 Actor；`actorAudit` 只供新增欄位/簽署人，`markDocumentUpdated` 只改最後管理 actor，保留原 creator/department。signer.user_id 仍是被指定簽署人。07 worker 必須使用 job actor；08 需要將 detail 的 canExport 與 exportSummary 改為 actor-aware，目前仍只支持員工匯出。
 - 詳情以 `canManage` 辨識管理 DTO，`isCreator` 保留員工本人建立語意；非建立人管理員是 false/true，失去 manage 的建立人是 true/false。必要既有 client caller 改用 canManage，列表 Super 送 all、員工送 dep，沒有新增管理 UI。
 - `EsignDocumentActors1793923201000` 與 schema.sql 新增局部 actor CHECK、nullable FK；歷史有員工回填 employee，欄位/簽署人空 slot 為 legacy_unknown，document 最後管理者維持 NULL。沒有改共用 UserAuditableEntity，Department subscriber 行為不變。新 HTTP 寫入由 CLS actor 覆蓋，禁止新 legacy_unknown。既有欄位/簽署人的單獨新增若無 HTTP context 為 system，已受理 worker 應明確傳 actor。
 - Super 建立只接受 Portal 唯一有效部門原碼（1–50 字元、exact-match），不接受 UI 名稱。無效 400、Portal 查核失敗 503；員工覆寫部門 400。沒有新增環境變數或假員工。
 - 空庫可 down/reapply；存在 Super 業務 actor、document 最後管理 metadata 或 authorization_events 時拒絕 down，採前向修復或一致備份復原。027 schema 測試固定舊 migration，其 auth drift 與最新完整 schema drift 分開驗證。
+
+
+- 簽署人候選清單／組織樹／resolutions 已明確開放 Super，但維持 create/manage any-of、最小欄位與 Origin 規則；沒有以 actor 改造繞過候選人資料裁切。

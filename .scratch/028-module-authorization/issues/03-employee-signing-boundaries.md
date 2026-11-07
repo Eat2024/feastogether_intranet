@@ -4,7 +4,7 @@
 
 **Blocked by:** [028-02](02-effective-permissions.md)、[027-05](../../027-super-user-access/issues/05-shared-identity-switching.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Source:** [Spec](../../../specs/028-module-authorization/spec.md)、[Plan](../../../specs/028-module-authorization/plan.md)、[Tasks](../../../specs/028-module-authorization/tasks.md)、[API 契約](../../../specs/028-module-authorization/contracts/api-behavior.md)、[權限目錄](../../../specs/028-module-authorization/contracts/permissions.md)、[維運契約](../../../specs/028-module-authorization/contracts/operations.md)
 
@@ -26,3 +26,8 @@
 - 2026-11-07：完成 T016–T019。七組內部 controller 依能力矩陣宣告；export view、Excel／ZIP 下載分支於 service 驗實際能力。一般閱讀不再把缺 export.read 的員工標成可匯出。
 - 本人 completed-file 與 pdf 歷史改驗 employee 指派，取消以同部門／建立人取他人副本的旁路；本人缺部門仍可簽署與取副本。簽署／拒簽保留原本人、期限、狀態與證據規則，Super 尚未 actor 改造入口仍403。
 - 新增真 DB／HTTP 授權矩陣 e2e；既有 security business fixtures 明確授予 document_creator，沒有 production fallback 或 baseline 升權。單元測試 127 suites／1285 tests、server build、lint（0 errors）通過。完整 security 最終結果見 quickstart 028-03。
+
+### 2026-11-07 整合紀錄
+
+- 實作 commit `32f11cf`（`028-03-boundaries`）已 fast-forward 合入 `028-module-authorization`；已核對本票驗收及 quickstart 的完整 security 25 suites／191 tests、unit 127 suites／1285 tests、server build／lint 通過紀錄，本票狀態改為 `resolved`。
+- 028-06 可基於此整合版本開始；管理 actor 改造與完整切換仍待後續 tickets，不代表完整 028 已可正式切換。

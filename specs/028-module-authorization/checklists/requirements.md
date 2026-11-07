@@ -7,7 +7,7 @@
 
 ## Content Quality
 
-- [x] 未指定表結構、框架、演算法或路徑；API／REPL 為使用者明確要求的交付管道。
+- [x] 未指定框架或演算法；`/api/auth/me` 是使用者明確指定的跨系統慣例與公開契約，其餘實作細節留在 plan／contracts。
 - [x] 聚焦跨功能隔離、基本員工資格與授權管理價值。
 - [x] 角色能力以業務語言及矩陣描述。
 - [x] 模板必要章節已完成。
@@ -36,4 +36,5 @@
 - 授權稽核不恢復 Spec 026 的簽署事件鏈。
 - 仍在有效執行中的背景工作不追溯取消；後續查詢／下載採最新授權。
 - 已新增 Super user 無員工部門時的明確文件歸屬要求，避免用假員工解決；契約於 plan 設計。
+- 2026-11-07 重驗：`auth/me` 只回目前session白名單與按module分組的effective permissions，不回任何role；受控travel fixture只驗跨module隔離，不擴張本期正式目錄。
 - 未啟動服務或執行功能測試；extensions.yml 不存在，無前後置 hooks。

@@ -83,9 +83,9 @@ client/src/features/esign-documents/ # 既有列表super傳role=all、員工仍d
 
 1. **027相依確認**：actor union、有效session檢查、Origin、安全error envelope、console維護身分先可用。028不能自行補一套本地登入或將super轉假員工。
 2. **資料與catalog**（FR-001～004、006、011、019、021）：建五表、複合scope FK、active role name DB唯一性、版本控制與冪等seed。一般角色首次seed後不覆寫；同仁版本維護且不存逐員工base assignment。
-3. **解析與管理**（FR-002、007、010、012～016、020）：無cache聯集、Super-only服務、Portal預建員工、CAS指派、同交易audit、API與REPL。管理assignment把目標資格錯誤轉422，不能使管理者被誤判401登出。
+3. **解析與管理**（FR-002、007、010、012～016、020、022）：無cache聯集、Super-only服務、Portal預建員工、CAS指派、同交易audit、API與REPL。`auth/me`合併session view與按module分組的有效permissions，但不回roles。管理assignment把目標資格錯誤轉422，不能使管理者被誤判401登出。
 4. **電子簽閉環**（FR-005、008、009、017）：先分類所有入口，再逐一套能力與資源policy；同步actor schema／mapper／worker。Super建立必填有效departmentCode；保留原creator／department。本人副本入口（包括departmentFile與pdf歷史）收緊為本人；合法一般匯出仍依另一能力及範圍。
-5. **相容與導入**（FR-018～020）：既有client creator employeeNo接受null及kind；DocumentsListView目前明確送dep，改為super送all、employee保留dep，不新增UI。029使用本人能力endpoint。依核定名單預指派，再停流量切換完整新授權版本，不混跑舊放行實例。
+5. **相容與導入**（FR-018～020、022）：既有client creator employeeNo接受null及kind；DocumentsListView目前明確送dep，改為super送all、employee保留dep，不新增UI。029使用`auth/me`共用契約。依核定名單預指派，再停流量切換完整新授權版本，不混跑舊放行實例。
 6. **驗收與回復演練**：按quickstart驗證全部US／SC、端點分類無遺漏、既有關聯與證據保持。未完成授權名單或schema驗證不切換。
 
 API細節、scope矩陣與維運流程分別以[api-behavior.md](contracts/api-behavior.md)、[permissions.md](contracts/permissions.md)、[operations.md](contracts/operations.md)為準。

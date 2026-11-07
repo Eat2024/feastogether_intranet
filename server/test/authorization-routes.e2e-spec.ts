@@ -28,7 +28,7 @@ function isProtected(method: string, url: string) {
   return (
     url.startsWith('/api/esign/') ||
     url.startsWith('/api/authorization/') ||
-    url === '/api/me/authorization' ||
+    url === '/api/auth/me' ||
     (method === 'GET' && url === '/api/auth/session')
   );
 }

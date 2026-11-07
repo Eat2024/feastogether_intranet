@@ -21,15 +21,24 @@
 
 role permission配置只能選compiled catalog標示可指派的權限，但跨範圍修飾能力缺對應base時不得儲存：read-all需read、manage-all需manage、export.all需export.read或export.create。這個依存驗證以該角色集合計算，避免可孤立的危險修飾碼；一般角色可自行包括基本read/signing能力，不影響全員同仁保證。
 
-## 本人能力契約（029引用）
+## 目前登入者與本人能力契約（029引用）
 
-GET `/api/me/authorization`，FT_ESIGN_SESSION，Cache-Control:no-store。回既有envelope：
+GET `/api/auth/me`，FT_ESIGN_SESSION，Cache-Control:no-store。回既有envelope：
 
 ```json
 {
   "success": true,
   "data": {
     "actor": { "kind": "employee", "userId": 123 },
+    "user": {
+      "id": 123,
+      "empId": "E00123",
+      "name": "測試員工",
+      "departmentName": "測試部門",
+      "titleName": "測試職稱",
+      "lastLoginAt": "2026-11-04T00:00:00Z"
+    },
+    "expiresAt": "2026-11-04T08:00:00Z",
     "modules": [
       { "moduleKey": "esign", "permissions": ["esign.document.read", "esign.signing.copy", "esign.signing.read", "esign.signing.submit"] }
     ]
@@ -38,7 +47,7 @@ GET `/api/me/authorization`，FT_ESIGN_SESSION，Cache-Control:no-store。回既
 }
 ```
 
-actor沿027：employee僅kind/userId；super_user為kind/displayName。modules與permissions按字串排序且去重，沒有能力的module省略。Super user回全部compiled modules與permissions。回應不帶role、其他員工、內部DB id、入口、帳號、cookie或token。讀取無副作用、不依賴Portal即時查詢；session失效401、DB或目錄不一致503，不能fallback全權限。功能不足403 AUTHORIZATION_DENIED，不把403當作重新登入。
+actor／user／expiresAt 沿027 session契約：employee帶白名單本人資料；super_user為kind/displayName且user=null。modules與permissions按字串排序且去重，沒有能力的module省略；Super user回全部compiled modules與permissions。共用導覽可取得目前操作者所有有效module permissions，但回應不帶任何role ID／code／name、其他員工、入口、帳號、cookie或token。各功能只可使用自身moduleKey分組，其他module權限不得透過同名、尾名或字串前綴授權。讀取無副作用、不依賴Portal即時查詢；session失效401、DB或目錄不一致503，不能fallback全權限。功能不足403 AUTHORIZATION_DENIED，不把403當作重新登入。
 
 029對應：`/forms`→esign.document.read；`/my-signature`→esign.signing.read；`/export-history`→esign.export.read。這是頁面進入能力，不代表內部所有按鈕能力或每筆資料範圍。
 
@@ -64,7 +73,7 @@ actor沿027：employee僅kind/userId；super_user為kind/displayName。modules�
 | Exports POST exports／retries／export-downloads | export.create（產生／重試）；export.read（現成檔下載記錄） | 依實際分支明確分類；同部門或export.all |
 | ExportHistory GET列表／GET :id/document／POST :id/downloads | export.read | 同部門或export.all；pdf本人副本仍額外驗本人，不因歷史路徑放寬 |
 | ExportHistory POST Excel紀錄 | export.create | 同部門或export.all；保存實際actor |
-| 本人能力、GET session | AuthenticatedOnly | 明確接受employee／super，不要求可指派權限 |
+| auth/me、GET session | AuthenticatedOnly | 明確接受employee／super，不要求可指派權限 |
 | DELETE session（登出） | Public＋OriginGuard | 保留027匿名／失效cookie冪等登出；可信Origin才能撤銷及清cookie，不要求有效actor |
 | 授權管理所有API | SuperUserOnly＋platform.authorization.manage | actor種類必為super_user，不能由role取得 |
 | 外部Email簽署、公開驗證、OAuth／WebView pre-session、health | 各自既有Public規則 | 不套員工同仁，不因Super user cookie取得外部憑證資格 |

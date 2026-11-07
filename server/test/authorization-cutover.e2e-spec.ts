@@ -197,7 +197,7 @@ it('027 合成備份還原→schema up→兩次sync/核定指派，既有session
         try {
           const response = await app.inject({
             method: 'GET',
-            url: '/api/me/authorization',
+            url: '/api/auth/me',
             headers: { cookie: `FT_ESIGN_SESSION=${token}` },
           });
           expect(response.statusCode).toBe(200);
@@ -207,7 +207,7 @@ it('027 合成備份還原→schema up→兩次sync/核定指派，既有session
           );
           const revoked = await app.inject({
             method: 'GET',
-            url: '/api/me/authorization',
+            url: '/api/auth/me',
             headers: { cookie: `FT_ESIGN_SESSION=${token}` },
           });
           expect(revoked.statusCode).toBe(200);

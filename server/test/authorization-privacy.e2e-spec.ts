@@ -95,7 +95,7 @@ it('response、access log及audit不洩漏員編body／cookie／上游原始錯�
           (
             await ctx.app.inject({
               method: 'GET',
-              url: '/api/me/authorization',
+              url: '/api/auth/me',
               headers,
             })
           ).statusCode,

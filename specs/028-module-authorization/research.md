@@ -48,7 +48,7 @@ Super user建立文件需顯式departmentCode，透過既有Portal部門來源 e
 
 ## R6 — 本人能力供029使用，管理僅Super user
 
-**Decision**：GET `/api/me/authorization` 回027 actor與按module分組的permissions，no-store；員工只有有效聯集，Super user列出所有目前登錄能力。無roles／其他員工資料／入口／token。角色管理API先檢查actor.kind=super_user，不讓可編輯的role_permissions授予平台管理權。
+**Decision**：GET `/api/auth/me` 合併 027 session view（actor／白名單 user／expiresAt）與按 module 分組的 permissions，no-store；員工只有有效聯集，Super user 維持 user=null 並列出所有目前登錄能力。無任何 role ID／code／name、其他員工資料、入口或 token；舊 `/api/me/authorization` 移除。角色管理API先檢查actor.kind=super_user，不讓可編輯的role_permissions授予平台管理權。
 
 **Rationale**：前端不應解析角色名稱；platform.authorization.manage在目錄可見但不可指派，維護身分是唯一來源。029的選單權限契約見 [permissions](contracts/permissions.md)。
 

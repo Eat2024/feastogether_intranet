@@ -39,13 +39,22 @@ describe('028 本人有效能力契約', () => {
         ] as const) {
           const response = await app.inject({
             method: 'GET',
-            url: '/api/me/authorization',
+            url: '/api/auth/me',
             headers: { cookie },
           });
           expect(response.statusCode).toBe(200);
           expect(response.headers['cache-control']).toBe('no-store');
           expect(response.json<{ data: unknown }>().data).toEqual({
             actor: { kind: 'employee', userId },
+            user: {
+              id: userId,
+              empId: userId === 1 ? 'AZ-OLD' : 'AZ-NEW',
+              name: userId === 1 ? '合成舊員工' : '合成新員工',
+              departmentName: null,
+              titleName: null,
+              lastLoginAt: null,
+            },
+            expiresAt: expect.any(String),
             modules: [
               {
                 moduleKey: 'esign',
@@ -83,6 +92,10 @@ it('未登入401，停用／刪除員工舊session無效；Super最小身分與�
       expect(
         (await app.inject({ method: 'GET', url: '/api/me/authorization' }))
           .statusCode,
+      ).toBe(404);
+      expect(
+        (await app.inject({ method: 'GET', url: '/api/auth/me' }))
+          .statusCode,
       ).toBe(401);
       const cookie = await createAuthorizationSession(app, {
         kind: 'employee',
@@ -99,7 +112,7 @@ it('未登入401，停用／刪除員工舊session無效；Super最小身分與�
           (
             await app.inject({
               method: 'GET',
-              url: '/api/me/authorization',
+              url: '/api/auth/me',
               headers: { cookie: token },
             })
           ).statusCode,
@@ -109,7 +122,7 @@ it('未登入401，停用／刪除員工舊session無效；Super最小身分與�
       });
       const response = await app.inject({
         method: 'GET',
-        url: '/api/me/authorization',
+        url: '/api/auth/me',
         headers: { cookie: superCookie },
       });
       expect(response.statusCode).toBe(200);
@@ -117,6 +130,8 @@ it('未登入401，停用／刪除員工舊session無效；Super最小身分與�
       const body = response.json<{
         data: {
           actor: unknown;
+          user: unknown;
+          expiresAt: string;
           modules: Array<{ moduleKey: string; permissions: string[] }>;
         };
       }>().data;
@@ -124,7 +139,14 @@ it('未登入401，停用／刪除員工舊session無效；Super最小身分與�
         kind: 'super_user',
         displayName: 'Super user',
       });
-      expect(Object.keys(body)).toEqual(['actor', 'modules']);
+      expect(body.user).toBeNull();
+      expect(body.expiresAt).toEqual(expect.any(String));
+      expect(Object.keys(body)).toEqual([
+        'actor',
+        'user',
+        'expiresAt',
+        'modules',
+      ]);
       expect(body.modules.map((m) => m.moduleKey)).toEqual([
         'esign',
         'platform',
@@ -137,7 +159,7 @@ it('未登入401，停用／刪除員工舊session無效；Super最小身分與�
         (
           await app.inject({
             method: 'GET',
-            url: '/api/me/authorization',
+            url: '/api/auth/me',
             headers: { cookie: superCookie },
           })
         ).statusCode,
@@ -168,7 +190,7 @@ it('正式 AppModule 的全域 guard 順序可讀本人能力且不開放 Super 
         (
           await ctx.app.inject({
             method: 'GET',
-            url: '/api/me/authorization',
+            url: '/api/auth/me',
             headers: { cookie },
           })
         ).statusCode,
@@ -180,7 +202,7 @@ it('正式 AppModule 的全域 guard 順序可讀本人能力且不開放 Super 
         (
           await ctx.app.inject({
             method: 'GET',
-            url: '/api/me/authorization',
+            url: '/api/auth/me',
             headers: { cookie: superCookie },
           })
         ).statusCode,
@@ -200,7 +222,7 @@ it('正式 AppModule 的全域 guard 順序可讀本人能力且不開放 Super 
       try {
         const response = await ctx.app.inject({
           method: 'GET',
-          url: '/api/me/authorization',
+          url: '/api/auth/me',
           headers: { cookie },
         });
         expect(response.statusCode).toBe(503);

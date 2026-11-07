@@ -150,7 +150,7 @@ describe('028 多實例即時撤權與 current read', () => {
         await read('create', 403);
         const response = await b.inject({
           method: 'GET',
-          url: '/api/me/authorization',
+          url: '/api/auth/me',
           headers: { cookie },
         });
         expect(response.statusCode).toBe(200);

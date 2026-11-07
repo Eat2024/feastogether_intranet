@@ -142,7 +142,7 @@ it('Super 可預先指派尚未登入員工，讀回角色與稽核；相同目�
         });
         const view = await app.inject({
           method: 'GET',
-          url: '/api/me/authorization',
+          url: '/api/auth/me',
           headers: { cookie: employee },
         });
         expect(
@@ -208,7 +208,7 @@ it('目標資格精確查核且不登出管理者；本地停用、刪除與員�
             (
               await app.inject({
                 method: 'GET',
-                url: '/api/me/authorization',
+                url: '/api/auth/me',
                 headers,
               })
             ).statusCode,
@@ -436,7 +436,7 @@ it('API與REPL同CAS語意，兩實例舊會話立即撤權，撤後重授恢復
           for (const app of [a, b]) {
             const response = await app.inject({
               method: 'GET',
-              url: '/api/me/authorization',
+              url: '/api/auth/me',
               headers: { cookie: employee },
             });
             expect(response.statusCode).toBe(200);

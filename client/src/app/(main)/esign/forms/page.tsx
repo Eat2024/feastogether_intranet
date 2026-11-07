@@ -1,12 +1,13 @@
 import FlashSnackbar from '@/components/FlashSnackbar';
 import PageHeader from '@/components/PageHeader';
+import { ROUTES } from '@/constants/routes';
 import DocumentsListView from '@/features/esign-documents/DocumentsListView';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import Button from '@mui/material/Button';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 
-export const metadata: Metadata = { title: '電子簽列表' };
+export const metadata: Metadata = { title: ROUTES.esignForms.label };
 
 const FLASH_MESSAGES = {
   initiating: '已受理發起，正在背景處理 {count} 位簽署人',
@@ -22,7 +23,7 @@ export default function FormsPage() {
     <>
       {/* 嵌入入口網時隱藏標題與「新增電子簽文件」：入口網已有同名標題與「建立電子簽」選單 */}
       <PageHeader
-        title="電子簽列表"
+        title={ROUTES.esignForms.label}
         hideTitleWhenEmbedded
         hideActionsWhenEmbedded
         description="建立內部電子簽文件、設定簽署人員並追蹤簽署進度；已有人簽署的文件將無法再修改內容。"
@@ -31,7 +32,7 @@ export default function FormsPage() {
             size="large"
             variant="contained"
             startIcon={<AddRoundedIcon />}
-            href="/esign/forms/new"
+            href={ROUTES.esignFormsNew.href}
           >
             新增電子簽文件
           </Button>

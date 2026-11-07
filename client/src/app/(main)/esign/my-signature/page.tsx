@@ -1,10 +1,11 @@
 import FlashSnackbar from '@/components/FlashSnackbar';
 import PageHeader from '@/components/PageHeader';
+import { ROUTES } from '@/constants/routes';
 import SigningTasksListView from '@/features/signing-tasks/SigningTasksListView';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 
-export const metadata: Metadata = { title: '我的電子簽' };
+export const metadata: Metadata = { title: ROUTES.esignMySignature.label };
 
 const FLASH_MESSAGES = {
   signed: '已完成簽署',
@@ -16,7 +17,7 @@ export default function MySignaturePage() {
   return (
     <>
       <PageHeader
-        title="我的電子簽"
+        title={ROUTES.esignMySignature.label}
         hideTitleWhenEmbedded
         description="查看需要你簽署的文件，並追蹤已簽署的紀錄。"
       />

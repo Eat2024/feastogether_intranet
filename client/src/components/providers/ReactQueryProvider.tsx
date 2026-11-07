@@ -11,6 +11,10 @@ import axios from 'axios';
 import { useState, type ReactNode } from 'react';
 import SessionExpiredDialog from './SessionExpiredDialog';
 import { useSnackbar } from './SnackbarProvider';
+import {
+  clearAuthorizationCache,
+  revalidateAuthorizationAfterDenied,
+} from '@/features/navigation/authorization-cache';
 
 // 個別 query／mutation 可宣告 meta.suppressGlobalErrorToast，自行顯示錯誤訊息（避免全域與元件各跳一次；401 仍開登入過期提示）。
 // mutation 另可宣告 meta.handlesOwnErrors：所有錯誤（含 401）都由呼叫端處理，全站不跳提示、也不開登入過期提示。
@@ -38,17 +42,20 @@ export default function ReactQueryProvider({ children }: { children: ReactNode }
     if (!suppressToast) showSnackbar(getErrorMessage(error), 'error');
   };
 
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
+  const [queryClient] = useState(() => {
+      const client = new QueryClient({
         queryCache: new QueryCache({
           onError(error, query) {
+            if (isUnauthorized(error)) void clearAuthorizationCache(client);
+            else revalidateAuthorizationAfterDenied(client, error, query.queryKey);
             handleError(error, query.meta?.suppressGlobalErrorToast);
           },
         }),
         mutationCache: new MutationCache({
           onError(error, _variables, _context, mutation) {
             if (mutation.meta?.handlesOwnErrors) return;
+            if (isUnauthorized(error)) void clearAuthorizationCache(client);
+            else revalidateAuthorizationAfterDenied(client, error);
             handleError(error, mutation.meta?.suppressGlobalErrorToast);
           },
         }),
@@ -60,8 +67,9 @@ export default function ReactQueryProvider({ children }: { children: ReactNode }
             retry: 0,
           },
         },
-      }),
-  );
+      });
+      return client;
+  });
 
   return (
     <QueryClientProvider client={queryClient}>

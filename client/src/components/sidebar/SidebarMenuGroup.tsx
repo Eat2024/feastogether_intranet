@@ -11,16 +11,16 @@ import { alpha } from "@mui/material/styles";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import ArrowDropUpIcon from "@mui/icons-material/ArrowDropUp";
 import CircleIcon from "@mui/icons-material/Circle";
-import { isRouteActive, type NavItem } from "./services";
+import { isRouteActive, type NavGroup } from "./services";
 
 type Props = {
-  item: NavItem;
+  item: NavGroup;
   pathname: string;
 };
 
 /** 可收合的選單群組；目前頁面在群組內時預設展開，左側顯示主色標記 */
 export default function SidebarMenuGroup({ item, pathname }: Props) {
-  const children = item.children ?? [];
+  const children = item.children;
   const isGroupActive = children.some((child) => isRouteActive(pathname, child.href));
   const [open, setOpen] = useState(isGroupActive);
   const listId = `sidebar-group-${item.key}`;
@@ -73,6 +73,7 @@ export default function SidebarMenuGroup({ item, pathname }: Props) {
               component={Link}
               href={child.href}
               selected={isRouteActive(pathname, child.href)}
+              aria-current={isRouteActive(pathname, child.href) ? "page" : undefined}
               sx={{
                 pl: 4,
                 color: "inherit",

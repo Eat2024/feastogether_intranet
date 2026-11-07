@@ -3,8 +3,22 @@ import { minutes } from '@/lib/time';
 /** 各 query hook 的快取設定；未列出的 hook 使用 ReactQueryProvider 的預設值。 */
 export const queryOptions: Record<
   string,
-  Partial<{ staleTime: number; gcTime: number; refetchOnWindowFocus: boolean; retry: number; retryDelay: number }>
+  Partial<{
+    staleTime: number;
+    gcTime: number;
+    refetchOnWindowFocus: boolean;
+    refetchOnMount: boolean | "always";
+    retry: number;
+    retryDelay: number;
+  }>
 > = {
+  useGetMeQuery: {
+    staleTime: 0,
+    gcTime: 0,
+    retry: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  },
   // 文件狀態會隨簽署進度變動，快取放短一點
   useGetDocumentsQuery: {
     staleTime: minutes(1),

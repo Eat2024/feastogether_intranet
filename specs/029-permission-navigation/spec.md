@@ -4,9 +4,9 @@
 
 **Created**: 2026-11-04
 
-**Status**: Draft — grilling 決策已確認，待 plan
+**Status**: Updated — 已確認以 `/api/auth/me` 作為前端共用目前登入者契約
 
-**Input**: intranet 沿用 CKS 的 routes／menu 集中設定與可見選單過濾方式，明確綁定子功能與權限；有子選單及單獨項目都需檢查，空群組隱藏，Super user 顯示所有已設定業務項目。隱藏登入入口不列入選單。不製作角色管理或 OAuth 登入前端。
+**Input**: intranet 沿用 CKS 的 AppShell／AppHeader／Breadcrumb／UserProfile、集中 routes／menu、`hasPermission` 與 Snackbar 呈現慣例，明確綁定子功能與權限；有子選單及單獨項目都需檢查，空群組隱藏，Super user 顯示所有已設定業務項目。隱藏登入入口不列入選單。不製作角色管理或 OAuth 登入前端；Marco Chen 已建立的 theme、全域日期／字型配置及前端未儲存 guard 不在本次改動。
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -25,6 +25,7 @@
 3. **Given** 某群組的全部子項目都不可見，**When** 呈現導覽，**Then** 群組也隱藏，不留下無法使用的父連結。
 4. **Given** 沒有 children 的獨立項目，**When** 沒有對應能力，**Then** 仍隱藏，不沿用 CKS 的無條件顯示例外。
 5. **Given** 展開或收合側欄，**When** 比對可見項目，**Then** 權限判斷一致，圖示、名稱與目標正確。
+6. **Given** 受控隔離測試以旅遊與電子簽表示不同子功能角色，**When** 各功能建立可見導覽，**Then** 前端不取得或解析角色，只使用 `/api/auth/me` 中相同 `moduleKey` 的完整權限識別；其他功能的能力不能顯示本功能入口，測試資料不因此成為正式業務選單。
 
 ### User Story 2 - Super user 導覽與身分隔離 (Priority: P1)
 
@@ -70,6 +71,8 @@ Super user 可看到全部已配置業務入口，但不把維護登入網址公
 1. **Given** 集中路徑與選單設定，**When** 調整名稱／順序，**Then** 各呈現模式一致，不需修改授權判斷或後端角色名稱。
 2. **Given** 選單項目綁定未知、缺漏或跨子功能權限，**When** 檢查設定或呈現，**Then** 不默認顯示；可在開發／驗證階段定位錯誤。
 3. **Given** 舊系統 iframe 嵌入，**When** 開啟內部頁面，**Then** 維持既有隱藏側欄與嵌入行為，不強制顯示重複導覽。
+4. **Given** 維護者調整集中路徑名稱，**When** 顯示 Breadcrumb、頁面標題或側欄，**Then** 共同使用相同路徑目錄，不產生同一路徑多份名稱。
+5. **Given** 任一前端呈現需要檢查功能能力，**When** 使用共用權限介面，**Then** 只在指定 module 內精確採 AND 比對完整 permission，空需求 fail closed。
 
 ### Edge Cases
 
@@ -80,13 +83,14 @@ Super user 可看到全部已配置業務入口，但不把維護登入網址公
 - 只具基本資格但缺可信部門：本人簽署仍可使用，部門資料取得沿既有業務錯誤提示；有功能權限不代表一定有某筆資料。
 - 目前部分頁面仍是 mock／原型：設定化不等於它們已串接後端，不在本 spec 順手實作匯出歷史等原型。
 - 手動輸入網址、改前端狀態或保留舊分頁不能取得資料；這由 Spec 028 後端授權保障，不靠選單隱藏。
+- `/api/auth/me` 可為共用服務切換列出多個子功能的有效權限，但不包含任何角色資料；功能內選單不得用其他 `moduleKey` 的權限、同尾名或字串前綴放行。
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: 路徑／名稱與選單階層 MUST 集中定義，明確包含穩定項目識別、目標、圖示、子項目及子功能／所需權限對應；呈現元件不重複硬編同一清單。（US4）
-- **FR-002**: 選單 MUST 依 Spec 028 提供的目前有效身分／能力過濾，不根據角色名稱、前端自報能力或 OAuth scope 判斷。（US1、US2）
+- **FR-002**: 選單 MUST 依 Spec 028 的 `/api/auth/me` 所提供目前有效身分／能力過濾，不根據角色名稱、前端自報能力或 OAuth scope 判斷。（US1、US2）
 - **FR-003**: 子項目與無子項目的獨立項目 MUST 同樣驗證權限；所有子項被移除的群組 MUST 隱藏。（US1）
 - **FR-004**: 未知、缺漏或跨子功能權限對應 MUST NOT 默認放行；多能力需求預設全部具備，不默默沿用後端可能不同的 OR 語意。（US4、Edge Cases）
 - **FR-005**: Super user MUST 看到所有已設定且有實際頁面的業務項目；不得為尚未製作的管理畫面建立假入口。（US2）
@@ -97,13 +101,20 @@ Super user 可看到全部已配置業務入口，但不把維護登入網址公
 - **FR-010**: 側欄展開／收合、目前路徑標示、鍵盤操作及既有 iframe 隱藏規則 MUST 維持一致。（US1、US4）
 - **FR-011**: 本 spec MUST 僅修改既有導覽設定與必要能力讀取／身分快取行為，不實作角色管理、員工指派、OAuth 登入／callback 或其他業務畫面。（US2、Scope）
 - **FR-012**: 選單顯示 MUST NOT 被當成授權證明；直接存取無權限資料的請求仍由 Spec 028 拒絕，驗收須包含繞過選單的測試。（US3、Edge Cases）
+- **FR-013**: 前端 MUST 將 `/api/auth/me` 作為目前登入者與有效能力的共用契約；回應不得包含角色 ID／代碼／名稱。每個選單項目只能比對設定的 `moduleKey` 與該分組內完整權限識別，跨子功能資料不得合併或以名稱推論。（US1、US2、US4）
+- **FR-014**: 內部頁面 MUST 沿用 CKS 的共用殼層結構，固定由 Sidebar、AppHeader、Breadcrumb、UserProfile 與可捲動內容區形成一致版面；既有 iframe 隱藏與身分採用安全邊界不得失效。（US2、US4）
+- **FR-015**: 路徑與名稱 MUST 由單一集中目錄供選單、Breadcrumb、頁面標題及 redirect 使用；權限需求仍與純路徑資料分離，不把顯示名稱當授權依據。（US4）
+- **FR-016**: 前端 MUST 提供共用 `hasPermission(moduleKey, ...permissions)` 語意供導覽與其他呈現呼叫；缺 module、空需求、跨 module 或缺任一 permission 均回 false，且不取代後端授權。（US1、US4）
+- **FR-017**: 全站 Snackbar MUST 與 CKS 採相同的頂端置中 filled 呈現；既有錯誤分類、401／403流程與訊息來源不得因視覺同步而改變。（US3）
 
 ### Key Entities
 
 - **路徑定義**：既有頁面的路徑與顯示名稱，不包含權限本身。
 - **選單項目**：呈現階層、排序、圖示與所需子功能能力的對應。
-- **目前能力快照**：後端認定目前操作者可用的能力，只供呈現，不取代每次請求的授權。
+- **目前登入者能力快照**：`/api/auth/me` 提供目前會話身分、必要本人資料、期限與後端認定的分組能力；只供呈現，不取代每次請求的授權，也不揭露角色。
 - **可見選單**：依目前能力過濾的結果，不反向修改角色或權限。
+- **共用殼層**：內部頁面的 Sidebar、Header、Breadcrumb、UserProfile 與內容捲動責任，不改公開／外部頁面。
+- **共用權限介面**：把已採用的能力快照轉成同 module 完整 permission 的布林查詢，不揭露或推算角色。
 
 ## Success Criteria *(mandatory)*
 
@@ -114,18 +125,23 @@ Super user 可看到全部已配置業務入口，但不把維護登入網址公
 - **SC-003**: 身分切換或能力重新驗證完成後，舊身分／舊權限項目保留數為 0；不要求重新登入即可更新。
 - **SC-004**: 查詢尚未完成、失敗、401 與 403 的驗收全部有對應狀態，不出現全選單 fallback 或將所有 403 視為登入過期。
 - **SC-005**: 隱藏項目直接存取的越權成功數為 0；原 iframe 導覽隱藏與既有合法頁面使用流程保持通過。
+- **SC-006**: `/api/auth/me` 的前端 payload 中角色 ID／代碼／名稱數為 0；不同 module 使用相同尾名或角色名稱時，跨 module 錯誤顯示項目數為 0。
+- **SC-007**: 每個正式內部頁面均由同一 AppShell 顯示 Header、Breadcrumb 與 UserProfile；集中路徑名稱在側欄、Breadcrumb、頁面標題及 redirect 的不一致數為 0。
+- **SC-008**: 共用 `hasPermission` 的同 module、跨 module、多能力 AND、空需求與缺能力自動測試全部通過；前端繞過後端授權的成功數維持 0。
+- **SC-009**: intranet 與 CKS 的 Snackbar 位置及 filled 樣式一致，既有錯誤流程回歸全部通過。
 
 ## Assumptions
 
 - 依賴 [028](../028-module-authorization/spec.md) 的本人有效能力契約與後端保護，以及 [027](../027-super-user-access/spec.md) 的維護身分辨識與切換規則。
-- 使用者已指定沿用 CKS 的集中 routes／menu 與可見選單 hook 概念；適配 intranet 既有 API、theme 與元件，不搬整套 CKS provider 或 UI。
+- 使用者已指定沿用 CKS 的共用殼層、集中 routes／menu、可見選單、`hasPermission` 與 Snackbar 慣例；適配 intranet 的 module permission、身分採用安全邊界與既有 theme，不搬角色 payload 或登入流程。
 - 不提供從 DB 動態編輯選單的管理功能；選單配置隨版本部署，和後端權限目錄同步審查。
 - 選單不承諾在靜止分頁即時推送更新；後端立即撤權，前端在列出的重新驗證時點更新，不新增輪詢或推播服務。
-- 本 spec 不控制所有業務頁面按鈕與路由可見性；即使按鈕暫時存在，後端仍須拒絕無權限操作。全面按鈕調整屬後續前端範圍。
+- 本 spec 提供共用 `hasPermission` 並讓導覽成為第一個呼叫端，但不逐頁修改所有業務按鈕；即使按鈕暫時存在，後端仍須拒絕無權限操作。全面按鈕調整屬後續前端範圍。
 
 ## Scope & Dependencies
 
-- 本次前端總範圍只有 027 的 Super user 登入／必要身分顯示，以及本 spec 的既有側邊選單設定化與權限連動。
+- 本次前端範圍包含 027 必要身分顯示、CKS 同型共用殼層／Breadcrumb／UserProfile、集中路徑目錄、側邊選單權限連動、共用 `hasPermission` 及 Snackbar 視覺同步。
+- 依作者原則不修改 Marco Chen 建立的 intranet theme、Root Layout 字型／日期架構與前端未儲存內容 guard；第 3、5 項不納入實作。
 - 角色管理、員工指派、OAuth 登入／callback、驗收業務與其他原型正式化均不在範圍。
 - 沿用 CKS [menu](../../../CKS_Acceptance_System/client/src/constants/menu.ts) 與 [可見項目過濾](../../../CKS_Acceptance_System/client/src/hooks/useVisibleMenuItems.ts) 的責任分工，但修正「獨立項目無條件顯示」限制。
 - 遵守 server 權威與最小資料揭露；本 spec 無新增業務資料表、環境變數或排程需求。

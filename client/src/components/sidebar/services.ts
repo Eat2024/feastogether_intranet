@@ -1,92 +1,96 @@
 import type { SvgIconComponent } from "@mui/icons-material";
-import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
 import DrawRoundedIcon from "@mui/icons-material/DrawRounded";
-import FlightTakeoffRoundedIcon from "@mui/icons-material/FlightTakeoffRounded";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 import ListAltRoundedIcon from "@mui/icons-material/ListAltRounded";
-
-/** 側邊欄第一層選單；有 children 時為群組，href 是群組底下頁面共用的路徑前綴 */
-export type NavItem = {
-  key: string;
-  label: string;
-  href: string;
-  icon: SvgIconComponent;
-  children?: NavSubItem[];
-};
+import { ROUTES } from "@/constants/routes";
+import { filterVisibleMenu } from "@/features/navigation/filter-visible-menu";
+import type { HasPermission } from "@/features/navigation/has-permission";
 
 export type NavSubItem = {
+  kind: "link";
   key: string;
   label: string;
   href: string;
+  moduleKey: string;
+  requiredPermissions: readonly string[];
 };
 
-/** 一個服務的側邊欄設定；新增服務只要在 SERVICES 加一筆 */
+export type NavLink = NavSubItem & { icon: SvgIconComponent };
+
+export type NavGroup = {
+  kind: "group";
+  key: string;
+  label: string;
+  icon: SvgIconComponent;
+  children: NavSubItem[];
+};
+
+export type NavItem = NavLink | NavGroup;
+
 export type ServiceDefinition = {
   key: string;
   name: string;
   icon: SvgIconComponent;
-  /** 屬於此服務的路徑前綴，用來從網址判斷目前所在服務 */
   pathPrefixes: string[];
   menu: NavItem[];
 };
 
+/** 前端正式使用的能力目錄；未知或跨 module 設定一律 fail closed。 */
+export const KNOWN_NAVIGATION_PERMISSIONS: Readonly<Record<string, readonly string[]>> = {
+  esign: ["esign.document.read", "esign.signing.read", "esign.export.read"],
+};
+
+/** 只列目前有實際業務流程的入口；旅遊權限隔離以測試 fixture 驗證，不建立正式假入口。 */
 export const SERVICES: ServiceDefinition[] = [
   {
     key: "esign",
-    name: "電子簽署",
+    name: ROUTES.esign.label,
     icon: DrawRoundedIcon,
-    pathPrefixes: ["/esign"],
+    pathPrefixes: [ROUTES.esign.href],
     menu: [
-      { key: "forms", label: "電子簽列表", href: "/esign/forms", icon: ListAltRoundedIcon },
-      { key: "my-signature", label: "我的電子簽", href: "/esign/my-signature", icon: DrawRoundedIcon },
       {
-        key: "export-history",
-        label: "歷史匯出文件",
-        href: "/esign/export-history",
-        icon: HistoryRoundedIcon,
+        kind: "link", key: "forms", label: ROUTES.esignForms.label, href: ROUTES.esignForms.href,
+        icon: ListAltRoundedIcon, moduleKey: "esign", requiredPermissions: ["esign.document.read"],
       },
-    ],
-  },
-  {
-    key: "travel",
-    name: "旅遊平台",
-    icon: FlightTakeoffRoundedIcon,
-    pathPrefixes: ["/travel"],
-    menu: [
       {
-        key: "permissions",
-        label: "權限管理",
-        href: "/travel/permissions",
-        icon: AdminPanelSettingsRoundedIcon,
-        children: [
-          { key: "roles", label: "角色管理", href: "/travel/permissions/roles" },
-          { key: "accounts", label: "帳號管理", href: "/travel/permissions/accounts" },
-        ],
+        kind: "link", key: "my-signature", label: ROUTES.esignMySignature.label, href: ROUTES.esignMySignature.href,
+        icon: DrawRoundedIcon, moduleKey: "esign", requiredPermissions: ["esign.signing.read"],
+      },
+      {
+        kind: "link", key: "export-history", label: ROUTES.esignExportHistory.label, href: ROUTES.esignExportHistory.href,
+        icon: HistoryRoundedIcon, moduleKey: "esign", requiredPermissions: ["esign.export.read"],
       },
     ],
   },
 ];
 
-/** pathname 是 href 本身或其子路由（/esign/forms 不會匹配 /esign/forms-x） */
+export function getVisibleServices(hasPermission: HasPermission): ServiceDefinition[] {
+  return SERVICES.flatMap((service) => {
+    const menu = filterVisibleMenu(service.menu, hasPermission, KNOWN_NAVIGATION_PERMISSIONS);
+    return menu.length ? [{ ...service, menu }] : [];
+  });
+}
+
 export function isRouteActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** 點選選單項目實際前往的頁面：群組前往第一個子頁 */
 export function getNavItemHref(item: NavItem) {
-  return item.children?.[0]?.href ?? item.href;
+  return item.kind === "group" ? item.children[0]?.href ?? "/" : item.href;
 }
 
-/** 切換到某服務時前往的頁面：選單第一項 */
+export function isNavItemActive(pathname: string, item: NavItem) {
+  return item.kind === "group"
+    ? item.children.some((child) => isRouteActive(pathname, child.href))
+    : isRouteActive(pathname, item.href);
+}
+
 export function getServiceHomeHref(service: ServiceDefinition) {
   return getNavItemHref(service.menu[0]);
 }
 
-/** 依網址判斷目前服務；對不到時（例如 /）視為第一個服務 */
-export function getCurrentService(pathname: string) {
-  return (
-    SERVICES.find((service) =>
-      service.pathPrefixes.some((prefix) => isRouteActive(pathname, prefix)),
-    ) ?? SERVICES[0]
-  );
+export function getCurrentService(pathname: string, services: readonly ServiceDefinition[]) {
+  return services.find((service) =>
+    service.pathPrefixes.some((prefix) => isRouteActive(pathname, prefix)),
+  ) ?? services[0];
 }

@@ -1,13 +1,15 @@
 import api from '@/api/config';
 import { endpoints } from '@/api/endpoints';
-import type { AuthSession } from '@/api/types';
+import type { AuthMe } from '@/api/types';
+import { isAuthMeResponse } from '@/api/validators/authMe';
 
 /**
- * @name 取得目前身分
- * @description 員工或其他身分；未登入、過期或已撤銷回 401
+ * @name 取得目前登入者與有效能力
+ * @description 只接受 actor、user、expiresAt、modules；不解析角色資料
  */
-export const getSession = async (): Promise<AuthSession> => {
-  const res = await api<AuthSession>({ method: 'GET', url: endpoints.AUTH_SESSION });
+export const getMe = async (signal?: AbortSignal): Promise<AuthMe> => {
+  const res = await api<unknown>({ method: 'GET', url: endpoints.AUTH_ME, signal });
+  if (!isAuthMeResponse(res.data)) throw new Error('AUTH_ME_INVALID_RESPONSE');
   return res.data;
 };
 

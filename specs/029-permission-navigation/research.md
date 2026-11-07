@@ -4,19 +4,19 @@
 
 ## R1 — 保留現行側欄，只移植設定與過濾責任
 
-**Decision**：新增集中 `client/src/constants/routes.ts`／`menu.ts`，既有 SideNav 消費過濾後結果。初版仍呈現三個現有獨立入口，不強制增加群組、抽屜收合或手機選單。
+**Decision**：擴充既有 `client/src/components/sidebar/services.ts` 集中路徑、選單與權限設定，Sidebar 的展開與 mini navigation 消費同一份過濾結果。初版仍呈現三個現有獨立入口，不強制增加正式群組或手機選單。
 
-**Rationale**：[intranet SideNav](../../client/src/components/SideNav.tsx) 現在是 permanent Drawer，沒有 CKS 的開關狀態與 mini navigation。Spec 中「展開／收合一致」解讀為任何呈現模式共用同一可見結果，不為不存在的 UI 增加功能。
+**Rationale**：intranet 現在使用 `client/src/components/sidebar/` 的 permanent Drawer，並已有展開與 mini navigation。兩種呈現模式必須共用同一份可見結果。
 
-**Alternatives**：整包複製 CKS Sidebar／PermissionProvider 會帶入不同 theme、單角色 jobKey 與不必要 UI；繼續把 NAV_ITEMS 寫在元件內則不能形成集中路徑與設定。
+**Alternatives**：整包複製 CKS 的單角色 jobKey 或 theme 會破壞 intranet 的 module permission 與既有視覺；完全不建立共用權限介面則會讓各畫面重複解析能力快照。最終依使用者決策沿用 CKS 的 AppShell／Header／Breadcrumb／UserProfile 與 `hasPermission` 呼叫面，但以 intranet 的 `auth/me.modules` 實作。
 
 來源：[CKS menu](../../../CKS_Acceptance_System/client/src/constants/menu.ts)、[CKS useVisibleMenuItems](../../../CKS_Acceptance_System/client/src/hooks/useVisibleMenuItems.ts)。其中無 children 直接顯示的行為不沿用。
 
 ## R2 — 028 是本人能力的唯一契約來源
 
-**Decision**：只呼叫 `GET /api/me/authorization`，不新增 029 後端 endpoint。使用既有 envelope 與 027 actor 聯集。028 提供的 `modules[].permissions` 是完整字串權限碼，選單以 moduleKey＋精確能力對應，不解析 role name，不使用 OAuth scope，也不讓 super_user 直接略過錯誤選單設定。
+**Decision**：只呼叫 `GET /api/auth/me`，不新增 029 後端 endpoint。使用既有 envelope、027 session view與028新增的`modules[].permissions`。選單以moduleKey＋完整權限碼精確對應，不取得或解析role ID／code／name，不使用OAuth scope，也不讓super_user直接略過錯誤選單設定。
 
-**Rationale**：已與 Spec 028 plan 協調：`/forms`→`esign.document.read`、`/my-signature`→`esign.signing.read`、`/export-history`→`esign.export.read`。Super user 的回應已包含全部登錄能力，無需前端 wildcard 或第二份角色推導邏輯。
+**Rationale**：沿用驗收系統以`auth/me`提供目前登入者前端資料的路徑慣例，但intranet不回傳單一或多個角色。已與Spec 028 plan協調：`/esign/forms`→`esign.document.read`、`/esign/my-signature`→`esign.signing.read`、`/esign/export-history`→`esign.export.read`。Super user的回應已包含全部登錄能力，無需前端wildcard或第二份角色推導邏輯；各功能只能讀自身module分組。
 
 **Alternatives**：讀管理角色清單後自行推算會暴露多餘資料；使用 session 建立時的固定 permissions 無法反映即時撤權；為選單新增 API 會重複 028 的本人能力契約。
 
@@ -50,9 +50,15 @@ TanStack 支援逐 query 控制 focus refetch，見 [官方 window focus 文件]
 
 ## R6 — iframe 與 mock 範圍保持
 
-**Decision**：保留 root layout 的 data-embedded 設定與 `.hide-when-embedded`；SideNav 在 iframe 仍隱藏，不改入口網選單協定。現有 export-history 頁仍是原型，權限控制入口不等於完成其資料串接。
+**Decision**：保留 root layout 的 data-embedded 設定與 `.hide-when-embedded`；Sidebar 在 iframe 仍隱藏，不改入口網選單協定。現有 export-history 頁仍是原型，權限控制入口不等於完成其資料串接。
 
 **Evidence**：[globals.css](../../client/src/app/globals.css)、[root layout](../../client/src/app/layout.tsx)、[EmbedBridge](../../client/src/features/embed/EmbedBridge.tsx)、[client AGENTS](../../client/AGENTS.md)。029 不修改主頁 pre-render proxy 的401→404規則，亦不新增 OAuth 前端。
+
+## R7 — 作者原則與明確同步範圍
+
+**Decision**：依使用者指定，Marco Chen 建立的 intranet frontend 行為原則上不動；本次只同步使用者逐項核准的 AppShell／AppHeader／Breadcrumb／UserProfile、集中 routes、`hasPermission` 與 Snackbar。Root Layout theme／日期／字型設定及純前端未儲存 guard 經作者檢查屬 Marco 範圍，因此不修改。
+
+**Rationale**：目標是讓兩套系統的合作慣例一致，同時避免為了形式同步覆寫 intranet 已穩定的前端基礎。Snackbar 採 CKS 現有頂端置中 filled 樣式；CKS 已符合目標，不需反向修改。
 
 ## 未實測事項
 

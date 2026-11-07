@@ -161,7 +161,7 @@ describe('028 生命週期真實操作者', () => {
         expect(JSON.stringify(state)).not.toMatch(
           /inputJson|issuesJson|leaseToken|invitation|ciphertext|signature|@example/,
         );
-        const signingEvidence = await db.query(
+        const signingEvidence = await db.query<Array<Record<string, unknown>>>(
           'SELECT signing_payload_json,signing_payload_sha256 FROM esign_documents WHERE id=?',
           [id],
         );

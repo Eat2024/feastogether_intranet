@@ -58,9 +58,14 @@ export async function createAuthorizationHttpApp(
   );
   configureApp(app);
   await registerFastifyPlugins(app);
-  await app.init();
-  await app.getHttpAdapter().getInstance().ready();
-  return app;
+  try {
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+    return app;
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
 }
 
 /** 合成已建立的真 MySQL session，明確區分 OAuth/WebView；不冒充登入入口驗收。 */

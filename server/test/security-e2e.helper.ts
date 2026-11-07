@@ -27,6 +27,7 @@ export async function createSecurityE2eApp(
     builder,
   ) => builder,
   mailEmails: readonly string[] | null = [],
+  beforeInit?: (app: NestFastifyApplication) => void,
 ): Promise<SecurityE2eContext> {
   const mail =
     mailEmails === null ? undefined : new SyntheticMailFixture(mailEmails);
@@ -41,6 +42,7 @@ export async function createSecurityE2eApp(
   await registerFastifyPlugins(app);
   if (mail) await mail.seed(app.get(MysqlService));
   await seedAuthorizationCatalog(app.get(MYSQL_MAIN));
+  beforeInit?.(app);
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   return {

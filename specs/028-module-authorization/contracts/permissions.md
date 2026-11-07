@@ -64,8 +64,11 @@ actor沿027：employee僅kind/userId；super_user為kind/displayName。modules�
 | Exports POST exports／retries／export-downloads | export.create（產生／重試）；export.read（現成檔下載記錄） | 依實際分支明確分類；同部門或export.all |
 | ExportHistory GET列表／GET :id/document／POST :id/downloads | export.read | 同部門或export.all；pdf本人副本仍額外驗本人，不因歷史路徑放寬 |
 | ExportHistory POST Excel紀錄 | export.create | 同部門或export.all；保存實際actor |
-| 本人能力、session read/logout | AuthenticatedOnly | 明確接受employee／super，不要求可指派權限 |
+| 本人能力、GET session | AuthenticatedOnly | 明確接受employee／super，不要求可指派權限 |
+| DELETE session（登出） | Public＋OriginGuard | 保留027匿名／失效cookie冪等登出；可信Origin才能撤銷及清cookie，不要求有效actor |
 | 授權管理所有API | SuperUserOnly＋platform.authorization.manage | actor種類必為super_user，不能由role取得 |
 | 外部Email簽署、公開驗證、OAuth／WebView pre-session、health | 各自既有Public規則 | 不套員工同仁，不因Super user cookie取得外部憑證資格 |
 
 保留既有路徑與HTTP語意，不為權限重命名draftSave等既有契約。一般匯出與本人副本分開：全文件合法一般匯出可依export權限產生；指向某signer個人副本的入口只給本人，包含既有departmentFile與pdf歷史重下載。詳細檔案完整性驗證一律保留。
+
+登出沿027既有安全契約：匿名／失效cookie也必須能清除瀏覽器會話狀態，不能為028分類改成401而阻止登出。這是明確Public安全例外，仍強制可信Origin；GET session與本人能力則必須有有效actor。`authorization-routes.e2e-spec.ts`逐路由HTTP驗證此差異。

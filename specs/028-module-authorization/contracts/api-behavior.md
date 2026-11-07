@@ -1,6 +1,6 @@
 # 管理 API 與相容契約
 
-狀態：設計，未實作。機器契約見 [openapi.json](openapi.json)，能力目錄見 [permissions.md](permissions.md)。所有成功／失敗沿專案 `{success,data,timestamp}`／`{success:false,error:{code,message},timestamp}`。管理API皆SuperUserOnly、no-store；所有寫入Origin防護，不新增帳密或cookie。
+狀態：028實作與HTTP驗收契約。機器契約見 [openapi.json](openapi.json)，能力目錄見 [permissions.md](permissions.md)。所有成功／失敗沿專案 `{success,data,timestamp}`／`{success:false,error:{code,message},timestamp}`。管理API皆SuperUserOnly、no-store；所有寫入Origin防護，不新增帳密或cookie。
 
 ## 管理資源
 
@@ -14,8 +14,8 @@
 | PATCH 同上 | roleName及／或isActive、expectedVersion；200，非空patch |
 | DELETE 同上 | expectedVersion查詢參數；無有效指派才soft-delete，204 |
 | PUT /api/authorization/modules/{moduleKey}/roles/{roleId}/permissions | permissionKeys完整集合、expectedVersion；差異更新，200 |
-| GET /api/authorization/modules/{moduleKey}/roles/{roleId}/employees | 有效指派者分頁；只回userId／name，必要員編只在授權專用結果中提供且不進log |
-| GET /api/authorization/modules/{moduleKey}/employees/{userId}/roles | explicit roleIds／implicitRoles，及有效角色概覽；無員工404 |
+| GET /api/authorization/modules/{moduleKey}/roles/{roleId}/employees | 有效指派者分頁；只回userId／name，不回員編或完整人事資料 |
+| GET /api/authorization/modules/{moduleKey}/employees/{userId}/roles | explicit roleIds／implicitRoles；無員工404 |
 | POST /api/authorization/modules/{moduleKey}/employee-role-assignments | body empId／roleIds／expectedRoleIds；原子查核、預建員工及覆寫該module一般角色集合，200 |
 | GET /api/authorization/events | limit／beforeId cursor，可選moduleKey，查授權audit白名單 |
 | GET /api/me/authorization | 任一有效actor的本人能力，見permissions契約 |
@@ -43,7 +43,7 @@ assignment回 `{userId,moduleKey,roleIds,implicitRoles,changed}`，不回Portal�
 | 狀態 | code | 行為 |
 |---|---|---|
 | 400 | REQUEST_FORMAT_INVALID | 格式、未知欄位或invalid module／permission |
-| 401 | 027既有AUTH_TOKEN_MISSING／AUTH_TOKEN_INVALID | 無有效actor；不洩漏細節 |
+| 401 | UNAUTHORIZED（027 AUTH_TOKEN_MISSING／AUTH_TOKEN_INVALID 的HTTP code） | 無有效actor；不洩漏細節 |
 | 403 | AUTHORIZATION_DENIED | 有身分但缺功能或非Super user管理操作 |
 | 403 | AUTHORIZATION_PROTECTED_ROLE | 企圖修改同仁、指派維護專用能力 |
 | 404 | AUTHORIZATION_RESOURCE_NOT_FOUND | 目標不存在、已刪除或module路徑與實體不符 |

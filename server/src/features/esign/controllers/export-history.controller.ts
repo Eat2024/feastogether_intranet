@@ -63,7 +63,7 @@ export class ExportHistoryController {
       '- `items`：只含查詢的 `type`',
       '- `total`：該類型的總筆數',
       '- `typeTotals`：各類型總筆數，與 items 套用相同 q、documentId 及可見範圍，不受目前 type 限制',
-      '- `exportedBy`：員工有 `employeeNo`、`email` 為 null；外部簽署人相反；Super user 的 employeeNo/email 均為 null，kind 明確區分操作者',
+      '- `exportedBy`：員工有 `employeeNo`、`email` 為 null；外部簽署人相反；非員工操作者的 employeeNo/email 均為 null，kind 明確區分操作者',
       '- `downloadFileName`：首次提供下載的檔名快照，尚未記錄為 null',
       '- `conditions`：只在 `excel` 出現',
       '- `signerPublicId`：只在 `pdf` 出現',

@@ -1,3 +1,4 @@
+import { AuthorizationWorkerReadinessModule } from './features/authorization/authorization-worker-readiness.module';
 import { Module } from '@nestjs/common';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
 import { RequestIdClsModule } from './infrastructure/logging/requestId/request-id.module';
@@ -14,6 +15,7 @@ import { PortalUserSyncWorkerModule } from './worker/users/portal-user-sync-work
   imports: [
     RequestIdClsModule,
     InfrastructureModule,
+    AuthorizationWorkerReadinessModule,
     EsignWorkerModule,
     PortalUserSyncWorkerModule,
     SuperUserAccessWorkerModule,

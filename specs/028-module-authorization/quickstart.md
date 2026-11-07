@@ -1,6 +1,6 @@
 # 028 驗證指南
 
-本文件描述實作後的驗收程序；目前僅有設計文件，尚未建立授權API或執行以下業務驗收。
+本文件記錄028已實作的驗收程序與各票實測結果。最終整合紀錄見文末；正式核定名單、停機與部署仍須由維運執行。
 
 ## 前置
 
@@ -12,8 +12,9 @@
 pnpm install
 pnpm -C server db:test:create
 pnpm -C server test:schema
-pnpm -C server test -- --runInBand
+pnpm -C server test --runInBand
 pnpm -C server test:e2e
+pnpm -C server test:e2e:security
 pnpm -C server lint:check
 pnpm -C server build
 ```
@@ -22,7 +23,7 @@ pnpm -C server build
 
 ## 驗收順序
 
-1. **Schema與seed（US2、US5／SC-001、006）**：up、重跑seed，確認一般角色自訂設定不被覆寫，員工及簽署FK／證據摘要保持。直接向MySQL送跨module的role_permission／user_role須被複合FK拒絕；並發同module同名create只有一筆成功，不同module同名可成立。soft-delete後可重用名稱但不能重用舊roleCode。驗證actor CHECK拒絕Super帶employee ID或employee缺ID。down於沒有Super資料時可回復，有Super資料時安全拒絕破壞性回退。
+1. **Schema與seed（US2、US5／SC-001、006）**：up、重跑seed，確認一般角色自訂設定不被覆寫，員工及簽署FK／證據摘要保持。直接向MySQL送跨module的role_permission／user_role須被複合FK拒絕；並發同module同名create只有一筆成功，不同module同名可成立。soft-delete後可重用名稱但不能重用舊roleCode。驗證actor CHECK拒絕Super帶employee ID或employee缺ID。down只允許沒有需保留資料的空測試庫；存在授權audit或Super資料時安全拒絕破壞性回退。
 2. **同仁（US1／SC-002）**：OAuth及WebView新／舊session查`GET /api/me/authorization`都取得baseline；GET前後DB關聯筆數不變。同部門各既有可見狀態列表、detail、原始PDF允許；建立、一般匯出及歷史／下載拒絕。本人跨部門簽署／副本仍依本人規則；本地停用即拒絕，缺部門不影響另行判斷的本人資格。
 3. **角色隔離與聯集（US2／SC-001、003）**：兩個角色互補能力、重複能力，撤掉其中一個不抹去另一個。第二module同名角色無法授予esign能力。角色停用／permission修改／撤指派提交後，保留原session對兩個HTTP實例發下一請求皆用新權限。無Redis權限快取或前端能力值可繞過。
 4. **管理交易（US3／SC-004）**：只有Super或027維護context可管理；一般員工／esign管理員取得403。API和REPL各自建立角色、配權限、預指派未登入有效員工、撤銷，結果與稽核一致。競爭首次登入／預建檔只有同一users ID；同角色版本衝突409，指派CAS衝突409，audit失敗全部回滾。停用角色保留指派，使用中刪除409。所有同仁CRUD／permission修改／撤除企圖拒絕。
@@ -275,3 +276,45 @@ await authz.assignRoles('esign', {
 - 真 HTTP/worker 定向 6 suites／23 tests 全綠。完整 security 首輪 28/31 suites、202/211 tests，失敗僅舊外部 PDF seed 與舊 migration rollback 界線；整合 07 revertAfter 並補新 actor 後，受影響套件已包含在上述定向全綠。
 - 完整 schema 9/10 suites、48/49 tests，唯一舊 schema-constraints 外部 PDF seed 漏 actor；補 explicit external_signer 後定向 1 suite／3 tests 全綠，其餘 9 suites 保留完整通過證據。沒有宣稱本輪單次完整 security/schema 全綠；09 執行最終整合全套。
 - 最終 schema.sql 由全新短名隔離庫 feastogether_intranet_test_j 套完 25 migrations 後 dump，相對 07 只新增匯出 actor／CHECK／註解，沒有覆蓋 lifecycle 欄位。長名測試庫曾被安全長度檢查拒絕，已改短名；沒有降低保護。測試設定僅在 ignored 檔，沒有操作正式/UAT資料。
+
+
+## 028-09 最終切換與驗收
+
+- HTTP 在 `app.init()` 完成／listen 前掃描 DiscoveryService 的完整 controller 方法，拒絕未分類、空能力、未知權限或不合法 runtime metadata。AuthorizationGuard 同時移除暫時放行，啟動後不合法宣告仍503。
+- HTTP與worker都精確比對已執行及compiled migration集合（含拒絕未知未來版本）並唯讀核對完整catalog。Worker以async provider於InstanceLoader阻擋，早於BullRegistrar及排程onModuleInit；console不掛gate，可於缺目錄時明確sync。沒有新env、cookie、flag、fallback、排程或DB表。
+- `authorization-routes` 擷取Fastify實際註冊77條業務路由，與獨立清單比對，逐路由驗401、同仁缺能力403、公開入口各自HTTP狀態，並驗資源404。框架自動HEAD／OPTIONS與開發Swagger不當成額外業務入口；HEAD沿GET handler。DELETE session沿027 Public＋Origin，匿名／失效cookie可信Origin登出200，非可信Origin403；GET session仍AuthenticatedOnly。
+- `authorization-cutover` 以027版本全合成資料做所有表邏輯備份／第二隔離庫還原，向前套25 migrations、重跑migration、兩次sync及合成核定指派。比較user ID、document/signer關聯、證據與舊session；歷史建立者不自動升權、客製角色不覆寫，舊OAuth cookie免重登、下一請求撤權。真實核定名單與正式檔案儲存一致備份仍待維運。
+- `authorization-privacy` 以真HTTP、Pino輸出邊界與MySQL audit檢查員編body、cookie、簽名sentinel、Portal raw error皆不外洩；403／目標422後原會話仍有效。既有027隱藏入口與外部簽署憑證回歸另外包含於完整security套件。
+- Legacy business e2e明確授予建立者，登入helper本身不升權；PDF歷史正向案例改為實際本人並保留他人404。發起工作授權改用既有瘦投影，維持輕量重播／查詢不讀大型signing payload；原SQL斷言保留。
+- 029仍使用 `/forms`→`esign.document.read`、`/my-signature`→`esign.signing.read`、`/export-history`→`esign.export.read`。本人回應沿027 actor union與no-store；管理ID為string，HTTP401實際code為UNAUTHORIZED，403/422不能觸發登出。沒有新增授權管理UI，既有mock forms功能未提升為正式完成。
+
+| 成功標準 | 隔離驗收證據 |
+| --- | --- |
+| SC-001 | authorization-schema、authorization-revocation、authorization-role-management；第二子功能只存在測試DB |
+| SC-002 | authorization-baseline、routes、cutover；全部同仁基線與無歷史升權 |
+| SC-003 | authorization-revocation、assignments、lifecycle-actor、exports、cutover；原session下一請求重驗 |
+| SC-004 | authorization-role-management、assignments、catalog、privacy；API/REPL共用服務、交易與no-op audit |
+| SC-005 | authorization-document-management、lifecycle-actor、exports；真HTTP／Bull worker與本人邊界 |
+| SC-006 | authorization-cutover、readiness；合成備份完整還原及合成核定名單驗證，正式核定與切換仍屬外部待辦 |
+
+本次沒有部署UAT／正式環境，沒有使用真實員工名單。FR-018／SC-006的正式名單核定與切換、027代理／CDN／APM日誌遮罩及來源網段前置，必須依[operations](contracts/operations.md)在維護窗口完成，不能以本機測試代替。
+
+
+### 028-09 最終實測紀錄（2026-11-07）
+
+以 `caffeinate -is` 綁定各驗證程序，使用ignored `.env.test`：隔離MySQL `127.0.0.1:13328`／`feastogether_intranet_test_z*`、Redis `127.0.0.1:16328` DB10。完整e2e、安全、schema依序執行，沒有碰UAT／正式資料。
+
+| 指令／範圍 | 實際結果 |
+| --- | --- |
+| `pnpm -C server test --runInBand` | 129 suites／1310 tests 通過 |
+| `pnpm -C server test:e2e` | 56 suites／569 tests 通過，1組1項既有reconnect專用環境案例依守門條件skip；292.8秒 |
+| 專用reconnect驗收 | `DB_MYSQL_DB=feastogether_intranet_test022_reconnect REDIS_PORT=16322 REDIS_DB=9 NODE_ENV=test pnpm -C server test:e2e esign-initiation-reconnect`：1 suite／1 test 通過。真Redis故障注入，暫時容器已移除，沒有降低安全守門條件 |
+| `pnpm -C server test:e2e:security` | 修正公開Swagger描述後完整重跑，38 suites／226 tests 通過；136.3秒 |
+| `pnpm -C server test:schema` | 10 suites／49 tests 通過；124.9秒，含25 migrations、actor CHECK、FK、歷史資料保留／反向保護與schema drift |
+| `pnpm build` | server與client完整build通過；Swagger文字修正後再次完整build通過 |
+| `pnpm lint`／server `lint:check` | server 0 errors／271既有warnings，client lint通過。07新增3項warning已收斂，09沒有增加warnings |
+| `pnpm -C client test` | 4 tests 通過 |
+| `pnpm -C client check:bundle` | 最後build產物檢查通過，公開靜態檔沒有隱藏維護登入痕跡 |
+| 建置版Swagger | 直接以dist/AppModule產生63條path文件，description/example/enum掃描隱藏入口提示0命中；actor wire union保留 |
+
+安全首輪37/38 suites、225/226 tests，唯一失敗為08加入的公開Swagger「Super user」說明；保留027原嚴格隱匿測試，改中性說明並確認compiled Swagger，再完整重跑全綠。legacy正向本人PDF、Actor DTO與明確grant已修正，未放寬正式資源政策；輕量重播SQL紅測試保留並修正式投影。FR-001～FR-021對應見[tasks需求覆蓋表](tasks.md#requirements-coverage)及上述SC證據；FR-018／SC-006正式名單與部署前置仍依上一節留待維運，不以合成資料冒充上線。

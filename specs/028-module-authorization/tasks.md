@@ -89,18 +89,18 @@
 
 **Independent Test**：保留既有員工／文件／會話的測試副本中，兩次 sync、核定名單指派、停舊實例後切換；既有會話只有同仁、無歷史升權，查詢結果與 HTTP 一致。
 
-- [ ] T052 [P] [US5] 在 `server/test/authorization-cutover.e2e-spec.ts` 建立既有員工／文件／證據／session fixture，驗證重跑 seed 不覆寫自訂角色、無歷史行為升權、關聯與證據保持、無新舊放行混跑的切換驗收。
+- [x] T052 [P] [US5] 在 `server/test/authorization-cutover.e2e-spec.ts` 建立既有員工／文件／證據／session fixture，驗證重跑 seed 不覆寫自訂角色、無歷史行為升權、關聯與證據保持、無新舊放行混跑的切換驗收。
 - [X] T053 [US5] 在 `server/src/console/helpers/authorization.helpers.ts` 接上唯讀 userPermissions：userPermissions 與 HTTP 同 resolver 並標 baseline／explicit；無 raw employee、無 read 自動 sync、不要求 console 啟動 Portal 可用。
-- [ ] T054 [US5] 在 `server/src/features/authorization/services/authorization-readiness.service.ts` 與 `.spec.ts`、`server/src/worker.module.ts` 接入 catalog 完整性及 endpoint 宣告掃描，漏 Public／AuthenticatedOnly／RequirePermissions 或版本不符拒絕啟用；HTTP／worker 不接受流量且不 fallback，不新增 env／flag／排程。
-- [ ] T055 [US5] 在 `specs/028-module-authorization/contracts/operations.md` 與 `quickstart.md` 記錄可執行的備份副本演練、核定名單預指派／resolver核對、停止舊HTTP與worker、migration與sync、同版本啟動順序；僅空且無新受保護資料可down，其餘向前修復或一致備份回復，repo 不存員編名單。
-- [ ] T056 [US5] 在 `server/test/authorization-cutover.e2e-spec.ts` 完成 T052 導入及維運驗收，保留舊 session、所有原 user ID 與證據、核定額外權限與 baseline 差異、audit 不可遺失；舊角色設定與 no-op 指派重跑冪等。
+- [x] T054 [US5] 在 `server/src/features/authorization/services/authorization-readiness.service.ts` 與 `.spec.ts`、`server/src/worker.module.ts` 接入 catalog 完整性及 endpoint 宣告掃描，漏 Public／AuthenticatedOnly／RequirePermissions 或版本不符拒絕啟用；HTTP／worker 不接受流量且不 fallback，不新增 env／flag／排程。
+- [x] T055 [US5] 在 `specs/028-module-authorization/contracts/operations.md` 與 `quickstart.md` 記錄可執行的備份副本演練、核定名單預指派／resolver核對、停止舊HTTP與worker、migration與sync、同版本啟動順序；僅空且無新受保護資料可down，其餘向前修復或一致備份回復，repo 不存員編名單。
+- [x] T056 [US5] 在 `server/test/authorization-cutover.e2e-spec.ts` 完成 T052 導入及維運驗收，保留舊 session、所有原 user ID 與證據、核定額外權限與 baseline 差異、audit 不可遺失；舊角色設定與 no-op 指派重跑冪等。
 
 ## Phase 8: Polish & 跨功能驗收
 
-- [ ] T057 在 `server/test/authorization-route-coverage.e2e-spec.ts` 列舉實際註冊 routes，逐條驗證矩陣與 401／403／404、公開外部例外；不能只檢查 decorator metadata，缺宣告須 fail readiness，沒有永久漏標放行。
-- [ ] T058 在 `server/test/authorization-privacy.e2e-spec.ts` 驗證 response／access log／audit 白名單、無員編body／Portal raw error／cookie／隱藏入口／簽名，並確認 assignment422與業務403不觸發有效管理者登出。
-- [ ] T059 在 `specs/028-module-authorization/quickstart.md` 記錄 server test、test:e2e、test:e2e:security、test:schema、lint:check、build，以及既有外部簽署／公開驗證／來源與完成檔安全回歸結果；client 有相容改動須 root pnpm build／pnpm lint，無環境就明列未驗證，不把 mock 當通過。
-- [ ] T060 在 `specs/028-module-authorization/contracts/openapi.json` 與 `quickstart.md` 對照最終 DTO／HTTP 實測契約，核對 029 的三個 menu keys、no-store／actor union，記錄全部 FR／SC 驗收及 migration/config 限制，無新增授權 env、cookie 或排程。
+- [x] T057 在 `server/test/authorization-routes.e2e-spec.ts` 列舉實際註冊 routes，逐條驗證矩陣與 401／403／404、公開外部例外；不能只檢查 decorator metadata，缺宣告須 fail readiness，沒有永久漏標放行。
+- [x] T058 在 `server/test/authorization-privacy.e2e-spec.ts` 驗證 response／access log／audit 白名單、無員編body／Portal raw error／cookie／隱藏入口／簽名，並確認 assignment422與業務403不觸發有效管理者登出。
+- [x] T059 在 `specs/028-module-authorization/quickstart.md` 記錄 server test、test:e2e、test:e2e:security、test:schema、lint:check、build，以及既有外部簽署／公開驗證／來源與完成檔安全回歸結果；client 有相容改動須 root pnpm build／pnpm lint，無環境就明列未驗證，不把 mock 當通過。
+- [x] T060 在 `specs/028-module-authorization/contracts/openapi.json` 與 `quickstart.md` 對照最終 DTO／HTTP 實測契約，核對 029 的三個 menu keys、no-store／actor union，記錄全部 FR／SC 驗收及 migration/config 限制，無新增授權 env、cookie 或排程。
 
 ## Dependencies & Execution Order
 
@@ -135,4 +135,4 @@
 | FR-010／011／012／014／015／016 | T009～T012、T015、T024～T034、T053、T058 |
 | FR-018／019／020 | T007、T010、T015、T052～T056、T059～T060 |
 
-安全測試與 schema suite 在各切片完成時即跑；最後廣泛回歸只針對跨功能整合，不以單元 mock 取代 FK／並發／worker 驗證。所有 tasks 未執行；只完成規劃。
+安全測試與 schema suite 在各切片完成時即跑；最後廣泛回歸只針對跨功能整合，不以單元 mock 取代 FK／並發／worker 驗證。實作與隔離驗收依各項勾選及 quickstart 紀錄；正式核定名單與部署切換屬外部維運前置，未在本次執行。

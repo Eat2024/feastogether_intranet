@@ -1,3 +1,4 @@
+import { AuthorizationReadinessService } from './services/authorization-readiness.service';
 import { PortalModule } from '#app/infrastructure/portal/portal.module';
 import { EligibleStaffService } from '#app/features/auth/services/eligible-staff.service';
 import { AuthorizationAssignmentService } from './services/authorization-assignment.service';
@@ -23,6 +24,7 @@ import { AuthorizationService } from './services/authorization.service';
     AuthorizationRoleService,
     AuthorizationEventService,
     AuthorizationCatalogService,
+    AuthorizationReadinessService,
     AuthorizationResolverService,
     AuthorizationService,
   ],
@@ -33,6 +35,7 @@ import { AuthorizationService } from './services/authorization.service';
     AuthorizationRoleService,
     AuthorizationEventService,
     AuthorizationCatalogService,
+    AuthorizationReadinessService,
     AuthorizationResolverService,
     AuthorizationService,
   ],

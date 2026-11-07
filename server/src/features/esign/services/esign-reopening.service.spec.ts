@@ -186,7 +186,7 @@ describe('EsignReopeningService', () => {
     expect(signer.invitationExpiresAt).toEqual(end);
     expect(queued).toEqual([
       expect.objectContaining({
-        data: { notificationBatchId: expect.any(Number) },
+        data: { notificationBatchId: expect.any(Number) as unknown },
       }),
     ]);
   });
@@ -210,7 +210,7 @@ describe('EsignReopeningService', () => {
         result: 'skipped',
         errorCode: 'RECIPIENT_UNAVAILABLE',
         invitationGenerationSha256: null,
-        completedAt: expect.any(Date),
+        completedAt: expect.any(Date) as unknown,
       }),
     ]);
   });

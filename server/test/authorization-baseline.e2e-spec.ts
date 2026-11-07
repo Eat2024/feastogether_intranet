@@ -20,6 +20,7 @@ describe('028 本人有效能力契約', () => {
       await db.query(
         "INSERT INTO users (empid,name) VALUES ('AZ-OLD','合成舊員工'),('AZ-NEW','合成新員工')",
       );
+      await catalog.syncCatalog();
       const app = await createAuthorizationHttpApp(db);
       try {
         const oldCookie = await createAuthorizationSession(
@@ -27,16 +28,6 @@ describe('028 本人有效能力契約', () => {
           { kind: 'employee', userId: 1 },
           'oauth',
         );
-        expect(
-          (
-            await app.inject({
-              method: 'GET',
-              url: '/api/me/authorization',
-              headers: { cookie: oldCookie },
-            })
-          ).statusCode,
-        ).toBe(503);
-        await catalog.syncCatalog();
         const newCookie = await createAuthorizationSession(
           app,
           { kind: 'employee', userId: 2 },

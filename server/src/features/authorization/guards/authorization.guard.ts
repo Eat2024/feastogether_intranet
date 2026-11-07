@@ -1,3 +1,4 @@
+import { isAuthorizationRequirement } from '../services/authorization-readiness.service';
 import {
   Injectable,
   type CanActivate,
@@ -29,8 +30,8 @@ export class AuthorizationGuard implements CanActivate {
         AUTHORIZATION_REQUIREMENT,
         targets,
       );
-    // 未遷移入口仍由既有 AuthGuard 保護；完整宣告由切換 readiness 掃描強制要求。
-    if (!requirement) return true;
+    if (!isAuthorizationRequirement(requirement))
+      throw new AppException(...AppErrors.AUTHORIZATION_UNAVAILABLE);
     const actor = context.switchToHttp().getRequest<AuthenticatedRequest>()
       .authSession?.actor;
     if (!actor) throw new AppException(...AppErrors.AUTH_TOKEN_MISSING);

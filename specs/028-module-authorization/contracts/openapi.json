@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Intranet Spec028 多子功能授權 API",
-    "version": "0.1.0",
-    "description": "設計契約，尚未實作；電子簽既有路徑能力與DTO變更見permissions.md／api-behavior.md，不複製完整既有API。"
+    "version": "1.0.0",
+    "description": "028實作契約；管理ID為十進位字串，本人actor沿027 union。既有電子簽路徑能力與DTO見permissions.md／api-behavior.md。所有成功管理回應及本人能力為no-store；403或目標422不登出。"
   },
   "servers": [
     {
@@ -28,7 +28,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -60,7 +61,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -69,7 +70,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -114,7 +115,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -167,7 +169,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -176,7 +178,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -275,7 +277,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -328,7 +331,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -337,7 +340,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -448,7 +451,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -517,7 +521,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -526,7 +530,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -653,7 +657,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -703,7 +708,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -712,7 +717,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -842,7 +847,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -892,7 +898,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -901,7 +907,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -1019,7 +1025,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -1069,7 +1076,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1078,7 +1085,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -1232,7 +1239,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1241,7 +1248,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -1379,7 +1386,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -1429,7 +1437,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1438,7 +1446,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -1577,7 +1585,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -1646,7 +1655,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1655,7 +1664,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -1793,7 +1802,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -1843,7 +1853,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1852,7 +1862,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -1972,7 +1982,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -2022,7 +2033,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_MISSING／AUTH_TOKEN_INVALID：目前操作者會話失效；不得用於指派目標無效。",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -2031,7 +2042,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -2189,7 +2200,8 @@
             "headers": {
               "Cache-Control": {
                 "schema": {
-                  "type": "string"
+                  "type": "string",
+                  "const": "no-store"
                 },
                 "description": "no-store"
               }
@@ -2258,7 +2270,7 @@
             }
           },
           "401": {
-            "description": "AUTH_TOKEN_INVALID；完整碼與語意見api-behavior.md",
+            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -2267,7 +2279,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "AUTH_TOKEN_INVALID",
+                    "code": "UNAUTHORIZED",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"

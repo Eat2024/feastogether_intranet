@@ -4,7 +4,7 @@
 
 **Blocked by:** [028-03](03-employee-signing-boundaries.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Source:** [Spec](../../../specs/028-module-authorization/spec.md)、[Plan](../../../specs/028-module-authorization/plan.md)、[Tasks](../../../specs/028-module-authorization/tasks.md)、[API 契約](../../../specs/028-module-authorization/contracts/api-behavior.md)、[權限目錄](../../../specs/028-module-authorization/contracts/permissions.md)、[維運契約](../../../specs/028-module-authorization/contracts/operations.md)
 
@@ -30,3 +30,9 @@
 - 驗證：server unit 128 suites／1309 tests、root build、root lint（271既有warnings、0errors）、client build/lint/check:bundle通過。初版完整security 27 suites／196 tests全綠；新增note/candidates真HTTP紅→綠3案例通過。
 - 合入04/05後完整security 28/30 suites、206/208 tests；完整schema 6/8 suites、45/47 tests。四項皆因主機兩次約1000秒暫停超過原測試時限，沒有業務assertion失敗；不調timeout。定向補驗及環境限制見quickstart最終紀錄。
 - 定向補驗完成：受影響security 2 suites／8 tests、schema 2 suites／19 tests全綠；client test4項通過。合併後未宣稱單次完整全綠，09統一回歸。詳情契約及07/08介面交接已寫入quickstart，無文件detail OpenAPI schema需要同步。
+
+### 2026-11-07 整合紀錄
+
+- 實作及整合 tip `9e5dd14`（核心 `e7552fa`、整合與補充入口 `280ef0a`，分支 `028-06-documents`）已 fast-forward 合入 `028-module-authorization`；已核對本票與 quickstart 證據，狀態改為 `resolved`。
+- unit 128 suites／1309 tests、root build／lint、client test 4項與 bundle 檢查通過。合併後完整 security 206/208、schema 45/47；環境暫停逾時的套件定向重跑 security 8項／schema 19項全綠，未宣稱單次完整全綠，028-09 統一回歸。
+- 028-07／028-08 前置已解除；生命週期、匯出與 readiness 尚待完成，未執行正式部署。

@@ -81,29 +81,33 @@ CREATE TABLE `auth_sessions` (
   CONSTRAINT `chk_auth_sessions_status` CHECK ((`status` in (_utf8mb4'validating',_utf8mb4'pending',_utf8mb4'active',_utf8mb4'failed',_utf8mb4'revoked')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='WebView 啟動與員工登入 Session';
 /*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `authorization_events`;
+DROP TABLE IF EXISTS `audit_logs`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `authorization_events` (
+CREATE TABLE `audit_logs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
-  `occurred_at` datetime(6) NOT NULL COMMENT '事件時間',
+  `action` varchar(80) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '稽核動作',
+  `entity_type` varchar(80) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主要目標型別',
+  `entity_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主要目標 ID',
+  `actor_user_id` bigint DEFAULT NULL COMMENT '操作者本地使用者 ID',
   `actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作者種類',
-  `source` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作來源',
-  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
-  `event_type` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '事件種類',
-  `target_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '目標種類',
-  `target_id` bigint DEFAULT NULL COMMENT '目標 ID',
+  `source` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作來源',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '子功能代碼',
   `request_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '請求追蹤 ID',
-  `before_json` json DEFAULT NULL COMMENT '異動前白名單內容',
-  `after_json` json DEFAULT NULL COMMENT '異動後白名單內容',
+  `changes` json NOT NULL COMMENT '欄位異動集合',
+  `before_snapshot` json DEFAULT NULL COMMENT '異動前快照',
+  `after_snapshot` json DEFAULT NULL COMMENT '異動後快照',
+  `description` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '描述',
+  `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '來源 IP',
+  `user_agent` text COLLATE utf8mb4_unicode_ci COMMENT 'User-Agent',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
   PRIMARY KEY (`id`),
-  KEY `idx_authorization_events_created_at` (`created_at`),
-  KEY `idx_authorization_events_occurred_at` (`occurred_at`),
-  CONSTRAINT `chk_authorization_events_actor_kind` CHECK ((`actor_kind` in (_utf8mb4'super_user',_utf8mb4'operator',_utf8mb4'system'))),
-  CONSTRAINT `chk_authorization_events_source` CHECK ((`source` in (_utf8mb4'http',_utf8mb4'repl',_utf8mb4'migration'))),
-  CONSTRAINT `chk_authorization_events_target_kind` CHECK ((`target_kind` in (_utf8mb4'role',_utf8mb4'user',_utf8mb4'catalog')))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='授權異動紀錄（append-only）';
+  KEY `idx_audit_logs_created_at` (`created_at`),
+  KEY `idx_audit_logs_entity` (`entity_type`,`entity_id`,`created_at`,`id`),
+  KEY `idx_audit_logs_actor` (`actor_user_id`,`created_at`,`id`),
+  KEY `idx_audit_logs_action` (`action`,`created_at`,`id`),
+  KEY `idx_audit_logs_module` (`module_key`,`created_at`,`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通用稽核歷史紀錄（append-only）';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `authorization_permissions`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

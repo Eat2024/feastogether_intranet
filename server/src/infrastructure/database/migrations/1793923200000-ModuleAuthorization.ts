@@ -71,26 +71,30 @@ KEY \`idx_authorization_user_roles_user_scope\` (\`user_id\`, \`module_key\`, \`
 CONSTRAINT \`fk_authorization_user_roles_role_scope\` FOREIGN KEY (\`module_key\`, \`role_id\`) REFERENCES \`authorization_roles\` (\`module_key\`, \`id\`) ON DELETE RESTRICT,
 CONSTRAINT \`fk_authorization_user_roles_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`id\`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='員工角色關聯'`);
-    await queryRunner.query(`CREATE TABLE \`authorization_events\` (
+    await queryRunner.query(`CREATE TABLE \`audit_logs\` (
 \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '識別碼',
-\`occurred_at\` DATETIME(6) NOT NULL COMMENT '事件時間',
+\`action\` VARCHAR(80) NOT NULL COMMENT '稽核動作',
+\`entity_type\` VARCHAR(80) NOT NULL COMMENT '主要目標型別',
+\`entity_id\` VARCHAR(64) NOT NULL COMMENT '主要目標 ID',
+\`actor_user_id\` BIGINT NULL COMMENT '操作者本地使用者 ID',
 \`actor_kind\` VARCHAR(20) NOT NULL COMMENT '操作者種類',
-\`source\` VARCHAR(10) NOT NULL COMMENT '操作來源',
-\`module_key\` VARCHAR(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
-\`event_type\` VARCHAR(64) NOT NULL COMMENT '事件種類',
-\`target_kind\` VARCHAR(20) NOT NULL COMMENT '目標種類',
-\`target_id\` BIGINT NULL COMMENT '目標 ID',
+\`source\` VARCHAR(20) NOT NULL COMMENT '操作來源',
+\`module_key\` VARCHAR(50) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT '子功能代碼',
 \`request_id\` VARCHAR(64) NULL COMMENT '請求追蹤 ID',
-\`before_json\` JSON NULL COMMENT '異動前白名單內容',
-\`after_json\` JSON NULL COMMENT '異動後白名單內容',
+\`changes\` JSON NOT NULL COMMENT '欄位異動集合',
+\`before_snapshot\` JSON NULL COMMENT '異動前快照',
+\`after_snapshot\` JSON NULL COMMENT '異動後快照',
+\`description\` VARCHAR(500) NULL COMMENT '描述',
+\`ip_address\` VARCHAR(45) NULL COMMENT '來源 IP',
+\`user_agent\` TEXT NULL COMMENT 'User-Agent',
 \`created_at\` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
 PRIMARY KEY (\`id\`),
-KEY \`idx_authorization_events_created_at\` (\`created_at\`),
-KEY \`idx_authorization_events_occurred_at\` (\`occurred_at\`),
-CONSTRAINT \`chk_authorization_events_actor_kind\` CHECK (\`actor_kind\` IN ('super_user','operator','system')),
-CONSTRAINT \`chk_authorization_events_source\` CHECK (\`source\` IN ('http','repl','migration')),
-CONSTRAINT \`chk_authorization_events_target_kind\` CHECK (\`target_kind\` IN ('role','user','catalog'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='授權異動紀錄（append-only）'`);
+KEY \`idx_audit_logs_created_at\` (\`created_at\`),
+KEY \`idx_audit_logs_entity\` (\`entity_type\`, \`entity_id\`, \`created_at\`, \`id\`),
+KEY \`idx_audit_logs_actor\` (\`actor_user_id\`, \`created_at\`, \`id\`),
+KEY \`idx_audit_logs_action\` (\`action\`, \`created_at\`, \`id\`),
+KEY \`idx_audit_logs_module\` (\`module_key\`, \`created_at\`, \`id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通用稽核歷史紀錄（append-only）'`);
     await queryRunner.query(
       'INSERT INTO typeorm_metadata (type, `schema`, `table`, name, value) VALUES (?, DATABASE(), ?, ?, ?)',
       [
@@ -107,7 +111,7 @@ CONSTRAINT \`chk_authorization_events_target_kind\` CHECK (\`target_kind\` IN ('
       'authorization_permissions',
       'authorization_role_permissions',
       'authorization_user_roles',
-      'authorization_events',
+      'audit_logs',
     ]) {
       const rows = (await queryRunner.query(
         `SELECT COUNT(*) AS total FROM ${table}`,
@@ -117,7 +121,7 @@ CONSTRAINT \`chk_authorization_events_target_kind\` CHECK (\`target_kind\` IN ('
           '無法回滾：授權資料或稽核必須保留，請向前修復或使用一致備份',
         );
     }
-    await queryRunner.query('DROP TABLE authorization_events');
+    await queryRunner.query('DROP TABLE audit_logs');
     await queryRunner.query('DROP TABLE authorization_user_roles');
     await queryRunner.query('DROP TABLE authorization_role_permissions');
     await queryRunner.query('DROP TABLE authorization_permissions');

@@ -56,7 +56,7 @@ describe('buildMysqlOptions', () => {
         'AuthorizationPermission',
         'AuthorizationRolePermission',
         'AuthorizationUserRole',
-        'AuthorizationEvent',
+        'AuditLog',
         'Department',
         'User',
         'AuthSession',

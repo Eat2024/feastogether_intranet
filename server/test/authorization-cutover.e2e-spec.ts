@@ -190,7 +190,7 @@ it('027 合成備份還原→schema up→兩次sync/核定指派，既有session
         ]);
         expect(
           await db.query(
-            "SELECT COUNT(*) AS count FROM authorization_events WHERE event_type='user.roles_updated'",
+            "SELECT COUNT(*) AS count FROM audit_logs WHERE action='user.roles_updated'",
           ),
         ).toEqual([{ count: 1 }]);
         const app = await createAuthorizationHttpApp(db);

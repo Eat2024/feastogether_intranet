@@ -18,7 +18,7 @@ export class EsignLifecycleActors1793923202000 implements MigrationInterface {
   }
   async down(q: QueryRunner): Promise<void> {
     const [row]: Array<{ total: number }> = await q.query(
-      "SELECT (SELECT COUNT(*) FROM authorization_events)+(SELECT COUNT(*) FROM esign_initiation_jobs WHERE created_by_actor_kind='super_user')+(SELECT COUNT(*) FROM esign_notification_batches WHERE notified_by_actor_kind='super_user') AS total",
+      "SELECT (SELECT COUNT(*) FROM audit_logs)+(SELECT COUNT(*) FROM esign_initiation_jobs WHERE created_by_actor_kind='super_user')+(SELECT COUNT(*) FROM esign_notification_batches WHERE notified_by_actor_kind='super_user') AS total",
     );
     if (Number(row.total) > 0)
       throw new Error('無法回滾：生命週期操作者或授權稽核必須保留');

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { isDeepStrictEqual } from 'node:util';
 import type { EntityManager } from 'typeorm';
-import { AuthorizationEventRepository } from '../repositories/authorization-event.repository';
+import { AuditLogService } from '#app/features/audit/services/audit-log.service';
 
 export const AUTHORIZATION_EVENT_TYPES = [
   'catalog.synced',
@@ -62,7 +62,7 @@ export function sanitizeAuthorizationSnapshot(
 /** 所有異動事件跟業務資料共用交易；裁切後相同代表 no-op。 */
 @Injectable()
 export class AuthorizationAuditService {
-  constructor(private readonly events: AuthorizationEventRepository) {}
+  constructor(private readonly auditLogs: AuditLogService) {}
   async append(
     input: {
       context: AuthorizationAuditContext;
@@ -82,18 +82,18 @@ export class AuthorizationAuditService {
     const beforeJson = sanitizeAuthorizationSnapshot(input.before);
     const afterJson = sanitizeAuthorizationSnapshot(input.after);
     if (isDeepStrictEqual(beforeJson, afterJson)) return;
-    await this.events.append(
+    await this.auditLogs.record(
       {
+        action: input.eventType,
+        entityType: input.targetKind,
+        entityId: input.targetId ?? input.moduleKey,
+        actorUserId: null,
         actorKind: input.context.actorKind,
         source: input.context.source,
         requestId: input.context.requestId?.slice(0, 64) ?? null,
         moduleKey: input.moduleKey,
-        eventType: input.eventType,
-        targetKind: input.targetKind,
-        targetId: input.targetId ?? null,
-        beforeJson,
-        afterJson,
-        occurredAt: new Date(),
+        beforeSnapshot: beforeJson,
+        afterSnapshot: afterJson,
       },
       manager,
     );

@@ -6,7 +6,8 @@ import { withSchemaTestDatabase } from '#app/infrastructure/database/test/schema
 import { SuperUserConfigService } from '#app/features/auth/services/super-user-config.service';
 import { SuperUserAccessRepository } from '#app/features/auth/repositories/super-user-access.repository';
 import { AuthorizationRepository } from '#app/features/authorization/repositories/authorization.repository';
-import { AuthorizationEventRepository } from '#app/features/authorization/repositories/authorization-event.repository';
+import { AuditLogRepository } from '#app/features/audit/repositories/audit-log.repository';
+import { AuditLogService } from '#app/features/audit/services/audit-log.service';
 import { AuthorizationAuditService } from '#app/features/authorization/services/authorization-audit.service';
 import { AuthorizationCatalogService } from '#app/features/authorization/services/authorization-catalog.service';
 
@@ -33,8 +34,8 @@ export async function withAuthorizationDatabase(
 export function authorizationServices(db: DataSource) {
   const mysql = new MysqlService(db);
   const repository = new AuthorizationRepository();
-  const events = new AuthorizationEventRepository();
-  const audit = new AuthorizationAuditService(events);
+  const events = new AuditLogRepository();
+  const audit = new AuthorizationAuditService(new AuditLogService(events));
   const config = new SuperUserConfigService(new ConfigService(process.env));
   const catalog = new AuthorizationCatalogService(
     mysql,

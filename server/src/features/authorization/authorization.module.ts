@@ -12,10 +12,11 @@ import { AuthorizationAuditService } from './services/authorization-audit.servic
 import { AuthorizationCatalogService } from './services/authorization-catalog.service';
 import { AuthorizationResolverService } from './services/authorization-resolver.service';
 import { AuthorizationService } from './services/authorization.service';
+import { AuditModule } from '#app/features/audit/audit.module';
 
 /** HTTP、worker、console 共用的授權服務；沒有 controller 或啟動寫入。 */
 @Module({
-  imports: [MysqlModule, SuperUserAccessModule, PortalModule],
+  imports: [MysqlModule, SuperUserAccessModule, PortalModule, AuditModule],
   providers: [
     EligibleStaffService,
     AuthorizationAssignmentService,

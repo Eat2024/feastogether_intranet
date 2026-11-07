@@ -126,7 +126,7 @@ it('response、access log及audit不洩漏員編body／cookie／上游原始錯�
           ).statusCode,
         ).toBe(200);
         const audit = await db.query<Array<Record<string, unknown>>>(
-          'SELECT * FROM authorization_events',
+          "SELECT * FROM audit_logs WHERE action IN ('catalog.synced','role.created','role.updated','role.deleted','role.permissions_updated','user.roles_updated')",
         );
         expect(audit.length).toBeGreaterThan(0);
         const serialized = JSON.stringify({ responses, logs, audit });

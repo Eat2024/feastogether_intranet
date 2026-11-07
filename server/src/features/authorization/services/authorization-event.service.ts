@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AUTHORIZATION_MODULES } from '../authorization.catalog';
-import { AuthorizationEventRepository } from '../repositories/authorization-event.repository';
+import { AuditLogRepository } from '#app/features/audit/repositories/audit-log.repository';
+import type { AuditLog } from '#app/features/audit/entities/audit-log.entity';
 import {
   authorizationInput,
   authorizationIdString,
@@ -10,7 +11,10 @@ import {
   AuthorizationEventsQueryDto,
 } from '../dto/authorization-query.dto';
 import type { AuthorizationEventDto } from '../dto/authorization-event.dto';
-import { sanitizeAuthorizationSnapshot } from './authorization-audit.service';
+import {
+  AUTHORIZATION_EVENT_TYPES,
+  sanitizeAuthorizationSnapshot,
+} from './authorization-audit.service';
 import {
   AuthorizationManagementService,
   type AuthorizationManagementContext,
@@ -29,11 +33,37 @@ function snapshot(
     );
   return value;
 }
+
+function actorKind(value: AuditLog['actorKind']): AuthorizationEventDto['actorKind'] {
+  if (value === 'super_user' || value === 'operator' || value === 'system')
+    return value;
+  throw new AppException(...AppErrors.AUTHORIZATION_UNAVAILABLE);
+}
+
+function source(value: AuditLog['source']): AuthorizationEventDto['source'] {
+  if (value === 'http' || value === 'repl' || value === 'migration')
+    return value;
+  throw new AppException(...AppErrors.AUTHORIZATION_UNAVAILABLE);
+}
+
+function target(row: AuditLog): {
+  kind: AuthorizationEventDto['targetKind'];
+  id: string | null;
+} {
+  if (row.entityType === 'catalog') return { kind: 'catalog', id: null };
+  if (row.entityType !== 'role' && row.entityType !== 'user')
+    throw new AppException(...AppErrors.AUTHORIZATION_UNAVAILABLE);
+  const id = Number(row.entityId);
+  if (!Number.isSafeInteger(id) || id <= 0)
+    throw new AppException(...AppErrors.AUTHORIZATION_UNAVAILABLE);
+  return { kind: row.entityType, id: authorizationIdString(id) };
+}
+
 @Injectable()
 export class AuthorizationEventService {
   constructor(
     private readonly management: AuthorizationManagementService,
-    private readonly events: AuthorizationEventRepository,
+    private readonly events: AuditLogRepository,
   ) {}
   async list(context: AuthorizationManagementContext, query: unknown = {}) {
     return this.management.read(context, async (manager) => {
@@ -47,6 +77,7 @@ export class AuthorizationEventService {
         );
       const rows = await this.events.list(manager, {
         moduleKey: input.moduleKey,
+        actions: AUTHORIZATION_EVENT_TYPES,
         beforeId: input.beforeId
           ? parseAuthorizationId(input.beforeId)
           : undefined,
@@ -54,19 +85,23 @@ export class AuthorizationEventService {
       });
       const items: AuthorizationEventDto[] = rows
         .slice(0, input.limit)
-        .map((e) => ({
-          id: authorizationIdString(e.id),
-          occurredAt: e.occurredAt.toISOString(),
-          actorKind: e.actorKind,
-          source: e.source,
-          moduleKey: e.moduleKey,
-          eventType: e.eventType,
-          targetKind: e.targetKind,
-          targetId:
-            e.targetId === null ? null : authorizationIdString(e.targetId),
-          before: snapshot(e.beforeJson),
-          after: snapshot(e.afterJson),
-        }));
+        .map((row) => {
+          if (!row.moduleKey)
+            throw new AppException(...AppErrors.AUTHORIZATION_UNAVAILABLE);
+          const auditTarget = target(row);
+          return {
+            id: authorizationIdString(row.id),
+            occurredAt: row.createdAt.toISOString(),
+            actorKind: actorKind(row.actorKind),
+            source: source(row.source),
+            moduleKey: row.moduleKey,
+            eventType: row.action,
+            targetKind: auditTarget.kind,
+            targetId: auditTarget.id,
+            before: snapshot(row.beforeSnapshot),
+            after: snapshot(row.afterSnapshot),
+          };
+        });
       return {
         items,
         nextCursor:

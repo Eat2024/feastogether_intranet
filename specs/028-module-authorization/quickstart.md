@@ -237,7 +237,7 @@ await authz.assignRoles('esign', {
 - 詳情以 `canManage` 辨識管理 DTO，`isCreator` 保留員工本人建立語意；非建立人管理員是 false/true，失去 manage 的建立人是 true/false。必要既有 client caller 改用 canManage，列表 Super 送 all、員工送 dep，沒有新增管理 UI。
 - `EsignDocumentActors1793923201000` 與 schema.sql 新增局部 actor CHECK、nullable FK；歷史有員工回填 employee，欄位/簽署人空 slot 為 legacy_unknown，document 最後管理者維持 NULL。沒有改共用 UserAuditableEntity，Department subscriber 行為不變。新 HTTP 寫入由 CLS actor 覆蓋，禁止新 legacy_unknown。既有欄位/簽署人的單獨新增若無 HTTP context 為 system，已受理 worker 應明確傳 actor。
 - Super 建立只接受 Portal 唯一有效部門原碼（1–50 字元、exact-match），不接受 UI 名稱。無效 400、Portal 查核失敗 503；員工覆寫部門 400。沒有新增環境變數或假員工。
-- 空庫可 down/reapply；存在 Super 業務 actor、document 最後管理 metadata 或 authorization_events 時拒絕 down，採前向修復或一致備份復原。027 schema 測試固定舊 migration，其 auth drift 與最新完整 schema drift 分開驗證。
+- 空庫可 down/reapply；存在 Super 業務 actor、document 最後管理 metadata 或 audit_logs 資料時拒絕 down，採前向修復或一致備份復原。027 schema 測試固定舊 migration，其 auth drift 與最新完整 schema drift 分開驗證。
 
 
 - 簽署人候選清單／組織樹／resolutions 已明確開放 Super，但維持 create/manage any-of、最小欄位與 Origin 規則；沒有以 actor 改造繞過候選人資料裁切。

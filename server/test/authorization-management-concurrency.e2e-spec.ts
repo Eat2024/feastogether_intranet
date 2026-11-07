@@ -183,7 +183,7 @@ it('角色刪除與指派競爭保持一致；audit故障時新user與既有指�
           await app.inject({ method: 'GET', url: eventsUrl, headers })
         ).json<{ data: unknown }>().data;
         await db.query(
-          "CREATE TRIGGER reject_assignment_audit BEFORE INSERT ON authorization_events FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='合成稽核失敗'",
+          "CREATE TRIGGER reject_assignment_audit BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='合成稽核失敗'",
         );
         for (const payload of [
           { empId: 'AZROLLBACK', roleIds: ['2'], expectedRoleIds: [] },

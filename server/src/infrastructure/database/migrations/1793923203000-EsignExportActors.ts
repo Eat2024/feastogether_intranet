@@ -15,7 +15,7 @@ export class EsignExportActors1793923203000 implements MigrationInterface {
   }
   async down(q: QueryRunner): Promise<void> {
     const [row] = await q.manager.query<Array<{ total: number }>>(
-      "SELECT (SELECT COUNT(*) FROM esign_export_jobs WHERE created_by_actor_kind='super_user')+(SELECT COUNT(*) FROM authorization_events) AS total",
+      "SELECT (SELECT COUNT(*) FROM esign_export_jobs WHERE created_by_actor_kind='super_user')+(SELECT COUNT(*) FROM audit_logs) AS total",
     );
     if (Number(row.total) > 0)
       throw new Error('無法回滾：匯出操作者或授權稽核必須保留');

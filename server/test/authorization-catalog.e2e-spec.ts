@@ -86,7 +86,7 @@ describe('028 明確 catalog sync 與交易稽核', () => {
     await withAuthorizationDatabase(async (db) => {
       const { catalog, repository } = await initializeAuthorizationOperator(db);
       await db.query(
-        "CREATE TRIGGER authorization_audit_failure BEFORE INSERT ON authorization_events FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='測試稽核寫入失敗'",
+        "CREATE TRIGGER authorization_audit_failure BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='測試稽核寫入失敗'",
       );
       await expect(catalog.syncCatalog()).rejects.toThrow('測試稽核寫入失敗');
       expect(await repository.roles(db.manager)).toEqual([]);

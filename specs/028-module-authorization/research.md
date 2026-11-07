@@ -4,11 +4,11 @@
 
 ## R1 — 角色與權限正規化，子功能無動態管理表
 
-**Decision**：新增 authorization_roles、authorization_permissions、authorization_role_permissions、authorization_user_roles、authorization_events；module_key 是程式目錄中的穩定字串，不新增可動態建立子功能的管理表。角色／權限各有 `(module_key,id)` 唯一鍵，關聯帶 module_key 並用兩側複合 FK，資料庫也拒絕跨範圍綁定。
+**Decision**：新增 authorization_roles、authorization_permissions、authorization_role_permissions、authorization_user_roles，異動歷史使用全系統共用 audit_logs，不建立授權專用事件表；module_key 是程式目錄中的穩定字串，不新增可動態建立子功能的管理表。角色／權限各有 `(module_key,id)` 唯一鍵，關聯帶 module_key 並用兩側複合 FK，資料庫也拒絕跨範圍綁定。
 
 **Rationale**：CKS 單一 role_id 不適用多角色；只在角色加欄位無法保證關聯範圍。權限表是程式目錄的受控投影，管理 API 只可引用，不可自行創造權限。API 與 REPL 同用 service。
 
-**Alternatives**：把所有權限放 JSON 會失去關聯約束；每功能一組獨立表重複管理規則；純字串角色權限無法以 FK 檢查目錄。五張窄表分別承擔角色、目錄、兩種關聯與必要授權異動紀錄。
+**Alternatives**：把所有權限放 JSON 會失去關聯約束；每功能一組獨立表重複管理規則；純字串角色權限無法以 FK 檢查目錄；另建 authorization_events 會和 CKS 的共用 audit history 方向重複。四張授權表承擔角色、目錄與兩種關聯，稽核統一寫入 audit_logs。
 
 來源：[CKS role](../../../CKS_Acceptance_System/server/src/features/auth/entities/auth-role.entity.ts)、[CKS user](../../../CKS_Acceptance_System/server/src/features/auth/entities/auth-user.entity.ts)、[Spec 028](spec.md)。
 
@@ -26,7 +26,7 @@
 
 **Rationale**：目前沒有量測證據需要授權快取；DB是最低複雜度且滿足下一請求生效的來源。已有 [EsignAccessPolicy](../../server/src/features/esign/services/esign-access-policy.service.ts) 每次重查員工可信部門的先例。
 
-**Concurrency**：管理寫入鎖role／user及關聯，角色version與指派expectedRoleIds避免lost update；所有寫入與authorization_events同交易。撤權commit後才開始的請求不能讀到舊授權；已在途交易按其核對／受理時點完成，不宣稱可取消已送出的資料或工作。
+**Concurrency**：管理寫入鎖role／user及關聯，角色version與指派expectedRoleIds避免lost update；所有寫入與audit_logs同交易。撤權commit後才開始的請求不能讀到舊授權；已在途交易按其核對／受理時點完成，不宣稱可取消已送出的資料或工作。
 
 ## R4 — actor 聯集必須延伸到業務資料，不只是 Guard
 

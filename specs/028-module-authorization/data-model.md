@@ -34,11 +34,11 @@ id bigint unsigned PK；user_id bigint NOT NULL FK users.id RESTRICT；module_ke
 
 員工角色覆寫以鎖定users列後比較該module目前一般roleIds是否等於expectedRoleIds；不同回409。若目標集合本就等於目前集合，回no-op結果、不重複audit。roleIds去重後最多50筆，expectedRoleIds同規則。固定鎖序：users（如涉及指派）→ role id升冪 → permission id升冪 → relation rows。角色自身編輯不回鎖users；角色刪除可檢查關聯但不取得反向user鎖。
 
-## 5. authorization_events（BaseEntity，append-only）
+## 5. audit_logs（BaseEntity，append-only）
 
-id unsigned bigint PK；occurred_at datetime(6)及created_at各index；actor_kind varchar(20)=super_user|operator|system；source varchar(10)=http|repl|migration；module_key varchar(50)；event_type varchar(64)白名單；target_kind varchar(20)=role|user|catalog；target_id bigint nullable；request_id varchar(64)nullable；before_json／after_json JSON nullable。
+全系統共用稽核表，不另建授權專用事件表。id unsigned bigint PK；action varchar(80)；entity_type varchar(80)；entity_id varchar(64)；actor_user_id bigint nullable；actor_kind varchar(20)=employee|super_user|operator|system；source varchar(20)=http|repl|migration|worker；module_key varchar(50) nullable；request_id varchar(64) nullable；changes JSON；before_snapshot／after_snapshot JSON nullable；description varchar(500)、ip_address varchar(45)、user_agent text皆nullable；created_at及entity／actor／action／module查詢鍵有index。
 
-JSON只允許role code/name/active/version、permission keys、一般role IDs與本地user ID；不放員編、個資、帳密、完整入口、文件或簽名。HTTP操作者是027 Super user；REPL是明確本機operator且需驗本機維護設定仍對應active generation。成功異動與event同交易，audit失敗整筆rollback。查詢只有Super user／受控REPL，無更新／刪除API，不新增保留期排程。
+授權寫入adapter只允許role code/name/active/version、permission keys、一般role IDs與本地user ID；不放員編、個資、帳密、完整入口、文件或簽名。HTTP操作者是027 Super user；REPL是明確本機operator且需驗本機維護設定仍對應active generation。成功異動與audit log同交易，寫入失敗整筆rollback。授權查詢只篩選授權action，僅供Super user／受控REPL；共用repository不提供更新／刪除方法，不新增保留期排程。
 
 ## 6. 電子簽業務操作者增量
 
@@ -66,4 +66,4 @@ employee建立：departmentCode只能從現有可信員工來源，拒絕輸入�
 
 增量migration先加role表／actor nullable欄位、回填可證明的歷史kind，再建立CHECK／FK/index；不改既有ID或個人簽章內容。catalog sync及初始角色seed是明確REPL transaction，不在HTTP startup；same key重跑不覆蓋一般role已修改permission或active狀態，protected colleague由code固定。
 
-首次有效目錄初始化後可查詢基本授權；舊會話由唯讀同仁推導立即取得基本資格。上線前停止舊HTTP／worker、備份、migration、sync catalog、核定名單指派、測試，再啟動新保護；不能新舊授權程式混跑。down遇super建立業務資料或authorization audit時拒絕破壞性回退；空測試庫可apply/down/reapply，正式採備份復原或前向修復。
+首次有效目錄初始化後可查詢基本授權；舊會話由唯讀同仁推導立即取得基本資格。上線前停止舊HTTP／worker、備份、migration、sync catalog、核定名單指派、測試，再啟動新保護；不能新舊授權程式混跑。down遇super建立業務資料或audit_logs已有資料時拒絕破壞性回退；空測試庫可apply/down/reapply，正式採備份復原或前向修復。

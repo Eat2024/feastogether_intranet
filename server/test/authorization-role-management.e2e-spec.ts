@@ -443,7 +443,7 @@ it('並發同名與同版本只成功一次；使用中刪除拒絕，audit故�
         data: unknown;
       }>().data;
       await db.query(
-        "CREATE TRIGGER reject_authorization_audit BEFORE INSERT ON authorization_events FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='合成稽核故障'",
+        "CREATE TRIGGER reject_authorization_audit BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='合成稽核故障'",
       );
       const failed = await app.inject({
         method: 'PATCH',

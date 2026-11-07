@@ -10,7 +10,7 @@ const BUSINESS_TABLES = [
   'authorization_permissions',
   'authorization_role_permissions',
   'authorization_user_roles',
-  'authorization_events',
+  'audit_logs',
   'hr_departments',
   'mail_recipient_whitelist',
   'users',
@@ -565,7 +565,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(94);
+        expect(first.timeColumns).toHaveLength(93);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(
@@ -594,7 +594,9 @@ describe('e-sign schema migrations', () => {
         await dataSource.undoLastMigration(); // 授權 schema
         expect(await listBusinessTables(dataSource, database)).toEqual(
           BUSINESS_TABLES.filter(
-            (table) => !table.startsWith('authorization_'),
+            (table) =>
+              table !== 'audit_logs' &&
+              !table.startsWith('authorization_'),
           ),
         );
         expect(
@@ -667,7 +669,7 @@ async function schemaSnapshot(dataSource: DataSource, database: string) {
   const legacyRows = await dataSource.query<Array<{ TABLE_NAME: string }>>(
     `SELECT TABLE_NAME FROM information_schema.tables
       WHERE table_schema = ? AND (
-        (TABLE_NAME LIKE 'auth\\_%' AND TABLE_NAME NOT IN ('auth_sessions','auth_security_events')) OR TABLE_NAME IN ('roles','permissions','audit_logs','audit_log_targets')
+        (TABLE_NAME LIKE 'auth\\_%' AND TABLE_NAME NOT IN ('auth_sessions','auth_security_events')) OR TABLE_NAME IN ('roles','permissions','audit_log_targets')
       ) ORDER BY TABLE_NAME`,
     [database],
   );

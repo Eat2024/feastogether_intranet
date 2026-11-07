@@ -155,11 +155,11 @@ describe('028 複合 scope 與歷史資料', () => {
   it('只有稽核、沒有 Super 業務資料也拒絕 down，原資料不變', async () => {
     await withAuthorizationDatabase(async (db) => {
       await db.query(
-        "INSERT INTO authorization_events (occurred_at,actor_kind,source,module_key,event_type,target_kind) VALUES (NOW(6),'system','migration','esign','catalog.synced','catalog')",
+        "INSERT INTO audit_logs (action,entity_type,entity_id,actor_kind,source,module_key,changes) VALUES ('catalog.synced','catalog','esign','system','migration','esign',JSON_OBJECT('permissionKeys',JSON_ARRAY(JSON_ARRAY(),JSON_ARRAY('esign.document.read'))))",
       );
       await expect(db.undoLastMigration()).rejects.toThrow('無法回滾');
       expect(
-        await db.query('SELECT COUNT(*) AS count FROM authorization_events'),
+        await db.query('SELECT COUNT(*) AS count FROM audit_logs'),
       ).toEqual([{ count: 1 }]);
     });
   });

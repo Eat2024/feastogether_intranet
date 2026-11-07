@@ -4,7 +4,7 @@
 
 **Blocked by:** [028-04](04-role-permission-management.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Source:** [Spec](../../../specs/028-module-authorization/spec.md)、[Plan](../../../specs/028-module-authorization/plan.md)、[Tasks](../../../specs/028-module-authorization/tasks.md)、[API 契約](../../../specs/028-module-authorization/contracts/api-behavior.md)、[權限目錄](../../../specs/028-module-authorization/contracts/permissions.md)、[維運契約](../../../specs/028-module-authorization/contracts/operations.md)
 
@@ -33,3 +33,8 @@
 - 驗證：server build、unit 128 suites／1289 tests、完整security 28 suites／203 tests（caffeinate防休眠，69.4秒）通過；root lint無錯誤。首次完整security只有舊console測試禁止PortalModule而失敗，已改為符合本票契約的「Portal設定缺漏仍可啟動／讀／sync，只有assign才502」，並保留HTTP／worker／Redis／mail／storage隔離。
 - 無frontend／migration／正式config／dependency變更。隔離MySQL測試庫前綴與Redis DB5只在ignored測試環境；未查正式Portal、未部署或執行核定真實員工名單。全業務e2e與正式切換仍交028-09。
 - Ticket 保留 claimed；待 merger 合入整合分支後記錄 commit 並改 resolved。
+
+### 2026-11-07 整合紀錄
+
+- 實作 commit `c6ee750`（`028-05-assignments`）已 fast-forward 合入 `028-module-authorization`；已核對本票與 quickstart 的驗收紀錄，狀態改為 `resolved`。
+- server build、unit 128 suites／1289 tests、完整 security 28 suites／203 tests 及 root lint 均有通過紀錄。028-09 仍等待文件與生命週期／匯出 tickets；未執行正式名單指派或部署。

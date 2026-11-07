@@ -4,7 +4,7 @@
 
 **Blocked by:** [028-02](02-effective-permissions.md)、[027-07](../../027-super-user-access/issues/07-credential-activation.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Source:** [Spec](../../../specs/028-module-authorization/spec.md)、[Plan](../../../specs/028-module-authorization/plan.md)、[Tasks](../../../specs/028-module-authorization/tasks.md)、[API 契約](../../../specs/028-module-authorization/contracts/api-behavior.md)、[權限目錄](../../../specs/028-module-authorization/contracts/permissions.md)、[維運契約](../../../specs/028-module-authorization/contracts/operations.md)
 
@@ -41,3 +41,8 @@
 
 
 **交付範圍**：無migration、dependency、正式環境設定或管理前端變更；員工指派API留028-05。此票尚保留claimed，合入整合分支後由merger結案。
+
+### 2026-11-07 整合紀錄
+
+- 實作 commit `0e37598` 與整合最新基底後的 tip `45c1e8a`（`028-04-roles`）已 fast-forward 合入 `028-module-authorization`；已核對本票與 quickstart 的驗收紀錄，本票狀態改為 `resolved`。
+- 完整 security 25 suites／193 tests、unit 128 suites／1289 tests、root build／lint 及 client bundle 檢查均有通過紀錄。028-05 前置已解除；完整 028 切換仍待後續 tickets 完成。

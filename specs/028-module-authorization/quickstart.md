@@ -138,3 +138,43 @@ console 以 `ConsoleModule`、`createAuthConsole` 的窄 context 為基礎；本
 - 測試使用隔離Docker MySQL 8.4 `intranet-spec028-mysql`（loopback13328），獨立測試庫`feastogether_intranet_test_b`；新增隔離Redis7 `intranet-spec028-redis`（loopback16328），本票使用DB2。連線只在ignored `.env.test`，沒有新增正式env、dependency、cookie或排程。後續worktree須使用不同DB，勿共用清理中的fixtures。
 
 未執行正式Portal/UAT/正式部署或核定名單指派；本票沒有新增migration或變更文件／簽署證據。028-03～09仍待完成。
+
+
+## 028-04：Super 角色／權限管理與稽核（2026-11-07）
+
+T024、T026～T028、T032、T033 已實作。管理API只有有效Super可用，寫入必驗Origin；未帶Origin與跨站請求拒絕。以下REPL操作使用同一服務及DTO，不直接暴露repository：
+
+```js
+await authz.modules()
+await authz.permissions('esign')
+const role = await authz.createRole('esign', { roleName: '合成驗收角色' })
+await authz.rolePermissions('esign', role.id)
+await authz.roles('esign', { limit: 20 })
+const granted = await authz.setRolePermissions('esign', role.id, {
+  permissionKeys: ['esign.document.read', 'esign.document.read-all'],
+  expectedVersion: role.version,
+})
+const disabled = await authz.updateRole('esign', role.id, {
+  isActive: false, expectedVersion: granted.version,
+})
+await authz.events({ moduleKey: 'esign', limit: 20 })
+await authz.deleteRole('esign', role.id, disabled.version)
+```
+
+角色ID為字串；`expectedVersion`為正整數。仍有有效指派時刪除回409；停用可保留關聯。protected同仁不能修改，platform無可指派權限不能建立一般角色。HTTP和REPL拒絕相同的未知欄位／非法輸入；body/query/path由共用DTO邊界驗證，400使用契約 `REQUEST_FORMAT_INVALID`，保留其他feature既有 `INVALID_REQUEST`。管理API成功回應no-store，access log不保存管理body/query，audit只保存角色設定與權限差異。
+
+### 後續028-05接縫
+
+- `AuthorizationManagementService.read(context, run)`提供唯讀資格／catalog檢查與安全DB錯誤映射；`transaction(context, run)`開READ COMMITTED交易並先鎖維護singleton、重核fingerprint與active generation。HTTP context由可信Actor產生，console閉包固定source=repl，不接受caller指定actor。
+- 固定鎖序：singleton → users（涉及指派時）→ roles ID升序 → permissions ID升序 → relations。角色服務先取roles排他鎖再進catalog current read；不要先取所有角色shared鎖再升排他。管理寫入與sync共鎖singleton，仍須依序鎖實際資料列並執行CAS。
+- `AuthorizationRoleService`提供modules／permissions／list／detail／create／update／setPermissions／delete。`AuthorizationEventService.list`產出OpenAPI白名單與cursor；沒有稽核修改或刪除入口。
+- `dto/assignment.dto.ts`與`authorization-query.dto.ts`提供員編原樣、兩個最多50角色ID集合、安全ID解析、module／page驗證。assignment服務沿相同transaction邊界並先鎖user，不可反向取得user鎖。
+- `createAuthorizationConsole`只回傳函式閉包。AuthorizationModule仍是窄核心，不啟HTTP、Redis、worker、mail或儲存；本票未新增Portal依賴。
+
+### 已執行驗證及限制
+
+- `pnpm -C server test --runInBand`：128 suites／1289 tests通過。
+- `pnpm -C server test:e2e:security --runTestsByPath test/authorization-role-management.e2e-spec.ts test/authorization-catalog.e2e-spec.ts test/authorization-baseline.e2e-spec.ts test/authorization-revocation.e2e-spec.ts`：4 suites／15 tests通過。
+- server build／lint:check、root build／lint、client test（4項）／check:bundle通過；271既有warnings、0 errors。
+- `caffeinate -i pnpm -C server test:e2e:security`：25 suites／193 tests全部通過（47.865秒）。先前主機休眠造成多次120秒逾時（整套記370／2733秒），已透過防休眠、錯開測試port後完整重跑收斂；沒有修改timeout或正式規則。不同worktree的DB/Redis雖隔離，既有credential測試使用固定3030/3031，因此全套不可並行。
+- 無migration／新環境變數／dependency／管理前端；本票完成不代表完整028可以正式切換。

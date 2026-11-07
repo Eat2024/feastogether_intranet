@@ -23,6 +23,7 @@ export const AppErrorCode = {
   ORG_CHART_UNAVAILABLE: 'ORG_CHART_UNAVAILABLE',
   /** DTO / ValidationPipe 驗證失敗（泛用） */
   INVALID_REQUEST: 'INVALID_REQUEST',
+  REQUEST_FORMAT_INVALID: 'REQUEST_FORMAT_INVALID',
   /** 未帶 / 無效 / 已撤銷 token */
   UNAUTHORIZED: 'UNAUTHORIZED',
   /** 已通過身分驗證，但不允許操作特定業務資源 */

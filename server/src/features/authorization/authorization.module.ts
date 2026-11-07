@@ -1,3 +1,6 @@
+import { AuthorizationEventService } from './services/authorization-event.service';
+import { AuthorizationManagementService } from './services/authorization-management.service';
+import { AuthorizationRoleService } from './services/authorization-role.service';
 import { Module } from '@nestjs/common';
 import { MysqlModule } from '#app/infrastructure/database/mysql/mysql.module';
 import { SuperUserAccessModule } from '#app/features/auth/super-user-access.module';
@@ -11,12 +14,18 @@ import { AuthorizationService } from './services/authorization.service';
   imports: [MysqlModule, SuperUserAccessModule],
   providers: [
     AuthorizationAuditService,
+    AuthorizationManagementService,
+    AuthorizationRoleService,
+    AuthorizationEventService,
     AuthorizationCatalogService,
     AuthorizationResolverService,
     AuthorizationService,
   ],
   exports: [
     AuthorizationAuditService,
+    AuthorizationManagementService,
+    AuthorizationRoleService,
+    AuthorizationEventService,
     AuthorizationCatalogService,
     AuthorizationResolverService,
     AuthorizationService,

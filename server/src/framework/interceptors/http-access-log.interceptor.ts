@@ -120,7 +120,7 @@ export class HttpAccessLogInterceptor implements NestInterceptor {
   private shouldLogQuery(request: FastifyRequest): boolean {
     const path = getRequestPath(request);
     return (
-      !/^(\/api)?\/esign(?:\/|$)/.test(path) &&
+      !/^(\/api)?\/(?:esign|authorization)(?:\/|$)/.test(path) &&
       !/^(\/api)?\/external-(?:signing-task|signature-(?:otps|session|invitations))(?:\/|$)/.test(
         path,
       ) &&
@@ -136,8 +136,11 @@ export class HttpAccessLogInterceptor implements NestInterceptor {
   }
 
   private shouldLogRequestBody(request: FastifyRequest): boolean {
-    // 電子簽請求包含文件 bytes、手寫 PNG 或完整名單，一律不記錄 body。
-    if (/^(\/api)?\/esign(?:\/|$)/.test(getRequestPath(request))) return false;
+    // 電子簽含文件／手寫 PNG；授權管理可能含員編或角色配置，兩者均不記錄 body。
+    if (
+      /^(\/api)?\/(?:esign|authorization)(?:\/|$)/.test(getRequestPath(request))
+    )
+      return false;
     if (
       /^(\/api)?\/external-(?:signing-task|signature-(?:otps|session|invitations))(?:\/|$)/.test(
         getRequestPath(request),

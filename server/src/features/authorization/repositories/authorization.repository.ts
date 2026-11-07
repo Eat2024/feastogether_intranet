@@ -8,6 +8,30 @@ import { AuthorizationUserRole } from '../entities/authorization-user-role.entit
 /** 集合讀取與關聯差異保存；交易及 users → roles → permissions 鎖序由 service 決定。 */
 @Injectable()
 export class AuthorizationRepository {
+  async roleHasAssignments(
+    roleId: number,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    return manager.exists(AuthorizationUserRole, { where: { roleId } });
+  }
+  listRoles(
+    moduleKey: string,
+    limit: number,
+    beforeId: number | undefined,
+    manager: EntityManager,
+  ) {
+    const query = manager
+      .createQueryBuilder(AuthorizationRole, 'r')
+      .where('r.moduleKey = :moduleKey', { moduleKey })
+      .orderBy('r.id', 'DESC')
+      .take(limit);
+    if (beforeId) query.andWhere('r.id < :beforeId', { beforeId });
+    return query.getMany();
+  }
+  findRole(moduleKey: string, id: number, manager: EntityManager) {
+    return manager.findOneBy(AuthorizationRole, { moduleKey, id });
+  }
+
   roles(
     manager: EntityManager,
     lock: boolean | 'shared' = false,

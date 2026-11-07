@@ -136,7 +136,7 @@ export function validateRolePermissions(
     new Set(permissionKeys).size !== permissionKeys.length ||
     permissionKeys.length > 100
   )
-    throw new AppException(...AppErrors.REQUEST_FORMAT_INVALID);
+    throw new AppException(...AppErrors.AUTHORIZATION_REQUEST_FORMAT_INVALID);
   const keys = new Set(permissionKeys);
   if (
     (keys.has('esign.document.read-all') && !keys.has('esign.document.read')) ||
@@ -146,5 +146,5 @@ export function validateRolePermissions(
       !keys.has('esign.export.read') &&
       !keys.has('esign.export.create'))
   )
-    throw new AppException(...AppErrors.REQUEST_FORMAT_INVALID);
+    throw new AppException(...AppErrors.AUTHORIZATION_REQUEST_FORMAT_INVALID);
 }

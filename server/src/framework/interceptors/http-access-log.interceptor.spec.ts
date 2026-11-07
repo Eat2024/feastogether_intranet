@@ -86,6 +86,9 @@ describe('HttpAccessLogInterceptor', () => {
     expect(getWrittenEntry(accessLogger).requestBody).toBeUndefined();
   });
   it.each([
+    '/api/authorization/modules/esign/employee-role-assignments',
+    '/api/%61uthorization/modules/esign/roles',
+    '/authorization/modules/esign/roles',
     '/api/esign/signer-candidates/resolutions',
     '/api/esign/documents/9/employee-email-checks',
     '/api/external-signing-task',
@@ -113,7 +116,7 @@ describe('HttpAccessLogInterceptor', () => {
       ),
     ).rejects.toBe(err);
     const entry = getWrittenEntry(accessLogger);
-    expect(entry.url).toBe(path);
+    expect(entry.url).toBe(decodeURIComponent(path));
     expect(entry.query).toBeUndefined();
     expect(entry.requestBody).toBeUndefined();
   });

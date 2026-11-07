@@ -51,16 +51,16 @@
 
 **Independent Test**：有效 Super 由 API 與 REPL 各完成建立角色、配權、預指派未登入員工、撤銷及查 audit；員工／管理員一律不可維護，同仁不可更改，失敗無半套資料。
 
-- [ ] T024 [P] [US3] 在 `server/test/authorization-role-management.e2e-spec.ts` 建立 Super-only、Origin、角色 CRUD／permission、保護同仁、不可指派平台權限、版本及名稱競態案例。
+- [X] T024 [P] [US3] 在 `server/test/authorization-role-management.e2e-spec.ts` 建立 Super-only、Origin、角色 CRUD／permission、保護同仁、不可指派平台權限、版本及名稱競態案例。
 - [ ] T025 [P] [US3] 在 `server/test/authorization-assignments.e2e-spec.ts` 建立 Portal exact-match、未登入員工、失效／模糊／故障、本地停用、首次登入競態、CAS、audit rollback 與 API／REPL 相同結果案例。
-- [ ] T026 [US3] 在 `server/src/features/authorization/dto/role-management.dto.ts`、`assignment.dto.ts`、`authorization-query.dto.ts` 實作嚴格 DTO：moduleKey 1～50 且 `[a-z][a-z0-9-]*`、ID 正整數字串且安全解析、roleName trim 後 1～100、expectedVersion 正整數、非空 patch；permissionKeys 每項 1～100／最多100／不重複，roleIds／expectedRoleIds 各最多50／不重複，empId 1～32 保留大小寫與前後字元；未知欄位拒絕，limit 預設20最大100、beforeId 正整數字串。
-- [ ] T027 [US3] 在 `server/src/features/authorization/services/authorization-role.service.ts` 實作角色新增／更名／停用／刪除／完整配權與 version CAS；後端產 immutable code，刪除仍被指派者409、停用保留關聯、no-op 不加版，protected 不可改，modifier 需同角色 base，platform 無可指派權限不可建一般角色；所有異動與 audit 原子提交。
-- [ ] T028 [US3] 在 `server/src/features/authorization/controllers/authorization-roles.controller.ts` 暴露 module／permission 查詢及角色列表／詳細／POST／PATCH／DELETE／PUT permissions；沿 027 SuperUserOnly 與寫入 Origin，管理 ID 輸出字串，分頁 no-store，錯誤符合 OpenAPI。
+- [X] T026 [US3] 在 `server/src/features/authorization/dto/role-management.dto.ts`、`assignment.dto.ts`、`authorization-query.dto.ts` 實作嚴格 DTO：moduleKey 1～50 且 `[a-z][a-z0-9-]*`、ID 正整數字串且安全解析、roleName trim 後 1～100、expectedVersion 正整數、非空 patch；permissionKeys 每項 1～100／最多100／不重複，roleIds／expectedRoleIds 各最多50／不重複，empId 1～32 保留大小寫與前後字元；未知欄位拒絕，limit 預設20最大100、beforeId 正整數字串。
+- [X] T027 [US3] 在 `server/src/features/authorization/services/authorization-role.service.ts` 實作角色新增／更名／停用／刪除／完整配權與 version CAS；後端產 immutable code，刪除仍被指派者409、停用保留關聯、no-op 不加版，protected 不可改，modifier 需同角色 base，platform 無可指派權限不可建一般角色；所有異動與 audit 原子提交。
+- [X] T028 [US3] 在 `server/src/features/authorization/controllers/authorization-roles.controller.ts` 暴露 module／permission 查詢及角色列表／詳細／POST／PATCH／DELETE／PUT permissions；沿 027 SuperUserOnly 與寫入 Origin，管理 ID 輸出字串，分頁 no-store，錯誤符合 OpenAPI。
 - [ ] T029 [US3] 在 `server/src/features/authorization/services/authorization-assignment.service.ts` 重用 `server/src/features/auth/services/eligible-staff.service.ts` 查核後開本地交易，empid 唯一仲裁取得同一 user；目標不合格轉422 AUTHORIZATION_EMPLOYEE_INELIGIBLE、Portal 故障502 STAFF_LOOKUP_FAILED、本地停用403 ACCOUNT_DISABLED 不復活；不更改登入流程原錯誤。
 - [ ] T030 [US3] 在 `server/src/features/authorization/services/authorization-assignment.service.ts` 實作 users→roles 鎖序及 expectedRoleIds CAS，覆寫單一 module 一般角色集合，拒 protected／跨 module，重授恢復同列；目標已一致 no-op、audit 失敗含新 user 一併回滾。
 - [ ] T031 [US3] 在 `server/src/features/authorization/controllers/authorization-assignments.controller.ts` 提供 role employees、employee roles 及 employee-role-assignments；員編只在 body、不入 URL／log，implicitRoles 與 explicit roleIds 分開，Super session 不因目標422變成登出；同步在 `server/src/console/helpers/authorization.helpers.ts` 接 assignRoles／員工角色查詢到相同服務。
-- [ ] T032 [US3] 在 `server/src/features/authorization/controllers/authorization-events.controller.ts` 與 `dto/authorization-event.dto.ts` 實作 Super-only cursor 稽核查詢，輸出 actor/source/module/target/裁切前後值；無更新刪除入口，不輸出 raw Portal／員編／secret。
-- [ ] T033 [US3] 在 `server/src/console/helpers/authorization.helpers.ts` 與 `server/src/console/console.module.ts` 接入 roles／permissions／CRUD／events；全部呼叫相同業務 service，維護寫入逐次驗 027 active generation，不啟 HTTP／worker／mail／S3，不直接暴露 repository。
+- [X] T032 [US3] 在 `server/src/features/authorization/controllers/authorization-events.controller.ts` 與 `dto/authorization-event.dto.ts` 實作 Super-only cursor 稽核查詢，輸出 actor/source/module/target/裁切前後值；無更新刪除入口，不輸出 raw Portal／員編／secret。
+- [X] T033 [US3] 在 `server/src/console/helpers/authorization.helpers.ts` 與 `server/src/console/console.module.ts` 接入 roles／permissions／CRUD／events；全部呼叫相同業務 service，維護寫入逐次驗 027 active generation，不啟 HTTP／worker／mail／S3，不直接暴露 repository。
 - [ ] T034 [US3] 在 `server/test/authorization-management-concurrency.e2e-spec.ts` 驗證同名建立／同版本更新／刪除對並發指派／預建對首次登入及 audit 故障的原子結果；所有 HTTP 寫入與 REPL 寫入結果及錯誤一致。
 
 ## Phase 6: US4 — 管理能力與文件／簽署不變量 (P1)

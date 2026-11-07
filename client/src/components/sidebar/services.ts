@@ -2,8 +2,9 @@ import type { SvgIconComponent } from "@mui/icons-material";
 import DrawRoundedIcon from "@mui/icons-material/DrawRounded";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 import ListAltRoundedIcon from "@mui/icons-material/ListAltRounded";
-import type { AuthorizationModule } from "@/api/types";
+import { ROUTES } from "@/constants/routes";
 import { filterVisibleMenu } from "@/features/navigation/filter-visible-menu";
+import type { HasPermission } from "@/features/navigation/has-permission";
 
 export type NavSubItem = {
   kind: "link";
@@ -43,29 +44,29 @@ export const KNOWN_NAVIGATION_PERMISSIONS: Readonly<Record<string, readonly stri
 export const SERVICES: ServiceDefinition[] = [
   {
     key: "esign",
-    name: "電子簽署",
+    name: ROUTES.esign.label,
     icon: DrawRoundedIcon,
-    pathPrefixes: ["/esign"],
+    pathPrefixes: [ROUTES.esign.href],
     menu: [
       {
-        kind: "link", key: "forms", label: "電子簽列表", href: "/esign/forms",
+        kind: "link", key: "forms", label: ROUTES.esignForms.label, href: ROUTES.esignForms.href,
         icon: ListAltRoundedIcon, moduleKey: "esign", requiredPermissions: ["esign.document.read"],
       },
       {
-        kind: "link", key: "my-signature", label: "我的電子簽", href: "/esign/my-signature",
+        kind: "link", key: "my-signature", label: ROUTES.esignMySignature.label, href: ROUTES.esignMySignature.href,
         icon: DrawRoundedIcon, moduleKey: "esign", requiredPermissions: ["esign.signing.read"],
       },
       {
-        kind: "link", key: "export-history", label: "歷史匯出文件", href: "/esign/export-history",
+        kind: "link", key: "export-history", label: ROUTES.esignExportHistory.label, href: ROUTES.esignExportHistory.href,
         icon: HistoryRoundedIcon, moduleKey: "esign", requiredPermissions: ["esign.export.read"],
       },
     ],
   },
 ];
 
-export function getVisibleServices(modules: readonly AuthorizationModule[]): ServiceDefinition[] {
+export function getVisibleServices(hasPermission: HasPermission): ServiceDefinition[] {
   return SERVICES.flatMap((service) => {
-    const menu = filterVisibleMenu(service.menu, modules, KNOWN_NAVIGATION_PERMISSIONS);
+    const menu = filterVisibleMenu(service.menu, hasPermission, KNOWN_NAVIGATION_PERMISSIONS);
     return menu.length ? [{ ...service, menu }] : [];
   });
 }

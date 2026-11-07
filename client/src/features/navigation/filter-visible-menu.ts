@@ -1,7 +1,4 @@
-export interface PermissionSnapshotModule {
-  moduleKey: string;
-  permissions: readonly string[];
-}
+import type { HasPermission } from './has-permission';
 
 export interface PermissionLink {
   kind: "link";
@@ -10,7 +7,6 @@ export interface PermissionLink {
   moduleKey: string;
   requiredPermissions: readonly string[];
 }
-
 export interface PermissionGroup<L extends PermissionLink = PermissionLink> {
   kind: "group";
   key: string;
@@ -31,12 +27,9 @@ const isValidLink = (
 /** 精確比對同 module 的完整 permission；獨立項、子項與空群組一律 fail closed。 */
 export function filterVisibleMenu<T extends PermissionMenuItem>(
   menu: readonly T[],
-  modules: readonly PermissionSnapshotModule[],
+  hasPermission: HasPermission,
   knownPermissions: Readonly<Record<string, readonly string[]>>,
 ): T[] {
-  const permissionSets = new Map(
-    modules.map((entry) => [entry.moduleKey, new Set(entry.permissions)] as const),
-  );
   const keyCounts = new Map<string, number>();
   for (const item of menu) {
     keyCounts.set(item.key, (keyCounts.get(item.key) ?? 0) + 1);
@@ -51,16 +44,14 @@ export function filterVisibleMenu<T extends PermissionMenuItem>(
     if (!item.key || keyCounts.get(item.key) !== 1) return [];
     if (item.kind === "link") {
       if (!isValidLink(item, knownPermissions)) return [];
-      const granted = permissionSets.get(item.moduleKey);
-      return granted && item.requiredPermissions.every((permission) => granted.has(permission))
+      return hasPermission(item.moduleKey, ...item.requiredPermissions)
         ? [item]
         : [];
     }
 
     const children = item.children.filter((child) => {
       if (keyCounts.get(child.key) !== 1 || !isValidLink(child, knownPermissions)) return false;
-      const granted = permissionSets.get(child.moduleKey);
-      return !!granted && child.requiredPermissions.every((permission) => granted.has(permission));
+      return hasPermission(child.moduleKey, ...child.requiredPermissions);
     });
     return children.length ? [{ ...item, children }] : [];
   });

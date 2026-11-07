@@ -17,7 +17,7 @@ Request boundary 檢查 actor discriminant、必要欄位、陣列與字串形�
 
 ## 2. RouteDefinition
 
-集中放在既有 `client/src/components/sidebar/services.ts`。每個入口具備 stable key、固定既有 href、繁體中文 label。初始只有 documents=`/esign/forms`、signingTasks=`/esign/my-signature`、exportHistory=`/esign/export-history`。不從 path 最後一節產生 key，以免不同父階層同名碰撞。
+路徑與名稱集中放在 `client/src/constants/routes.ts`，供 redirect、頁面標題、Breadcrumb 與選單共用；`client/src/components/sidebar/services.ts` 只引用 route 定義並組合 stable key、圖示、階層與權限需求。初始導覽只有 documents=`/esign/forms`、signingTasks=`/esign/my-signature`、exportHistory=`/esign/export-history`，目錄另包含既有首頁及旅遊權限頁面。不要從 path 最後一節產生 key，以免不同父階層同名碰撞。
 
 目前路徑選取以 `pathname === href || pathname.startsWith(href + '/')`；不以裸 startsWith 使 `/esign/forms-other` 誤選。分組沒有 href；不要把未知父路徑渲染成可點連結。
 
@@ -58,3 +58,11 @@ queryFn將signal交Axios，取消的舊回應不得提交為目前snapshot。`st
 `auth/me` query用專屬設定覆寫現有五分鐘／不聚焦刷新預設；不改其他query。已知身份切換沿027清cache流程加入AUTH_ME key；跨分頁cookie改變在下一次focus／路徑／refresh重驗時發現，不新增輪詢或跨分頁通訊。
 
 只對內部業務的403 AUTHORIZATION_DENIED做一次失效／取消與refetch，排除AUTH_ME本身以及登入／外部／公開API。多個同時403可合併為同一in-flight重驗；不自動retry已被拒絕的業務mutation。`auth/me` query 403不觸發自己失效循環。
+
+## 7. CommonPermissionInterface
+
+`PermissionProvider` 從已安全採用的 `AuthMeView.modules` 建立 `hasPermission(moduleKey, ...permissions)`。它只在精確相同 module 內以 AND 判斷完整 permission；缺 module、空需求或缺任一 permission 均回 `false`。導覽是第一個正式消費端，其他前端呈現可逐步沿用，但這個布林結果永遠不能取代後端 API 授權。
+
+## 8. CommonShell
+
+內部 `(main)` 路由由 AppShell 統一組合 Sidebar、AppHeader、PageBreadcrumbs、UserProfile 與可捲動內容區。Breadcrumb 只從 route 目錄解析名稱；無已知名稱的動態片段維持可辨識 fallback。公開、登入與外部簽署頁不包入此殼層，既有 iframe 隱藏及 `InternalIdentityBoundary` 仍位於業務內容之外的安全邊界。

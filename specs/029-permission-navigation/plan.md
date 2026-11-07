@@ -1,12 +1,12 @@
 # Implementation Plan: 側邊選單設定化與權限連動
 
-**Branch**: `dev`（讀取時實際分支，未由本流程切換） | **Date**: 2026-11-04 | **Spec**: [spec.md](spec.md)
+**Branch**: `029-permission-navigation` | **Date**: 2026-11-04（2026-11-07 更新） | **Spec**: [spec.md](spec.md)
 
 **Input**: `specs/029-permission-navigation/spec.md`；setup-plan的029標識由feature推導，非實際checkout。使用顯式SPECIFY_FEATURE_DIRECTORY與NO_PERSIST，未改共用feature.json。
 
 ## Summary
 
-保留現有 permanent Sidebar、展開／收合模式與三個既有路徑，把路徑／名稱、選單結構及權限需求集中設定。從028的`auth/me`取得目前session view與module permissions，經單一純函式過濾群組／獨立項目；只在有效且完成重新驗證的快照下顯示業務連結。沿既有 API/TanStack Query 層實作目前登入者查詢與失效處理，不新增後端endpoint、資料表或管理頁。
+保留現有 permanent Sidebar、展開／收合模式與既有頁面，沿用 CKS 的 AppShell／AppHeader／Breadcrumb／UserProfile 責任切分，並把路徑／名稱、選單結構及權限需求集中設定。從028的`auth/me`取得目前session view與module permissions，經共用 `hasPermission(moduleKey, ...permissions)` 與純函式過濾群組／獨立項目；只在有效且完成重新驗證的快照下顯示業務連結。沿既有 API/TanStack Query 層實作目前登入者查詢與失效處理，Snackbar 視覺同步為 CKS 的頂端置中 filled 樣式；不新增後端endpoint、資料表或管理頁。
 
 027的隱藏登入不列入設定；Super user由028回傳全部能力，不使用前端wildcard。後端仍是權限真相，前端隱藏不取代028的授權。
 
@@ -62,12 +62,16 @@ specs/029-permission-navigation/
 
 本階段不建立tasks.md，後續由speckit-tasks產生。
 
-### Source Code (implementation target，未建立)
+### Source Code (implementation)
 
 ```text
 client/src/components/sidebar/services.ts      # 集中路徑、link/group設定與已知導覽能力
+client/src/constants/routes.ts                 # 頁面路徑與名稱的單一目錄
+client/src/components/layouts/                 # AppShell、Header、Breadcrumb、UserProfile
+client/src/providers/PermissionProvider.tsx    # 共用hasPermission介面
 client/src/features/navigation/
   filter-visible-menu.ts                      # 純過濾／設定驗證，無HTTP
+  has-permission.ts                           # 同module、完整permission、AND、fail-closed
   InternalIdentityBoundary.tsx               # pathname能力query、actor採用與全域狀態
   identity-adoption.ts                       # 可測的actor採用狀態機
   useVisibleNavigation.ts                    # 已採用快照的可見選單
@@ -79,12 +83,13 @@ client/src/api/
   queries/auth.ts + queries/index.ts
 client/src/components/sidebar/                 # 保留現有展開/收合、MUI/theme/embedded class，改吃可見資料
 client/src/components/providers/ReactQueryProvider.tsx # 業務403單次能力失效，保留027登入401例外
+client/src/components/providers/SnackbarProvider.tsx   # CKS同型頂端置中filled呈現
 client/src/features/super-user-login/           # 僅027成功／登出快取銜接，不改登入契約
 ```
 
 實作時以027最後實際檔案位置接入其身分清理，不能另建立第二份login或session provider。root layout、proxy、EmbedBridge與globals.css原則上只回歸驗證；若需快取銜接，僅最小修改，不變更其認證／訊息契約。
 
-**Structure Decision**: 既有 sidebar services 為前端共用設定；navigation持有可見性純邏輯與hook；API層維持既有責任。用Sidebar自身取得能力，不新增全站PermissionProvider來複製後端角色模型。
+**Structure Decision**: `constants/routes.ts` 是路徑與名稱的單一目錄，sidebar services 只組合階層、圖示與權限需求；navigation 持有能力純邏輯與 hook，API 層維持既有責任。`PermissionProvider` 只包裝已安全採用的 `auth/me` module permissions，提供與 CKS 一致的 `hasPermission` 呼叫面，不取得或複製後端角色模型。內部版面沿用 CKS 的元件責任，但保留 intranet 現有 theme、身分採用邊界與 iframe 規則。
 
 ## Phase 0 結論
 
@@ -97,6 +102,7 @@ client/src/features/super-user-login/           # 僅027成功／登出快取銜
 3. **Sidebar呈現**（US1、US2）：保持現有項目順序、圖示、theme與selected行為，增加載入／重試／空狀態；所有iframe隱藏規則保留。
 4. **快取與錯誤**（US2、US3）：專用query設定、pathname key、AbortSignal、切身分cancel/remove，失敗不回用舊data；只對內部業務AUTHORIZATION_DENIED失效一次，排除本人能力query避免循環。
 5. **整合驗收**：028實際後端、027身分切換、直接越權、聚焦／跨路徑、iframe及隱藏網址不出現在資料；無後端實作時標示未驗證，不用mock宣稱通過。
+6. **共用前端慣例**：路徑目錄供 redirect、標題、Breadcrumb 與選單共用；AppShell 固定組合 Sidebar、AppHeader、UserProfile 與內容捲動；Snackbar 僅同步位置及 filled 樣式，不改既有錯誤分類。
 
 ## 契約與遷移
 
@@ -107,7 +113,7 @@ client/src/features/super-user-login/           # 僅027成功／登出快取銜
 
 ## Complexity Tracking
 
-無憲章違反。`auth/me`專用query覆寫是因現行五分鐘快取與不focus刷新不能滿足規格；窄cache helper只處理實際登入切換與403，不新增跨分頁同步／推播／permission provider framework。
+無憲章違反。`auth/me`專用query覆寫是因現行五分鐘快取與不focus刷新不能滿足規格；窄cache helper只處理實際登入切換與403，不新增跨分頁同步／推播。共用 PermissionProvider 是使用者指定的 CKS 對齊介面，且導覽已作為實際呼叫端；它不承載角色或建立第二份授權狀態。
 
 ## 驗證狀態
 

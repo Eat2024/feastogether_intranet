@@ -25,7 +25,7 @@
 - [x] T004 在同一集中設定建立 link/group 聯集及現有三項順序、MUI 圖示、moduleKey/requiredPermissions mapping；遵守「requiredPermissions 必須至少1項」、「children只能是link，不含父層href；初期最多一層分組，禁止空群組」，圖示設定不跨 Server Component 序列化。
 - [x] T005 [P] 擴充 `client/src/api/types/auth.ts` 並於 `client/src/api/types/index.ts` 匯出`auth/me` DTO；沿用027 actor／user／expiresAt session union，加入moduleKey與完整permission字串陣列；不帶任何role ID／code／name、其他人員清單、入口或帳密。
 
-**Checkpoint**: routes/menu 與 DTO 無後端來源碼 import，未增加 DB、環境變數、dependency、Provider 或動態選單管理。
+**Checkpoint**: routes/menu 與 DTO 無後端來源碼 import，未增加 DB、環境變數、dependency 或動態選單管理；後續共用 Provider 只能包裝本人能力快照，不建立角色模型。
 
 ## Phase 3: US1 員工只看到可使用的業務導覽（P1）
 
@@ -81,6 +81,14 @@
 - [x] T027 執行 `pnpm -C client test`、`pnpm -C client lint`、`pnpm -C client build` 與 `pnpm -C client check:bundle`，結果記錄 `specs/029-permission-navigation/quickstart.md`；元件與瀏覽器整合情境仍不宣稱由純函式測試涵蓋。
 - [x] T028 在 `specs/029-permission-navigation/quickstart.md` 補交付與回退紀錄：028先可用、029只回退呈現不回退後端授權；確認不增加DB/env/dependency/管理頁/OAuth頁、不正式化歷史匯出或其他原型，遮蔽驗證紀錄中的憑證與個資。
 
+## Phase 8: CKS 共用前端慣例對齊
+
+- [x] T029 [US4] 依作者紀錄比對 intranet 與 CKS 前端：只納入使用者明確指定的 AppShell／AppHeader／Breadcrumb／UserProfile、routes、`hasPermission` 與 Snackbar；Marco既有theme／日期／字型及純前端未儲存guard不修改，決策記錄於 `research.md`。
+- [x] T030 [US4] 建立 `client/src/constants/routes.ts` 與 `client/src/components/layouts/`，讓 redirect、標題、Breadcrumb及Sidebar共用路徑名稱，並在 `(main)/layout.tsx` 以 AppShell 組合既有Sidebar、身分安全邊界與可捲動內容。
+- [x] T031 [US1] 建立 `client/src/features/navigation/has-permission.ts` 與 `client/src/providers/PermissionProvider.tsx`，由已採用的`auth/me.modules`提供同module精確AND語意；導覽改用此介面，增加空需求、跨module及多能力測試。
+- [x] T032 [US3] 將 intranet 全站 Snackbar 的位置與Alert樣式同步為 CKS 的頂端置中filled呈現，不改既有401／403與錯誤訊息流程。
+- [x] T033 執行 client test／lint／build／bundle、diff check，更新 quickstart 自動驗證結果並確認 CKS 端已符合目標而不需額外修改。
+
 ## Dependencies & Execution Order
 
 ```text
@@ -126,8 +134,13 @@ US3 使用 US2 的 cache helper，因此不宣稱兩者可並行修改同檔。U
 | FR-011 | T001、T002、T028 |
 | FR-012 | T012、T026 |
 | FR-013 | T002、T004–T009、T023、T025、T026 |
+| FR-014 | T029、T030、T033 |
+| FR-015 | T030、T033 |
+| FR-016 | T031、T033 |
+| FR-017 | T032、T033 |
 | SC-001–SC-006 | T012、T017、T022、T025–T027 |
+| SC-007–SC-009 | T029–T033 |
 
 ## Generation Status
 
-程式、純函式測試、文件與自動驗證任務已依實際完成狀態勾選。T012、T017、T022、T025、T026 保持未完成：目前沒有可用的真實員工／Super user 瀏覽器 session 與入口網 iframe 環境，因此尚未執行完整角色矩陣、實際撤權／401／403 網路競態、鍵盤焦點及 iframe 回歸；不可用純函式測試取代或宣稱這些驗收已完成。
+程式、純函式測試、文件與自動驗證任務依實際完成狀態勾選。T012、T017、T022、T025、T026 保持未完成：目前沒有可用的真實員工／Super user 瀏覽器 session 與入口網 iframe 環境，因此尚未執行完整角色矩陣、實際撤權／401／403 網路競態、鍵盤焦點及 iframe 回歸；不可用純函式測試取代或宣稱這些驗收已完成。T033 的21項測試、lint、production build、bundle與diff check均已通過。

@@ -50,8 +50,18 @@ Super user顯示全部三個真實業務項目，不出現角色管理、員工�
 
 手動輸入被隱藏頁面或直接呼叫對應真實API，資料仍由028拒絕。既有mock／原型頁面不是本規格正式化成果，不拿mock回應當後端授權證據；完整按鈕與深連結UI改善不在本次範圍。
 
+## E. CKS 共用前端慣例（US1、US3、US4）
+
+逐頁確認內部路由均由 AppShell 顯示 Sidebar、AppHeader、Breadcrumb與UserProfile，內容區獨立捲動；公開／登入／外部簽署頁不應被包入。確認 iframe 隱藏及 actor 重新採用期間的遮蔽仍有效。
+
+修改一個 `ROUTES` label fixture，確認 Sidebar、Breadcrumb與使用該路徑的頁面標題共用名稱；redirect只能引用href。驗證已知階層能產生Breadcrumb，未知動態片段維持可辨識fallback。
+
+以同module完整權限、多權限缺一、其他module同名權限、未知module及空需求呼叫 `hasPermission`；結果應依序為true、false、false、false、false。這只控制前端呈現，直接API仍須由028拒絕越權。
+
+觸發info／success／warning／error Snackbar，確認位置為頂端置中且Alert為filled；再驗證401、內部AUTHORIZATION_DENIED 403及一般錯誤仍走原本分類與訊息來源。
+
 ## 紀錄結果
 
-2026-11-07 自動驗證：`pnpm -C client test` 19 tests passed；`lint`、`build`、`check:bundle` 均通過。測試包含 auth/me 精確 DTO、actor與角色欄位拒絕、同 actor focus重驗保留掛載／actor A→B卸載採用邊界、401清理範圍、403合併與no-loop、paused/error及收合空狀態，以及同 module精確比對、多能力AND、空群組與重複key fail-closed。
+2026-11-07 自動驗證：`pnpm -C client test` 21 tests passed；`lint`、`build`、`check:bundle` 與 `git diff --check` 均通過。測試包含 auth/me 精確 DTO、actor與角色欄位拒絕、同 actor focus重驗保留掛載／actor A→B卸載採用邊界、401清理範圍、403合併與no-loop、paused/error及收合空狀態，以及同 module精確比對、多能力AND、空群組、重複key fail-closed、共用`hasPermission`與route/Breadcrumb目錄。
 
 尚未在本機建立真實員工／Super user session 執行瀏覽器角色矩陣、聚焦競態、iframe 與 401／403 網路驗收；這些項目不宣稱完成。後續可附遮蔽敏感值的截圖／network摘要，不附真實隱藏入口或session。

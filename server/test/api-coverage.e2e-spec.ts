@@ -204,6 +204,7 @@ describe('runtime API coverage', () => {
   });
 
   it('匯出歷程改由 history/export 提供，舊路由不再提供存取', async () => {
+    await request(ctx.server).get('/api/esign/documents/1/history').expect(404);
     await request(ctx.server).get('/api/esign/exports').expect(404);
     const response = await request(ctx.server)
       .get('/api/esign/history/export?type=zip')
@@ -274,10 +275,15 @@ function internalOperations(): Array<[string, string]> {
   let path = '';
   for (const line of spec.split('\n')) {
     if (line === 'components:') break;
-    const pathMatch = /^  (\/[^:]+):$/.exec(line);
+    const pathMatch = /^ {2}(\/[^:]+):$/.exec(line);
     if (pathMatch) path = pathMatch[1];
-    const method = /^    (get|post|put|patch|delete):$/.exec(line);
-    if (method && path.startsWith('/esign/'))
+    const method = /^ {4}(get|post|put|patch|delete):$/.exec(line);
+    // Spec 015 已移除文件舊 history route，下方另驗證其 404。
+    if (
+      method &&
+      path.startsWith('/esign/') &&
+      path !== '/esign/documents/{documentId}/history'
+    )
       operations.push([
         method[1].toUpperCase(),
         '/api' +

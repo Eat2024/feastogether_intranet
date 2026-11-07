@@ -25,7 +25,7 @@ import { RedisModule } from '#app/infrastructure/database/redis/redis.module';
 import { FileStorageModule } from '#app/infrastructure/file-storage/file-storage.module';
 import { InfrastructureModule } from '#app/infrastructure/infrastructure.module';
 import { MailModule } from '#app/infrastructure/mail/mail.module';
-import { PortalModule } from '#app/infrastructure/portal/portal.module';
+import { PortalDirectoryService } from '#app/infrastructure/portal/portal-directory.service';
 import { WorkerModule } from '#app/worker.module';
 import { SuperUserAccessWorkerModule } from '#app/worker/auth/super-user-access-worker.module';
 
@@ -59,7 +59,16 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
     events: await operatorEvents(),
   });
 
+  const portalQueries: jest.SpyInstance[] = [];
   beforeAll(async () => {
+    for (const method of [
+      'findEmployeesByEmpid',
+      'listActiveEmployees',
+      'findStatusesByEmpids',
+      'listOrgChartSource',
+    ] as const) {
+      portalQueries.push(jest.spyOn(PortalDirectoryService.prototype, method));
+    }
     app = await NestFactory.createApplicationContext(ConsoleModule, {
       logger: false,
     });
@@ -79,7 +88,7 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
     await app?.close();
   });
 
-  it('不載入 HTTP、worker、queue、Portal、mail、storage 或 Redis 模組，啟動不自動初始化', async () => {
+  it('不載入 HTTP、worker、queue、mail、storage 或 Redis 模組，啟動不查 Portal 或自動初始化', async () => {
     const loaded = new Set(
       [...app.get(ModulesContainer).values()].map(
         (moduleRef) => moduleRef.metatype,
@@ -94,12 +103,12 @@ describe('窄 REPL 維護入口初始化與查詢', () => {
       AuthModule,
       BullRootModule,
       RedisModule,
-      PortalModule,
       MailModule,
       FileStorageModule,
     ]) {
       expect(loaded.has(excluded)).toBe(false);
     }
+    for (const query of portalQueries) expect(query).not.toHaveBeenCalled();
     expect(await snapshot()).toEqual({ access: [], events: [] });
   });
 

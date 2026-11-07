@@ -1,3 +1,4 @@
+import { grantDocumentCreatorByEmployeeNo } from './helpers/authorization-business-fixtures';
 import type { EsignDocumentListItemDto } from '#app/features/esign/dto/esign-common.dto';
 import {
   createSyntheticPortal,
@@ -546,6 +547,7 @@ describe('022 背景發起受理', () => {
       .type('form')
       .send({ code })
       .expect(303);
+    await grantDocumentCreatorByEmployeeNo(ctx.app, empid);
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');

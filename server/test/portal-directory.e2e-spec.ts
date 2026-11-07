@@ -1,3 +1,6 @@
+import { DataSource } from 'typeorm';
+import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
+import { seedAuthorizationCatalog } from './helpers/authorization-fixtures';
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '#app/app.module';
@@ -34,6 +37,7 @@ describe('Portal 唯讀連線（合成 Portal）', () => {
     const moduleRef = await override(
       Test.createTestingModule({ imports: [AppModule, PortalModule] }),
     ).compile();
+    await seedAuthorizationCatalog(moduleRef.get<DataSource>(MYSQL_MAIN));
     const app = moduleRef.createNestApplication<NestFastifyApplication>(
       createFastifyAdapter(),
       { bodyParser: false },

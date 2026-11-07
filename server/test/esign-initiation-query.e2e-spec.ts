@@ -1,3 +1,5 @@
+import { In } from 'typeorm';
+import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Job, Queue } from 'bullmq';
@@ -33,7 +35,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { employeeSessionCookie } from './employee-session.helper';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 
 describe('022 背景發起只讀查詢', () => {
   jest.setTimeout(60000);
@@ -70,7 +72,7 @@ describe('022 背景發起只讀查詢', () => {
     pdf = Buffer.from(await source.save());
   });
   async function session(userId: number) {
-    return await employeeSessionCookie(ctx.app, userId);
+    return await documentCreatorSessionCookie(ctx.app, userId);
   }
   async function newDoc() {
     const id = apiData<{ id: string }>(
@@ -276,13 +278,16 @@ describe('022 背景發起只讀查詢', () => {
     await mysql.getManager().update(User, users[0].id, { isActive: false });
     try {
       await expect(
-        ctx.app.get(EsignInitiationJobService).latest(Number(doc), users[0].id),
-      ).rejects.toMatchObject({ code: 'ESIGN_INITIATION_NOT_FOUND' });
-      await expect(
         ctx.app
           .get(EsignInitiationJobService)
-          .get(Number(doc), job.publicId, users[0].id),
-      ).rejects.toMatchObject({ code: 'ESIGN_INITIATION_NOT_FOUND' });
+          .latest(Number(doc), { kind: 'employee', userId: users[0].id }),
+      ).rejects.toMatchObject({ code: 'ACCOUNT_DISABLED' });
+      await expect(
+        ctx.app.get(EsignInitiationJobService).get(Number(doc), job.publicId, {
+          kind: 'employee',
+          userId: users[0].id,
+        }),
+      ).rejects.toMatchObject({ code: 'ACCOUNT_DISABLED' });
     } finally {
       await mysql.getManager().update(User, users[0].id, { isActive: true });
     }
@@ -314,6 +319,7 @@ describe('022 背景發起只讀查詢', () => {
       'retryable',
       'issueCount',
       'detailsExpired',
+      'createdBy',
     ];
     expect(Object.keys(first).sort()).toEqual(keys.sort());
     for (let i = 0; i < 3; i++) {
@@ -716,6 +722,7 @@ describe('022 背景發起只讀查詢', () => {
       await manager.query('DELETE FROM auth_sessions WHERE user_id IN (?)', [
         ids,
       ]);
+      await manager.delete(AuthorizationUserRole, { userId: In(ids) });
       await manager.delete(User, ids);
     }
     await closeSecurityE2eApp(ctx);

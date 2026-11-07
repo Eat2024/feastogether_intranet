@@ -1,3 +1,4 @@
+import { grantDocumentCreatorByEmployeeNo } from './helpers/authorization-business-fixtures';
 import { completeInitiation } from './helpers/await-initiation';
 import { ExternalReminders1792454402000 } from '#app/infrastructure/database/migrations/1792454402000-ExternalReminders';
 import { openExternalSession, requestOtp } from './external-session.helper';
@@ -104,6 +105,7 @@ describe('內外部催簽 API', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
+    await grantDocumentCreatorByEmployeeNo(ctx.app, 'E2E00905');
     await Promise.all(
       ['E2E00905'].map((employeeNo) =>
         ctx.app
@@ -176,10 +178,10 @@ describe('內外部催簽 API', () => {
   it('單人申請受理並可追查，同請求重送重用批次，另一申請阻擋排隊中對象', async () => {
     const doc = await create();
     const body = {
-        requestId: randomUUID(),
-        selection: 'selected',
-        signerPublicIds: [doc.signers[0].publicId],
-      };
+      requestId: randomUUID(),
+      selection: 'selected',
+      signerPublicIds: [doc.signers[0].publicId],
+    };
     const first = apiData<Batch>(await post(doc.id, body).expect(202));
     expect(first).toMatchObject({
       queuedCount: 1,
@@ -490,9 +492,9 @@ describe('內外部催簽 API', () => {
     '%s 並發申請只受理一批；跨文件識別整批拒絕，未登入與缺 Origin 不可催簽',
     async (type) => {
       const [user] = await db.query<Array<{ id: number }>>(
-      'SELECT id FROM users WHERE empid=?',
-      ['E2E00905'],
-    );
+        'SELECT id FROM users WHERE empid=?',
+        ['E2E00905'],
+      );
       const doc = await create(
         type === 'user' ? [{ type, userId: String(user.id) }] : undefined,
       );

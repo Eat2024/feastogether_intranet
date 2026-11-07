@@ -1,3 +1,4 @@
+import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
 import { createHash, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { PDFDocument } from 'pdf-lib';
@@ -41,7 +42,7 @@ describe('電子簽部門列表與唯讀內容', () => {
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp();
-    f = await createDepartmentFixtures(ctx);
+    f = await createDepartmentFixtures(ctx, 'document_creator');
     storage = ctx.app.get(PRIVATE_FILE_STORAGE);
     const create = async (
       creator: User,
@@ -146,6 +147,7 @@ describe('電子簽部門列表與唯讀內容', () => {
       await f.manager.delete(EsignDocument, { id: In(documentIds) });
       const ids = Object.values(f.users).map((user) => user.id);
       await f.manager.delete(AuthSession, { userId: In(ids) });
+      await f.manager.delete(AuthorizationUserRole, { userId: In(ids) });
       await f.manager.delete(User, { id: In(ids) });
     }
     if (stored) await storage.delete(stored);
@@ -219,6 +221,7 @@ describe('電子簽部門列表與唯讀內容', () => {
     );
     expect(readonly).toMatchObject({
       isCreator: false,
+      canManage: false,
       canExport: true,
       sourceFile: { pageCount: 1 },
     });
@@ -236,8 +239,9 @@ describe('電子簽部門列表與唯讀內容', () => {
     const creator = apiData<EsignDocumentDetailDto>(
       await get(`/${draft.id}`, f.cookies.a1).expect(200),
     );
-expect(creator).toMatchObject({
+    expect(creator).toMatchObject({
       isCreator: true,
+      canManage: true,
       signers: [{ email: 'private@example.test', note: '管理備註' }],
     });
     const source = await get(`/${draft.id}/source-file`, f.cookies.a2).expect(

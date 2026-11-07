@@ -28,7 +28,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { employeeSessionCookie } from './employee-session.helper';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 
 describe('Spec016 內部發起與邀請', () => {
   let ctx: SecurityE2eContext;
@@ -112,7 +112,7 @@ describe('Spec016 內部發起與邀請', () => {
         }),
       ),
     );
-    cookie = await employeeSessionCookie(ctx.app, users[0].id);
+    cookie = await documentCreatorSessionCookie(ctx.app, users[0].id);
   });
   beforeEach(async () => {
     await ctx.app
@@ -1012,7 +1012,7 @@ describe('Spec016 內部發起與邀請', () => {
     }
   });
   it('零內部名單不查 HR，非建立人不查 HR', async () => {
-    const other = await employeeSessionCookie(ctx.app, users[1].id);
+    const other = await documentCreatorSessionCookie(ctx.app, users[1].id);
     const saved = cookie;
     cookie = other;
     try {

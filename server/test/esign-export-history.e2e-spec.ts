@@ -31,7 +31,7 @@ import {
   createSyntheticWorker,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { employeeSessionCookie } from './employee-session.helper';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 
 jest.setTimeout(30_000);
 
@@ -45,6 +45,7 @@ interface HistoryItem {
   type: HistoryType;
   document: { id: string; title: string; docNumber: string };
   exportedBy: {
+    kind: 'employee' | 'external_signer' | 'super_user';
     name: string;
     employeeNo: string | null;
     email: string | null;
@@ -139,7 +140,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
   });
 
   async function employeeCookie(user: User) {
-    return employeeSessionCookie(ctx.app, user.id);
+    return documentCreatorSessionCookie(ctx.app, user.id);
   }
 
   function createDocument(title: string) {
@@ -325,6 +326,8 @@ describe('Spec015 歷史匯出紀錄 API', () => {
             exportType: 'pdf',
             documentId: docA.id,
             createdByUserId,
+            createdByActorKind:
+              createdByUserId === null ? 'external_signer' : 'employee',
             signerId: signer.id,
             scopeDescription: scope,
             recordCount: 1,
@@ -619,6 +622,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         type: 'excel',
         document: documentView(docA),
         exportedBy: {
+          kind: 'employee',
           name: exporter.name,
           employeeNo: exporter.empid,
           email: null,
@@ -650,16 +654,19 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       });
       expect(page.items).toEqual([
         pdfItem(pdfByExternalSigner, externalSigner, {
+          kind: 'external_signer',
           name: '林外部',
           employeeNo: null,
           email: externalSigner.email!,
         }),
         pdfItem(pdfByInternalSigner, internalSigner, {
+          kind: 'employee',
           name: internalUser.name,
           employeeNo: internalUser.empid,
           email: null,
         }),
         pdfItem(pdfByCreator, externalSigner, {
+          kind: 'employee',
           name: creator.name,
           employeeNo: creator.empid,
           email: null,
@@ -781,6 +788,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           type: 'zip',
           document: documentView(docA),
           exportedBy: {
+            kind: 'employee',
             name: creator.name,
             employeeNo: creator.empid,
             email: null,
@@ -1038,22 +1046,12 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       };
     }
 
-    it('建立人下載簽署人副本：回傳原本的 PDF 與標頭，並新增匯出人為建立人的紀錄', async () => {
-      const before = (await pdfHistory()).total;
-      const response = await download(
-        creatorPath(externalCopy.signer),
-        creatorCookie,
-      ).expect(200);
-      expectCompletedPdf(response, externalCopy);
-      const page = await pdfHistory();
-      expect(page.total).toBe(before + 1);
-      expect(page.items[0]).toEqual(
-        pdfItem(externalCopy, {
-          name: creator.name,
-          employeeNo: creator.empid,
-          email: null,
-        }),
+    it('建立人不能下載他人的個人副本，也不新增匯出紀錄', async () => {
+      const before = await pdfHistory();
+      await download(creatorPath(externalCopy.signer), creatorCookie).expect(
+        404,
       );
+      expect(await pdfHistory()).toEqual(before);
     });
 
     it('內部員工以員工 session 下載本人副本：匯出人與範圍都是該員工', async () => {
@@ -1064,6 +1062,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       expectCompletedPdf(response, internalCopy);
       expect((await pdfHistory()).items[0]).toEqual(
         pdfItem(internalCopy, {
+          kind: 'employee',
           name: internalUser.name,
           employeeNo: internalUser.empid,
           email: null,
@@ -1079,6 +1078,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       expectCompletedPdf(response, externalCopy);
       expect((await pdfHistory()).items[0]).toEqual(
         pdfItem(externalCopy, {
+          kind: 'external_signer',
           name: externalCopy.signer.nameSnapshot,
           employeeNo: null,
           email: externalCopy.signer.email!,
@@ -1097,8 +1097,8 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         sortOrder: 4,
       });
       const response = await download(
-        creatorPath(longCopy.signer),
-        creatorCookie,
+        externalPath,
+        await accessCookie(longCopy.signer),
       ).expect(200);
       expectCompletedPdf(response, longCopy);
       const { scope } = (await pdfHistory()).items[0];
@@ -1106,35 +1106,32 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       expect(scope).toBe(`${name}（${email}`.slice(0, 255));
     });
 
-    it('同部門員工從 pdf 紀錄重新下載：重複與並發取得原副本，不新增或改寫歷史', async () => {
+    it('簽署人本人從 pdf 紀錄重新下載：重複與並發取得原副本，不新增或改寫歷史', async () => {
       const original = await insertRecord(
         {
           exportType: 'pdf',
           documentId: pdfDoc.id,
-          createdByUserId: creator.id,
-          signerId: externalCopy.signer.id,
+          createdByUserId: internalUser.id,
+          signerId: internalCopy.signer.id,
           scopeDescription: '原紀錄的範圍說明',
           recordCount: 1,
         },
         new Date(Date.now() - 60_000),
       );
       const before = await pdfHistory();
-      const cookie = await employeeCookie(exporter);
+      const cookie = await employeeCookie(internalUser);
       const redownload = () =>
         download(redownloadPath(original.publicId!), cookie).expect(200);
-      expectCompletedPdf(await redownload(), externalCopy);
+      expectCompletedPdf(await redownload(), internalCopy);
       const repeated = await Promise.all([redownload(), redownload()]);
       for (const response of repeated)
-        expectCompletedPdf(response, externalCopy);
+        expectCompletedPdf(response, internalCopy);
       expect(await pdfHistory()).toEqual(before);
     });
 
-    it('同部門非建立人可下載；跨部門、錯置紀錄及調職舊網址拒絕且不寫紀錄', async () => {
-      expectCompletedPdf(
-        await download(creatorPath(internalCopy.signer), viewerCookie).expect(
-          200,
-        ),
-        internalCopy,
+    it('同部門他人與跨部門、錯置紀錄及調職舊網址拒絕且不寫紀錄', async () => {
+      await download(creatorPath(internalCopy.signer), viewerCookie).expect(
+        404,
       );
       const before = await manager.count(EsignExportJob);
       await download(creatorPath(internalCopy.signer), outsiderCookie).expect(
@@ -1147,7 +1144,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       await download(
         redownloadPath(records.pdf.publicId!),
         missingCookie,
-      ).expect(409);
+      ).expect(404);
       expect(await manager.count(EsignExportJob)).toBe(before);
       const mismatched = await insertRecord(
         {
@@ -1182,7 +1179,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       } finally {
         await manager.update(User, { id: creator.id }, { departmentCode });
       }
-      // 指派本人副本不受調職影響；同一員工的一般下載則拒絕。
+      // 指派本人副本不受調職影響，兩個入口都重新驗證簽署人身分。
       await manager.update(
         User,
         { id: internalUser.id },
@@ -1190,7 +1187,12 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       );
       try {
         const ownCookie = await employeeCookie(internalUser);
-        await download(creatorPath(internalCopy.signer), ownCookie).expect(404);
+        expectCompletedPdf(
+          await download(creatorPath(internalCopy.signer), ownCookie).expect(
+            200,
+          ),
+          internalCopy,
+        );
         expectCompletedPdf(
           await download(selfPath(internalCopy.signer), ownCookie).expect(200),
           internalCopy,
@@ -1230,8 +1232,12 @@ describe('Spec015 歷史匯出紀錄 API', () => {
         code: 'ESIGN_RESOURCE_NOT_FOUND',
       },
       {
-        name: '建立人下載尚未簽署的簽署人',
-        send: () => download(creatorPath(pendingInternal), creatorCookie),
+        name: '本人從部門文件下載尚未簽署的副本',
+        send: async () =>
+          download(
+            creatorPath(pendingInternal),
+            await employeeCookie(exporter),
+          ),
         status: 409,
         code: 'ESIGN_STATE_CONFLICT',
         message: '完成文件尚未產生',
@@ -1333,8 +1339,11 @@ describe('Spec015 歷史匯出紀錄 API', () => {
       },
       {
         name: '重新下載副本未產生的 pdf 紀錄',
-        send: () =>
-          download(redownloadPath(records.pendingPdf.publicId!), viewerCookie),
+        send: async () =>
+          download(
+            redownloadPath(records.pendingPdf.publicId!),
+            await employeeCookie(exporter),
+          ),
         status: 409,
         code: 'ESIGN_STATE_CONFLICT',
         message: '個人副本尚未產生',
@@ -1376,8 +1385,12 @@ describe('Spec015 歷史匯出紀錄 API', () => {
 
     it.each<{ name: string; send: () => Promise<request.Response> }>([
       {
-        name: '建立人下載',
-        send: () => download(creatorPath(externalCopy.signer), creatorCookie),
+        name: '本人從部門文件下載',
+        send: async () =>
+          download(
+            creatorPath(internalCopy.signer),
+            await employeeCookie(internalUser),
+          ),
       },
       {
         name: '內部員工本人下載',
@@ -1471,6 +1484,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           type: 'excel',
           document: documentView(excelDoc),
           exportedBy: {
+            kind: 'employee',
             name: recorder.name,
             employeeNo: recorder.empid,
             email: null,
@@ -1755,7 +1769,11 @@ describe('Spec015 歷史匯出紀錄 API', () => {
             signEndAt: sourceDoc.signEndAt!.toISOString(),
             originalSignEndAt: originalEndAt.toISOString(),
             isReopened: true,
-            createdBy: { name: creator.name, employeeNo: creator.empid },
+            createdBy: {
+              kind: 'employee',
+              name: creator.name,
+              employeeNo: creator.empid,
+            },
             signers: [
               {
                 type: 'user',
@@ -1867,8 +1885,9 @@ describe('Spec015 歷史匯出紀錄 API', () => {
     it('同一文件已有 excel／pdf 紀錄時，ZIP 申請、重試、下載與重用不變，worker 與維護掃描不選中也不更新新類型', async () => {
       const zipDoc = await createSignableDocument('合成 ZIP 隔離文件');
       const copy = await signedCopy(zipDoc, {
-        signerType: 'email',
-        email: `zip-${randomBytes(4).toString('hex')}@example.test`,
+        signerType: 'user',
+        userId: internalUser.id,
+        empidSnapshot: internalUser.empid,
         nameSnapshot: 'ZIP 簽署人',
         sortOrder: 0,
       });
@@ -1913,7 +1932,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
           `/api/esign/documents/${zipDoc.id}/signers/${copy.signer.publicId}/completed-file/downloads`,
         )
         .set('Origin', origin)
-        .set('Cookie', await employeeCookie(creator))
+        .set('Cookie', await employeeCookie(internalUser))
         .expect(200);
       // 最壞情況：狀態欄位看起來像排隊中、租約已過期的 ZIP 工作，但沒有快照。
       const lookalikes = [
@@ -1935,6 +1954,7 @@ describe('Spec015 歷史匯出紀錄 API', () => {
             exportType: 'pdf',
             documentId: zipDoc.id,
             signerId: copy.signer.id,
+            createdByUserId: internalUser.id,
             status: 'processing',
             completedAt: null,
             leaseToken: randomUUID(),

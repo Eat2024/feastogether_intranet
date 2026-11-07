@@ -18,7 +18,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { employeeSessionCookie } from './employee-session.helper';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 
 describe('Spec016 內部 BCC 催簽與補簽', () => {
   let ctx: SecurityE2eContext;
@@ -55,7 +55,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
     mailFixture(ctx).allowEmails(
       users.map((user) => `${user.empid.toLowerCase()}@example.test`),
     );
-    cookie = await employeeSessionCookie(ctx.app, users[0].id);
+    cookie = await documentCreatorSessionCookie(ctx.app, users[0].id);
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
@@ -299,7 +299,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
     // 使用下一個午夜邊界，避免 fake Date 落在真 DB deadline 時鐘之前。
     if (clock.getTime() < Date.now()) clock.setUTCDate(clock.getUTCDate() + 1);
     at(clock);
-    cookie = await employeeSessionCookie(ctx.app, users[0].id);
+    cookie = await documentCreatorSessionCookie(ctx.app, users[0].id);
     const { documentId } = await initiate(2);
     const firstRequestId = randomUUID();
     const first = apiData<Batch>(
@@ -495,7 +495,7 @@ describe('Spec016 內部 BCC 催簽與補簽', () => {
     // 使用下一個午夜邊界，避免 fake Date 落在真 DB deadline 時鐘之前。
     if (clock.getTime() < Date.now()) clock.setUTCDate(clock.getUTCDate() + 1);
     at(clock);
-    cookie = await employeeSessionCookie(ctx.app, users[0].id);
+    cookie = await documentCreatorSessionCookie(ctx.app, users[0].id);
     const { documentId } = await initiate(2);
     const batch = apiData<Batch>(
       await remind(documentId, randomUUID()).expect(202),

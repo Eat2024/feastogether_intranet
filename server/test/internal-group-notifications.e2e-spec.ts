@@ -18,7 +18,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { employeeSessionCookie } from './employee-session.helper';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 
 describe('Spec016 內部 BCC 新發起與通知結果', () => {
   let ctx: SecurityE2eContext;
@@ -55,7 +55,7 @@ describe('Spec016 內部 BCC 新發起與通知結果', () => {
     mailFixture(ctx).allowEmails(
       users.map((user) => `${user.empid.toLowerCase()}@example.test`),
     );
-    cookie = await employeeSessionCookie(ctx.app, users[0].id);
+    cookie = await documentCreatorSessionCookie(ctx.app, users[0].id);
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);

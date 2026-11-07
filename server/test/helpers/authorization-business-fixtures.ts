@@ -1,3 +1,4 @@
+import { User } from '#app/features/users/entities/user.entity';
 import type { INestApplication } from '@nestjs/common';
 import { AuthorizationRole } from '#app/features/authorization/entities/authorization-role.entity';
 import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
@@ -35,4 +36,16 @@ export async function documentCreatorSessionCookie(
 ) {
   await grantDocumentCreator(app, userId);
   return employeeSessionCookie(app, userId);
+}
+
+/** 真實登入後，僅替明確指定的業務測試員工授權。 */
+export async function grantDocumentCreatorByEmployeeNo(
+  app: INestApplication,
+  empid: string,
+) {
+  const user = await app
+    .get(MysqlService)
+    .getManager()
+    .findOneByOrFail(User, { empid });
+  await grantDocumentCreator(app, user.id);
 }

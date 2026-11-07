@@ -1,3 +1,4 @@
+import { grantDocumentCreatorByEmployeeNo } from './helpers/authorization-business-fixtures';
 import {
   completeInitiation,
   deleteInitiationJobs,
@@ -104,6 +105,10 @@ describe('核心電子簽真實 queue e2e', () => {
     );
     await db.query(
       'DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE empid = ?)',
+      [creatorEmpid],
+    );
+    await db.query(
+      'DELETE FROM authorization_user_roles WHERE user_id IN (SELECT id FROM users WHERE empid = ?)',
       [creatorEmpid],
     );
     await db.query('DELETE FROM users WHERE empid = ?', [creatorEmpid]);
@@ -426,6 +431,7 @@ describe('核心電子簽真實 queue e2e', () => {
       .type('form')
       .send({ code })
       .expect(303);
+    await grantDocumentCreatorByEmployeeNo(ctx.app, empid);
     await Promise.all(
       [empid].map((employeeNo) =>
         ctx.app

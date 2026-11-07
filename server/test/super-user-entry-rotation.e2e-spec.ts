@@ -1,3 +1,4 @@
+import { seedAuthorizationCatalog } from './helpers/authorization-fixtures';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { INestApplicationContext } from '@nestjs/common';
 import { ModulesContainer } from '@nestjs/core';
@@ -97,6 +98,7 @@ describe('Super user 維護入口每週輪換（027-06）', () => {
       .set('Cookie', `${AUTH_COOKIE_NAME}=${token}`);
 
   async function startWorker(): Promise<INestApplicationContext> {
+    await seedAuthorizationCatalog(db);
     const worker = await Test.createTestingModule({ imports: [WorkerModule] })
       .overrideProvider(PortalUserSyncService)
       .useValue({ run: jest.fn() })

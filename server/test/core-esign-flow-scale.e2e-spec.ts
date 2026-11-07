@@ -1,3 +1,4 @@
+import { grantDocumentCreator } from './helpers/authorization-business-fixtures';
 import {
   deleteInitiationJobs,
   driveInitiation,
@@ -95,6 +96,7 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       [prefix + '%'],
     );
     expect(users).toHaveLength(SAVED_COUNT);
+    await grantDocumentCreator(ctx.app, users[0].id);
     mailFixture(ctx).allowEmails(
       users.map((user) => `${user.empid.toLowerCase()}@example.test`),
     );
@@ -177,6 +179,10 @@ describe(`多人個人副本（${SIGNER_COUNT} 人）`, () => {
       );
       await db.query(
         'DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE empid LIKE ?)',
+        [prefix + '%'],
+      );
+      await db.query(
+        'DELETE FROM authorization_user_roles WHERE user_id IN (SELECT id FROM users WHERE empid LIKE ?)',
         [prefix + '%'],
       );
       await db.query('DELETE FROM users WHERE empid LIKE ?', [prefix + '%']);

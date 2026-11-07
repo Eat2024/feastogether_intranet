@@ -1,7 +1,6 @@
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 import { UserRepository } from '#app/features/users/repositories/user.repository';
 import { randomUUID } from 'node:crypto';
-import { SessionService } from '#app/features/auth/services/session.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { User } from '#app/features/users/entities/user.entity';
 import { In } from 'typeorm';
@@ -15,7 +14,7 @@ import {
 
 const route = '/api/esign/signer-candidates';
 const headers = {
-  cookie: `${AUTH_COOKIE_NAME}=synthetic-resolution-session`,
+  cookie: '',
   origin: 'http://localhost:3000',
 };
 
@@ -29,20 +28,31 @@ describe('員工解析 HTTP', () => {
   };
   beforeAll(async () => {
     assertTestRedisDb();
-    ctx = await createSecurityE2eApp((builder) =>
-      builder.overrideProvider(SessionService).useValue({
-        authenticate: (token: string) =>
-          Promise.resolve(
-            token === 'synthetic-resolution-session'
-              ? { actor: { kind: 'employee', userId: 1 }, user: {} }
-              : null,
-          ),
-      }),
-    );
+    ctx = await createSecurityE2eApp();
+    const user = await ctx.app.get(MysqlService).getManager().save(User, {
+      empid: employeeNo(),
+      name: '合成查詢人員',
+      isActive: true,
+    });
+    headers.cookie = await documentCreatorSessionCookie(ctx.app, user.id);
   });
   afterEach(() => jest.restoreAllMocks());
   afterAll(async () => {
     if (ctx) {
+      await ctx.app
+        .get(MysqlService)
+        .getManager()
+        .query(
+          'DELETE FROM authorization_user_roles WHERE user_id IN (SELECT id FROM users WHERE empid IN (?))',
+          [employeeNos],
+        );
+      await ctx.app
+        .get(MysqlService)
+        .getManager()
+        .query(
+          'DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE empid IN (?))',
+          [employeeNos],
+        );
       if (employeeNos.length)
         await ctx.app
           .get(MysqlService)

@@ -1,3 +1,4 @@
+import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
 import { createHash } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import { In } from 'typeorm';
@@ -27,7 +28,7 @@ describe('建立文件固定部門快照', () => {
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp();
-    f = await createDepartmentFixtures(ctx);
+    f = await createDepartmentFixtures(ctx, 'document_creator');
     storage = ctx.app.get(PRIVATE_FILE_STORAGE);
     const pdf = await PDFDocument.create();
     pdf.addPage();
@@ -52,6 +53,7 @@ describe('建立文件固定部門快照', () => {
         id: In(documents.map((doc) => doc.id)),
       });
       await f.manager.delete(AuthSession, { userId: In(ids) });
+      await f.manager.delete(AuthorizationUserRole, { userId: In(ids) });
       await f.manager.delete(User, { id: In(ids) });
     }
     if (ctx) await closeSecurityE2eApp(ctx);

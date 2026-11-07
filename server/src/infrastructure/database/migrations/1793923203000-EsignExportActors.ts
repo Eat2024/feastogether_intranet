@@ -14,7 +14,7 @@ export class EsignExportActors1793923203000 implements MigrationInterface {
     );
   }
   async down(q: QueryRunner): Promise<void> {
-    const [row]: Array<{ total: number }> = await q.query(
+    const [row] = await q.manager.query<Array<{ total: number }>>(
       "SELECT (SELECT COUNT(*) FROM esign_export_jobs WHERE created_by_actor_kind='super_user')+(SELECT COUNT(*) FROM authorization_events) AS total",
     );
     if (Number(row.total) > 0)

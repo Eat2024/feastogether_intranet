@@ -151,6 +151,17 @@ it('一般匯出僅依 read/create/all，撤權後舊會話即刻拒絕，read�
       expect((await get('/api/esign/exportable-documents')).statusCode).toBe(
         403,
       );
+      await grant(['esign.export.all']);
+      expect((await get('/api/esign/exportable-documents')).statusCode).toBe(
+        403,
+      );
+      expect(
+        (
+          await post('/api/esign/documents/1/export-downloads', {
+            type: 'excel',
+          })
+        ).statusCode,
+      ).toBe(403);
       await grant(['esign.export.read']);
       expect((await get('/api/esign/documents/1?view=export')).statusCode).toBe(
         404,

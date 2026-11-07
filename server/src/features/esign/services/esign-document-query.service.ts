@@ -217,7 +217,6 @@ export class EsignDocumentQueryService {
     );
     const isCreator =
       actor.kind === 'employee' && readable.createdByUserId === actor.userId;
-    const userId = actor.kind === 'employee' ? actor.userId : undefined;
     const [signers, fields, source, creator, canExport] = await Promise.all([
       this.signers.findByDocument(documentId, manager),
       canManage

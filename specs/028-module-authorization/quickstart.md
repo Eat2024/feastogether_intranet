@@ -240,3 +240,12 @@ await authz.assignRoles('esign', {
 
 
 - 簽署人候選清單／組織樹／resolutions 已明確開放 Super，但維持 create/manage any-of、最小欄位與 Origin 規則；沒有以 actor 改造繞過候選人資料裁切。
+
+
+### 028-06 驗證紀錄（整合 46f9163 後）
+
+- server unit 128 suites／1309 tests、root `pnpm build`、root `pnpm lint`、client `test`（4項）及 `check:bundle` 通過。lint為271既有warnings、0errors。schema.sql由隔離測試庫套migration後dump，沒有新增正式env或依賴。
+- 完整security初版27 suites／196 tests全綠。備註與候選人入口另完成真HTTP紅→綠；整合04/05後完整security 28/30 suites、206/208 tests，完整schema 6/8 suites、45/47 tests；僅catalog/document-management及schema-migration/authorization-schema各一項遭主機兩次約1000秒暫停而超時，無業務assertion錯誤。`caffeinate -i`未完全阻擋該環境暫停，沒有放寬測試timeout或正式規則。
+- 改以process-scoped `caffeinate -is`定向重跑受影響套件：security 2 suites／8 tests、schema 2 suites／19 tests全綠。其餘套件保留完整執行通過證據；不宣稱合併後曾有單次完整綠燈，09最終整合統一回歸。
+- 文件actor MySQL案例涵蓋NULL-aware CHECK、歷史employee/legacy_unknown回填、document未知最後actor、不可變雜湊/簽署證據保留、up/down/reapply與受保護資料拒絕down。HTTP涵蓋create/manage/read-all矩陣、可信部門與員工覆寫拒絕、原creator/department保留、草稿狀態、備註/欄位/簽署人真actor、被指定user_id不變、撤權建立人canManage=false及role=all。
+- 隔離MySQL `127.0.0.1:13328`、`feastogether_intranet_test_f*`與Redis測試設定僅存ignored檔；沒有操作正式/UAT資料。07/08尚待生命週期與匯出actor遷移，09 readiness前不能宣稱028全業務已切換。

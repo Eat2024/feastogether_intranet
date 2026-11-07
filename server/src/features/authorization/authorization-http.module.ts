@@ -6,14 +6,14 @@ import { AuthorizationHttpReadiness } from './services/authorization-http-readin
 import { DiscoveryModule, APP_GUARD } from '@nestjs/core';
 import { AuthorizationModule } from './authorization.module';
 import { AuthorizationGuard } from './guards/authorization.guard';
-import { CurrentAuthorizationController } from './controllers/current-authorization.controller';
+import { AuthMeController } from './controllers/auth-me.controller';
 
 /** 只在 HTTP process 安裝能力 guard 與路由。 */
 @Module({
   imports: [AuthorizationModule, DiscoveryModule],
   controllers: [
     AuthorizationAssignmentsController,
-    CurrentAuthorizationController,
+    AuthMeController,
     AuthorizationRolesController,
     AuthorizationEventsController,
   ],

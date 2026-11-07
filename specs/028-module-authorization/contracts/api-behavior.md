@@ -18,7 +18,7 @@
 | GET /api/authorization/modules/{moduleKey}/employees/{userId}/roles | explicit roleIds／implicitRoles；無員工404 |
 | POST /api/authorization/modules/{moduleKey}/employee-role-assignments | body empId／roleIds／expectedRoleIds；原子查核、預建員工及覆寫該module一般角色集合，200 |
 | GET /api/authorization/events | limit／beforeId cursor，可選moduleKey，查授權audit白名單 |
-| GET /api/me/authorization | 任一有效actor的本人能力，見permissions契約 |
+| GET /api/auth/me | 任一有效 actor 的 session 白名單資料與本人能力，見 permissions 契約；不回角色資料 |
 
 路徑只放本地ID或公開目錄代碼，不將員編放URL。employee-role-assignments是建立一次角色配置結果的資源，重送完全相同目標可no-op；不是一次替換所有員工權限。roleIds=[]表示撤掉該module所有一般角色，不能撤同仁。
 

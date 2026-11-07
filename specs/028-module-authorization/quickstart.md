@@ -24,7 +24,7 @@ pnpm -C server build
 ## 驗收順序
 
 1. **Schema與seed（US2、US5／SC-001、006）**：up、重跑seed，確認一般角色自訂設定不被覆寫，員工及簽署FK／證據摘要保持。直接向MySQL送跨module的role_permission／user_role須被複合FK拒絕；並發同module同名create只有一筆成功，不同module同名可成立。soft-delete後可重用名稱但不能重用舊roleCode。驗證actor CHECK拒絕Super帶employee ID或employee缺ID。down只允許沒有需保留資料的空測試庫；存在授權audit或Super資料時安全拒絕破壞性回退。
-2. **同仁（US1／SC-002）**：OAuth及WebView新／舊session查`GET /api/me/authorization`都取得baseline；GET前後DB關聯筆數不變。同部門各既有可見狀態列表、detail、原始PDF允許；建立、一般匯出及歷史／下載拒絕。本人跨部門簽署／副本仍依本人規則；本地停用即拒絕，缺部門不影響另行判斷的本人資格。
+2. **同仁（US1／SC-002）**：OAuth及WebView新／舊session查`GET /api/auth/me`都取得 session 白名單資料與 baseline；GET前後DB關聯筆數不變。同部門各既有可見狀態列表、detail、原始PDF允許；建立、一般匯出及歷史／下載拒絕。本人跨部門簽署／副本仍依本人規則；本地停用即拒絕，缺部門不影響另行判斷的本人資格。
 3. **角色隔離與聯集（US2／SC-001、003）**：兩個角色互補能力、重複能力，撤掉其中一個不抹去另一個。第二module同名角色無法授予esign能力。角色停用／permission修改／撤指派提交後，保留原session對兩個HTTP實例發下一請求皆用新權限。無Redis權限快取或前端能力值可繞過。
 4. **管理交易（US3／SC-004）**：只有Super或027維護context可管理；一般員工／esign管理員取得403。API和REPL各自建立角色、配權限、預指派未登入有效員工、撤銷，結果與稽核一致。競爭首次登入／預建檔只有同一users ID；同角色版本衝突409，指派CAS衝突409，audit失敗全部回滾。停用角色保留指派，使用中刪除409。所有同仁CRUD／permission修改／撤除企圖拒絕。
 5. **員編失敗**：不存在、無效、模糊匹配的目標回422 AUTHORIZATION_EMPLOYEE_INELIGIBLE，Super session維持登入；Portal故障502且不fallback；本地disabled回403 ACCOUNT_DISABLED且不復活。只有操作者自身session無效回401。檢查錯誤及log無原始Portal內容／員編。
@@ -116,7 +116,7 @@ console 以 `ConsoleModule`、`createAuthConsole` 的窄 context 為基礎；本
 
 ## 028-02 本人能力與即時聯集（2026-11-07）
 
-完成 T011～T015、T020～T023、T053。`GET /api/me/authorization` 沿真實 MySQL session 回最小 actor union 與排序去重 modules/permissions，成功回應 `Cache-Control: no-store`。所有有效員工固定疊四項同仁能力，缺部門不影響本人能力查詢；一般有效角色採集合 JOIN，排除停用／刪除／跨 scope／非可指派／未知能力。Super 回 compiled 全集但不具任何員工簽署資格。GET 不建立隱含指派。
+完成 T011～T015、T020～T023、T053。`GET /api/auth/me` 沿真實 MySQL session 回 actor／白名單 user／expiresAt 與排序去重 modules/permissions，成功回應 `Cache-Control: no-store`，且不回任何角色資料；舊 `/api/me/authorization` 已移除。所有有效員工固定疊四項同仁能力，缺部門不影響本人能力查詢；一般有效角色採集合 JOIN，排除停用／刪除／跨 scope／非可指派／未知能力。Super 回 compiled 全集但不具任何員工簽署資格。GET 不建立隱含指派。
 
 ### 後續實作接縫
 

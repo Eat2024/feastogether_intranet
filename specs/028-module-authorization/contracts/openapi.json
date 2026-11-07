@@ -12,11 +12,11 @@
     }
   ],
   "paths": {
-    "/api/me/authorization": {
+    "/api/auth/me": {
       "get": {
-        "operationId": "getMyAuthorization",
-        "summary": "查本人有效能力",
-        "description": "本人有效能力，無讀取副作用。",
+        "operationId": "getMe",
+        "summary": "查目前登入者與有效能力",
+        "description": "回目前 session view 與按 module 分組的有效能力，不回傳角色資料，無讀取副作用。",
         "security": [
           {
             "sessionCookie": []
@@ -43,7 +43,7 @@
                       "const": true
                     },
                     "data": {
-                      "$ref": "#/components/schemas/AuthorizationView"
+                      "$ref": "#/components/schemas/AuthMeView"
                     },
                     "timestamp": {
                       "type": "string",
@@ -61,7 +61,7 @@
             }
           },
           "401": {
-            "description": "UNAUTHORIZED：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
+            "description": "AUTH_TOKEN_MISSING／AUTH_TOKEN_INVALID：目前操作者未登入或會話失效；不是指派目標資格錯誤。",
             "content": {
               "application/json": {
                 "schema": {
@@ -70,7 +70,7 @@
                 "example": {
                   "success": false,
                   "error": {
-                    "code": "UNAUTHORIZED",
+                    "code": "AUTH_TOKEN_INVALID",
                     "message": "無法完成此操作"
                   },
                   "timestamp": "2026-11-04T00:00:00Z"
@@ -2436,11 +2436,25 @@
           }
         ]
       },
-      "AuthorizationView": {
+      "AuthMeView": {
         "type": "object",
         "properties": {
           "actor": {
             "$ref": "#/components/schemas/Actor"
+          },
+          "user": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CurrentEmployee"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
           },
           "modules": {
             "type": "array",
@@ -2471,7 +2485,43 @@
         },
         "required": [
           "actor",
+          "user",
+          "expiresAt",
           "modules"
+        ],
+        "additionalProperties": false
+      },
+      "CurrentEmployee": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "empId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "departmentName": {
+            "type": ["string", "null"]
+          },
+          "titleName": {
+            "type": ["string", "null"]
+          },
+          "lastLoginAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "empId",
+          "name",
+          "departmentName",
+          "titleName",
+          "lastLoginAt"
         ],
         "additionalProperties": false
       },

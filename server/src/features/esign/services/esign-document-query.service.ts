@@ -1,3 +1,4 @@
+import { AuthorizationService } from '#app/features/authorization/services/authorization.service';
 import { EsignExportService } from './esign-export.service';
 import type { EsignSigner } from '../entities/esign-signer.entity';
 import type { EsignNotificationLog } from '../entities/esign-notification-log.entity';
@@ -49,6 +50,7 @@ export class EsignDocumentQueryService {
     private readonly records: SignatureRecordRepository,
     private readonly tokens: EsignTokenService,
     private readonly exports: EsignExportService,
+    private readonly authorization: AuthorizationService,
   ) {}
 
   private reminderSummary(
@@ -184,7 +186,7 @@ export class EsignDocumentQueryService {
         : Promise.resolve([]),
       this.files.findDocumentFile(documentId, 'source_pdf', manager),
       this.users.findById(readable.createdByUserId, manager),
-      this.policy.canExportDocument(readable, userId, manager),
+      this.canExportDocument(readable, userId),
     ]);
     let sourceFile: EsignSourceFileDto | undefined;
     if (source) {
@@ -346,6 +348,9 @@ export class EsignDocumentQueryService {
 
   /** 匯出資料與一般詳情分離授權，不產生匯出紀錄或回傳管理憑證。 */
   async exportDocument(documentId: number, userId: number) {
+    await this.authorization.requirePermissions({ kind: 'employee', userId }, [
+      'esign.export.read',
+    ]);
     const manager = this.mysql.getManager();
     const document = await this.policy.checkDepartmentDocument(
       await this.documents.findById(documentId, manager),
@@ -364,6 +369,28 @@ export class EsignDocumentQueryService {
       exportSummary: await this.exports.documentSummary(documentId, userId),
       status: this.mapper.documentSummary(document, this.count(signers)).status,
     };
+  }
+
+  /** UI 旗標也要有匯出能力；只有缺能力可轉 false，目錄或 DB 故障仍拒絕。 */
+  private async canExportDocument(document: EsignDocument, userId: number) {
+    try {
+      await this.authorization.requirePermissions(
+        { kind: 'employee', userId },
+        ['esign.export.read'],
+      );
+    } catch (error) {
+      if (
+        error instanceof AppException &&
+        error.code === 'AUTHORIZATION_DENIED'
+      )
+        return false;
+      throw error;
+    }
+    return this.policy.canExportDocument(
+      document,
+      userId,
+      this.mysql.getManager(),
+    );
   }
 
   private count(signers: Array<{ status: string }>) {

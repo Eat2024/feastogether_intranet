@@ -168,6 +168,27 @@ export class ExportJobRepository {
       .getOne();
   }
 
+  /** 個人副本歷史只以本人指派查詢，不借用部門或一般匯出範圍。 */
+  personalCopyRecord(publicId: string, userId: number, manager: EntityManager) {
+    return manager
+      .createQueryBuilder(EsignExportJob, 'job')
+      .innerJoin('job.document', 'document', 'document.deletedAt IS NULL')
+      .innerJoin(
+        'job.signer',
+        'signer',
+        'signer.deletedAt IS NULL AND signer.documentId = job.documentId',
+      )
+      .where('job.publicId = :publicId AND job.exportType = :type', {
+        publicId,
+        type: EXPORT_TYPE_COLUMN.pdf,
+      })
+      .andWhere('signer.signerType = :signerType AND signer.userId = :userId', {
+        signerType: 'user',
+        userId,
+      })
+      .getOne();
+  }
+
   /** 依匯出類型分組計數，條件與 historyPage 相同。 */
   async historyCounts(
     exportTypes: EsignExportType[],

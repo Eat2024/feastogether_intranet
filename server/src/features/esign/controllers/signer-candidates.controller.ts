@@ -1,3 +1,4 @@
+import { RequireAnyPermission } from '#app/features/authorization/decorators/require-permissions.decorator';
 import { OrgDepartmentDto } from '../dto/org-chart.dto';
 import { ApiOperation, ApiOkResponse, ApiResponse } from '@nestjs/swagger';
 import {
@@ -22,6 +23,7 @@ import {
   SignerCandidateResolutionsResponseDto,
 } from '../dto/employee-directory-response.dto';
 
+@RequireAnyPermission('esign.document.create', 'esign.document.manage')
 @Controller('esign/signer-candidates')
 export class SignerCandidatesController {
   constructor(private readonly candidates: EsignSignerCandidateService) {}

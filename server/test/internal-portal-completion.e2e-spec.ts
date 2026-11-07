@@ -1,3 +1,4 @@
+import { grantDocumentCreator } from './helpers/authorization-business-fixtures';
 import { completeInitiation } from './helpers/await-initiation';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { INestApplicationContext } from '@nestjs/common';
@@ -63,6 +64,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
         }),
       ),
     );
+    await grantDocumentCreator(ctx.app, users[0].id);
     cookies = await Promise.all(
       users.map(async (user) => await employeeSessionCookie(ctx.app, user.id)),
     );
@@ -265,6 +267,7 @@ describe('Spec016 員工拒簽與本人副本', () => {
       signingPayloadJson: beforeCompletion.signingPayloadJson,
       signingPayloadSha256: beforeCompletion.signingPayloadSha256,
     });
+    await manager().update(User, users[0].id, { departmentCode: null });
     const pdf = await download().expect(200);
     expect(pdf.headers['content-type']).toContain('application/pdf');
     expect(pdf.headers['content-disposition']).toContain('attachment');

@@ -1,3 +1,5 @@
+import { MYSQL_MAIN } from '#app/infrastructure/database/mysql/mysql.tokens';
+import { seedAuthorizationCatalog } from './helpers/authorization-fixtures';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { SyntheticMailFixture } from './synthetic-mail-fixture.helper';
 export {
@@ -38,6 +40,7 @@ export async function createSecurityE2eApp(
   configureApp(app);
   await registerFastifyPlugins(app);
   if (mail) await mail.seed(app.get(MysqlService));
+  await seedAuthorizationCatalog(app.get(MYSQL_MAIN));
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   return {

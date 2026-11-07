@@ -1,4 +1,8 @@
 import {
+  RequirePermissions,
+  RequireAnyPermission,
+} from '#app/features/authorization/decorators/require-permissions.decorator';
+import {
   Body,
   Controller,
   Get,
@@ -35,6 +39,7 @@ import {
 import { EsignExportService } from '../services/esign-export.service';
 import { ExportQueryDto, ExportRequestDto } from '../dto/export.dto';
 
+@RequirePermissions('esign.export.read')
 @Controller('esign')
 export class ExportsController {
   constructor(
@@ -42,6 +47,7 @@ export class ExportsController {
     @Inject(PRIVATE_FILE_STORAGE) private readonly storage: PrivateFileStorage,
   ) {}
 
+  @RequireAnyPermission('esign.export.read', 'esign.export.create')
   @Post('documents/:documentId/export-downloads')
   @HttpCode(200)
   @Header('Cache-Control', 'private, no-store')
@@ -89,6 +95,7 @@ export class ExportsController {
   }
 
   // 由同部門員工申請文件副本 ZIP 匯出，回傳既有或新建的匯出狀態。
+  @RequirePermissions('esign.export.create')
   @Post('documents/:documentId/exports')
   @UseGuards(OriginGuard)
   async request(
@@ -112,6 +119,7 @@ export class ExportsController {
   }
 
   // 由同部門員工重試文件副本匯出工作。
+  @RequirePermissions('esign.export.create')
   @Post('documents/:documentId/exports/:exportId/retries')
   @UseGuards(OriginGuard)
   async retry(

@@ -48,13 +48,12 @@ export class EsignCompletionAccessService {
     userId: number,
   ): Promise<PersonalCopyDownload> {
     const manager = this.mysql.getManager();
-    const document = await this.access.checkDepartmentDocument(
-      await this.documents.findById(documentId, manager),
-      userId,
-      manager,
-    );
+    const document = await this.documents.findById(documentId, manager);
     const signer = await this.signers.findByPublicId(signerPublicId, manager);
-    if (!signer || signer.documentId !== documentId) throw this.notFound();
+    if (!document || !signer || signer.documentId !== documentId)
+      throw this.notFound();
+    // 保留既有路徑，但本人資格不依賴文件部門，也不授權建立人代領。
+    this.access.assertInternalSigner(document, signer, userId);
     return { signer, file: await this.personalCopy(document, signer) };
   }
 

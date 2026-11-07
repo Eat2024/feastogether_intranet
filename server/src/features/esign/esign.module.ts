@@ -1,3 +1,4 @@
+import { AuthorizationModule } from '#app/features/authorization/authorization.module';
 import { EsignInitiationJobService } from './services/esign-initiation-job.service';
 import { InitiationJobsController } from './controllers/initiation-jobs.controller';
 import { ExportsController } from './controllers/exports.controller';
@@ -81,6 +82,7 @@ const esignServices = [
 
 @Module({
   imports: [
+    AuthorizationModule,
     RedisModule,
     MysqlModule,
     FileStorageModule,

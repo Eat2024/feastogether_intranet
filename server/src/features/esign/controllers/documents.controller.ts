@@ -1,3 +1,4 @@
+import { RequirePermissions } from '#app/features/authorization/decorators/require-permissions.decorator';
 import { InitiationJobResponseDto } from '../dto/initiation-response.dto';
 import { SignerNoteDto } from '../dto/signer-note.dto';
 import { DraftSaveDto, DraftSettingsDto } from '../dto/draft-settings.dto';
@@ -78,6 +79,7 @@ export class DocumentsController {
     description:
       'dep 為同部門；created／assigned 為本人範圍，未帶 role 合併本人範圍。不接受呼叫者指定部門。',
   })
+  @RequirePermissions('esign.document.read')
   @Get()
   list(@CurrentUserId() userId: number, @Query() query: ListDocumentsQueryDto) {
     return this.queries.list(userId, query.role, query.status);
@@ -91,6 +93,7 @@ export class DocumentsController {
     description:
       '以 multipart/form-data 接收 title、file 與可選的 fields（JSON 字串），建立草稿及共用欄位。',
   })
+  @RequirePermissions('esign.document.create')
   @Post()
   async create(
     @CurrentUserId() userId: number,
@@ -115,6 +118,7 @@ export class DocumentsController {
     description:
       '建立人回傳管理詳情；同部門非建立人回傳裁切的唯讀詳情。view=export 另驗證同部門後只提供 Excel 匯出資料，不新增紀錄。',
   })
+  @RequirePermissions('esign.document.read')
   @Get(':documentId')
   detail(
     @Param('documentId') id: string,
@@ -134,6 +138,7 @@ export class DocumentsController {
     description:
       '僅建立人可修改草稿。以 multipart/form-data 接收更新內容；替換 PDF 會清除舊欄位，有傳 fields 時依新 PDF 重新建立，未換 PDF 時則整批取代傳入的欄位。',
   })
+  @RequirePermissions('esign.document.manage')
   @Patch(':documentId')
   async update(
     @Param('documentId') id: string,
@@ -154,9 +159,9 @@ export class DocumentsController {
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '刪除草稿',
-    description:
-      '僅建立人可刪除尚未發起的文件，以軟刪除保留資料。',
+    description: '僅建立人可刪除尚未發起的文件，以軟刪除保留資料。',
   })
+  @RequirePermissions('esign.document.manage')
   @Delete(':documentId')
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@Param('documentId') id: string, @CurrentUserId() userId: number) {
@@ -170,6 +175,7 @@ export class DocumentsController {
     description:
       '相容既有回應形狀；可在同一交易整批取代簽署人並保存起迄時間、浮水印與允許拒簽。此 API 不儲存 PDF、欄位位置或發起簽署。',
   })
+  @RequirePermissions('esign.document.manage')
   @Put(':documentId/draftSave')
   async replaceSigners(
     @Param('documentId') id: string,
@@ -184,6 +190,7 @@ export class DocumentsController {
   // 完整暫存草稿的簽署人名單、期間與選項。
   @UseGuards(OriginGuard)
   @ApiOperation({ summary: '完整暫存草稿名單、期間與選項' })
+  @RequirePermissions('esign.document.manage')
   @Patch(':documentId/draft-settings')
   async saveDraftSettings(
     @Param('documentId') id: string,
@@ -201,6 +208,7 @@ export class DocumentsController {
     summary: '整批更新草稿共用欄位',
     description: '驗證原 PDF 完整性與欄位位置後，整批取代共用欄位。',
   })
+  @RequirePermissions('esign.document.manage')
   @Put(':documentId/fields')
   async replaceFields(
     @Param('documentId') id: string,
@@ -250,6 +258,7 @@ export class DocumentsController {
     status: 503,
     description: '無法確認可靠保存；可用原 key 查回／重送',
   })
+  @RequirePermissions('esign.document.manage')
   @Post(':documentId/initiations')
   async initiate(
     @Param('documentId') id: string,
@@ -282,6 +291,7 @@ export class DocumentsController {
       '僅建立人可設定新期限；reason 可省略，舊客戶端提供的原因不再保存。舊期限不符或任一外部待簽者缺固定信箱／原邀請回 409。內部無信箱仍可補簽；成功後有信箱者依內部群寄、外部逐人方式通知，保留已簽及已拒證據。',
   })
   @ApiBody({ type: ReopenDocumentDto })
+  @RequirePermissions('esign.document.manage')
   @Post(':documentId/reopenings')
   reopen(
     @Param('documentId') id: string,
@@ -307,6 +317,7 @@ export class DocumentsController {
     description:
       '僅建立人讀取內外部待簽者尚存密文的邀請，不寄信、不輪替憑證。成功寄送後省略該項，全數送達回空陣列；請以通知紀錄確認進度。',
   })
+  @RequirePermissions('esign.document.manage')
   @Get(':documentId/reopening-invitations')
   @Header('Cache-Control', 'private, no-store')
   @Header('Referrer-Policy', 'no-referrer')
@@ -322,6 +333,7 @@ export class DocumentsController {
     summary: '讀取授權文件的原始 PDF',
     description: '驗證建立人或同部門唯讀權限後回傳原始 PDF 串流，供預覽使用。',
   })
+  @RequirePermissions('esign.document.read')
   @Get(':documentId/source-file')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
@@ -351,6 +363,7 @@ export class DocumentsController {
     description:
       '由建立人提供原因停止簽署，回傳更新後的文件詳情並保留停止紀錄。',
   })
+  @RequirePermissions('esign.document.manage')
   @Post(':documentId/stoppages')
   async stop(
     @Param('documentId') id: string,
@@ -365,6 +378,7 @@ export class DocumentsController {
   // 由建立人儲存指定簽署人的管理備註。
   @UseGuards(OriginGuard)
   @ApiOperation({ summary: '儲存或清除簽署人的管理備註' })
+  @RequirePermissions('esign.document.manage')
   @Patch(':documentId/signers/:signerPublicId/note')
   saveSignerNote(
     @Param('documentId') id: string,
@@ -380,12 +394,13 @@ export class DocumentsController {
     );
   }
 
-  // 供同部門員工下載指定簽署人的已簽副本；送出前寫入 pdf 匯出紀錄。
+  // 指定員工本人下載已簽副本；送出前寫入 pdf 匯出紀錄。
   @ApiOperation({
     summary: '下載指定簽署人的個人 PDF',
     description:
-      '同部門員工可依簽署人下載已產製完成的個人副本，回 200 application/pdf 附件。送出前新增一筆 pdf 匯出紀錄（匯出人為目前員工、範圍為簽署人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、跨部門或簽署人不屬於此文件回 404、副本未產製完成回 409，都不記錄。取代已移除的 GET …/completed-file。',
+      '需 signing.copy 能力及該內部指派的員工本人，才能下載已產製完成的個人副本，回 200 application/pdf 附件。送出前新增一筆 pdf 匯出紀錄（匯出人為目前員工、範圍為簽署人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、非本人或簽署人不屬於此文件回 404（本人資格不受部門影響）、副本未產製完成回 409，都不記錄。取代已移除的 GET …/completed-file。',
   })
+  @RequirePermissions('esign.signing.copy')
   @Post(':documentId/signers/:signerPublicId/completed-file/downloads')
   @CompletedPdfDownload()
   async downloadCompletedFile(

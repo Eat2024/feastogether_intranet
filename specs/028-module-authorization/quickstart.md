@@ -148,3 +148,14 @@ console 以 `ConsoleModule`、`createAuthConsole` 的窄 context 為基礎；本
 - `security-e2e.helper.ts` 明確 seed 測試目錄；`authorization-business-fixtures.ts` 只在各測試明確呼叫時授 document_creator。employeeSessionCookie 不升權。seed 若暫建 Super singleton，完成僅刪自己的 singleton，保留既有授權事件。這些均不是正式啟動副作用。
 - server build、lint（0 errors；既有271 warnings）、unit 127 suites／1285 tests 通過。完整 security 25 suites／191 tests 通過（使用 `caffeinate -i pnpm -C server test:e2e:security` 防主機休眠；前兩輪分別遇固定port衝突及主機長時間暫停，未放寬timeout或正式規則）。
 - 交接後續 tickets：一般文件／匯出 actor 改造屬06–08；T054 readiness 上線前，未使用 security helper 的舊 AppModule e2e 必須補明確 catalog seed，寫入流程逐一明確授角色。此票未執行全業務 `test:e2e`，不能把 security 回歸視為全業務切換驗收。
+
+
+## 028-06 文件管理與 actor 交接
+
+- 文件建立、標題/PDF/欄位、草稿簽署人設定及刪除已接 `CurrentActor`，寫入交易重核目前 create/manage，只有 read-all/manage-all 放寬跨部門範圍。尚未遷移的 lifecycle/export 端點仍拒絕 Super，由 07/08 接續。
+- 新 async policy：`readableForActor`、`manageableDocument`、`canManageDocument`、`assertManagerNotInitiating`、`lockManagedDraft`；全部接受真 Actor 與呼叫端 manager。交易外快拒忙碌不得取悲觀鎖，交易內先完成授權 current read 再鎖文件。舊 numeric lifecycle policy 暫保留，07 不可漏 await 或把 creator 當目前操作者。
+- `prepareSigners`、`updateSigners`、`buildFields` 共用介面改 Actor；`actorAudit` 只供新增欄位/簽署人，`markDocumentUpdated` 只改最後管理 actor，保留原 creator/department。signer.user_id 仍是被指定簽署人。07 worker 必須使用 job actor；08 需要將 detail 的 canExport 與 exportSummary 改為 actor-aware，目前仍只支持員工匯出。
+- 詳情以 `canManage` 辨識管理 DTO，`isCreator` 保留員工本人建立語意；非建立人管理員是 false/true，失去 manage 的建立人是 true/false。必要既有 client caller 改用 canManage，列表 Super 送 all、員工送 dep，沒有新增管理 UI。
+- `EsignDocumentActors1793923201000` 與 schema.sql 新增局部 actor CHECK、nullable FK；歷史有員工回填 employee，欄位/簽署人空 slot 為 legacy_unknown，document 最後管理者維持 NULL。沒有改共用 UserAuditableEntity，Department subscriber 行為不變。新 HTTP 寫入由 CLS actor 覆蓋，禁止新 legacy_unknown。既有欄位/簽署人的單獨新增若無 HTTP context 為 system，已受理 worker 應明確傳 actor。
+- Super 建立只接受 Portal 唯一有效部門原碼（1–50 字元、exact-match），不接受 UI 名稱。無效 400、Portal 查核失敗 503；員工覆寫部門 400。沒有新增環境變數或假員工。
+- 空庫可 down/reapply；存在 Super 業務 actor、document 最後管理 metadata 或 authorization_events 時拒絕 down，採前向修復或一致備份復原。027 schema 測試固定舊 migration，其 auth drift 與最新完整 schema drift 分開驗證。

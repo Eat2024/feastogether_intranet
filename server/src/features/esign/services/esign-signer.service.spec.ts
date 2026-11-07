@@ -1,3 +1,5 @@
+import { AppException } from '#app/common/errors/app.exception';
+import { AppErrors } from '#app/common/errors/app-errors';
 import { DocumentRepository } from '../repositories/document.repository';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
@@ -6,6 +8,8 @@ import { EsignSignerService } from './esign-signer.service';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
 import type { SignerInputDto } from '../dto/signer.dto';
+
+const actor = { kind: 'employee' as const, userId: 7 };
 
 describe('EsignSignerService', () => {
   const service = new EsignSignerService(
@@ -31,8 +35,8 @@ describe('EsignSignerService', () => {
       createdByUserId: 7,
     });
     const access = {
-      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
-      checkAndLockDraftDoc: jest.fn(),
+      assertManagerNotInitiating: jest.fn().mockResolvedValue(undefined),
+      lockManagedDraft: jest.fn(),
     };
     const signers = {
       create: jest.fn((value: object) => value),
@@ -51,12 +55,12 @@ describe('EsignSignerService', () => {
 
     await replacing.updateSigners(
       document,
-      7,
+      actor,
       [{ type: 'email', name: '外部簽署人', email: 'Signer@Example.test' }],
       manager,
     );
 
-    expect(access.checkAndLockDraftDoc).not.toHaveBeenCalled();
+    expect(access.lockManagedDraft).not.toHaveBeenCalled();
     expect(calls).toEqual(['deleteDraftSigners']);
   });
 
@@ -75,7 +79,7 @@ describe('EsignSignerService', () => {
       transaction: (run: (manager: object) => Promise<unknown>) => run(manager),
     };
     const documents = {
-      findInitiationAccess: jest.fn().mockResolvedValue(document),
+      findById: jest.fn().mockResolvedValue(document),
       findByIdForUpdate: jest.fn().mockResolvedValue(document),
     };
     const service = new EsignSignerService(
@@ -90,12 +94,20 @@ describe('EsignSignerService', () => {
           active: jest.fn().mockResolvedValue(null),
           activeIdentity: jest.fn().mockResolvedValue(null),
         } as never,
+        {
+          requirePermissions: (_actor: unknown, keys: string[]) =>
+            keys.includes('esign.document.manage-all')
+              ? Promise.reject(
+                  new AppException(...AppErrors.AUTHORIZATION_DENIED),
+                )
+              : Promise.resolve(),
+        } as never,
       ),
       new DocumentRepository(),
     );
     const update = jest.spyOn(service, 'updateSigners');
     await expect(
-      service.draftSave(3, 7, {
+      service.draftSave(3, actor, {
         signers: [{ type: 'email', name: '測試', email: 'test@example.test' }],
       }),
     ).rejects.toMatchObject({ status: owner !== 7 ? 404 : 409 });
@@ -117,8 +129,8 @@ describe('EsignSignerService', () => {
       }),
     };
     const access = {
-      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
-      checkAndLockDraftDoc: jest.fn(() => {
+      assertManagerNotInitiating: jest.fn().mockResolvedValue(undefined),
+      lockManagedDraft: jest.fn(() => {
         events.push('lock');
         return Promise.resolve(document);
       }),
@@ -145,8 +157,8 @@ describe('EsignSignerService', () => {
       { type: 'user' as const, userId: '2' },
       { type: 'user' as const, userId: '7' },
     ];
-    await service.draftSave(3, 7, { signers: inputs });
-    expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(3, 7, manager);
+    await service.draftSave(3, actor, { signers: inputs });
+    expect(access.lockManagedDraft).toHaveBeenCalledWith(3, actor, manager);
     expect(users.findByIdsWithEmail).toHaveBeenCalledWith(
       [2, 7, 9],
       manager,
@@ -155,7 +167,7 @@ describe('EsignSignerService', () => {
     expect(events).toEqual(['users', 'lock', 'update']);
     expect(update).toHaveBeenCalledWith(
       document,
-      7,
+      actor,
       inputs,
       manager,
       new Map(),
@@ -188,7 +200,7 @@ describe('簽署人批次查詢', () => {
       new DocumentRepository(),
     );
     const run = (inputs: SignerInputDto[]) =>
-      service.updateSigners(document, 7, inputs, manager);
+      service.updateSigners(document, actor, inputs, manager);
     return { run, users, signers, manager };
   };
   const user = (id: number) =>
@@ -355,11 +367,19 @@ describe('草稿完整設定', () => {
           active: jest.fn().mockResolvedValue(null),
           activeIdentity: jest.fn().mockResolvedValue(null),
         } as never,
+        {
+          requirePermissions: (_actor: unknown, keys: string[]) =>
+            keys.includes('esign.document.manage-all')
+              ? Promise.reject(
+                  new AppException(...AppErrors.AUTHORIZATION_DENIED),
+                )
+              : Promise.resolve(),
+        } as never,
       ),
       new DocumentRepository(),
     );
     expect(
-      await service.saveDraftSettings(3, 7, {
+      await service.saveDraftSettings(3, actor, {
         signStartAt: '2020-01-01T00:00:00+08:00',
         watermark: true,
       }),
@@ -369,14 +389,14 @@ describe('草稿完整設定', () => {
       watermarkEnabled: true,
     });
     expect(
-      await service.saveDraftSettings(3, 7, { allowReject: true }),
+      await service.saveDraftSettings(3, actor, { allowReject: true }),
     ).toMatchObject({
       signStartAt: new Date('2019-12-31T16:00:00Z'),
       watermarkEnabled: true,
       allowReject: true,
     });
     expect(
-      await service.saveDraftSettings(3, 7, { signStartAt: null }),
+      await service.saveDraftSettings(3, actor, { signStartAt: null }),
     ).toMatchObject({ signStartAt: null, watermarkEnabled: true });
   });
 });

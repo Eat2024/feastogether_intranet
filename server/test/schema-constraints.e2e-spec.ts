@@ -33,10 +33,10 @@ describe('e-sign schema database constraints', () => {
           ds,
           "INSERT INTO esign_signers (public_id,document_id,signer_type,name_snapshot,email) VALUES ('00000000-0000-4000-8000-000000000014',1,'email','重複','SHARED@EXAMPLE.TEST')",
         );
+        await revertAfter(ds, 'InternalEmailInvitations1792454405000');
         const before: unknown = await ds.query(
           'SELECT * FROM esign_signers ORDER BY id',
         );
-        await revertAfter(ds, 'InternalEmailInvitations1792454405000');
         await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
         expect(
           await ds.query('SELECT * FROM esign_signers ORDER BY id'),
@@ -254,10 +254,14 @@ describe('e-sign schema database constraints', () => {
           'chk_authorization_events_source',
           'chk_authorization_events_target_kind',
           'chk_esign_document_fields_bounds',
+          'chk_esign_document_fields_created_actor',
           'chk_esign_document_fields_page',
           'chk_esign_document_fields_type',
+          'chk_esign_document_fields_updated_actor',
+          'chk_esign_documents_created_actor',
           'chk_esign_documents_sign_period',
           'chk_esign_documents_status',
+          'chk_esign_documents_updated_actor',
           'chk_esign_export_jobs_record_type',
           'chk_esign_file_objects_completed_owner',
           'chk_esign_file_objects_owner',
@@ -276,9 +280,11 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_notification_logs_channel',
           'chk_esign_notification_logs_result',
           'chk_esign_signers_completion',
+          'chk_esign_signers_created_actor',
           'chk_esign_signers_identity',
           'chk_esign_signers_status',
           'chk_esign_signers_terminal_times',
+          'chk_esign_signers_updated_actor',
           'chk_mail_recipient_whitelist_type',
           'chk_mail_recipient_whitelist_value',
           'chk_super_user_access_credential_generation',
@@ -335,6 +341,7 @@ describe('e-sign schema database constraints', () => {
         ];
         for (const row of rejected) {
           await expect(insertRecord(...row)).rejects.toThrow(
+            'chk_esign_documents_updated_actor',
             'chk_esign_export_jobs_record_type',
           );
         }

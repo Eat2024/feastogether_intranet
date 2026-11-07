@@ -1,3 +1,4 @@
+import type { Actor } from '#app/features/auth/auth.types';
 import { AuthorizationService } from '#app/features/authorization/services/authorization.service';
 import { EsignExportService } from './esign-export.service';
 import type { EsignSigner } from '../entities/esign-signer.entity';
@@ -101,8 +102,8 @@ export class EsignDocumentQueryService {
   }
 
   async list(
-    userId: number,
-    role?: 'dep' | 'created' | 'assigned',
+    actor: Actor,
+    role?: 'dep' | 'created' | 'assigned' | 'all',
     status?:
       | 'initiating'
       | 'draft'
@@ -113,18 +114,41 @@ export class EsignDocumentQueryService {
       | 'stopped',
   ) {
     return this.mysql.transaction(async (manager) => {
+      await this.authorization.requirePermissions(
+        actor,
+        ['esign.document.read'],
+        manager,
+      );
+      role ??= actor.kind === 'super_user' ? 'all' : undefined;
+      if (role === 'all')
+        await this.authorization.requirePermissions(
+          actor,
+          ['esign.document.read-all'],
+          manager,
+        );
+      if (actor.kind === 'super_user' && role !== 'all')
+        throw new AppException(...AppErrors.AUTHORIZATION_DENIED);
+      const userId = actor.kind === 'employee' ? actor.userId : undefined;
       const now = new Date();
       const department =
-        role === 'dep'
+        role === 'dep' && userId !== undefined
           ? await this.policy.requireDepartment(userId, manager)
           : null;
       const [created, assignedSigners] = await Promise.all([
-        department
-          ? this.documents.findByDepartment(department.departmentCode, manager)
-          : role === 'assigned'
-            ? Promise.resolve([])
-            : this.documents.findListCreatedByUser(userId, manager),
-        role === 'created' || role === 'dep'
+        role === 'all'
+          ? this.documents.findAllForList(manager)
+          : department
+            ? this.documents.findByDepartment(
+                department.departmentCode,
+                manager,
+              )
+            : role === 'assigned' || userId === undefined
+              ? Promise.resolve([])
+              : this.documents.findListCreatedByUser(userId, manager),
+        role === 'created' ||
+        role === 'dep' ||
+        role === 'all' ||
+        userId === undefined
           ? Promise.resolve([])
           : this.signers.findAssignedToUser(userId, manager),
       ]);
@@ -142,7 +166,13 @@ export class EsignDocumentQueryService {
           right.updatedAt.getTime() - left.updatedAt.getTime() ||
           right.id - left.id,
       );
-      const creatorIds = [...new Set(documents.map((d) => d.createdByUserId))];
+      const creatorIds = [
+        ...new Set(
+          documents.flatMap((d) =>
+            d.createdByUserId === null ? [] : [d.createdByUserId],
+          ),
+        ),
+      ];
       const [creatorRows, countsByDocument] = await Promise.all([
         this.users.findByIds(creatorIds, manager),
         this.signers.countsByDocumentIds(
@@ -158,7 +188,9 @@ export class EsignDocumentQueryService {
             pendingCount: 0,
             signedCount: 0,
           },
-          creators.get(document.createdByUserId),
+          document.createdByUserId === null
+            ? undefined
+            : creators.get(document.createdByUserId),
           now,
           userId,
         ),
@@ -169,24 +201,35 @@ export class EsignDocumentQueryService {
 
   async detail(
     documentId: number,
-    userId: number,
+    actor: Actor,
   ): Promise<EsignDocumentDetailDto> {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
-    const readable = await this.policy.readableDocument(
+    const readable = await this.policy.readableForActor(
       document,
-      userId,
+      actor,
       manager,
     );
-    const isCreator = readable.createdByUserId === userId;
+    const canManage = await this.policy.canManageDocument(
+      readable,
+      actor,
+      manager,
+    );
+    const isCreator =
+      actor.kind === 'employee' && readable.createdByUserId === actor.userId;
+    const userId = actor.kind === 'employee' ? actor.userId : undefined;
     const [signers, fields, source, creator, canExport] = await Promise.all([
       this.signers.findByDocument(documentId, manager),
-      isCreator
+      canManage
         ? this.fields.findByDocument(documentId, manager)
         : Promise.resolve([]),
       this.files.findDocumentFile(documentId, 'source_pdf', manager),
-      this.users.findById(readable.createdByUserId, manager),
-      this.canExportDocument(readable, userId),
+      readable.createdByUserId === null
+        ? Promise.resolve(null)
+        : this.users.findById(readable.createdByUserId, manager),
+      userId === undefined
+        ? Promise.resolve(false)
+        : this.canExportDocument(readable, userId),
     ]);
     let sourceFile: EsignSourceFileDto | undefined;
     if (source) {
@@ -199,19 +242,21 @@ export class EsignDocumentQueryService {
     const common = {
       ...summary,
       canExport,
-      exportSummary: canExport
-        ? await this.exports.documentSummary(documentId, userId)
-        : null,
+      exportSummary:
+        canExport && userId !== undefined
+          ? await this.exports.documentSummary(documentId, userId)
+          : null,
       sourceFile,
       signStartAt: readable.signStartAt?.toISOString() ?? null,
       signEndAt: readable.signEndAt?.toISOString() ?? null,
       stopReason: readable.stopReason ?? null,
-      createdBy: this.mapper.creator(creator),
+      createdBy: this.mapper.creator(creator, readable.createdByActorKind),
     };
-    if (!isCreator) {
+    if (!canManage) {
       return {
         ...common,
-        isCreator: false,
+        isCreator,
+        canManage: false,
         signers: signers.map((signer) => this.mapper.readonlySigner(signer)),
       };
     }
@@ -260,7 +305,8 @@ export class EsignDocumentQueryService {
     }
     return {
       ...common,
-      isCreator: true,
+      isCreator,
+      canManage: true,
       watermark: readable.watermarkEnabled,
       allowReject: readable.allowReject,
       signers: signers.map((signer) => ({
@@ -326,12 +372,12 @@ export class EsignDocumentQueryService {
     });
   }
 
-  async source(documentId: number, userId: number) {
+  async source(documentId: number, actor: Actor) {
     const manager = this.mysql.getManager();
     const document = await this.documents.findById(documentId, manager);
-    const readable = await this.policy.readableDocument(
+    const readable = await this.policy.readableForActor(
       document,
-      userId,
+      actor,
       manager,
     );
     const source = await this.files.findDocumentFile(
@@ -361,7 +407,9 @@ export class EsignDocumentQueryService {
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     }
     const [creator, signers] = await Promise.all([
-      this.users.findById(document.createdByUserId, manager),
+      document.createdByUserId === null
+        ? Promise.resolve(null)
+        : this.users.findById(document.createdByUserId, manager),
       this.signers.findByDocument(documentId, manager),
     ]);
     return {

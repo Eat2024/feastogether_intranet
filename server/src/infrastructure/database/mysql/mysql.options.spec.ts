@@ -94,6 +94,7 @@ describe('buildMysqlOptions', () => {
       'RetireSigningAudit1793836801000',
       'SuperUserAccess1793836802000',
       'ModuleAuthorization1793923200000',
+      'EsignDocumentActors1793923201000',
     ]);
   });
 

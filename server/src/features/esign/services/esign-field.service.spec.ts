@@ -4,6 +4,7 @@ import { AppException } from '#app/common/errors/app.exception';
 import { EsignFieldService } from './esign-field.service';
 
 describe('EsignFieldService', () => {
+  const actor = { kind: 'employee' as const, userId: 7 };
   const manager = {} as never;
   const document = {
     id: 3,
@@ -29,8 +30,8 @@ describe('EsignFieldService', () => {
       findDocumentFile: jest.fn(async () => ({ id: 31, documentId: 3 })),
     };
     const access = {
-      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
-      checkAndLockDraftDoc: jest.fn(async () => ({
+      assertManagerNotInitiating: jest.fn().mockResolvedValue(undefined),
+      lockManagedDraft: jest.fn(async () => ({
         id: 3,
         status: 'draft',
         createdByUserId: 7,
@@ -58,7 +59,7 @@ describe('EsignFieldService', () => {
           Readable.from([Buffer.from('pdf')]),
         ),
       } as never,
-      { touchDraftVersion: jest.fn() } as never,
+      { touchDraftVersion: jest.fn(), save: jest.fn() } as never,
     );
     return { service, fields, access };
   }
@@ -68,7 +69,7 @@ describe('EsignFieldService', () => {
 
     const result = await service.buildFields(
       document,
-      7,
+      actor,
       [
         { ...placement, type: 'signature' },
         { ...placement, type: 'date' },
@@ -99,7 +100,7 @@ describe('EsignFieldService', () => {
     await expect(
       service.buildFields(
         document,
-        7,
+        actor,
         [
           {
             ...placement,
@@ -114,8 +115,8 @@ describe('EsignFieldService', () => {
   });
   it('交易內共用方法沿用已驗證文件，不重查或重複驗證', async () => {
     const { service, access } = setup();
-    await service.buildFields(document, 7, [], manager);
-    expect(access.checkAndLockDraftDoc).not.toHaveBeenCalled();
+    await service.buildFields(document, actor, [], manager);
+    expect(access.lockManagedDraft).not.toHaveBeenCalled();
   });
 
   it('獨立儲存欄位先鎖定並驗證文件，再委派交易內方法', async () => {
@@ -125,18 +126,23 @@ describe('EsignFieldService', () => {
       source: {} as never,
       sourceMetadata: {} as never,
     });
-    await service.replace(3, 7, []);
-    expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(3, 7, manager);
-    expect(replace).toHaveBeenCalledWith(document, 7, [], manager);
-    expect(
-      access.checkAndLockDraftDoc.mock.invocationCallOrder[0],
-    ).toBeLessThan(replace.mock.invocationCallOrder[0]);
+    await service.replace(3, actor, []);
+    expect(access.lockManagedDraft).toHaveBeenCalledWith(3, actor, manager);
+    expect(replace).toHaveBeenCalledWith(
+      expect.objectContaining(document),
+      actor,
+      [],
+      manager,
+    );
+    expect(access.lockManagedDraft.mock.invocationCallOrder[0]).toBeLessThan(
+      replace.mock.invocationCallOrder[0],
+    );
   });
 
   it('獨立儲存的鎖定驗證失敗時不得寫入欄位', async () => {
     const { service, fields, access } = setup();
-    access.checkAndLockDraftDoc.mockRejectedValue(new Error('驗證失敗'));
-    await expect(service.replace(3, 7, [])).rejects.toThrow('驗證失敗');
+    access.lockManagedDraft.mockRejectedValue(new Error('驗證失敗'));
+    await expect(service.replace(3, actor, [])).rejects.toThrow('驗證失敗');
     expect(fields.deleteDraftFields).not.toHaveBeenCalled();
     expect(fields.save).not.toHaveBeenCalled();
   });
@@ -149,7 +155,7 @@ describe('EsignFieldService', () => {
       { id: 21, pageNumber: 1, sortOrder: 0 },
     ];
     fields.save.mockResolvedValueOnce(savedFields);
-    const result = await service.buildFields(document, 7, [], manager);
+    const result = await service.buildFields(document, actor, [], manager);
     expect(result.fields.map((field) => field.id)).toEqual([21, 22, 23, 24]);
   });
 });

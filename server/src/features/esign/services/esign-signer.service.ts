@@ -1,3 +1,5 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { actorAudit, markDocumentUpdated } from '../helpers/management-actor';
 import { DraftSettingsDto } from '../dto/draft-settings.dto';
 import { DocumentRepository } from '../repositories/document.repository';
 import { AppErrors } from '#app/common/errors/app-errors';
@@ -84,17 +86,13 @@ export class EsignSignerService {
     return email.trim().toLowerCase();
   }
 
-  async draftSave(
-    documentId: number,
-    creatorUserId: number,
-    input: DraftSettingsDto,
-  ) {
-    return this.saveDraftSettings(documentId, creatorUserId, input);
+  async draftSave(documentId: number, actor: Actor, input: DraftSettingsDto) {
+    return this.saveDraftSettings(documentId, actor, input);
   }
 
   async saveDraftSettings(
     documentId: number,
-    creatorUserId: number,
+    actor: Actor,
     input: DraftSettingsDto,
   ) {
     const signerInputs =
@@ -103,36 +101,37 @@ export class EsignSignerService {
         : this.validateAndNormalizeSignerInputs(input.signers);
     const userIds = [
       ...new Set([
-        creatorUserId,
+        ...(actor.kind === 'employee' ? [actor.userId] : []),
         ...signerInputs.flatMap((signer) =>
           signer.type === 'user' ? [signer.userId] : [],
         ),
       ]),
     ].sort((left, right) => left - right);
-    await this.access.assertCreatorNotInitiating(
+    await this.access.assertManagerNotInitiating(
       documentId,
-      creatorUserId,
+      actor,
       this.mysql.getManager(),
     );
     return this.mysql.transaction(async (manager) => {
       // signer 寫入會檢查 users 外鍵；與發起流程一致先鎖 users，避免文件鎖倒置。
       const users = await this.users.findByIdsWithEmail(userIds, manager, true);
       const lockedUsers = new Map(users.map((user) => [user.id, user]));
-      const document = await this.access.checkAndLockDraftDoc(
+      const document = await this.access.lockManagedDraft(
         documentId,
-        creatorUserId,
+        actor,
         manager,
       );
       const period = this.resolveDraftSigningPeriod(document, input);
       this.validateDraftOptions(input);
       await this.updateDraftSignersIfProvided(
         document,
-        creatorUserId,
+        actor,
         input,
         manager,
         lockedUsers,
       );
       this.applyDraftSettings(document, input, period);
+      markDocumentUpdated(document, actor);
       return this.documents.save(document, manager);
     });
   }
@@ -188,7 +187,7 @@ export class EsignSignerService {
   /** 有帶名單時才在目前交易內整批替換，省略時保留既有簽署人。 */
   private async updateDraftSignersIfProvided(
     document: EsignDocument,
-    creatorUserId: number,
+    actor: Actor,
     input: DraftSettingsDto,
     manager: EntityManager,
     lockedUsers: ReadonlyMap<number, User>,
@@ -196,7 +195,7 @@ export class EsignSignerService {
     if (input.signers === undefined) return;
     await this.updateSigners(
       document,
-      creatorUserId,
+      actor,
       input.signers,
       manager,
       lockedUsers,
@@ -225,14 +224,14 @@ export class EsignSignerService {
    */
   async updateSigners(
     document: EsignDocument,
-    creatorUserId: number,
+    actor: Actor,
     inputs: SignerInputDto[],
     manager: EntityManager,
     lockedUsers?: ReadonlyMap<number, User>,
   ) {
     const newSigners = await this.prepareSigners(
       document,
-      creatorUserId,
+      actor,
       inputs,
       manager,
       lockedUsers,
@@ -243,7 +242,7 @@ export class EsignSignerService {
   /** 驗證並建立尚未寫入的簽署人；發起先補齊固定信箱與邀請資料再一次寫入。 */
   async prepareSigners(
     document: EsignDocument,
-    creatorUserId: number,
+    actor: Actor,
     inputs: SignerInputDto[],
     manager: EntityManager,
     lockedUsers?: ReadonlyMap<number, User>,
@@ -256,7 +255,7 @@ export class EsignSignerService {
     );
     return this.createSigners(
       document.id,
-      creatorUserId,
+      actor,
       signerInputsWithUsers,
       manager,
     );
@@ -353,7 +352,7 @@ export class EsignSignerService {
   /** 按原始順序建立簽署人及員工資料快照，尚不寫入資料庫。 */
   private createSigners(
     documentId: number,
-    creatorUserId: number,
+    actor: Actor,
     signerInputsWithUsers: SignerInputWithUser[],
     manager: EntityManager,
   ): EsignSigner[] {
@@ -363,8 +362,7 @@ export class EsignSignerService {
         documentId,
         status: 'pending' as const,
         sortOrder: index,
-        createdByUserId: creatorUserId,
-        updatedByUserId: creatorUserId,
+        ...actorAudit(actor),
       };
       if (input.type === 'user') {
         const { user } = input;

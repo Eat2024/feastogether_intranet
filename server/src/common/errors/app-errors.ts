@@ -467,6 +467,11 @@ export const AppErrors = {
     '個人副本尚未產生',
     HttpStatus.CONFLICT,
   ],
+  ESIGN_DEPARTMENT_LOOKUP_UNAVAILABLE: [
+    AppErrorCode.ESIGN_DEPARTMENT_LOOKUP_UNAVAILABLE,
+    '暫時無法查核文件歸屬部門',
+    HttpStatus.SERVICE_UNAVAILABLE,
+  ],
   ESIGN_DEPARTMENT_UNAVAILABLE: [
     AppErrorCode.ESIGN_DEPARTMENT_UNAVAILABLE,
     '無法取得您的部門資料，請重新登入或聯絡系統管理員',

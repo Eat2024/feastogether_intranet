@@ -302,9 +302,13 @@ describe('Spec 027 Super user schema migration', () => {
             }) as unknown,
           },
         );
-        expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual(
-          [],
-        );
+        // 此 suite 固定停在 027；028 電子簽 entity drift 由最新 schema suite 驗證。
+        expect(
+          (await ds.driver.createSchemaBuilder().log()).upQueries.filter(
+            (query) =>
+              !/`esign_(documents|document_fields|signers)`/.test(query.query),
+          ),
+        ).toEqual([]);
       } finally {
         await ds.destroy();
       }
@@ -482,9 +486,13 @@ describe('Spec 027 Super user schema migration', () => {
             )
           ).every((row) => row.actor_kind === 'employee'),
         ).toBe(true);
-        expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual(
-          [],
-        );
+        // 此 suite 固定停在 027；028 電子簽 entity drift 由最新 schema suite 驗證。
+        expect(
+          (await ds.driver.createSchemaBuilder().log()).upQueries.filter(
+            (query) =>
+              !/`esign_(documents|document_fields|signers)`/.test(query.query),
+          ),
+        ).toEqual([]);
       } finally {
         await ds.destroy();
       }

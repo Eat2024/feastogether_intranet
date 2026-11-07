@@ -1,3 +1,4 @@
+import { PortalDirectoryService } from '#app/infrastructure/portal/portal-directory.service';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
@@ -22,6 +23,34 @@ export function effectiveDocumentStatus(
 
 @Injectable()
 export class EsignDocumentValidationService {
+  constructor(private readonly portal: PortalDirectoryService) {}
+
+  /** Super user 的新文件部門只接受 Portal 目前有效且唯一 exact-match 的部門。 */
+  async requireCreationDepartment(
+    code: unknown,
+  ): Promise<{ departmentCode: string; departmentName: string }> {
+    if (
+      typeof code !== 'string' ||
+      code.length < 1 ||
+      Array.from(code).length > 50
+    )
+      throw new AppException(...AppErrors.REQUEST_FORMAT_INVALID);
+    let source: Awaited<
+      ReturnType<PortalDirectoryService['listOrgChartSource']>
+    >;
+    try {
+      source = await this.portal.listOrgChartSource();
+    } catch {
+      throw new AppException(...AppErrors.ESIGN_DEPARTMENT_LOOKUP_UNAVAILABLE);
+    }
+    const rows = source.departments.filter(
+      (row) => row.department_ch_id === code && row.stopdate === null,
+    );
+    if (rows.length !== 1 || !rows[0].department_name?.trim())
+      throw new AppException(...AppErrors.REQUEST_FORMAT_INVALID);
+    return { departmentCode: code, departmentName: rows[0].department_name };
+  }
+
   checkStillDraft(document: EsignDocument): void {
     if (document.status !== 'draft' || document.deletedAt) {
       throw new AppException(...AppErrors.ESIGN_DRAFT_NOT_EDITABLE);

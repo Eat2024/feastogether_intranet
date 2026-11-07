@@ -157,7 +157,7 @@ it('未登入401，停用／刪除員工舊session無效；Super最小身分與�
   });
 });
 
-it('正式 AppModule 的全域 guard 順序可讀本人能力且不開放 Super 電子簽', async () => {
+it('正式 AppModule 的全域 guard 順序可讀本人能力且不開放 Super 本人簽署', async () => {
   await withAuthorizationDatabase(async (db) => {
     const { catalog } = await initializeAuthorizationOperator(db);
     await catalog.syncCatalog();
@@ -198,7 +198,7 @@ it('正式 AppModule 的全域 guard 順序可讀本人能力且不開放 Super 
         (
           await ctx.app.inject({
             method: 'GET',
-            url: '/api/esign/documents',
+            url: '/api/esign/signing-tasks',
             headers: { cookie: superCookie },
           })
         ).statusCode,

@@ -1,3 +1,4 @@
+import { EsignDocumentActors1793923201000 } from '../migrations/1793923201000-EsignDocumentActors';
 import { ModuleAuthorization1793923200000 } from '../migrations/1793923200000-ModuleAuthorization';
 import { AuthorizationRole } from '#app/features/authorization/entities/authorization-role.entity';
 import { AuthorizationPermission } from '#app/features/authorization/entities/authorization-permission.entity';
@@ -140,6 +141,7 @@ export function buildMysqlOptions(
       RetireSigningAudit1793836801000,
       SuperUserAccess1793836802000,
       ModuleAuthorization1793923200000,
+      EsignDocumentActors1793923201000,
     ],
 
     extra: {

@@ -211,6 +211,8 @@ CREATE TABLE `esign_document_fields` (
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '建立操作者種類',
+  `updated_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '更新操作者種類',
   PRIMARY KEY (`id`),
   KEY `idx_esign_document_fields_doc_page_sort_id` (`document_id`,`page_number`,`sort_order`,`id`),
   KEY `idx_esign_document_fields_created_at` (`created_at`),
@@ -222,8 +224,10 @@ CREATE TABLE `esign_document_fields` (
   CONSTRAINT `fk_esign_document_fields_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_document_fields_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `chk_esign_document_fields_bounds` CHECK (((`x_percent` >= 0) and (`x_percent` < 100) and (`y_percent` >= 0) and (`y_percent` < 100) and (`width_percent` > 0) and (`height_percent` > 0) and ((`x_percent` + `width_percent`) <= 100) and ((`y_percent` + `height_percent`) <= 100))),
+  CONSTRAINT `chk_esign_document_fields_created_actor` CHECK ((((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system',_utf8mb4'legacy_unknown')) and (`created_by_user_id` is null)))),
   CONSTRAINT `chk_esign_document_fields_page` CHECK ((`page_number` >= 1)),
-  CONSTRAINT `chk_esign_document_fields_type` CHECK ((`field_type` in (_utf8mb4'signature',_utf8mb4'date')))
+  CONSTRAINT `chk_esign_document_fields_type` CHECK ((`field_type` in (_utf8mb4'signature',_utf8mb4'date'))),
+  CONSTRAINT `chk_esign_document_fields_updated_actor` CHECK ((((`updated_by_actor_kind` = _utf8mb4'employee') and (`updated_by_user_id` is not null)) or ((`updated_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system',_utf8mb4'legacy_unknown')) and (`updated_by_user_id` is null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件簽署欄位';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_documents`;
@@ -234,7 +238,7 @@ CREATE TABLE `esign_documents` (
   `doc_number` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '文件 UUID',
   `title` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件名稱',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'draft' COMMENT '文件狀態',
-  `created_by_user_id` bigint NOT NULL COMMENT '建立人 ID',
+  `created_by_user_id` bigint DEFAULT NULL COMMENT '建立人 ID',
   `sign_start_at` datetime(6) DEFAULT NULL COMMENT '簽署開始時間',
   `sign_end_at` datetime(6) DEFAULT NULL COMMENT '簽署截止時間',
   `signing_payload_json` json DEFAULT NULL COMMENT '固定簽署 payload',
@@ -250,6 +254,9 @@ CREATE TABLE `esign_documents` (
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
   `created_by_department_code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin DEFAULT NULL COMMENT '建立時部門代碼快照',
   `created_by_department_name` varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '建立時部門名稱快照',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'employee' COMMENT '建立操作者種類',
+  `updated_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '最後管理操作者種類',
+  `updated_by_user_id` bigint DEFAULT NULL COMMENT '最後管理員工 ID',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_documents_doc_number` (`doc_number`),
   KEY `idx_esign_documents_creator_status_updated_id` (`created_by_user_id`,`status`,`updated_at`,`id`),
@@ -262,9 +269,13 @@ CREATE TABLE `esign_documents` (
   KEY `idx_esign_documents_updated_at` (`updated_at`),
   KEY `idx_esign_documents_deleted_at` (`deleted_at`),
   KEY `idx_esign_documents_department_deleted_updated_id` (`created_by_department_code`,`deleted_at`,`updated_at`,`id`),
+  KEY `fk_esign_documents_updated_by` (`updated_by_user_id`),
   CONSTRAINT `fk_esign_documents_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_esign_documents_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_documents_created_actor` CHECK ((((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` = _utf8mb4'super_user') and (`created_by_user_id` is null)))),
   CONSTRAINT `chk_esign_documents_sign_period` CHECK ((((`status` = _utf8mb4'draft') and ((`sign_start_at` is null) or (`sign_end_at` is null) or (`sign_start_at` < `sign_end_at`))) or ((`status` <> _utf8mb4'draft') and (`sign_start_at` is not null) and (`sign_end_at` is not null) and (`sign_start_at` < `sign_end_at`)))),
-  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'expired',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped')))
+  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'expired',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped'))),
+  CONSTRAINT `chk_esign_documents_updated_actor` CHECK ((((`updated_by_actor_kind` is null) and (`updated_by_user_id` is null)) or ((`updated_by_actor_kind` is not null) and (((`updated_by_actor_kind` = _utf8mb4'employee') and (`updated_by_user_id` is not null)) or ((`updated_by_actor_kind` = _utf8mb4'super_user') and (`updated_by_user_id` is null))))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='電子簽文件';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_export_jobs`;
@@ -554,6 +565,8 @@ CREATE TABLE `esign_signers` (
   `reject_request_id` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '拒簽冪等請求 UUID',
   `note` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '建立人管理備註，不屬簽署證據',
   `external_email` varchar(255) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((case when (`signer_type` = _utf8mb4'email') then `email` else NULL end)) STORED COMMENT '外部地址唯一性衍生欄位',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '建立操作者種類',
+  `updated_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '更新操作者種類',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_signers_public_id` (`public_id`),
   UNIQUE KEY `uq_esign_signers_document_user` (`document_id`,`user_id`),
@@ -578,9 +591,11 @@ CREATE TABLE `esign_signers` (
   CONSTRAINT `fk_esign_signers_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `chk_esign_signers_completion` CHECK ((((`status` in (_utf8mb4'pending',_utf8mb4'rejected')) and (`completion_status` is null) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`status` = _utf8mb4'signed') and (`completion_status` is not null) and (((`completion_status` in (_utf8mb4'pending',_utf8mb4'failed')) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'processing') and (`completion_lease_token` is not null) and (`completion_lease_expires_at` is not null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'ready') and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is not null)))))),
+  CONSTRAINT `chk_esign_signers_created_actor` CHECK ((((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system',_utf8mb4'legacy_unknown')) and (`created_by_user_id` is null)))),
   CONSTRAINT `chk_esign_signers_identity` CHECK ((((`signer_type` = _utf8mb4'user') and (`user_id` is not null) and (`empid_snapshot` is not null)) or ((`signer_type` = _utf8mb4'email') and (`user_id` is null) and (`email` is not null) and (`empid_snapshot` is null)))),
   CONSTRAINT `chk_esign_signers_status` CHECK ((`status` in (_utf8mb4'pending',_utf8mb4'signed',_utf8mb4'rejected'))),
-  CONSTRAINT `chk_esign_signers_terminal_times` CHECK ((((`signed_at` is null) or (`rejected_at` is null)) and ((`status` <> _utf8mb4'rejected') or ((`rejected_at` is not null) and (`reject_request_id` is not null) and (`reject_reason` is not null)))))
+  CONSTRAINT `chk_esign_signers_terminal_times` CHECK ((((`signed_at` is null) or (`rejected_at` is null)) and ((`status` <> _utf8mb4'rejected') or ((`rejected_at` is not null) and (`reject_request_id` is not null) and (`reject_reason` is not null))))),
+  CONSTRAINT `chk_esign_signers_updated_actor` CHECK ((((`updated_by_actor_kind` = _utf8mb4'employee') and (`updated_by_user_id` is not null)) or ((`updated_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system',_utf8mb4'legacy_unknown')) and (`updated_by_user_id` is null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件簽署人';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_verification_records`;

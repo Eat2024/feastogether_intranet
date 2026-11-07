@@ -1,3 +1,4 @@
+import { PortalDirectoryService } from '#app/infrastructure/portal/portal-directory.service';
 import { AuthorizationService } from '#app/features/authorization/services/authorization.service';
 import { ExportHistoryController } from './export-history.controller';
 import { EsignExportHistoryService } from '../services/esign-export-history.service';
@@ -80,6 +81,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
         EsignExportService,
         EsignAccessPolicyService,
         EsignDocumentValidationService,
+        { provide: PortalDirectoryService, useValue: {} },
         { provide: MysqlService, useValue: { getManager: () => ({}) } },
         { provide: DocumentRepository, useValue: { findById: () => document } },
         {

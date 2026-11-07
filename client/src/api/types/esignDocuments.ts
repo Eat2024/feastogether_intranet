@@ -10,7 +10,7 @@ export type EsignDocumentStatus = 'initiating' | 'draft' | 'active' | 'expired' 
 /** GET esign/documents 的查詢參數（皆選填） */
 export interface GetDocumentsParams {
   /** dep：目前部門；created：我建立的；assigned：指派給我簽署的；不帶為個人兩者合併 */
-  role?: 'dep' | 'created' | 'assigned';
+  role?: 'dep' | 'created' | 'assigned' | 'all';
   status?: EsignDocumentStatus;
 }
 
@@ -67,7 +67,7 @@ export interface EsignDocumentListItem {
   /** 是否補簽過（signEndAt 與 originalSignEndAt 不同） */
   isReopened: boolean;
   /** 建立人帳號不存在時為 null */
-  createdBy: { name: string; employeeNo: string } | null;
+  createdBy: { kind: 'employee' | 'super_user'; name: string; employeeNo: string | null } | null;
 }
 
 /** 欄位類型：簽名或簽署日期 */
@@ -170,7 +170,8 @@ interface EsignDocumentDetailBase extends EsignDocumentListItem {
 
 /** 建立人管理詳情；管理與匯出資格分開判斷。 */
 export interface EsignManagedDocumentDetail extends EsignDocumentDetailBase {
-  isCreator: true;
+  isCreator: boolean;
+  canManage: true;
   watermark: boolean;
   allowReject: boolean;
   signers: EsignManagedSignerView[];
@@ -179,7 +180,8 @@ export interface EsignManagedDocumentDetail extends EsignDocumentDetailBase {
 
 /** 同部門文件詳情：不含欄位配置、通知與備註等管理資料。 */
 export interface EsignReadonlyDocumentDetail extends EsignDocumentDetailBase {
-  isCreator: false;
+  isCreator: boolean;
+  canManage: false;
   signers: EsignReadonlySignerView[];
 }
 

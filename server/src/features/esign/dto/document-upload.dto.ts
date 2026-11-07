@@ -35,6 +35,11 @@ class DraftFieldsDto {
 }
 
 export class CreateDocumentDto extends DraftFieldsDto {
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsString()
+  @Length(1, 50)
+  departmentCode?: string;
+
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )

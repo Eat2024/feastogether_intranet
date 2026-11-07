@@ -1,3 +1,5 @@
+import { AppException } from '#app/common/errors/app.exception';
+import { AppErrors } from '#app/common/errors/app-errors';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
@@ -491,5 +493,86 @@ describe('部門文件授權', () => {
     ).resolves.toMatchObject({ departmentCode: '00Aa' });
     expect(users.findByIdForUpdate).toHaveBeenCalledWith(10, manager);
     expect(users.findById).not.toHaveBeenCalled();
+  });
+});
+
+describe('actor 精確能力與範圍', () => {
+  const actor = { kind: 'employee' as const, userId: 20 };
+  const manager = {} as never;
+  const doc = Object.assign(new EsignDocument(), {
+    id: 1,
+    createdByUserId: 10,
+    createdByDepartmentCode: 'A',
+    status: 'draft',
+  });
+  const setup = (permissions: string[], currentDoc = { ...doc }) => {
+    const granted = new Set(permissions);
+    const policy = new EsignAccessPolicyService(
+      new EsignDocumentValidationService({} as never),
+      { findByIdForUpdate: () => Promise.resolve(currentDoc) } as never,
+      {
+        findById: () =>
+          Promise.resolve({ id: 20, isActive: true, departmentCode: 'B' }),
+      } as never,
+      { activeIdentity: () => Promise.resolve(null) } as never,
+      {
+        requirePermissions: (_actor: unknown, keys: string[]) =>
+          keys.every((key) => granted.has(key))
+            ? Promise.resolve()
+            : Promise.reject(
+                new AppException(...AppErrors.AUTHORIZATION_DENIED),
+              ),
+      } as never,
+    );
+    return { policy, granted };
+  };
+  it('read-all 只放寬讀範圍，不授予 manage；manage-all 仍需 manage', async () => {
+    const { policy } = setup([
+      'esign.document.read',
+      'esign.document.read-all',
+      'esign.document.manage-all',
+    ]);
+    await expect(policy.readableForActor(doc, actor, manager)).resolves.toBe(
+      doc,
+    );
+    await expect(
+      policy.manageableDocument(doc, actor, manager),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(policy.canManageDocument(doc, actor, manager)).resolves.toBe(
+      false,
+    );
+  });
+  it('manage 不放寬他人範圍；manage-all 不隱含 read-all', async () => {
+    const { policy, granted } = setup([
+      'esign.document.read',
+      'esign.document.manage',
+    ]);
+    await expect(
+      policy.manageableDocument(doc, actor, manager),
+    ).rejects.toMatchObject({ status: 404 });
+    granted.add('esign.document.manage-all');
+    await expect(policy.manageableDocument(doc, actor, manager)).resolves.toBe(
+      doc,
+    );
+    await expect(
+      policy.readableForActor(doc, actor, manager),
+    ).rejects.toMatchObject({ status: 404 });
+    granted.delete('esign.document.manage');
+    await expect(
+      policy.lockManagedDraft(1, actor, manager),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it('Super 也依操作能力授權，且範圍例外不跳過草稿狀態', async () => {
+    const { policy, granted } = setup(
+      ['esign.document.manage', 'esign.document.manage-all'],
+      { ...doc, status: 'active' },
+    );
+    await expect(
+      policy.lockManagedDraft(1, { kind: 'super_user' }, manager),
+    ).rejects.toMatchObject({ status: 409 });
+    granted.clear();
+    await expect(
+      policy.manageableDocument(doc, { kind: 'super_user' }, manager),
+    ).rejects.toMatchObject({ status: 403 });
   });
 });

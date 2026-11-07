@@ -65,6 +65,9 @@ assignment回 `{userId,moduleKey,roleIds,implicitRoles,changed}`，不回Portal�
 5. 已受理job保存真正actor；worker以job actor執行已受理工作，不重新假裝creator，也不因管理者無員工身分進入本人簽署分支。後續poll/retry/download以目前actor重新授權。
 6. 既有departmentFile及pdf歷史個人副本下載收緊為本人指派；合法一般ZIP／Excel／整份文件匯出沿另一能力與資源政策，不可讓histories成為旁路。
 
+7. 文件詳情新增 `canManage` 作管理／唯讀 DTO 的 discriminator。`isCreator` 保留原員工建立人判斷，管理他人文件不改成 true；建立人失去 manage 時仍 `isCreator=true`、`canManage=false`。欄位及管理簽署資訊依 canManage 裁切，既有詳情／編輯／簽署人設定 caller 以 canManage 判斷管理能力，所有寫入仍重新授權。
+8. Super 建立的 departmentCode 保留原碼，不 trim／轉大小寫；只能匹配一筆未停用且有名稱的 Portal 部門。格式或無效部門回既有 400 `INVALID_REQUEST`，Portal 查核不可用回 503 `ESIGN_DEPARTMENT_LOOKUP_UNAVAILABLE`。
+
 ## 安全紀錄
 
 管理request body及員工指派資料不進一般access log；query僅限module／cursor等非個資，before/after只入授權audit白名單。不得把隱藏登入位置、cookie、Portal raw error或完整員工物件放入契約例子。

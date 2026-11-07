@@ -1,3 +1,5 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { actorAudit, markDocumentUpdated } from '../helpers/management-actor';
 import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import { Inject, Injectable } from '@nestjs/common';
@@ -31,31 +33,29 @@ export class EsignFieldService {
     private readonly documents: DocumentRepository,
   ) {}
 
-  async replace(
-    documentId: number,
-    creatorUserId: number,
-    inputs: FieldPlacementDto[],
-  ) {
+  async replace(documentId: number, actor: Actor, inputs: FieldPlacementDto[]) {
     if (inputs.length > 200) {
       throw new AppException(...AppErrors.ESIGN_FIELD_LIMIT_EXCEEDED);
     }
-    await this.access.assertCreatorNotInitiating(
+    await this.access.assertManagerNotInitiating(
       documentId,
-      creatorUserId,
+      actor,
       this.mysql.getManager(),
     );
     return this.mysql.transaction(async (manager) => {
-      const document = await this.access.checkAndLockDraftDoc(
+      const document = await this.access.lockManagedDraft(
         documentId,
-        creatorUserId,
+        actor,
         manager,
       );
       const { fields } = await this.buildFields(
         document,
-        creatorUserId,
+        actor,
         inputs,
         manager,
       );
+      markDocumentUpdated(document, actor);
+      await this.documents.save(document, manager);
       await this.documents.touchDraftVersion(documentId, manager);
       return fields;
     });
@@ -64,7 +64,7 @@ export class EsignFieldService {
   /** 沿用呼叫端交易；呼叫端須先鎖定文件並驗證建立人與草稿狀態。 */
   async buildFields(
     document: EsignDocument,
-    creatorUserId: number,
+    actor: Actor,
     inputs: FieldPlacementDto[],
     manager: EntityManager,
   ) {
@@ -82,7 +82,7 @@ export class EsignFieldService {
 
     const replacements = this.build(
       documentId,
-      creatorUserId,
+      actor,
       inputs,
       metadata.pageCount,
       manager,
@@ -103,7 +103,7 @@ export class EsignFieldService {
   /** 依 PDF 頁數驗證欄位並建立待寫入的 entity；呼叫端負責交易與寫入。 */
   build(
     documentId: number,
-    creatorUserId: number,
+    actor: Actor,
     inputs: FieldPlacementDto[],
     pageCount: number,
     manager: EntityManager,
@@ -128,8 +128,7 @@ export class EsignFieldService {
           widthPercent: input.widthPercent.toFixed(3),
           heightPercent: input.heightPercent.toFixed(3),
           sortOrder: input.sortOrder,
-          createdByUserId: creatorUserId,
-          updatedByUserId: creatorUserId,
+          ...actorAudit(actor),
         },
         manager,
       );

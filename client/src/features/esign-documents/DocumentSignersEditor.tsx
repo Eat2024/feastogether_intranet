@@ -174,7 +174,7 @@ export default function DocumentSignersEditor({
   } = useGetDocumentQuery(documentId);
   const router = useRouter();
   useEffect(() => {
-    if (doc && !doc.isCreator) router.replace(`/esign/forms/${doc.id}`);
+    if (doc && !doc.canManage) router.replace(`/esign/forms/${doc.id}`);
   }, [doc, router]);
 
   if (isPending) {
@@ -212,7 +212,7 @@ export default function DocumentSignersEditor({
       </Alert>
     );
   }
-  if (!doc.isCreator) return <Alert severity="info">正在前往文件檢視頁…</Alert>;
+  if (!doc.canManage) return <Alert severity="info">正在前往文件檢視頁…</Alert>;
   if (doc.status !== "draft") {
     return (
       <Alert severity="info" action={<Button href="/esign/forms">返回列表</Button>}>

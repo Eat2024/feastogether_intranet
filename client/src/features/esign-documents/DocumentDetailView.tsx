@@ -88,12 +88,12 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
   const statusMeta = DOCUMENT_STATUS_META[doc.status];
   const counts = countByStatus(doc.signers);
   // 整份文件目前可催簽的簽署人（批次通知用）；補簽中仍未簽署的簽署人（補簽邀請連結用）
-  const eligibleIds = doc.isCreator
+  const eligibleIds = doc.canManage
     ? doc.signers.filter((s) => s.reminderEligibility.eligible).map((s) => s.publicId)
     : [];
-  const result = doc.isCreator
-    ? { isCreator: true as const, ...querySigners(doc.signers, query) }
-    : { isCreator: false as const, ...querySigners(doc.signers, query) };
+  const result = doc.canManage
+    ? { canManage: true as const, ...querySigners(doc.signers, query) }
+    : { canManage: false as const, ...querySigners(doc.signers, query) };
   const { page, pageCount, total } = result;
   const percent = counts.all ? Math.round((counts.signed / counts.all) * 100) : 0;
 
@@ -127,7 +127,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
             {doc.canExport && doc.status !== 'draft' && (
               <Button size="large" variant="outlined" href={`/esign/forms/${doc.id}/export`}>匯出</Button>
             )}
-            {doc.isCreator && <>
+            {doc.canManage && <>
               {doc.status === 'draft' ? (
                 <>
                   <Button size="large" variant="outlined" href={`/esign/forms/${doc.id}/edit`} startIcon={<EditRoundedIcon />}>編輯</Button>
@@ -155,7 +155,7 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
       {doc.status === 'expired' && (
         <Alert severity="info" variant="outlined">
           此文件已於 {doc.signEndAt ? dayjs(doc.signEndAt).format('YYYY/MM/DD HH:mm') : '—'} 到期，尚有{' '}
-          {counts.pending} 人未簽署，未簽署的人目前無法簽署。{doc.isCreator && '可設定新的截止日重新開放補簽，或停止簽署。'}
+          {counts.pending} 人未簽署，未簽署的人目前無法簽署。{doc.canManage && '可設定新的截止日重新開放補簽，或停止簽署。'}
         </Alert>
       )}
 
@@ -198,12 +198,12 @@ function Detail({ doc }: { doc: EsignDocumentDetail }) {
           }))}
         />
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-          <SearchField placeholder={doc.isCreator ? "搜尋姓名、員工編號、Email 或部門" : "搜尋姓名"} />
+          <SearchField placeholder={doc.canManage ? "搜尋姓名、員工編號、Email 或部門" : "搜尋姓名"} />
           <Typography variant="secondary" component="span" sx={{ flexShrink: 0 }}>
             共 {total} 筆
           </Typography>
         </Box>
-        {result.isCreator ? (
+        {result.canManage ? (
           <DocumentSignerTable
             documentId={doc.id}
             fileNamePrefix={`${doc.docNumber}_${doc.title}`}

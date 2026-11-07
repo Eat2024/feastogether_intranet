@@ -7,10 +7,18 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { UserAuditableEntity } from '#app/infrastructure/database/user-auditable.entity';
+import { AuditableEntity } from '#app/infrastructure/database/auditable.entity';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from './esign-document.entity';
 
+@Check(
+  'chk_esign_document_fields_created_actor',
+  "(`created_by_actor_kind` = 'employee' AND `created_by_user_id` IS NOT NULL) OR (`created_by_actor_kind` IN ('super_user','system','legacy_unknown') AND `created_by_user_id` IS NULL)",
+)
+@Check(
+  'chk_esign_document_fields_updated_actor',
+  "(`updated_by_actor_kind` = 'employee' AND `updated_by_user_id` IS NOT NULL) OR (`updated_by_actor_kind` IN ('super_user','system','legacy_unknown') AND `updated_by_user_id` IS NULL)",
+)
 @Entity({ name: 'esign_document_fields', comment: '文件簽署欄位' })
 @Check('chk_esign_document_fields_type', "`field_type` IN ('signature','date')")
 @Check('chk_esign_document_fields_page', '`page_number` >= 1')
@@ -27,7 +35,41 @@ import { EsignDocument } from './esign-document.entity';
 @Index('idx_esign_document_fields_created_at', ['createdAt'])
 @Index('idx_esign_document_fields_updated_at', ['updatedAt'])
 @Index('idx_esign_document_fields_deleted_at', ['deletedAt'])
-export class EsignDocumentField extends UserAuditableEntity {
+export class EsignDocumentField extends AuditableEntity {
+  @Column({
+    name: 'created_by_actor_kind',
+    type: 'varchar',
+    length: 20,
+    default: 'system',
+    comment: '建立操作者種類',
+  })
+  createdByActorKind!: 'employee' | 'super_user' | 'system' | 'legacy_unknown';
+
+  @Column({
+    name: 'created_by_user_id',
+    type: 'bigint',
+    nullable: true,
+    comment: '建立者員工 ID',
+  })
+  createdByUserId?: number | null;
+
+  @Column({
+    name: 'updated_by_actor_kind',
+    type: 'varchar',
+    length: 20,
+    default: 'system',
+    comment: '更新操作者種類',
+  })
+  updatedByActorKind!: 'employee' | 'super_user' | 'system' | 'legacy_unknown';
+
+  @Column({
+    name: 'updated_by_user_id',
+    type: 'bigint',
+    nullable: true,
+    comment: '更新者員工 ID',
+  })
+  updatedByUserId?: number | null;
+
   @PrimaryGeneratedColumn({ type: 'bigint', comment: '欄位流水號' })
   id!: number;
 

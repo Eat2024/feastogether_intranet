@@ -19,6 +19,14 @@ import { User } from '#app/features/users/entities/user.entity';
   'chk_esign_documents_sign_period',
   "(`status` = 'draft' AND (`sign_start_at` IS NULL OR `sign_end_at` IS NULL OR `sign_start_at` < `sign_end_at`)) OR (`status` <> 'draft' AND `sign_start_at` IS NOT NULL AND `sign_end_at` IS NOT NULL AND `sign_start_at` < `sign_end_at`)",
 )
+@Check(
+  'chk_esign_documents_created_actor',
+  "(`created_by_actor_kind` = 'employee' AND `created_by_user_id` IS NOT NULL) OR (`created_by_actor_kind` = 'super_user' AND `created_by_user_id` IS NULL)",
+)
+@Check(
+  'chk_esign_documents_updated_actor',
+  "(`updated_by_actor_kind` IS NULL AND `updated_by_user_id` IS NULL) OR (`updated_by_actor_kind` IS NOT NULL AND ((`updated_by_actor_kind` = 'employee' AND `updated_by_user_id` IS NOT NULL) OR (`updated_by_actor_kind` = 'super_user' AND `updated_by_user_id` IS NULL)))",
+)
 @Index('uq_esign_documents_doc_number', ['docNumber'], { unique: true })
 @Index('idx_esign_documents_creator_status_updated_id', [
   'createdByUserId',
@@ -69,8 +77,42 @@ export class EsignDocument extends AuditableEntity {
     name: 'created_by_user_id',
     type: 'bigint',
     comment: '建立人 ID',
+    nullable: true,
   })
-  createdByUserId!: number;
+  createdByUserId!: number | null;
+
+  @Column({
+    name: 'created_by_actor_kind',
+    type: 'varchar',
+    length: 20,
+    default: 'employee',
+    comment: '建立操作者種類',
+  })
+  createdByActorKind!: 'employee' | 'super_user';
+
+  @Column({
+    name: 'updated_by_actor_kind',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+    comment: '最後管理操作者種類',
+  })
+  updatedByActorKind!: 'employee' | 'super_user' | null;
+
+  @Column({
+    name: 'updated_by_user_id',
+    type: 'bigint',
+    nullable: true,
+    comment: '最後管理員工 ID',
+  })
+  updatedByUserId!: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'updated_by_user_id',
+    foreignKeyConstraintName: 'fk_esign_documents_updated_by',
+  })
+  updatedByUser?: User;
 
   @Column({
     name: 'created_by_department_code',
@@ -92,7 +134,7 @@ export class EsignDocument extends AuditableEntity {
   })
   createdByDepartmentName?: string | null;
 
-  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({
     name: 'created_by_user_id',
     foreignKeyConstraintName: 'fk_esign_documents_creator',

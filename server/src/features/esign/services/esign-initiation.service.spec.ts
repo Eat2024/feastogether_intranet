@@ -241,14 +241,14 @@ describe('EsignInitiationService', () => {
     ).toBeLessThan(access.checkAndLockDraftDoc.mock.invocationCallOrder[0]);
     expect(signerService.prepareSigners).toHaveBeenCalledWith(
       document,
-      7,
+      { kind: 'employee', userId: 7 },
       expect.any(Array),
       manager,
       expect.any(Map),
     );
     expect(fieldService.buildFields).toHaveBeenCalledWith(
       document,
-      7,
+      { kind: 'employee', userId: 7 },
       expect.arrayContaining([
         expect.objectContaining({
           type: 'signature',

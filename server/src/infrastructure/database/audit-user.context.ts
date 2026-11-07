@@ -41,3 +41,6 @@ export function requireClsUserId(cls: ClsService): number {
   }
   return userId;
 }
+
+/** 已驗證 HTTP actor，僅供支援 actor 的電子簽 metadata。 */
+export const CLS_AUDIT_ACTOR = 'auditActor';

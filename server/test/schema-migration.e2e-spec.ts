@@ -64,7 +64,11 @@ describe('e-sign schema migrations', () => {
           await ds.query('SELECT * FROM esign_verification_records'),
         ).toEqual(before);
         expect(await ds.query('SELECT * FROM esign_documents')).toEqual(
-          document,
+          expect.arrayContaining(
+            document.map((row: Record<string, unknown>) =>
+              expect.objectContaining(row),
+            ),
+          ),
         );
         await revertAfter(ds, 'RetireSigningAudit1793836801000');
         await expect(ds.undoLastMigration()).rejects.toThrow(
@@ -583,7 +587,8 @@ describe('e-sign schema migrations', () => {
           (await dataSource.driver.createSchemaBuilder().log()).upQueries,
         ).toEqual([]);
 
-        await dataSource.undoLastMigration();
+        await dataSource.undoLastMigration(); // 文件 actor
+        await dataSource.undoLastMigration(); // 授權 schema
         expect(await listBusinessTables(dataSource, database)).toEqual(
           BUSINESS_TABLES.filter(
             (table) => !table.startsWith('authorization_'),

@@ -93,7 +93,7 @@ export class EsignInitiationService {
     );
     const preparedSigners = await this.signerService.prepareSigners(
       document,
-      input.creatorUserId,
+      { kind: 'employee', userId: input.creatorUserId },
       input.signers,
       manager,
       lockedUsers,
@@ -111,7 +111,7 @@ export class EsignInitiationService {
     }
     const { fields, sourceMetadata } = await this.fieldService.buildFields(
       document,
-      input.creatorUserId,
+      { kind: 'employee', userId: input.creatorUserId },
       input.fields,
       manager,
     );

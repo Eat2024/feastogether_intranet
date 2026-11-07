@@ -104,9 +104,12 @@ describe('Spec017 部門管理安全邊界', () => {
     }
   });
 
-  it('未知全公司與偽造部門參數拒絕；未登入401，缺部門409', async () => {
+  it('未授權全公司與偽造部門參數拒絕；未登入401，缺部門409', async () => {
+    await request(ctx.server)
+      .get('/api/esign/documents?role=all')
+      .set('Cookie', fixture.cookies.a2)
+      .expect(403);
     for (const query of [
-      'role=all',
       'role=dep&departmentCode=B001',
       'role=dep&departmentId=1',
     ]) {

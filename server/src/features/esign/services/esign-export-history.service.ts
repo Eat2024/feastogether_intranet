@@ -156,7 +156,9 @@ export class EsignExportHistoryService {
     if (!document || document.status === 'draft')
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     const [creator, signers] = await Promise.all([
-      this.users.findById(document.createdByUserId, manager),
+      document.createdByUserId === null
+        ? Promise.resolve(null)
+        : this.users.findById(document.createdByUserId, manager),
       this.signers.findByDocument(document.id, manager),
     ]);
     return this.mapper.excelExportDocument(document, creator, signers);

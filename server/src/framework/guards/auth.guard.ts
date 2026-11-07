@@ -3,7 +3,10 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
 import { cookieTokenFromMap } from '#app/common/http/cookie-token.helper';
-import { CLS_AUDIT_USER_ID } from '#app/infrastructure/database/audit-user.context';
+import {
+  CLS_AUDIT_USER_ID,
+  CLS_AUDIT_ACTOR,
+} from '#app/infrastructure/database/audit-user.context';
 import type { FastifyRequest } from 'fastify';
 import { IS_PUBLIC_KEY } from '#app/framework/decorators/public.decorator';
 import { ALLOW_SUPER_USER_KEY } from '#app/framework/decorators/allow-super-user.decorator';
@@ -42,6 +45,7 @@ export class AuthGuard implements CanActivate {
       if (!this.hasMetadata(context, ALLOW_SUPER_USER_KEY)) {
         throw new AppException(...AppErrors.AUTH_ACTOR_NOT_ALLOWED);
       }
+      if (this.cls.isActive()) this.cls.set(CLS_AUDIT_ACTOR, session.actor);
       req.authSession = session;
       return true;
     }
@@ -54,7 +58,10 @@ export class AuthGuard implements CanActivate {
     const sub = String(userId);
     req.user = { id: sub, sub };
     req.authSession = session;
-    if (this.cls.isActive()) this.cls.set(CLS_AUDIT_USER_ID, sub);
+    if (this.cls.isActive()) {
+      this.cls.set(CLS_AUDIT_USER_ID, sub);
+      this.cls.set(CLS_AUDIT_ACTOR, session.actor);
+    }
     return true;
   }
 

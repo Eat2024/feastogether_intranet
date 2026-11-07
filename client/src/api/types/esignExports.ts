@@ -136,7 +136,7 @@ export interface ExcelExportDocument {
   signEndAt: string | null;
   originalSignEndAt: string | null;
   isReopened: boolean;
-  createdBy: { name: string; employeeNo: string } | null;
+  createdBy: { kind: 'employee' | 'super_user'; name: string; employeeNo: string | null } | null;
   signers: {
     type: 'user' | 'email';
     name: string;

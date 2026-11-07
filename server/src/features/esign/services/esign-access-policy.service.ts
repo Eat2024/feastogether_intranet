@@ -1,3 +1,5 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { AuthorizationService } from '#app/features/authorization/services/authorization.service';
 import {
   InitiationJobRepository,
   type InitiationLease,
@@ -38,7 +40,123 @@ export class EsignAccessPolicyService {
     private readonly documentRepository: DocumentRepository,
     private readonly users: UserRepository,
     private readonly initiationJobs: InitiationJobRepository,
+    private readonly authorization: AuthorizationService,
   ) {}
+
+  /** 功能能力與資源範圍分開；只放寬範圍，不放寬文件狀態。 */
+  async readableForActor(
+    document: EsignDocument | null,
+    actor: Actor,
+    manager: EntityManager,
+  ): Promise<EsignDocument> {
+    await this.authorization.requirePermissions(
+      actor,
+      ['esign.document.read'],
+      manager,
+    );
+    if (!document || document.deletedAt) throw this.notFound();
+    if (await this.hasPermission(actor, 'esign.document.read-all', manager))
+      return document;
+    if (actor.kind !== 'employee') throw this.notFound();
+    return this.readableDocument(document, actor.userId, manager);
+  }
+
+  async hasPermission(
+    actor: Actor,
+    permission: import('#app/features/authorization/authorization.catalog').PermissionKey,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    try {
+      await this.authorization.requirePermissions(actor, [permission], manager);
+      return true;
+    } catch (error) {
+      if (
+        error instanceof AppException &&
+        error.code === 'AUTHORIZATION_DENIED'
+      )
+        return false;
+      throw error;
+    }
+  }
+
+  async manageableDocument(
+    document: EsignDocument | null,
+    actor: Actor,
+    manager: EntityManager,
+  ): Promise<EsignDocument> {
+    await this.authorization.requirePermissions(
+      actor,
+      ['esign.document.manage'],
+      manager,
+    );
+    if (!document || document.deletedAt) throw this.notFound();
+    if (actor.kind === 'employee' && document.createdByUserId === actor.userId)
+      return document;
+    if (await this.hasPermission(actor, 'esign.document.manage-all', manager))
+      return document;
+    throw this.notFound();
+  }
+
+  async canManageDocument(
+    document: EsignDocument,
+    actor: Actor,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    try {
+      await this.manageableDocument(document, actor, manager);
+      return true;
+    } catch (error) {
+      if (
+        error instanceof AppException &&
+        ['AUTHORIZATION_DENIED', 'ESIGN_RESOURCE_NOT_FOUND'].includes(
+          error.code,
+        )
+      )
+        return false;
+      throw error;
+    }
+  }
+
+  async assertManagerNotInitiating(
+    documentId: number,
+    actor: Actor,
+    manager: EntityManager,
+  ): Promise<void> {
+    await this.manageableDocument(
+      await this.documentRepository.findById(documentId, manager),
+      actor,
+      manager,
+    );
+    const active = await this.initiationJobs.activeIdentity(
+      documentId,
+      manager,
+    );
+    if (active)
+      throw new AppException(...AppErrors.ESIGN_INITIATION_IN_PROGRESS, {
+        existingJobId: active.publicId,
+      });
+  }
+
+  async lockManagedDraft(
+    documentId: number,
+    actor: Actor,
+    manager: EntityManager,
+  ): Promise<EsignDocument> {
+    // 先完成授權 current read，再取得文件鎖，避免角色鎖與文件鎖倒置。
+    await this.authorization.requirePermissions(
+      actor,
+      ['esign.document.manage'],
+      manager,
+    );
+    const document = await this.manageableDocument(
+      await this.documentRepository.findByIdForUpdate(documentId, manager),
+      actor,
+      manager,
+    );
+    this.documents.checkStillDraft(document);
+    await this.assertNotInitiating(documentId, manager);
+    return document;
+  }
 
   /** 每次從 DB 讀取目前可信部門；建立文件時先鎖員工，避免與登入同步交錯。 */
   async requireDepartment(

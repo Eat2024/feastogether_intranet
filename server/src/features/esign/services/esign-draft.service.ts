@@ -1,3 +1,7 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { AuthorizationService } from '#app/features/authorization/services/authorization.service';
+import { EsignDocumentValidationService } from './esign-document-validation.service';
+import { actorAudit, markDocumentUpdated } from '../helpers/management-actor';
 import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
 import type { EsignDocument } from '../entities/esign-document.entity';
@@ -27,7 +31,8 @@ import {
 
 export interface CreateDraftInput extends PdfUpload {
   title: string;
-  creatorUserId: number;
+  actor: Actor;
+  departmentCode?: string;
   fields?: FieldPlacementDto[];
 }
 
@@ -56,22 +61,37 @@ export class EsignDraftService {
     @Inject(PRIVATE_FILE_STORAGE)
     private readonly storage: PrivateFileStorage,
     private readonly fieldService: EsignFieldService,
+    private readonly authorization: AuthorizationService,
+    private readonly validation: EsignDocumentValidationService,
   ) {}
 
   listCreatedBy(userId: number) {
     return this.documents.findCreatedByUser(userId, this.mysql.getManager());
   }
 
-  async getForCreator(documentId: number, userId: number) {
+  async getForCreator(documentId: number, actor: Actor) {
     const document = await this.documents.findById(
       documentId,
       this.mysql.getManager(),
     );
-    this.access.checkEsignCreator(document, userId);
+    await this.access.manageableDocument(
+      document,
+      actor,
+      this.mysql.getManager(),
+    );
     return document;
   }
 
   async create(input: CreateDraftInput) {
+    await this.authorization.requirePermissions(input.actor, [
+      'esign.document.create',
+    ]);
+    if (input.actor.kind === 'employee' && input.departmentCode !== undefined)
+      throw new AppException(...AppErrors.REQUEST_FORMAT_INVALID);
+    const department =
+      input.actor.kind === 'super_user'
+        ? await this.validation.requireCreationDepartment(input.departmentCode)
+        : undefined;
     const title = this.normalizeTitle(input.title);
     const docNumber = randomUUID();
     const newPdf = await this.storeValidatedPdf(docNumber, input);
@@ -81,14 +101,15 @@ export class EsignDraftService {
         const document = await this.createDraftDocument(
           docNumber,
           title,
-          input.creatorUserId,
+          input.actor,
           manager,
+          department,
         );
         await this.saveSourcePdf(document.id, newPdf, manager);
         if (input.fields?.length) {
           await this.createDraftFields(
             document.id,
-            input.creatorUserId,
+            input.actor,
             input.fields,
             newPdf.metadata.pageCount,
             manager,
@@ -105,21 +126,26 @@ export class EsignDraftService {
   private async createDraftDocument(
     docNumber: string,
     title: string,
-    creatorUserId: number,
+    actor: Actor,
     manager: EntityManager,
+    department?: { departmentCode: string; departmentName: string },
   ): Promise<EsignDocument> {
-    // 先鎖定員工再建立文件，與登入同步使用相同鎖順序；舊文件不重新取部門。
-    const creator = await this.access.requireDepartment(
-      creatorUserId,
+    const creator =
+      actor.kind === 'employee'
+        ? await this.access.requireDepartment(actor.userId, manager, true)
+        : department;
+    await this.authorization.requirePermissions(
+      actor,
+      ['esign.document.create'],
       manager,
-      true,
     );
+    if (!creator) throw new AppException(...AppErrors.REQUEST_FORMAT_INVALID);
     const draft = this.documents.create(
       {
         docNumber,
         title,
         status: 'draft',
-        createdByUserId: creatorUserId,
+        ...actorAudit(actor),
         createdByDepartmentCode: creator.departmentCode,
         createdByDepartmentName: creator.departmentName ?? null,
         watermarkEnabled: false,
@@ -132,7 +158,7 @@ export class EsignDraftService {
 
   private async createDraftFields(
     documentId: number,
-    creatorUserId: number,
+    actor: Actor,
     inputs: FieldPlacementDto[],
     pageCount: number,
     manager: EntityManager,
@@ -140,7 +166,7 @@ export class EsignDraftService {
     // 上傳時保存共用欄位，不需要先設定簽署人。
     const fields = this.fieldService.build(
       documentId,
-      creatorUserId,
+      actor,
       inputs,
       pageCount,
       manager,
@@ -148,24 +174,24 @@ export class EsignDraftService {
     await this.fields.save(fields, manager);
   }
 
-  async update(documentId: number, userId: number, input: UpdateDraftInput) {
+  async update(documentId: number, actor: Actor, input: UpdateDraftInput) {
     const title = this.validateUpdateInput(input);
-    await this.access.assertCreatorNotInitiating(
+    await this.access.assertManagerNotInitiating(
       documentId,
-      userId,
+      actor,
       this.mysql.getManager(),
     );
     const newPdf = input.file
-      ? await this.prepareNewPdf(documentId, userId, input.file)
+      ? await this.prepareNewPdf(documentId, actor, input.file)
       : undefined;
 
     let previous: PrivateFileReference | undefined;
     try {
       const document = await this.mysql.transaction(async (manager) => {
         // 上傳期間文件可能已被發起，寫入前必須在鎖內重新驗證。
-        const lockedFile = await this.access.checkAndLockDraftDoc(
+        const lockedFile = await this.access.lockManagedDraft(
           documentId,
-          userId,
+          actor,
           manager,
         );
         if (title !== undefined) lockedFile.title = title;
@@ -175,12 +201,13 @@ export class EsignDraftService {
         if (input.fields) {
           await this.replaceUpdateFields(
             lockedFile,
-            userId,
+            actor,
             input.fields,
             newPdf?.metadata,
             manager,
           );
         }
+        markDocumentUpdated(lockedFile, actor);
         const saved = await this.documents.save(lockedFile, manager);
         return saved;
       });
@@ -210,11 +237,11 @@ export class EsignDraftService {
 
   private async prepareNewPdf(
     documentId: number,
-    userId: number,
+    actor: Actor,
     file: PdfUpload,
   ): Promise<PreparedNewPdf> {
     // 先確認權限，避免未授權請求寫入檔案；檔案 I/O 不佔用交易鎖。
-    const document = await this.checkDraftDocs(documentId, userId);
+    const document = await this.checkDraftDocs(documentId, actor);
     return this.storeValidatedPdf(document.docNumber, file);
   }
 
@@ -289,19 +316,19 @@ export class EsignDraftService {
 
   private async replaceUpdateFields(
     document: EsignDocument,
-    userId: number,
+    actor: Actor,
     inputs: FieldPlacementDto[],
     newPdfMetadata: ValidatedPdf | undefined,
     manager: EntityManager,
   ): Promise<void> {
     if (!newPdfMetadata) {
-      await this.fieldService.buildFields(document, userId, inputs, manager);
+      await this.fieldService.buildFields(document, actor, inputs, manager);
       return;
     }
     // 舊欄位已隨舊 PDF 清除，直接沿用新 PDF 的驗證結果。
     const fields = this.fieldService.build(
       document.id,
-      userId,
+      actor,
       inputs,
       newPdfMetadata.pageCount,
       manager,
@@ -309,24 +336,37 @@ export class EsignDraftService {
     await this.fields.save(fields, manager);
   }
 
-  async delete(documentId: number, userId: number): Promise<void> {
-    await this.access.assertCreatorNotInitiating(
+  async delete(documentId: number, actor: Actor): Promise<void> {
+    await this.access.assertManagerNotInitiating(
       documentId,
-      userId,
+      actor,
       this.mysql.getManager(),
     );
     await this.mysql.transaction(async (manager) => {
-      await this.access.checkAndLockDraftDoc(documentId, userId, manager);
-      await this.documents.softDeleteDraft(documentId, new Date(), manager);
+      const document = await this.access.lockManagedDraft(
+        documentId,
+        actor,
+        manager,
+      );
+      document.deletedAt = new Date();
+      markDocumentUpdated(document, actor);
+      await this.documents.save(document, manager);
     });
   }
 
-  private async checkDraftDocs(documentId: number, userId: number) {
+  private async checkDraftDocs(documentId: number, actor: Actor) {
     const document = await this.documents.findById(
       documentId,
       this.mysql.getManager(),
     );
-    this.access.checkEsignDraftCreator(document, userId);
+    await this.access.manageableDocument(
+      document,
+      actor,
+      this.mysql.getManager(),
+    );
+    if (!document)
+      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    this.validation.checkStillDraft(document);
     return document;
   }
 

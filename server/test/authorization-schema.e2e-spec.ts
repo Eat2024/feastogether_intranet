@@ -12,7 +12,8 @@ describe('028 授權資料約束', () => {
       expect(
         await db.query('SELECT COUNT(*) AS count FROM authorization_roles'),
       ).toEqual([{ count: 0 }]);
-      await db.undoLastMigration();
+      await db.undoLastMigration(); // 文件 actor migration
+      await db.undoLastMigration(); // 授權 schema
       await expect(
         db.query('SELECT * FROM authorization_roles'),
       ).rejects.toThrow();

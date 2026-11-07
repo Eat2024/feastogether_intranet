@@ -1,3 +1,4 @@
+import { grantDocumentCreator } from './helpers/authorization-business-fixtures';
 import { randomUUID } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import type { HTTPMethods } from 'fastify';
@@ -48,17 +49,16 @@ describe('028 同仁電子簽入口與本人邊界', () => {
             departmentName: '合成甲部門',
           }),
         );
+        await grantDocumentCreator(ctx.app, creator.id);
         const pdf = await PDFDocument.create();
         pdf.addPage();
-        const document = await ctx.app
-          .get(EsignDraftService)
-          .create({
-            title: '合成授權文件',
-            creatorUserId: creator.id,
-            bytes: Buffer.from(await pdf.save()),
-            contentType: 'application/pdf',
-            originalFileName: 'fixture.pdf',
-          });
+        const document = await ctx.app.get(EsignDraftService).create({
+          title: '合成授權文件',
+          actor: { kind: 'employee', userId: creator.id },
+          bytes: Buffer.from(await pdf.save()),
+          contentType: 'application/pdf',
+          originalFileName: 'fixture.pdf',
+        });
         const path = `/api/esign/documents/${document.id}`;
         const routes: Array<[HTTPMethods, string, object?]> = [
           ['POST', '/api/esign/documents'],
@@ -202,15 +202,13 @@ it('跨部門／缺部門的本人副本獨立判斷；建立人與管理員也�
       );
       const pdf = await PDFDocument.create();
       pdf.addPage();
-      const document = await ctx.app
-        .get(EsignDraftService)
-        .create({
-          title: '合成副本文件',
-          creatorUserId: creator.id,
-          bytes: Buffer.from(await pdf.save()),
-          contentType: 'application/pdf',
-          originalFileName: 'copy.pdf',
-        });
+      const document = await ctx.app.get(EsignDraftService).create({
+        title: '合成副本文件',
+        actor: { kind: 'employee', userId: creator.id },
+        bytes: Buffer.from(await pdf.save()),
+        contentType: 'application/pdf',
+        originalFileName: 'copy.pdf',
+      });
       await db.query(
         "UPDATE esign_documents SET status='active',sign_start_at=?,sign_end_at=? WHERE id=?",
         [
@@ -322,17 +320,16 @@ it('匯出read/create互不替代：詳情view與下載準備在service依實際
           departmentCode: 'A',
         }),
       );
+      await grantDocumentCreator(ctx.app, user.id);
       const pdf = await PDFDocument.create();
       pdf.addPage();
-      const document = await ctx.app
-        .get(EsignDraftService)
-        .create({
-          title: '合成分支文件',
-          creatorUserId: user.id,
-          bytes: Buffer.from(await pdf.save()),
-          contentType: 'application/pdf',
-          originalFileName: 'export.pdf',
-        });
+      const document = await ctx.app.get(EsignDraftService).create({
+        title: '合成分支文件',
+        actor: { kind: 'employee', userId: user.id },
+        bytes: Buffer.from(await pdf.save()),
+        contentType: 'application/pdf',
+        originalFileName: 'export.pdf',
+      });
       await db.query(
         "UPDATE esign_documents SET status='active',sign_start_at=?,sign_end_at=? WHERE id=?",
         [
@@ -345,10 +342,7 @@ it('匯出read/create互不替代：詳情view與下載準備在service依實際
         (r) => r.roleCode === 'document_creator',
       )!;
       const permissions = await repository.permissions(db.manager);
-      await db.query(
-        "INSERT INTO authorization_user_roles (module_key,user_id,role_id) VALUES ('esign',?,?)",
-        [user.id, role.id],
-      );
+
       const cookie = await createAuthorizationSession(ctx.app, {
         kind: 'employee',
         userId: user.id,

@@ -184,6 +184,28 @@ export class EsignAccessPolicyService {
     );
   }
 
+  /** 發起受理／重播只需授權與狀態；保持先授權再鎖文件，不載入簽署大型快照。 */
+  async lockManagedInitiationAccess(
+    documentId: number,
+    actor: Actor,
+    manager: EntityManager,
+  ): Promise<EsignDocument> {
+    await this.authorization.requirePermissions(
+      actor,
+      ['esign.document.manage'],
+      manager,
+    );
+    return this.manageableDocument(
+      await this.documentRepository.findInitiationAccess(
+        documentId,
+        manager,
+        true,
+      ),
+      actor,
+      manager,
+    );
+  }
+
   async lockManagedDraft(
     documentId: number,
     actor: Actor,

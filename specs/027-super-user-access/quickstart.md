@@ -163,9 +163,9 @@ same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟�
   - 有效入口顯示「維護登入」表單。
   - 錯密碼：表單內顯示「帳號或密碼錯誤」，沒有出現「登入已過期」dialog，沒有 cookie，網址不變。
   - 正確帳密：`location.replace('/')` 經 proxy 轉到 `/forms`，cookie 為 `FT_ESIGN_SESSION` HttpOnly、SameSite=Lax、Path=/、host-only。登入 POST 帶 `Origin` 與 `Sec-Fetch-Site: same-origin`，沒有 Referer。
-  - 登入後：版面上方持續顯示「目前身分：Super user」與「登出」；文件列表回 403，顯示「目前身分無法使用此功能」（028 前預期行為）。
+  - 登入後：右上共用UserProfile顯示「Super user」，從相同選單可登出；文件列表回 403，顯示「目前身分無法使用此功能」（028 前預期行為）。
   - 上一頁回到前一個無效入口，有效入口沒有留在瀏覽紀錄。
-  - 登出：回根路徑顯示 404 頁，banner 消失，`GET /api/auth/session` 回 401，cookie 已清除。
+  - 登出：回根路徑顯示 404 頁，UserProfile消失，`GET /api/auth/session` 回 401，cookie 已清除。
   - 在頁面內以 `fetch` 帶 `RSC: 1` 請求無效入口，回 404，回應不含表單。
 - 開發庫事件：`login.rejected`（anonymous／credentials_invalid）、`login.succeeded`（super_user）、`session.revoked`（super_user／logout）都有寫入；會話全為 revoked。展示後已刪除開發庫的 singleton、事件與 Super user 會話。
 - log 邊界：
@@ -409,7 +409,7 @@ same fingerprint activate no-op；錯expectedGeneration拒絕；同設定重啟�
 - 前端（client）：
   - 隱藏登入頁 `src/app/ops-access/[entryKey]`（`features/super-user-login`），不在 `(main)` 內。帳密 401 就地顯示，不觸發全站「登入已過期」。
   - `src/proxy.ts` 在 HTML／RSC 渲染前向後端驗證入口，無效時改寫成既有 404 頁。`next.config.ts` 對維護頁加 `no-referrer`、`noindex`、`frame-ancestors 'none'`，dev request log 略過維護路徑。
-  - 共用 layout 的 `CurrentActorBanner` 顯示「目前身分：Super user」與登出。`EmbedBridge` 對 Super user 一律視為 mismatch，走既有撤銷並要求 launch 的流程。
+  - 共用 layout 的 `UserProfile` 對employee與Super user使用同一呈現與登出選單；Super user顯示後端提供的名稱。`EmbedBridge` 對 Super user 一律視為 mismatch，走既有撤銷並要求 launch 的流程。
   - 沒有新設定、沒有 OAuth 前端、管理 UI 或選單變更。
 - 後端（server）：
   - 共用 MySQL 會話辨識 `employee`／`super_user`。`AuthGuard` 只讓 Super user 進入 `@AllowSuperUser()`（目前只有 `GET /api/auth/session`），其他回 403 `AUTH_ACTOR_NOT_ALLOWED`。
@@ -577,11 +577,11 @@ client 沒有 test script，未宣稱跑過 client 自動測試。
     - 錯誤入口 404；
     - 有效入口 200 並帶安全標頭；
     - 帳密錯誤 401，在表單內顯示「帳號或密碼錯誤」，沒有「登入已過期」；
-    - iframe WebView 員工登入，員工畫面沒有 banner；
-    - employee→Super user 後顯示「目前身分：Super user」，舊員工 cookie 401，網址不含入口；
+    - iframe WebView 員工登入，共用UserProfile顯示員工姓名與員編；
+    - employee→Super user 後同一UserProfile改顯示「Super user」，舊員工 cookie 401，網址不含入口；
     - EmbedBridge 遇 Super user 為 mismatch，撤銷後收到 `launch-required`；
     - super→employee 後舊 Super user cookie 401，同員工 navigate 收到 `navigated`；
-    - banner 登出後會話撤銷，回根路徑 404，舊身分不恢復。
+    - 從UserProfile登出後會話撤銷，回根路徑 404，舊身分不恢復。
 - REPL、輪換、雙實例撤銷：`security-super-user-credentials` 等 suite 在 `test:e2e:security` 內通過。本次沒有改 REPL 與 worker。
 
 **無法消除或未處理的差異**

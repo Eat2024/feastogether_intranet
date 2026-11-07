@@ -58,7 +58,7 @@ OAuth callback 與 WebView launch 在上游身分已驗證後被本系統規則�
 
 UI 公開網址 `/ops-access/<入口>` 本身沒有頁面，實際頁面在 `app/ops-access-page/[entryKey]`，不放 `(main)`。proxy 在 RSC／HTML 渲染前先驗來源網路、再以 no-store fetch 向後端驗位置；都有效才 rewrite 到實際頁面並加 Referrer-Policy:no-referrer、X-Robots-Tag:noindex,nofollow、frame-ancestors 'none'（只套維護頁，不影響 WebView 與可嵌入頁）。其餘情況不 rewrite，由 Next 當作不存在的網址回 404：HTML／RSC 與不存在的網址逐位元組相同、不含表單（rewrite 到 `/_not-found` 會多出 `x-middleware-rewrite` 與 `s-maxage` Cache-Control，可被分辨）。頁面以 `connection()` 每次請求渲染，回應 no-store；失效後提交仍由後端拒絕。直接開啟 `/ops-access-page/*` 回 404（rewrite 到 `/_not-found`，標頭與未登入的員工頁相同）。proxy matcher 只排除靜態資源、不列路徑；安全標頭不放 `next.config.ts` 的 `headers()`。錯誤不含上游URL。（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）
 
-成功後清除輸入、replace('/')、清理舊session相關query cache並重新取身分；共用layout對沒有員工資料（`user:null`）的身分顯示後端給的 `displayName` 與登出。Super user 專用的請求、路徑、型別、錯誤碼與訊息只在隱藏頁的 chunk（`features/super-user-login`），共用模組不含 `super_user` 等字面值；帳密錯誤以通用的 mutation `meta.handlesOwnErrors` 避開全站「登入已過期」。（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）027不擅自展示可用業務權限。EmbedBridge遇super actor為mismatch，遵循既有撤銷／要求launch流程，不偽造empId。
+成功後清除輸入、replace('/')、清理舊session相關query cache並重新取身分；共用layout沿驗收系統慣例讓employee與沒有員工資料（`user:null`）的身分使用同一個UserProfile，後者顯示後端給的 `displayName`，兩者從相同選單登出，不建立Super user專用Banner。Super user 專用的請求、路徑、型別、錯誤碼與訊息只在隱藏頁的 chunk（`features/super-user-login`），共用模組不含 `super_user` 等字面值；帳密錯誤以通用的 mutation `meta.handlesOwnErrors` 避開全站「登入已過期」。（使用者 2026-11-06 要求：不得從公開資源看出維護登入存在）027不擅自展示可用業務權限。EmbedBridge遇super actor為mismatch，遵循既有撤銷／要求launch流程，不偽造empId。
 
 ## 來源網路（使用者 2026-11-06 確認）
 

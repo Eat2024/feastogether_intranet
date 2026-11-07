@@ -90,7 +90,7 @@ client/src/features/super-user-login/    # MUI 表單、目前身分顯示
 client/src/api/                          # 相容 session union、login request
 client/src/proxy.ts                      # 隱藏頁 pre-render 驗證及目前 main route 防護相容
 client/src/features/embed/EmbedBridge.tsx # 不以維護者冒充入口網員工
-client/src/components/                  # 必要身分標示／登出，非管理頁
+client/src/components/                  # 共用UserProfile身分顯示／登出，非管理頁
 ```
 
 **Structure Decision**: 延用 feature→service→repository，不建新 workspace。ConsoleModule 自行組必要 config/logging/mysql，不 import 含 S3/mail 的 InfrastructureModule；worker 新 queue 只在 WorkerModule 註冊。重用舊 controller／cookie／錯誤框架，不複製 CKS AuthModule。
@@ -104,7 +104,7 @@ client/src/components/                  # 必要身分標示／登出，非管�
 1. **模型與共用會話**：增量 schema、actor union、SessionService，保留 employee 回應相容；三入口統一成功後替換交易。其餘員工業務在 028 前仍拒絕 super_user。
 2. **維護登入與安全邊界**：環境設定格式驗證、scrypt、DB fingerprint/generation 驗證、Origin／rate limit、entry GET/POST、事件同交易。入口於密碼驗證後交易內重驗，不能把舊頁提交放行。
 3. **維運與輪換**：專用 REPL、初始化、版本啟用、DB 周期鎖、worker cron/startup catch-up、failure retry（同周期冪等）；不在正常 HTTP startup 寫 DB。
-4. **前端最小閉環**：proxy 在頁面渲染前檢查入口，Server Component no-store 再確認；MUI 帳密頁、登入後 replace `/`、身分標示／登出；EmbedBridge actor 分流。無效入口不得讓表單出現在 RSC payload。
+4. **前端最小閉環**：proxy 在頁面渲染前檢查入口，Server Component no-store 再確認；MUI 帳密頁、登入後 replace `/`、employee與Super user共用UserProfile顯示／登出；EmbedBridge actor 分流。無效入口不得讓表單出現在 RSC payload。
 5. **部署及回歸**：三層 log 遮罩、env.example／操作文件、schema apply/revert（僅空測試 DB）、資料保留、登入／輪換／並發／舊上游 regression。
 
 每切片以 spec US 驗收，不把文件原型當成完成；前端會遇到尚未接入 028 的業務 403，需說明階段性限制，不為展示而放寬。

@@ -15,3 +15,13 @@ coverage
 .DS_Store
 
 server/storage
+
+# 規格、文件與 AI agent 設定：build 不需要，避免送進 build context
+specs
+docs
+doc
+.scratch
+.specify
+.agents
+.claude
+**/AGENTS.md

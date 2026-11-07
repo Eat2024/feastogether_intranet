@@ -268,6 +268,7 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_file_objects_signature_field',
           'chk_esign_file_objects_source_owner',
           'chk_esign_files_export_owner',
+          'chk_esign_initiation_jobs_actor',
           'chk_esign_initiation_jobs_completion',
           'chk_esign_initiation_jobs_counts',
           'chk_esign_initiation_jobs_deadline',
@@ -276,6 +277,7 @@ describe('e-sign schema database constraints', () => {
           'chk_esign_initiation_jobs_result',
           'chk_esign_initiation_jobs_stage',
           'chk_esign_initiation_jobs_status',
+          'chk_esign_notification_batches_actor',
           'chk_esign_notification_batches_kind',
           'chk_esign_notification_logs_channel',
           'chk_esign_notification_logs_result',
@@ -321,10 +323,11 @@ describe('e-sign schema database constraints', () => {
           creator: number | null,
           signer: number | null,
           conditionsJson: string | null,
+          actorKind = 'employee',
         ) =>
           ds.query(
-            "INSERT INTO esign_export_jobs (export_type,document_id,created_by_user_id,signer_id,conditions_json,status,scope_description) VALUES (?,1,?,?,?,'completed','範圍')",
-            [type, creator, signer, conditionsJson],
+            "INSERT INTO esign_export_jobs (created_by_actor_kind,export_type,document_id,created_by_user_id,signer_id,conditions_json,status,scope_description) VALUES (?,?,1,?,?,?,'completed','範圍')",
+            [actorKind, type, creator, signer, conditionsJson],
           );
 
         const rejected: Array<
@@ -347,7 +350,7 @@ describe('e-sign schema database constraints', () => {
 
         await insertRecord('excel', 1, null, conditions);
         await insertRecord('pdf', 1, 1, null);
-        await insertRecord('pdf', null, 1, null);
+        await insertRecord('pdf', null, 1, null, 'external_signer');
         await insertRecord('signed_copies_zip', 1, null, null);
         const accepted = await ds.query<Array<{ export_type: string }>>(
           'SELECT export_type FROM esign_export_jobs ORDER BY id',

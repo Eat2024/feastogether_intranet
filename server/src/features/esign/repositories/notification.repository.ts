@@ -1,3 +1,5 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { IsNull } from 'typeorm';
 import { EsignSigner } from '../entities/esign-signer.entity';
 import { Injectable } from '@nestjs/common';
 import { type DeepPartial, type EntityManager, In } from 'typeorm';
@@ -59,12 +61,17 @@ export class NotificationRepository {
 
   findBatchRequest(
     documentId: number,
-    notifiedByUserId: number,
+    actor: Actor,
     requestId: string,
     manager: EntityManager,
   ) {
     return manager.findOne(EsignNotificationBatch, {
-      where: { documentId, notifiedByUserId, requestId },
+      where: {
+        documentId,
+        notifiedByActorKind: actor.kind,
+        notifiedByUserId: actor.kind === 'employee' ? actor.userId : IsNull(),
+        requestId,
+      },
     });
   }
   findBatchPublic(

@@ -18,6 +18,10 @@ import { EsignDocument } from './esign-document.entity';
   'chk_esign_notification_batches_kind',
   "`kind` IN ('invitation','reminder')",
 )
+@Check(
+  'chk_esign_notification_batches_actor',
+  "(`notified_by_actor_kind`='employee' AND `notified_by_user_id` IS NOT NULL) OR (`notified_by_actor_kind` IN ('super_user','system') AND `notified_by_user_id` IS NULL)",
+)
 @Index('uq_esign_notification_batches_public_id', ['publicId'], {
   unique: true,
 })
@@ -110,7 +114,16 @@ export class EsignNotificationBatch {
     nullable: true,
     comment: '通知操作員工 ID',
   })
-  notifiedByUserId?: number;
+  notifiedByUserId?: number | null;
+
+  @Column({
+    name: 'notified_by_actor_kind',
+    type: 'varchar',
+    length: 20,
+    default: 'system',
+    comment: '實際通知操作者種類',
+  })
+  notifiedByActorKind!: 'employee' | 'super_user' | 'system';
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({

@@ -95,6 +95,7 @@ describe('EsignReopeningService', () => {
           active: jest.fn().mockResolvedValue(null),
           activeIdentity: jest.fn().mockResolvedValue(null),
         } as never,
+        { requirePermissions: jest.fn() } as never,
       ),
       new EsignDocumentValidationService(),
       expiry,
@@ -139,7 +140,11 @@ describe('EsignReopeningService', () => {
   }
   it('已到期文件可重新開放，保存原始快照並回傳不含憑證的交易結果', async () => {
     const { service, input, end, next } = setup();
-    const result = await service.reopen(1, 2, input);
+    const result = await service.reopen(
+      1,
+      { kind: 'employee', userId: 2 },
+      input,
+    );
     expect(result).toMatchObject({
       documentId: '1',
       status: 'active',
@@ -155,15 +160,19 @@ describe('EsignReopeningService', () => {
     async (status) => {
       const { service, document, input } = setup();
       document.status = status;
-      await expect(service.reopen(1, 2, input)).rejects.toMatchObject({
-      code: 'ESIGN_DOCUMENT_NOT_REOPENABLE',
-    });
+      await expect(
+        service.reopen(1, { kind: 'employee', userId: 2 }, input),
+      ).rejects.toMatchObject({
+        code: 'ESIGN_DOCUMENT_NOT_REOPENABLE',
+      });
     },
   );
   it('任何待簽者缺固定信箱時拒絕整次補簽，不透露信箱', async () => {
     const { service, signer, input } = setup();
     signer.email = null;
-    await expect(service.reopen(1, 2, input)).rejects.toMatchObject({
+    await expect(
+      service.reopen(1, { kind: 'employee', userId: 2 }, input),
+    ).rejects.toMatchObject({
       code: 'ESIGN_REOPEN_RECIPIENT_UNAVAILABLE',
       response: { details: { signerPublicIds: ['synthetic-signer'] } },
     });
@@ -171,7 +180,7 @@ describe('EsignReopeningService', () => {
   it('內部補簽保留歷史 token 供舊入口識別，不輪替、不用它授權', async () => {
     const { service, signer, input, end, queued } = setup();
     signer.signerType = 'user';
-    await service.reopen(1, 2, input);
+    await service.reopen(1, { kind: 'employee', userId: 2 }, input);
     expect(signer.invitationTokenSha256).toBe('a'.repeat(64));
     expect(signer.email).toBe('employee@example.test');
     expect(signer.invitationExpiresAt).toEqual(end);
@@ -187,7 +196,11 @@ describe('EsignReopeningService', () => {
     signer.email = null;
     signer.invitationTokenSha256 = null;
     signer.invitationExpiresAt = null;
-    const result = await service.reopen(1, 2, input);
+    const result = await service.reopen(
+      1,
+      { kind: 'employee', userId: 2 },
+      input,
+    );
     expect(result.status).toBe('active');
     expect(queued).toEqual([]);
     expect(
@@ -203,7 +216,7 @@ describe('EsignReopeningService', () => {
   });
   it('補簽提交後會建立可追蹤的逐人邀請並入列', async () => {
     const { service, input, persisted, queued } = setup();
-    await service.reopen(1, 2, input);
+    await service.reopen(1, { kind: 'employee', userId: 2 }, input);
     expect(
       persisted.flat().filter((row) => row instanceof EsignNotificationBatch),
     ).toHaveLength(1);
@@ -216,7 +229,9 @@ describe('EsignReopeningService', () => {
     const { service, expiry, document, input } = setup();
     document.status = 'active';
     expect(await expiry.expireByDeadline(1)).toBe(true);
-    await expect(service.reopen(1, 2, input)).resolves.toMatchObject({
+    await expect(
+      service.reopen(1, { kind: 'employee', userId: 2 }, input),
+    ).resolves.toMatchObject({
       status: 'active',
     });
   });
@@ -238,7 +253,7 @@ describe('EsignReopeningService', () => {
         result: 'delivered',
       }),
     );
-    await service.reopen(1, 2, input);
+    await service.reopen(1, { kind: 'employee', userId: 2 }, input);
     expect(oldLogs[0]).toMatchObject({
       result: 'failed',
       errorCode: 'INVITATION_SUPERSEDED',
@@ -266,7 +281,11 @@ describe('EsignReopeningService', () => {
     selectedSigners.push(...frozen);
     const payload = document.signingPayloadJson;
     const hash = document.signingPayloadSha256;
-    const result = await service.reopen(1, 2, input);
+    const result = await service.reopen(
+      1,
+      { kind: 'employee', userId: 2 },
+      input,
+    );
     expect(result.pendingCount).toBe(1);
     expect(queued).toHaveLength(1);
     expect(document).toMatchObject({
@@ -284,7 +303,9 @@ describe('EsignReopeningService', () => {
   it('不存在未簽者時不可補簽', async () => {
     const { service, signer, input } = setup();
     signer.status = 'signed';
-    await expect(service.reopen(1, 2, input)).rejects.toMatchObject({
+    await expect(
+      service.reopen(1, { kind: 'employee', userId: 2 }, input),
+    ).rejects.toMatchObject({
       code: 'ESIGN_DOCUMENT_NOT_REOPENABLE',
     });
   });
@@ -302,14 +323,18 @@ describe('EsignReopeningService', () => {
       signingPayloadJson: payload,
       signingPayloadSha256: payload ? canonicalSha256(payload) : null,
     });
-    await expect(service.reopen(1, 2, input)).rejects.toMatchObject({
+    await expect(
+      service.reopen(1, { kind: 'employee', userId: 2 }, input),
+    ).rejects.toMatchObject({
       code: 'ESIGN_INTEGRITY_FAILED',
     });
   });
   it('快照雜湊不符不可補簽', async () => {
     const { service, document, input } = setup();
     document.signingPayloadSha256 = 'bad';
-    await expect(service.reopen(1, 2, input)).rejects.toMatchObject({
+    await expect(
+      service.reopen(1, { kind: 'employee', userId: 2 }, input),
+    ).rejects.toMatchObject({
       code: 'ESIGN_INTEGRITY_FAILED',
     });
   });

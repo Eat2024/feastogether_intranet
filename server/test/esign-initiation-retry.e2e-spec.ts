@@ -52,6 +52,13 @@ describe('022 失敗恢復與人工重試', () => {
         departmentName: '合成查詢部門',
       })),
     );
+    for (const user of users)
+      await mysql
+        .getManager()
+        .query(
+          "INSERT INTO authorization_user_roles(module_key,user_id,role_id) SELECT 'esign',?,id FROM authorization_roles WHERE role_code='document_creator'",
+          [user.id],
+        );
     cookie = await session(users[0].id);
     otherCookie = await session(users[1].id);
     const source = await PDFDocument.create();
@@ -391,8 +398,14 @@ describe('022 失敗恢復與人工重試', () => {
       await expect(
         ctx.app
           .get(EsignInitiationJobService)
-          .retry(Number(doc), parent.publicId, users[0].id, key, {}),
-      ).rejects.toMatchObject({ code: 'ESIGN_INITIATION_NOT_FOUND' });
+          .retry(
+            Number(doc),
+            parent.publicId,
+            { kind: 'employee', userId: users[0].id },
+            key,
+            {},
+          ),
+      ).rejects.toMatchObject({ code: 'ACCOUNT_DISABLED' });
     } finally {
       await mysql.getManager().update(User, users[0].id, { isActive: true });
     }
@@ -604,6 +617,10 @@ describe('022 失敗恢復與人工重試', () => {
       await manager.query('DELETE FROM auth_sessions WHERE user_id IN (?)', [
         ids,
       ]);
+      await manager.query(
+        'DELETE FROM authorization_user_roles WHERE user_id IN (?)',
+        [ids],
+      );
       await manager.delete(User, ids);
     }
     await closeSecurityE2eApp(ctx);

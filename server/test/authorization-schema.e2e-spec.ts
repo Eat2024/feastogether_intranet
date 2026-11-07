@@ -1,3 +1,4 @@
+import { revertAfter } from './schema-migration.helper';
 import {
   withAuthorizationDatabase,
   createAuthorizationScopeFixtures,
@@ -12,6 +13,7 @@ describe('028 授權資料約束', () => {
       expect(
         await db.query('SELECT COUNT(*) AS count FROM authorization_roles'),
       ).toEqual([{ count: 0 }]);
+      await revertAfter(db, 'EsignDocumentActors1793923201000');
       await db.undoLastMigration(); // 文件 actor migration
       await db.undoLastMigration(); // 授權 schema
       await expect(

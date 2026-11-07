@@ -249,3 +249,29 @@ await authz.assignRoles('esign', {
 - 改以process-scoped `caffeinate -is`定向重跑受影響套件：security 2 suites／8 tests、schema 2 suites／19 tests全綠。其餘套件保留完整執行通過證據；不宣稱合併後曾有單次完整綠燈，09最終整合統一回歸。
 - 文件actor MySQL案例涵蓋NULL-aware CHECK、歷史employee/legacy_unknown回填、document未知最後actor、不可變雜湊/簽署證據保留、up/down/reapply與受保護資料拒絕down。HTTP涵蓋create/manage/read-all矩陣、可信部門與員工覆寫拒絕、原creator/department保留、草稿狀態、備註/欄位/簽署人真actor、被指定user_id不變、撤權建立人canManage=false及role=all。
 - 隔離MySQL `127.0.0.1:13328`、`feastogether_intranet_test_f*`與Redis測試設定僅存ignored檔；沒有操作正式/UAT資料。07/08尚待生命週期與匯出actor遷移，09 readiness前不能宣稱028全業務已切換。
+
+
+## 028-07 生命週期 actor 交接
+
+- 發起／重試／停止／補簽／提醒與工作 latest/poll/issues/input、通知詳情及補簽邀請，全數使用真 Actor 並重核當前 manage 與資源範圍；Super 不繞過狀態、期限、busy、通知節流或證據規則。
+- `EsignLifecycleActors1793923202000`：initiation job 新 created actor kind，employee 必有 user、Super 必為 NULL；通知新增 employee/super_user/system，歷史有 user 回填 employee、無 user 回填 system。新增 CHECK 與禁止破壞 actor/授權稽核的 down；schema.sql 以新隔離庫真實套用後 dump。
+- worker 由持久化 job 建立 actor，沿現有 lease/version/deadline 執行已受理工作；角色撤權不倒退取消，後續 HTTP 一律重新授權。同 job 自動重試／idempotent replay 保留提交者，人工新 job 保存新提交者。佇列只傳 job ID，producer／processor 無須另一份 actor。
+- job.createdBy 與通知 requestedBy 回傳 kind、nullable userId、顯示姓名；client types 同步 nullable，既有姓名顯示即可呈現 Super user，沒有新增 UI。系統通知 requestedBy 延用 null。mapper 的文件 actor 顯示沿06介面，生命週期 DTO 不含確認輸入、租約或憑證。
+- 管理動作更新最後 actor，原 creator/department 與 signing payload 保留。擴充回歸一併修正 softDeleteDraft：以同一次 SQL 保存 actor 與單調版本，避免未來時間版本倒退。
+- 已驗證新 lifecycle 三項（真 HTTP→Bull WorkerModule→poll、撤權、跨 actor 重試）、schema9 suites/48 tests、unit128 suites/1309 tests、root build/lint與client bundle檢查。使用 ignored 測試庫 g／Redis DB7，沒有新 env、dependency、正式資料或部署。完整security32 suites/212 tests全綠（135.3秒），既有initiation鎖／續租／retry／完整性合計48項分輪通過；client test4項通過。08匯出與09最終切換仍需接續。
+
+
+## 028-08 一般匯出與本人副本交接
+
+- 一般 Excel／ZIP 使用真 `Actor`；`export.read` 用於來源／工作／歷史／既有檔下載，`export.create` 用於新產生與 retry，`export.all` 只擴大各 base 能力的資料範圍，不能單獨使用。Excel／ZIP 準備分支分別驗 create／read；檔名寫入亦在交易內重驗 read 與範圍。
+- `exportScope`／`exportDocument` 統一範圍判斷，預設可信員工部門、all 可跨部門；文件 export view、detail.canExport/exportSummary 同樣依目前 actor 判斷。Super 使用一般匯出，不冒用文件建立人。
+- `EsignExportActors1793923203000` 回填有員工為 employee、無員工且 pdf/signer 非空為 external_signer；NULL-aware CHECK 限 Excel/ZIP 為 employee+user 或 super_user+NULL，PDF 為 employee+user 或 external_signer+NULL 且 signer 非空。匯出 user FK 保持 nullable，欄位註解同步。已有 Super 匯出或授權稽核時禁止 down，採前向修復。
+- Worker 保留受理時的 actor，已受理工作繼續處理；poll/retry/download 重新驗目前 actor。DTO 與 client 型別加入 exportedBy.kind；Super 姓名為 Super user，employeeNo/email 為 null。本人 PDF 歷史下載維持內部指派本人條件，Super/他人無旁路，外部 OTP/session 規則未擴權。
+- 真 HTTP 紅→綠包含 read/create/all 分離及 all-only 拒絕、Super Excel、跨部門來源、撤權舊會話、真 Worker finalization/ZIP、HTTP ZIP SHA256 完整性與檔名、本人 PDF/Super/他人拒絕。歷史 seed 依新 actor 契約修正，舊 schema 測試用 migration 界線隔離。
+
+### 028-08 驗證紀錄（整合 73f18f8 後）
+
+- 核心 server unit 128 suites／1309 tests、root build/lint、client test（4項）及 check:bundle 通過；合 07 後 root build/client test/bundle 再驗通過。最後提交 hook 重跑整合 lint/unit。
+- 真 HTTP/worker 定向 6 suites／23 tests 全綠。完整 security 首輪 28/31 suites、202/211 tests，失敗僅舊外部 PDF seed 與舊 migration rollback 界線；整合 07 revertAfter 並補新 actor 後，受影響套件已包含在上述定向全綠。
+- 完整 schema 9/10 suites、48/49 tests，唯一舊 schema-constraints 外部 PDF seed 漏 actor；補 explicit external_signer 後定向 1 suite／3 tests 全綠，其餘 9 suites 保留完整通過證據。沒有宣稱本輪單次完整 security/schema 全綠；09 執行最終整合全套。
+- 最終 schema.sql 由全新短名隔離庫 feastogether_intranet_test_j 套完 25 migrations 後 dump，相對 07 只新增匯出 actor／CHECK／註解，沒有覆蓋 lifecycle 欄位。長名測試庫曾被安全長度檢查拒絕，已改短名；沒有降低保護。測試設定僅在 ignored 檔，沒有操作正式/UAT資料。

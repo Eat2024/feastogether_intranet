@@ -66,6 +66,10 @@ export interface InitiationIssue {
   "(`status` = 'succeeded' AND `stage` = 'completed' AND `error_code` IS NULL) OR (`status` = 'failed' AND `stage` = 'failed' AND `error_code` IS NOT NULL) OR (`status` = 'queued' AND `stage` = 'queued') OR (`status` = 'processing' AND `stage` IN ('resolving','validating','committing'))",
 )
 @Check('chk_esign_initiation_jobs_deadline', '`deadline_at` > `accepted_at`')
+@Check(
+  'chk_esign_initiation_jobs_actor',
+  "(`created_by_actor_kind`='employee' AND `created_by_user_id` IS NOT NULL) OR (`created_by_actor_kind`='super_user' AND `created_by_user_id` IS NULL)",
+)
 @Index('uq_esign_initiation_jobs_public', ['publicId'], { unique: true })
 @Index('uq_esign_initiation_jobs_request', ['documentId', 'requestKey'], {
   unique: true,
@@ -96,10 +100,20 @@ export class EsignInitiationJob extends AuditableEntity {
 
   @Column({
     name: 'created_by_user_id',
+    nullable: true,
     type: 'bigint',
     comment: '原發起者 ID',
   })
-  createdByUserId!: number;
+  createdByUserId!: number | null;
+
+  @Column({
+    name: 'created_by_actor_kind',
+    type: 'varchar',
+    length: 20,
+    default: 'employee',
+    comment: '實際提交操作者種類',
+  })
+  createdByActorKind!: 'employee' | 'super_user';
 
   @Column({
     name: 'request_key',
@@ -320,7 +334,7 @@ export class EsignInitiationJob extends AuditableEntity {
   })
   document?: EsignDocument;
 
-  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => User, { onDelete: 'RESTRICT', nullable: true })
   @JoinColumn({
     name: 'created_by_user_id',
     foreignKeyConstraintName: 'fk_esign_initiation_jobs_creator',

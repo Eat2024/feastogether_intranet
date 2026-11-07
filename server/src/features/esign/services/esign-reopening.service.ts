@@ -1,3 +1,5 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { markDocumentUpdated } from '../helpers/management-actor';
 import { Injectable } from '@nestjs/common';
 import { isEmail } from 'class-validator';
 import type { EntityManager } from 'typeorm';
@@ -32,18 +34,18 @@ export class EsignReopeningService {
     private readonly jobs: EsignJobProducerService,
   ) {}
 
-  async reopen(documentId: number, userId: number, input: ReopenDocumentDto) {
-    await this.policy.assertCreatorNotInitiating(
+  async reopen(documentId: number, actor: Actor, input: ReopenDocumentDto) {
+    await this.policy.assertManagerNotInitiating(
       documentId,
-      userId,
+      actor,
       this.mysql.getManager(),
     );
     const committed = await this.mysql.transaction(async (manager) => {
-      const document = await this.documents.findByIdForUpdate(
+      const document = await this.policy.lockManagedDocument(
         documentId,
+        actor,
         manager,
       );
-      this.policy.checkEsignCreator(document, userId);
       await this.policy.assertNotInitiating(documentId, manager);
       const logs = await this.notifications.findByDocumentForUpdate(
         documentId,
@@ -78,7 +80,13 @@ export class EsignReopeningService {
         );
       await this.expiry.expireLocked(document, signers, now, manager);
       await this.supersedeNotifications(logs, pending, now, manager);
+      for (const signer of pending) {
+        signer.updatedByActorKind = actor.kind;
+        signer.updatedByUserId =
+          actor.kind === 'employee' ? actor.userId : null;
+      }
       await this.rotatePendingInvitations(pending, next, manager);
+      markDocumentUpdated(document, actor);
       await this.saveReopenedDocument(document, next, manager);
       const batch = await this.notifications.saveBatch(
         this.notifications.createBatch(
@@ -87,7 +95,8 @@ export class EsignReopeningService {
             kind: 'invitation',
             filterType: 'external_invitation',
             targetCount: pending.length,
-            notifiedByUserId: userId,
+            notifiedByActorKind: actor.kind,
+            notifiedByUserId: actor.kind === 'employee' ? actor.userId : null,
           },
           manager,
         ),

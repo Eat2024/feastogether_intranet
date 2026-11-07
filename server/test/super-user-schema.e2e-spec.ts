@@ -306,7 +306,9 @@ describe('Spec 027 Super user schema migration', () => {
         expect(
           (await ds.driver.createSchemaBuilder().log()).upQueries.filter(
             (query) =>
-              !/`esign_(documents|document_fields|signers)`/.test(query.query),
+              !/`esign_(documents|document_fields|signers|initiation_jobs|notification_batches|export_jobs)`/.test(
+                query.query,
+              ),
           ),
         ).toEqual([]);
       } finally {
@@ -490,7 +492,9 @@ describe('Spec 027 Super user schema migration', () => {
         expect(
           (await ds.driver.createSchemaBuilder().log()).upQueries.filter(
             (query) =>
-              !/`esign_(documents|document_fields|signers)`/.test(query.query),
+              !/`esign_(documents|document_fields|signers|initiation_jobs|notification_batches|export_jobs)`/.test(
+                query.query,
+              ),
           ),
         ).toEqual([]);
       } finally {

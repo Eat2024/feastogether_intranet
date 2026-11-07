@@ -322,10 +322,13 @@ export class EsignDocumentQueryService {
     };
   }
 
-  reopeningInvitations(documentId: number, userId: number) {
+  reopeningInvitations(documentId: number, actor: Actor) {
     return this.mysql.transaction(async (manager) => {
-      const document = await this.documents.findById(documentId, manager);
-      this.policy.checkEsignCreator(document, userId);
+      const document = await this.policy.manageableDocument(
+        await this.documents.findById(documentId, manager),
+        actor,
+        manager,
+      );
       const signers = await this.signers.findByDocument(documentId, manager);
       const now = new Date();
       const summary = this.mapper.documentSummary(

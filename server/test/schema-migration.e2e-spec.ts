@@ -526,7 +526,7 @@ describe('e-sign schema migrations', () => {
     ],
     [
       'pdf',
-      "INSERT INTO esign_export_jobs (public_id,export_type,document_id,created_by_user_id,signer_id,status,scope_description,record_count,completed_at) VALUES ('00000000-0000-4000-8000-000000000035','pdf',1,NULL,1,'completed','外部（external@example.test）',1,NOW(6))",
+      "INSERT INTO esign_export_jobs (created_by_actor_kind,public_id,export_type,document_id,created_by_user_id,signer_id,status,scope_description,record_count,completed_at) VALUES ('external_signer','00000000-0000-4000-8000-000000000035','pdf',1,NULL,1,'completed','外部（external@example.test）',1,NOW(6))",
     ],
   ])(
     '已有 %s 紀錄時，匯出紀錄 migration 在任何 DDL 前拒絕回滾',
@@ -589,6 +589,7 @@ describe('e-sign schema migrations', () => {
           (await dataSource.driver.createSchemaBuilder().log()).upQueries,
         ).toEqual([]);
 
+        await revertAfter(dataSource, 'EsignDocumentActors1793923201000');
         await dataSource.undoLastMigration(); // 文件 actor
         await dataSource.undoLastMigration(); // 授權 schema
         expect(await listBusinessTables(dataSource, database)).toEqual(

@@ -23,6 +23,7 @@ export interface EsignInitiationListSummary {
 
 /** 背景發起受理回應，與正式文件詳情不同。 */
 export interface EsignInitiationJob {
+  createdBy: { kind: 'employee' | 'super_user'; userId: string | null; name: string };
   jobId: string;
   documentId: string;
   status: 'queued' | 'processing' | 'succeeded' | 'failed';
@@ -263,7 +264,7 @@ export interface EsignNotificationBatchSummary {
   batchId: string;
   kind: 'invitation' | 'reminder';
   status: 'queued' | 'processing' | 'completed' | 'partial_failed' | 'failed' | 'unknown';
-  requestedBy: { userId: string; name: string } | null;
+  requestedBy: { kind: 'employee' | 'super_user'; userId: string | null; name: string } | null;
   selectedCount: number;
   /** 受理寄送的人數 */
   queuedCount: number;

@@ -348,9 +348,11 @@ export class EsignDraftService {
         actor,
         manager,
       );
-      document.deletedAt = new Date();
       markDocumentUpdated(document, actor);
-      await this.documents.save(document, manager);
+      await this.documents.softDeleteDraft(document.id, new Date(), manager, {
+        updatedByActorKind: document.updatedByActorKind,
+        updatedByUserId: document.updatedByUserId,
+      });
     });
   }
 

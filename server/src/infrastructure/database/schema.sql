@@ -285,7 +285,7 @@ CREATE TABLE `esign_export_jobs` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '匯出工作流水號',
   `export_type` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '匯出類型',
   `document_id` bigint DEFAULT NULL COMMENT '文件 ID',
-  `created_by_user_id` bigint DEFAULT NULL COMMENT '建立員工 ID，NULL 為外部簽署人本人下載',
+  `created_by_user_id` bigint DEFAULT NULL COMMENT '匯出員工 ID，NULL 為 Super user 或外部簽署人',
   `signer_id` bigint DEFAULT NULL COMMENT '單人副本的簽署人',
   `conditions_json` json DEFAULT NULL COMMENT 'Excel 匯出條件',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending' COMMENT '工作狀態',
@@ -309,6 +309,7 @@ CREATE TABLE `esign_export_jobs` (
   `next_attempt_at` datetime(6) DEFAULT NULL COMMENT '再次排入時間',
   `staging_json` json DEFAULT NULL COMMENT '暫存成果位置',
   `download_file_name` varchar(1024) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '首次下載提供的檔名快照，NULL 為尚未記錄',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'employee' COMMENT '實際匯出操作者種類',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_export_jobs_public_id` (`public_id`),
   KEY `idx_esign_export_jobs_document_id` (`document_id`),
@@ -329,7 +330,7 @@ CREATE TABLE `esign_export_jobs` (
   CONSTRAINT `fk_esign_export_jobs_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_export_jobs_signer` FOREIGN KEY (`signer_id`) REFERENCES `esign_signers` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_export_jobs_user` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `chk_esign_export_jobs_record_type` CHECK ((((`export_type` <> _utf8mb4'excel') or ((`conditions_json` is not null) and (`created_by_user_id` is not null) and (`signer_id` is null))) and ((`export_type` <> _utf8mb4'pdf') or ((`signer_id` is not null) and (`conditions_json` is null))) and ((`export_type` in (_utf8mb4'excel',_utf8mb4'pdf')) or ((`created_by_user_id` is not null) and (`signer_id` is null) and (`conditions_json` is null)))))
+  CONSTRAINT `chk_esign_export_jobs_record_type` CHECK ((((`export_type` = _utf8mb4'pdf') and (`signer_id` is not null) and (`conditions_json` is null) and (((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` = _utf8mb4'external_signer') and (`created_by_user_id` is null)))) or ((`export_type` in (_utf8mb4'excel',_utf8mb4'signed_copies_zip')) and (`signer_id` is null) and (((`export_type` = _utf8mb4'excel') and (`conditions_json` is not null)) or ((`export_type` = _utf8mb4'signed_copies_zip') and (`conditions_json` is null))) and (((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` = _utf8mb4'super_user') and (`created_by_user_id` is null))))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='匯出工作';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_file_objects`;
@@ -386,7 +387,7 @@ CREATE TABLE `esign_initiation_jobs` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '工作流水號',
   `public_id` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '工作公開 UUID',
   `document_id` bigint NOT NULL COMMENT '文件 ID',
-  `created_by_user_id` bigint NOT NULL COMMENT '原發起者 ID',
+  `created_by_user_id` bigint DEFAULT NULL COMMENT '原發起者 ID',
   `request_key` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '冪等請求 UUID',
   `request_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '正規化請求 SHA256',
   `parent_job_id` bigint DEFAULT NULL COMMENT '人工重試來源工作 ID',
@@ -414,6 +415,7 @@ CREATE TABLE `esign_initiation_jobs` (
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'employee' COMMENT '實際提交操作者種類',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_initiation_jobs_public` (`public_id`),
   UNIQUE KEY `uq_esign_initiation_jobs_request` (`document_id`,`request_key`),
@@ -427,6 +429,7 @@ CREATE TABLE `esign_initiation_jobs` (
   CONSTRAINT `fk_esign_initiation_jobs_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_initiation_jobs_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_initiation_jobs_parent` FOREIGN KEY (`parent_job_id`) REFERENCES `esign_initiation_jobs` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_initiation_jobs_actor` CHECK ((((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` = _utf8mb4'super_user') and (`created_by_user_id` is null)))),
   CONSTRAINT `chk_esign_initiation_jobs_completion` CHECK ((((`status` in (_utf8mb4'queued',_utf8mb4'processing')) and (`completed_at` is null)) or ((`status` in (_utf8mb4'succeeded',_utf8mb4'failed')) and (`completed_at` is not null)))),
   CONSTRAINT `chk_esign_initiation_jobs_counts` CHECK (((`total_count` > 0) and (`processed_count` >= 0) and (`processed_count` <= `total_count`) and (`attempt_count` between 0 and 3) and (`issue_count` >= 0))),
   CONSTRAINT `chk_esign_initiation_jobs_deadline` CHECK ((`deadline_at` > `accepted_at`)),
@@ -451,6 +454,7 @@ CREATE TABLE `esign_notification_batches` (
   `kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'invitation' COMMENT '初邀或催簽',
   `request_id` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '催簽請求 UUID',
   `request_payload_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '正規化請求雜湊',
+  `notified_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '實際通知操作者種類',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_notification_batches_public_id` (`public_id`),
   UNIQUE KEY `uq_esign_notification_batches_request` (`document_id`,`notified_by_user_id`,`request_id`),
@@ -459,6 +463,7 @@ CREATE TABLE `esign_notification_batches` (
   KEY `fk_esign_notification_batches_user` (`notified_by_user_id`),
   CONSTRAINT `fk_esign_notification_batches_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_notification_batches_user` FOREIGN KEY (`notified_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_notification_batches_actor` CHECK ((((`notified_by_actor_kind` = _utf8mb4'employee') and (`notified_by_user_id` is not null)) or ((`notified_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system')) and (`notified_by_user_id` is null)))),
   CONSTRAINT `chk_esign_notification_batches_kind` CHECK ((`kind` in (_utf8mb4'invitation',_utf8mb4'reminder')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知批次';
 /*!40101 SET character_set_client = @saved_cs_client */;

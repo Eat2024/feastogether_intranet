@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test scripts/allowed-networks.test.mjs",
+    "test": "node --experimental-strip-types --test scripts/*.test.mjs",
     "check:bundle": "node scripts/check-public-bundle.mjs"
   },
   "dependencies": {

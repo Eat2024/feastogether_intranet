@@ -2,7 +2,8 @@
 
 // Super user 帳密登入表單：錯誤都在表單內顯示（meta.handlesOwnErrors：帳密錯誤的 401 不是登入過期，不開全站提示）。
 // 成功後整頁 replace 到根路徑：清掉入口網址的瀏覽紀錄與舊會話的 query 快取，重新讀取目前身分。
-import { getSession } from '@/api/requests';
+import { getMe } from '@/api/requests';
+import { clearInternalIdentityCache } from '@/features/navigation/authorization-cache';
 import { getErrorCode, getErrorMessage } from '@/lib/apiError';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
@@ -10,7 +11,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useState, type FormEvent } from 'react';
 import { createSuperUserSession } from './api';
@@ -23,8 +24,8 @@ async function loginErrorMessage(error: unknown): Promise<string | null> {
   if (code === 'AUTH_SUPER_USER_CREDENTIALS_INVALID') return '帳號或密碼錯誤';
   if (code === 'AUTH_SESSION_REPLACED') {
     // 同一個舊會話已被另一個登入取代（例如另一個分頁）：重新讀取目前身分，已是 Super user 就直接進入
-    const current = await getSession().catch(() => null);
-    if (current?.actor.kind === 'super_user') {
+    const current = await getMe().catch(() => null);
+    if (current?.user === null) {
       enterRoot();
       return null;
     }
@@ -37,15 +38,17 @@ async function loginErrorMessage(error: unknown): Promise<string | null> {
 }
 
 export default function SuperUserLoginForm({ entryKey }: { entryKey: string }) {
+  const queryClient = useQueryClient();
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const login = useMutation({
     mutationFn: createSuperUserSession,
     meta: { handlesOwnErrors: true },
-    onSuccess: () => {
+    onSuccess: async () => {
       setAccount('');
       setPassword('');
+      await clearInternalIdentityCache(queryClient);
       enterRoot();
     },
     onError: async (cause) => setError(await loginErrorMessage(cause)),

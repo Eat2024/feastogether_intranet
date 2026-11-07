@@ -2,8 +2,10 @@
 // 與後端 server/src/config/config.path.ts 及各 controller 的路徑對應。
 // 員工 session 由外部流程建立（以 HttpOnly cookie 帶入）；這裡只有共用的身分查詢與登出。
 export const endpoints = {
-  // 目前身分與登出（server/src/features/auth/controllers/auth.controller.ts）
+  // 登出（server/src/features/auth/controllers/auth.controller.ts）
   AUTH_SESSION: 'auth/session',
+  // 目前登入者與後端解析後的有效能力（不含角色）
+  AUTH_ME: 'auth/me',
   // 電子簽文件（server/src/features/esign/controllers/documents.controller.ts）
   ESIGN_DOCUMENTS: 'esign/documents',
   ESIGN_DOCUMENT: (id: string) => `esign/documents/${encodeURIComponent(id)}`,

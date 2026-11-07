@@ -5,7 +5,7 @@ import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
-import { getNavItemHref, isRouteActive, type NavItem } from "./services";
+import { getNavItemHref, isNavItemActive, type NavItem } from "./services";
 
 type Props = {
   items: NavItem[];
@@ -23,7 +23,8 @@ export default function SidebarMiniNavigation({ items, pathname }: Props) {
             key={item.key}
             component={Link}
             href={getNavItemHref(item)}
-            selected={isRouteActive(pathname, item.href)}
+            selected={isNavItemActive(pathname, item)}
+            aria-current={isNavItemActive(pathname, item) ? "page" : undefined}
             sx={{
               flexDirection: "column",
               alignItems: "center",

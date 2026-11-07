@@ -1,11 +1,14 @@
 import { queryKeys } from '@/api/query-keys';
-import { getSession } from '@/api/requests';
+import { queryOptions } from '@/api/query-options';
+import { getMe } from '@/api/requests';
 import { useQuery } from '@tanstack/react-query';
 
-/** 目前身分（員工或其他身分）；會話失效的 401 照常交給全站登入過期提示 */
-export function useGetSessionQuery() {
+/** 目前登入者與有效能力；每次聚焦、掛載或切換內部路由都重新驗證。 */
+export function useGetMeQuery(pathname: string) {
   return useQuery({
-    queryKey: [queryKeys.AUTH_SESSION],
-    queryFn: getSession,
+    queryKey: [queryKeys.AUTH_ME, pathname],
+    queryFn: ({ signal }) => getMe(signal),
+    ...queryOptions.useGetMeQuery,
+    meta: { suppressGlobalErrorToast: true },
   });
 }

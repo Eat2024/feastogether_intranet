@@ -18,13 +18,14 @@ export default function SidebarNavigation({ items, pathname }: Props) {
   return (
     <List component="nav" aria-label="功能選單" sx={{ color: "common.white" }}>
       {items.map((item) =>
-        item.children?.length ? (
+        item.kind === "group" ? (
           <SidebarMenuGroup key={item.key} item={item} pathname={pathname} />
         ) : (
           <ListItemButton
             key={item.key}
             component={Link}
             href={item.href}
+            aria-current={isRouteActive(pathname, item.href) ? "page" : undefined}
             selected={isRouteActive(pathname, item.href)}
             sx={(theme) => ({
               borderBottom: "1px solid",

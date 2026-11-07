@@ -7,7 +7,7 @@
 
 ## Content Quality
 
-- [x] 未指定技術實作；集中 routes／menu 是使用者確認的設定方式。
+- [x] `/api/auth/me` 與集中 routes／menu 是使用者確認的公開契約／設定方式；其餘技術實作留在 plan。
 - [x] 聚焦可見導覽與權限一致的使用者價值。
 - [x] 使用者故事與選單行為可直接理解。
 - [x] 模板必要章節已完成。
@@ -35,4 +35,5 @@
 - 已明定獨立項目也過濾，避免搬入 CKS 的無條件顯示例外。
 - 前端重新驗證時更新不等同後端即時撤權；兩份 spec 的保證已區分。
 - 未讀取能力前不先顯示全選單，切換身分不沿用快取。
+- 2026-11-07 重驗：前端不取得role，只按`moduleKey`精確比對`auth/me`的effective permissions；跨module fixture不加入正式選單。
 - 未執行功能測試；extensions.yml 不存在，無前後置 hooks。

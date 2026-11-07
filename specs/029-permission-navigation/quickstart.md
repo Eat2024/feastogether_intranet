@@ -1,28 +1,30 @@
 # Quickstart：029實作後驗證
 
-這是驗證指南，新增前端程式尚未實作；目前未執行lint/build、瀏覽器或真實API測試。
+這是驗證指南。前端程式與純函式測試已實作；瀏覽器角色矩陣及真實API情境仍待環境驗證。
 
 ## 前置與檢查
 
 - 027與028已實作，備妥一般同仁、具有匯出能力員工、電子簽管理員與Super user測試身分；不在文件／快照保存個資、入口或cookie。
-- 028的GET /api/me/authorization回應符合[消費契約](contracts/authorization-consumer.md)，後端實際執行功能及資料授權；無後端時只能驗呈現，不能宣稱本規格全數通過。
+- 028的GET /api/auth/me回應符合[消費契約](contracts/authorization-consumer.md)，後端實際執行功能及資料授權；無後端時只能驗呈現，不能宣稱本規格全數通過。
 - 使用原pnpm workspace與client Node版本，不新增測試框架或lockfile。
 
 ```bash
 pnpm -C client lint
+pnpm -C client test
 pnpm -C client build
+pnpm -C client check:bundle
 pnpm -C client dev
 ```
 
-client沒有test script，不宣稱跑自動前端測試。若實作只改client，用client檢查；若跨後端／root變更才加對應server測試與root build/lint。實際後端越權驗證沿028的隔離測試資料庫，不對正式資料做測試。
+client 的 Node 內建 test runner涵蓋純filter，不宣稱涵蓋元件與瀏覽器整合。若實作只改client，用client檢查；若跨後端／root變更才加對應server測試與root build/lint。實際後端越權驗證沿028的隔離測試資料庫，不對正式資料做測試。
 
 ## A. 集中設定與可見性（US1、US4）
 
-按[選單矩陣](contracts/navigation.md)登入各角色，確認三個原路徑、名稱、順序、圖示與選取狀態。子路徑如/forms/123選電子簽列表，/forms-other不應誤選。
+按[選單矩陣](contracts/navigation.md)登入各角色，確認三個原路徑、名稱、順序、圖示與選取狀態。子路徑如 `/esign/forms/123` 選電子簽列表，`/esign/forms-other` 不應誤選。
 
 在受控開發fixture驗證：不同module同尾名權限不放行；多需求只具一個時隱藏；無children的獨立link缺權限隱藏；group全空隱藏；未知／空需求／跨module／重複key設定可定位且不放行。只用fixture驗group，不把虛構功能加入正式menu。
 
-調整集中label或順序後SideNav隨之改變，不在元件重複改字串。確認filter未修改原陣列或能力回應。現有SideNav是permanent模式，不需要為驗收新增收合UI。
+調整集中label或順序後Sidebar兩種模式隨之改變，不在元件重複改字串。確認filter未修改原陣列或能力回應，並回歸既有展開／收合行為。
 
 ## B. Super user與身分切換（US2）
 
@@ -42,7 +44,7 @@ Super user顯示全部三個真實業務項目，不出現角色管理、員工�
 
 ## D. iframe、可及性與直接存取（US1、US4）
 
-從既有入口網嵌入，SideNav持續由hide-when-embedded隱藏，不能出現重複導覽；新分頁正常呈現。EmbedBridge的origin／parent驗證與launch-required不改。
+從既有入口網嵌入，Sidebar持續由hide-when-embedded隱藏，不能出現重複導覽；新分頁正常呈現。EmbedBridge的origin／parent驗證與launch-required不改。
 
 鍵盤可依序操作可見links與重試按鈕，焦點清楚、current page可辨識；loading／error／empty有可讀狀態。無任何可見功能時不顯示空群組。
 
@@ -50,4 +52,6 @@ Super user顯示全部三個真實業務項目，不出現角色管理、員工�
 
 ## 紀錄結果
 
-後續implementation記錄實際lint/build結果、角色矩陣、請求次數、延遲舊回應、401/403與iframe驗證，以及未完成項。可以附遮蔽敏感值的截圖／network摘要，不附真實隱藏入口或session。本plan只完成文件設計與靜態一致性檢查。
+2026-11-07 自動驗證：`pnpm -C client test` 8 tests passed；`lint`、`build`、`check:bundle` 均通過。測試包含同 module 精確比對、多能力 AND、未知／缺漏設定、空群組、輸入不變與重複 key fail-closed。
+
+尚未在本機建立真實員工／Super user session 執行瀏覽器角色矩陣、聚焦競態、iframe 與 401／403 網路驗收；這些項目不宣稱完成。後續可附遮蔽敏感值的截圖／network摘要，不附真實隱藏入口或session。

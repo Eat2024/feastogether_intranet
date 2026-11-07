@@ -6,7 +6,7 @@
 
 ## Summary
 
-保留現有 permanent SideNav與三個既有路徑，把路徑／名稱、選單結構及權限需求集中設定。從028的本人有效能力取得actor與module permissions，經單一純函式過濾群組／獨立項目；只在有效且完成重新驗證的快照下顯示業務連結。沿既有 API/TanStack Query 層實作專用能力查詢與失效處理，不新增後端endpoint、資料表、管理頁或收合側欄。
+保留現有 permanent Sidebar、展開／收合模式與三個既有路徑，把路徑／名稱、選單結構及權限需求集中設定。從028的`auth/me`取得目前session view與module permissions，經單一純函式過濾群組／獨立項目；只在有效且完成重新驗證的快照下顯示業務連結。沿既有 API/TanStack Query 層實作目前登入者查詢與失效處理，不新增後端endpoint、資料表或管理頁。
 
 027的隱藏登入不列入設定；Super user由028回傳全部能力，不使用前端wildcard。後端仍是權限真相，前端隱藏不取代028的授權。
 
@@ -18,7 +18,7 @@
 
 **Storage**: 只有程序內query快照及程式設定；無DB、migration、localStorage、sessionStorage或新cookie。
 
-**Testing**: client無test script／框架；lint、build與實際瀏覽器驗收，後端越權用028既有Jest/e2e責任驗證。對query取消、401／403及身分切換記錄實際網路結果，不以靜態mock宣稱完成。
+**Testing**: 沿用 client 的 Node 內建 test runner 增加純函式測試；另執行lint、build、bundle檢查與實際瀏覽器驗收，後端越權用028既有Jest/e2e責任驗證。對query取消、401／403及身分切換記錄實際網路結果，不以靜態mock宣稱完成。
 
 **Target Platform**: 現有瀏覽器與Next client、同源API rewrite；維持iframe嵌入隱藏側欄。
 
@@ -28,7 +28,7 @@
 
 **Constraints**: 僅側邊導覽及必要能力／身分快取銜接，不修改全頁button、業務路由授權、OAuth頁、角色管理頁或未完成原型。
 
-**Scale/Scope**: 初始3個獨立項目；資料型別支援一層分組，空群組過濾；維持現行固定寬度permanent Drawer，不新增mini／toggle模式。
+**Scale/Scope**: 初始3個獨立項目；資料型別支援一層分組，空群組過濾；維持現行 permanent Drawer 的展開／mini模式。
 
 ## Constitution Check
 
@@ -65,25 +65,24 @@ specs/029-permission-navigation/
 ### Source Code (implementation target，未建立)
 
 ```text
-client/src/constants/routes.ts                 # 既有路徑與名稱
-client/src/constants/menu.ts                   # link/group設定與已知導覽能力
+client/src/components/sidebar/services.ts      # 集中路徑、link/group設定與已知導覽能力
 client/src/features/navigation/
   filter-visible-menu.ts                      # 純過濾／設定驗證，無HTTP
   useVisibleMenuItems.ts                      # pathname、能力query與呈現狀態
   authorization-cache.ts                      # 精確cancel/remove/invalidate helpers
 client/src/api/
   endpoints.ts + query-keys.ts + query-options.ts
-  types/authorization.ts + types/index.ts
-  requests/authorization.ts + requests/index.ts
-  queries/authorization.ts + queries/index.ts
-client/src/components/SideNav.tsx              # 保留MUI/theme/embedded class，改吃可見資料
+  types/auth.ts + types/index.ts
+  requests/auth.ts + requests/index.ts
+  queries/auth.ts + queries/index.ts
+client/src/components/sidebar/                 # 保留現有展開/收合、MUI/theme/embedded class，改吃可見資料
 client/src/components/providers/ReactQueryProvider.tsx # 業務403單次能力失效，保留027登入401例外
 client/src/features/super-user-login/           # 僅027成功／登出快取銜接，不改登入契約
 ```
 
 實作時以027最後實際檔案位置接入其身分清理，不能另建立第二份login或session provider。root layout、proxy、EmbedBridge與globals.css原則上只回歸驗證；若需快取銜接，僅最小修改，不變更其認證／訊息契約。
 
-**Structure Decision**: routes/menu為前端共用設定；navigation持有可見性純邏輯與hook；API層維持既有責任。用SideNav自身取得能力，不新增全站PermissionProvider來複製後端角色模型。
+**Structure Decision**: 既有 sidebar services 為前端共用設定；navigation持有可見性純邏輯與hook；API層維持既有責任。用Sidebar自身取得能力，不新增全站PermissionProvider來複製後端角色模型。
 
 ## Phase 0 結論
 
@@ -92,21 +91,21 @@ client/src/features/super-user-login/           # 僅027成功／登出快取銜
 ## Phase 1 設計與切片
 
 1. **契約與設定**（US4）：宣告目前能力DTO、三路徑與明確permission mapping；以link/group union避免空children被無條件顯示。設定鍵缺漏／未知／跨module不放行。
-2. **能力與純過濾**（US1）：GET me/authorization，轉精確module permission集合；多需求採AND，空群組隱藏，super與employee使用同filter。
-3. **SideNav呈現**（US1、US2）：保持現有項目順序、圖示、theme與selected行為，增加載入／重試／空狀態；所有iframe隱藏規則保留。
+2. **能力與純過濾**（US1）：GET auth/me，沿用session actor/user/expiresAt並轉精確module permission集合；不接收roles，多需求採AND，空群組隱藏，super與employee使用同filter。
+3. **Sidebar呈現**（US1、US2）：保持現有項目順序、圖示、theme與selected行為，增加載入／重試／空狀態；所有iframe隱藏規則保留。
 4. **快取與錯誤**（US2、US3）：專用query設定、pathname key、AbortSignal、切身分cancel/remove，失敗不回用舊data；只對內部業務AUTHORIZATION_DENIED失效一次，排除本人能力query避免循環。
 5. **整合驗收**：028實際後端、027身分切換、直接越權、聚焦／跨路徑、iframe及隱藏網址不出現在資料；無後端實作時標示未驗證，不用mock宣稱通過。
 
 ## 契約與遷移
 
-- 唯一消費endpoint為028的GET /api/me/authorization；不複製一份OpenAPI，引用[028正式契約](../028-module-authorization/contracts/openapi.json)。三個mapping見navigation契約。
-- 不改舊API payload與session cookie。新增前端types只保存actor＋modules；現有user資料由027原契約負責。
+- 唯一消費endpoint為028的GET /api/auth/me；不複製一份OpenAPI，引用[028正式契約](../028-module-authorization/contracts/openapi.json)。三個mapping見navigation契約。
+- 不改session cookie或既有`auth/session`基礎流程。`auth/me`前端type沿用027的actor／user／expiresAt並加入modules，不包含任何role資料。
 - 初始化能力不從原NAV_ITEMS或角色名稱fallback；部署029前028必須可用。後端更新但前端尚未上029時，原選單可能仍顯示，API照樣拒絕；不能因此暫停後端檢查。
 - 029回退只還原導覽呈現，不回退028的後端權限；若能力契約故障顯示錯誤／重試，不全域放行。
 
 ## Complexity Tracking
 
-無憲章違反。專用query覆寫是因現行五分鐘快取與不focus刷新不能滿足規格；窄cache helper只處理實際登入切換與403，不新增跨分頁同步／推播／permission provider framework。
+無憲章違反。`auth/me`專用query覆寫是因現行五分鐘快取與不focus刷新不能滿足規格；窄cache helper只處理實際登入切換與403，不新增跨分頁同步／推播／permission provider framework。
 
 ## 驗證狀態
 

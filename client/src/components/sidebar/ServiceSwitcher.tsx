@@ -13,18 +13,19 @@ import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
-import { SERVICES, getServiceHomeHref, type ServiceDefinition } from "./services";
+import { getServiceHomeHref, type ServiceDefinition } from "./services";
 
 type Props = {
   current: ServiceDefinition;
+  services: ServiceDefinition[];
   /** 側邊欄收合時只顯示服務圖示 */
   compact: boolean;
 };
 
 /** 側邊欄頂端的服務切換；只有一個服務時只顯示名稱，不提供選單 */
-export default function ServiceSwitcher({ current, compact }: Props) {
+export default function ServiceSwitcher({ current, services, compact }: Props) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const switchable = SERVICES.length > 1;
+  const switchable = services.length > 1;
   const Icon = current.icon;
 
   const openMenu = (event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
@@ -81,7 +82,7 @@ export default function ServiceSwitcher({ current, compact }: Props) {
           anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
           slotProps={{ paper: { sx: { minWidth: 200 } } }}
         >
-          {SERVICES.map((service) => {
+          {services.map((service) => {
             const ServiceIcon = service.icon;
             const selected = service.key === current.key;
             return (

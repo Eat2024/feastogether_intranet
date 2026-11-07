@@ -21,5 +21,16 @@ export interface OtherActorSession {
   expiresAt: string;
 }
 
-/** GET auth/session 的回應 */
+/** proxy／iframe 身分比對仍使用輕量 auth/session；一般畫面使用 AuthMe。 */
 export type AuthSession = EmployeeSession | OtherActorSession;
+
+/** 後端已解析且依 module 分組的有效能力；不包含角色資料。 */
+export interface AuthorizationModule {
+  moduleKey: string;
+  permissions: string[];
+}
+
+/** GET auth/me 的共用目前登入者契約。 */
+export type AuthMe = (EmployeeSession | OtherActorSession) & {
+  modules: AuthorizationModule[];
+};

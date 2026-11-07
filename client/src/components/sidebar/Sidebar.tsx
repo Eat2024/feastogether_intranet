@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
+import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 import { alpha, type Theme } from "@mui/material/styles";
 import MenuIcon from "@mui/icons-material/Menu";
 import ServiceSwitcher from "./ServiceSwitcher";
@@ -12,6 +16,7 @@ import SidebarMiniNavigation from "./SidebarMiniNavigation";
 import SidebarNavigation from "./SidebarNavigation";
 import { SIDEBAR_OPEN_COOKIE } from "./constants";
 import { getCurrentService } from "./services";
+import { useVisibleNavigation } from "@/features/navigation/useVisibleNavigation";
 
 const SIDEBAR_WIDTH_OPEN = 240;
 // 收合寬度為 theme.spacing(SIDEBAR_SPACING_CLOSED)，需容納圖示下方的短標籤
@@ -36,7 +41,10 @@ type Props = {
 export default function Sidebar({ defaultOpen }: Props) {
   const pathname = usePathname();
   const [open, setOpen] = useState(defaultOpen);
-  const service = getCurrentService(pathname);
+  const navigation = useVisibleNavigation(pathname);
+  const service = navigation.status === "ready"
+    ? getCurrentService(pathname, navigation.services)
+    : undefined;
 
   const handleToggle = () => {
     const next = !open;
@@ -86,13 +94,36 @@ export default function Sidebar({ defaultOpen }: Props) {
           borderBottomColor: alpha(theme.palette.common.white, 0.12),
         })}
       >
-        <ServiceSwitcher current={service} compact={!open} />
+        {service ? (
+          <ServiceSwitcher current={service} services={navigation.services} compact={!open} />
+        ) : <Box sx={{ flex: 1 }} />}
         {toggle}
       </Box>
-      {open ? (
+      {service && (open ? (
         <SidebarNavigation items={service.menu} pathname={pathname} />
       ) : (
         <SidebarMiniNavigation items={service.menu} pathname={pathname} />
+      ))}
+      {open && navigation.status === "loading" && (
+        <Stack direction="row" spacing={1.5} sx={{ p: 2, alignItems: "center" }}>
+          <CircularProgress size={18} color="inherit" />
+          <Typography variant="description" color="inherit">載入可用功能中…</Typography>
+        </Stack>
+      )}
+      {open && navigation.status === "error" && (
+        <Stack spacing={1.5} sx={{ p: 2, alignItems: "flex-start" }}>
+          <Typography variant="description" color="inherit">
+            {navigation.offline ? "目前離線，重新連線後再試" : "無法取得功能權限，請重試"}
+          </Typography>
+          <Button color="inherit" variant="outlined" size="small" onClick={navigation.retry} loading={navigation.retrying}>
+            重新取得
+          </Button>
+        </Stack>
+      )}
+      {open && navigation.status === "empty" && (
+        <Typography variant="description" color="inherit" sx={{ p: 2 }}>
+          目前沒有可使用的功能
+        </Typography>
       )}
     </Drawer>
   );

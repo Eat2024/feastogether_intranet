@@ -55,7 +55,7 @@ export class EsignInitiationJobService {
     await this.preflightAcceptance(documentId, actor, requestKey);
     const accepted = await this.mysql
       .transaction(async (manager) => {
-        const document = await this.access.lockManagedDocument(
+        const document = await this.access.lockManagedInitiationAccess(
           documentId,
           actor,
           manager,
@@ -142,7 +142,7 @@ export class EsignInitiationJobService {
     await this.preflightAcceptance(documentId, actor, requestKey, publicId);
     const accepted = await this.mysql
       .transaction(async (manager) => {
-        const document = await this.access.lockManagedDocument(
+        const document = await this.access.lockManagedInitiationAccess(
           documentId,
           actor,
           manager,
@@ -338,11 +338,11 @@ export class EsignInitiationJobService {
     }
   }
 
-  /** 查詢仍核對目前有效建立人，不沿用部門唯讀權限。 */
+  /** 查詢以輕量投影核對目前管理能力與範圍，不沿用部門唯讀權限。 */
   private async queryManager(documentId: number, actor: Actor) {
     const manager = this.mysql.getManager();
     await this.access.manageableDocument(
-      await this.documents.findById(documentId, manager),
+      await this.documents.findInitiationAccess(documentId, manager),
       actor,
       manager,
     );

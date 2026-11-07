@@ -15,6 +15,12 @@ const optionsFor = (database: string, includeMigration = true) => {
   const options = buildMysqlOptions((key) =>
     key === 'DB_MYSQL_DB' ? database : process.env[key],
   );
+  options.migrations = (options.migrations as Array<{ name: string }>).filter(
+    ({ name }) => Number(name.slice(-13)) <= 1793836802000,
+  );
+  options.entities = (options.entities as Array<{ name: string }>).filter(
+    ({ name }) => !name.startsWith('Authorization'),
+  );
   return includeMigration
     ? options
     : ({
@@ -296,9 +302,15 @@ describe('Spec 027 Super user schema migration', () => {
             }) as unknown,
           },
         );
-        expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual(
-          [],
-        );
+        // 此 suite 固定停在 027；028 電子簽 entity drift 由最新 schema suite 驗證。
+        expect(
+          (await ds.driver.createSchemaBuilder().log()).upQueries.filter(
+            (query) =>
+              !/`esign_(documents|document_fields|signers|initiation_jobs|notification_batches|export_jobs)`/.test(
+                query.query,
+              ),
+          ),
+        ).toEqual([]);
       } finally {
         await ds.destroy();
       }
@@ -476,9 +488,15 @@ describe('Spec 027 Super user schema migration', () => {
             )
           ).every((row) => row.actor_kind === 'employee'),
         ).toBe(true);
-        expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual(
-          [],
-        );
+        // 此 suite 固定停在 027；028 電子簽 entity drift 由最新 schema suite 驗證。
+        expect(
+          (await ds.driver.createSchemaBuilder().log()).upQueries.filter(
+            (query) =>
+              !/`esign_(documents|document_fields|signers|initiation_jobs|notification_batches|export_jobs)`/.test(
+                query.query,
+              ),
+          ),
+        ).toEqual([]);
       } finally {
         await ds.destroy();
       }

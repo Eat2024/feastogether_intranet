@@ -138,7 +138,7 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
     expect(response.statusCode).toBe(201);
     expect(drafts.create).toHaveBeenCalledWith({
       title: title.value,
-      creatorUserId: 7,
+      actor: { kind: 'employee', userId: 7 },
       bytes: Buffer.from(file.value),
       originalFileName: file.filename,
       contentType: 'application/pdf',
@@ -151,21 +151,29 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ id: '9' });
     expect(queries.detail).not.toHaveBeenCalled();
-    expect(drafts.update).toHaveBeenCalledWith(9, 7, {
-      title: title.value,
-      file: undefined,
-    });
+    expect(drafts.update).toHaveBeenCalledWith(
+      9,
+      { kind: 'employee', userId: 7 },
+      {
+        title: title.value,
+        file: undefined,
+      },
+    );
   });
   it('修改可僅替換 PDF，不要求標題', async () => {
     expect((await send([file], 'PATCH')).statusCode).toBe(200);
-    expect(drafts.update).toHaveBeenCalledWith(9, 7, {
-      title: undefined,
-      file: {
-        bytes: Buffer.from(file.value),
-        originalFileName: file.filename,
-        contentType: 'application/pdf',
+    expect(drafts.update).toHaveBeenCalledWith(
+      9,
+      { kind: 'employee', userId: 7 },
+      {
+        title: undefined,
+        file: {
+          bytes: Buffer.from(file.value),
+          originalFileName: file.filename,
+          contentType: 'application/pdf',
+        },
       },
-    });
+    );
   });
   const placement = {
     type: 'date',
@@ -197,11 +205,15 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
       'PATCH',
     );
     expect(response.statusCode).toBe(200);
-    expect(drafts.update).toHaveBeenCalledWith(9, 7, {
-      title: undefined,
-      file: undefined,
-      fields: [expect.objectContaining(placement)],
-    });
+    expect(drafts.update).toHaveBeenCalledWith(
+      9,
+      { kind: 'employee', userId: 7 },
+      {
+        title: undefined,
+        file: undefined,
+        fields: [expect.objectContaining(placement)],
+      },
+    );
   });
   it.each([
     ['不是 JSON', 'not-json'],
@@ -263,7 +275,10 @@ describe('DocumentUploadInterceptor（Nest/Fastify HTTP 整合）', () => {
       (await send([file, { ...title, value: '  文件  ' }])).statusCode,
     ).toBe(201);
     expect(drafts.create).toHaveBeenCalledWith(
-      expect.objectContaining({ title: '文件', creatorUserId: 7 }),
+      expect.objectContaining({
+        title: '文件',
+        actor: { kind: 'employee', userId: 7 },
+      }),
     );
   });
   it('Guard 拒絕無效身分，不進入上傳解析或業務寫入', async () => {

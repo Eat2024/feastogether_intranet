@@ -1,3 +1,4 @@
+import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
 import { randomBytes } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -35,7 +36,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { employeeSessionCookie } from './employee-session.helper';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 
 describe('022 完整名單背景發起容量與原子性', () => {
   jest.setTimeout(60000);
@@ -70,7 +71,7 @@ describe('022 完整名單背景發起容量與原子性', () => {
     users = await mysql
       .getManager()
       .find(User, { where: { empid: In(empids) }, order: { empid: 'ASC' } });
-    cookie = await employeeSessionCookie(ctx.app, users[0].id);
+    cookie = await documentCreatorSessionCookie(ctx.app, users[0].id);
     const source = await PDFDocument.create();
     source.addPage();
     pdf = Buffer.from(await source.save());
@@ -529,6 +530,7 @@ describe('022 完整名單背景發起容量與原子性', () => {
       await manager.query('DELETE FROM auth_sessions WHERE user_id IN (?)', [
         ids,
       ]);
+      await manager.delete(AuthorizationUserRole, { userId: In(ids) });
       await manager.delete(User, ids);
     }
     await closeSecurityE2eApp(ctx);

@@ -1,0 +1,251 @@
+import { User } from '#app/features/users/entities/user.entity';
+import { Injectable } from '@nestjs/common';
+import { In, type EntityManager } from 'typeorm';
+import { AuthorizationRole } from '../entities/authorization-role.entity';
+import { AuthorizationPermission } from '../entities/authorization-permission.entity';
+import { AuthorizationRolePermission } from '../entities/authorization-role-permission.entity';
+import { AuthorizationUserRole } from '../entities/authorization-user-role.entity';
+import {
+  isAssignablePermission,
+  isProtectedRole,
+} from '../authorization.catalog';
+
+/** 集合讀取與關聯差異保存；交易及 users → roles → permissions 鎖序由 service 決定。 */
+@Injectable()
+export class AuthorizationRepository {
+  /** 有效一般指派；停用角色仍保留配置，但不會由 resolver 授權。 */
+  async explicitRoleIds(
+    userId: number,
+    moduleKey: string,
+    manager: EntityManager,
+  ): Promise<number[]> {
+    const rows = await manager
+      .createQueryBuilder(AuthorizationUserRole, 'ur')
+      .innerJoin(
+        AuthorizationRole,
+        'r',
+        'r.id=ur.role_id AND r.module_key=ur.module_key AND r.deleted_at IS NULL',
+      )
+      .select('ur.role_id', 'roleId')
+      .addSelect('r.module_key', 'moduleKey')
+      .addSelect('r.role_code', 'roleCode')
+      .where(
+        'ur.user_id=:userId AND ur.module_key=:moduleKey AND ur.deleted_at IS NULL',
+        { userId, moduleKey },
+      )
+      .orderBy('ur.role_id', 'ASC')
+      .getRawMany<{ roleId: number; moduleKey: string; roleCode: string }>();
+    return rows
+      .filter((row) => !isProtectedRole(row.moduleKey, row.roleCode))
+      .map((row) => row.roleId);
+  }
+  /** 只提供管理角色成員畫面所需姓名與本地 ID。 */
+  roleEmployees(
+    moduleKey: string,
+    roleId: number,
+    limit: number,
+    beforeId: number | undefined,
+    manager: EntityManager,
+  ) {
+    const query = manager
+      .createQueryBuilder(User, 'u')
+      .innerJoin(
+        AuthorizationUserRole,
+        'ur',
+        'ur.user_id=u.id AND ur.module_key=:moduleKey AND ur.role_id=:roleId AND ur.deleted_at IS NULL',
+        { moduleKey, roleId },
+      )
+      .select(['u.id', 'u.name'])
+      .orderBy('u.id', 'DESC')
+      .take(limit);
+    if (beforeId) query.andWhere('u.id<:beforeId', { beforeId });
+    return query.getMany();
+  }
+
+  async roleHasAssignments(
+    roleId: number,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    return manager.exists(AuthorizationUserRole, { where: { roleId } });
+  }
+  listRoles(
+    moduleKey: string,
+    limit: number,
+    beforeId: number | undefined,
+    manager: EntityManager,
+  ) {
+    const query = manager
+      .createQueryBuilder(AuthorizationRole, 'r')
+      .where('r.moduleKey = :moduleKey', { moduleKey })
+      .orderBy('r.id', 'DESC')
+      .take(limit);
+    if (beforeId) query.andWhere('r.id < :beforeId', { beforeId });
+    return query.getMany();
+  }
+  findRole(moduleKey: string, id: number, manager: EntityManager) {
+    return manager.findOneBy(AuthorizationRole, { moduleKey, id });
+  }
+
+  roles(
+    manager: EntityManager,
+    lock: boolean | 'shared' = false,
+  ): Promise<AuthorizationRole[]> {
+    const query = manager
+      .createQueryBuilder(AuthorizationRole, 'r')
+      .withDeleted()
+      .orderBy('r.id', 'ASC');
+    if (lock)
+      query.setLock(
+        lock === 'shared' ? 'pessimistic_read' : 'pessimistic_write',
+      );
+    return query.getMany();
+  }
+  permissions(
+    manager: EntityManager,
+    lock: boolean | 'shared' = false,
+  ): Promise<AuthorizationPermission[]> {
+    const query = manager
+      .createQueryBuilder(AuthorizationPermission, 'p')
+      .withDeleted()
+      .orderBy('p.id', 'ASC');
+    if (lock)
+      query.setLock(
+        lock === 'shared' ? 'pessimistic_read' : 'pessimistic_write',
+      );
+    return query.getMany();
+  }
+  rolePermissions(
+    roleIds: number[],
+    manager: EntityManager,
+    currentRead = false,
+  ): Promise<AuthorizationRolePermission[]> {
+    if (!roleIds.length) return Promise.resolve([]);
+    return manager.find(AuthorizationRolePermission, {
+      where: { roleId: In(roleIds) },
+      withDeleted: true,
+      order: { id: 'ASC' },
+      ...(currentRead ? { lock: { mode: 'pessimistic_read' as const } } : {}),
+    });
+  }
+  userRoles(
+    userId: number,
+    manager: EntityManager,
+  ): Promise<AuthorizationUserRole[]> {
+    return manager.find(AuthorizationUserRole, {
+      where: { userId },
+      order: { roleId: 'ASC' },
+    });
+  }
+  saveRole(
+    role: AuthorizationRole,
+    manager: EntityManager,
+  ): Promise<AuthorizationRole> {
+    return manager.save(role);
+  }
+  savePermission(
+    permission: AuthorizationPermission,
+    manager: EntityManager,
+  ): Promise<AuthorizationPermission> {
+    return manager.save(permission);
+  }
+
+  /** 單次集合查詢有效 grant，複合 scope 條件與 soft-delete/active 同時成立。 */
+  async effectiveGrants(
+    userId: number,
+    manager: EntityManager,
+  ): Promise<Array<{ moduleKey: string; permissionKey: string }>> {
+    const query = manager
+      .createQueryBuilder(AuthorizationUserRole, 'ur')
+      .innerJoin(
+        AuthorizationRole,
+        'r',
+        'r.id = ur.role_id AND r.module_key = ur.module_key AND r.is_active = 1 AND r.deleted_at IS NULL',
+      )
+      .innerJoin(
+        AuthorizationRolePermission,
+        'rp',
+        'rp.role_id = r.id AND rp.module_key = r.module_key AND rp.deleted_at IS NULL',
+      )
+      .innerJoin(
+        AuthorizationPermission,
+        'p',
+        'p.id = rp.permission_id AND p.module_key = rp.module_key AND p.deleted_at IS NULL',
+      )
+      .select('p.module_key', 'moduleKey')
+      .addSelect('p.permission_key', 'permissionKey')
+      .addSelect('r.role_code', 'roleCode')
+      .where('ur.user_id = :userId AND ur.deleted_at IS NULL', { userId });
+    if (manager.queryRunner?.isTransactionActive)
+      query.setLock('pessimistic_read');
+    const rows = await query.getRawMany<{
+      moduleKey: string;
+      permissionKey: string;
+      roleCode: string;
+    }>();
+    return rows
+      .filter(
+        (row) =>
+          !isProtectedRole(row.moduleKey, row.roleCode) &&
+          isAssignablePermission(row.moduleKey, row.permissionKey),
+      )
+      .map(({ moduleKey, permissionKey }) => ({ moduleKey, permissionKey }));
+  }
+
+  /** 只恢復或撤銷原列，不重建唯一關聯。呼叫者須先鎖定角色與權限。 */
+  async replaceRolePermissions(
+    role: AuthorizationRole,
+    permissionIds: readonly number[],
+    manager: EntityManager,
+  ): Promise<boolean> {
+    const relations = await this.rolePermissions([role.id], manager);
+    const wanted = new Set(permissionIds);
+    let changed = false;
+    for (const relation of relations) {
+      const active = wanted.delete(relation.permissionId);
+      if (active === !relation.deletedAt) continue;
+      Object.assign(relation, { deletedAt: active ? null : new Date() });
+      await manager.save(relation);
+      changed = true;
+    }
+    for (const permissionId of wanted) {
+      await manager.save(
+        manager.create(AuthorizationRolePermission, {
+          moduleKey: role.moduleKey,
+          roleId: role.id,
+          permissionId,
+        }),
+      );
+      changed = true;
+    }
+    return changed;
+  }
+  /** 員工列及角色已依序鎖定後，覆寫單一 scope 的一般角色關聯。 */
+  async replaceUserRoles(
+    userId: number,
+    moduleKey: string,
+    roleIds: readonly number[],
+    manager: EntityManager,
+  ): Promise<boolean> {
+    const relations = await manager.find(AuthorizationUserRole, {
+      where: { userId, moduleKey },
+      withDeleted: true,
+      order: { roleId: 'ASC' },
+    });
+    const wanted = new Set(roleIds);
+    let changed = false;
+    for (const relation of relations) {
+      const active = wanted.delete(relation.roleId);
+      if (active === !relation.deletedAt) continue;
+      Object.assign(relation, { deletedAt: active ? null : new Date() });
+      await manager.save(relation);
+      changed = true;
+    }
+    for (const roleId of wanted) {
+      await manager.save(
+        manager.create(AuthorizationUserRole, { userId, moduleKey, roleId }),
+      );
+      changed = true;
+    }
+    return changed;
+  }
+}

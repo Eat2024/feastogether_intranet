@@ -71,8 +71,9 @@ export class ExportHistoryDocumentDto {
   docNumber!: string;
 }
 
-/** 匯出人：員工有 employeeNo、email 為 null；外部簽署人相反。 */
+/** 匯出人：員工有 employeeNo、email 為 null；外部簽署人相反；其他非員工操作者兩者均為 null。 */
 export class ExportedByDto {
+  kind!: 'employee' | 'super_user' | 'external_signer';
   name!: string;
   employeeNo!: string | null;
   email!: string | null;

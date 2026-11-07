@@ -36,8 +36,9 @@ export class EsignDocumentSummaryDto {
 }
 
 export class EsignDocumentCreatorDto {
+  kind!: 'employee' | 'super_user';
   name!: string;
-  employeeNo!: string;
+  employeeNo!: string | null;
 }
 
 /** 已受理發起的列表摘要，不代表正式簽署資料已建立。 */
@@ -146,7 +147,8 @@ export class EsignReadonlySignerViewDto {
 
 /** 同部門可讀的文件；不含管理欄位或個別簽署人的身分資料。 */
 export class EsignReadonlyDocumentDetailDto extends EsignDocumentSummaryDto {
-  isCreator!: false;
+  isCreator!: boolean;
+  canManage!: false;
   canExport!: boolean;
   exportSummary!: ExportJobViewDto | null;
   createdBy!: EsignDocumentCreatorDto | null;
@@ -157,7 +159,8 @@ export class EsignReadonlyDocumentDetailDto extends EsignDocumentSummaryDto {
 }
 
 export class EsignManagedDocumentDetailDto extends EsignDocumentSummaryDto {
-  isCreator!: true;
+  isCreator!: boolean;
+  canManage!: true;
   canExport!: boolean;
   exportSummary!: ExportJobViewDto | null;
   watermark!: boolean;

@@ -118,7 +118,7 @@ export default function DocumentSignerTable({
     onSuccess: (result) => {
       // 先更新畫面上的備註，再重新取得文件詳情
       queryClient.setQueryData<EsignDocumentDetail>([queryKeys.ESIGN_DOCUMENT, documentId], (old) =>
-        old?.isCreator
+        old?.canManage
           ? {
               ...old,
               signers: old.signers.map((s) => (s.publicId === result.signerPublicId ? { ...s, note: result.note } : s)),

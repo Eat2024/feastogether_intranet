@@ -4,11 +4,11 @@
 
 ## R1 — 角色與權限正規化，子功能無動態管理表
 
-**Decision**：新增 authorization_roles、authorization_permissions、authorization_role_permissions、authorization_user_roles、authorization_events；module_key 是程式目錄中的穩定字串，不新增可動態建立子功能的管理表。角色／權限各有 `(module_key,id)` 唯一鍵，關聯帶 module_key 並用兩側複合 FK，資料庫也拒絕跨範圍綁定。
+**Decision**：新增 authorization_roles、authorization_permissions、authorization_role_permissions、authorization_user_roles，異動歷史使用全系統共用 audit_logs，不建立授權專用事件表；module_key 是程式目錄中的穩定字串，不新增可動態建立子功能的管理表。角色／權限各有 `(module_key,id)` 唯一鍵，關聯帶 module_key 並用兩側複合 FK，資料庫也拒絕跨範圍綁定。
 
 **Rationale**：CKS 單一 role_id 不適用多角色；只在角色加欄位無法保證關聯範圍。權限表是程式目錄的受控投影，管理 API 只可引用，不可自行創造權限。API 與 REPL 同用 service。
 
-**Alternatives**：把所有權限放 JSON 會失去關聯約束；每功能一組獨立表重複管理規則；純字串角色權限無法以 FK 檢查目錄。五張窄表分別承擔角色、目錄、兩種關聯與必要授權異動紀錄。
+**Alternatives**：把所有權限放 JSON 會失去關聯約束；每功能一組獨立表重複管理規則；純字串角色權限無法以 FK 檢查目錄；另建 authorization_events 會和 CKS 的共用 audit history 方向重複。四張授權表承擔角色、目錄與兩種關聯，稽核統一寫入 audit_logs。
 
 來源：[CKS role](../../../CKS_Acceptance_System/server/src/features/auth/entities/auth-role.entity.ts)、[CKS user](../../../CKS_Acceptance_System/server/src/features/auth/entities/auth-user.entity.ts)、[Spec 028](spec.md)。
 
@@ -26,7 +26,7 @@
 
 **Rationale**：目前沒有量測證據需要授權快取；DB是最低複雜度且滿足下一請求生效的來源。已有 [EsignAccessPolicy](../../server/src/features/esign/services/esign-access-policy.service.ts) 每次重查員工可信部門的先例。
 
-**Concurrency**：管理寫入鎖role／user及關聯，角色version與指派expectedRoleIds避免lost update；所有寫入與authorization_events同交易。撤權commit後才開始的請求不能讀到舊授權；已在途交易按其核對／受理時點完成，不宣稱可取消已送出的資料或工作。
+**Concurrency**：管理寫入鎖role／user及關聯，角色version與指派expectedRoleIds避免lost update；所有寫入與audit_logs同交易。撤權commit後才開始的請求不能讀到舊授權；已在途交易按其核對／受理時點完成，不宣稱可取消已送出的資料或工作。
 
 ## R4 — actor 聯集必須延伸到業務資料，不只是 Guard
 
@@ -48,7 +48,7 @@ Super user建立文件需顯式departmentCode，透過既有Portal部門來源 e
 
 ## R6 — 本人能力供029使用，管理僅Super user
 
-**Decision**：GET `/api/me/authorization` 回027 actor與按module分組的permissions，no-store；員工只有有效聯集，Super user列出所有目前登錄能力。無roles／其他員工資料／入口／token。角色管理API先檢查actor.kind=super_user，不讓可編輯的role_permissions授予平台管理權。
+**Decision**：GET `/api/auth/me` 合併 027 session view（actor／白名單 user／expiresAt）與按 module 分組的 permissions，no-store；員工只有有效聯集，Super user 維持 user=null 並列出所有目前登錄能力。無任何 role ID／code／name、其他員工資料、入口或 token；舊 `/api/me/authorization` 移除。角色管理API先檢查actor.kind=super_user，不讓可編輯的role_permissions授予平台管理權。
 
 **Rationale**：前端不應解析角色名稱；platform.authorization.manage在目錄可見但不可指派，維護身分是唯一來源。029的選單權限契約見 [permissions](contracts/permissions.md)。
 

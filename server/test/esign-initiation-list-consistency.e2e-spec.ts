@@ -1,3 +1,5 @@
+import { In } from 'typeorm';
+import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
 import { DocumentRepository } from '#app/features/esign/repositories/document.repository';
 import type { EsignDocumentListItemDto } from '#app/features/esign/dto/esign-common.dto';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -25,7 +27,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { employeeSessionCookie } from './employee-session.helper';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 
 describe('025 發起列表一致性與終態', () => {
   jest.setTimeout(60000);
@@ -58,7 +60,7 @@ describe('025 發起列表一致性與終態', () => {
     pdf = Buffer.from(await source.save());
   });
   async function session(userId: number) {
-    return await employeeSessionCookie(ctx.app, userId);
+    return await documentCreatorSessionCookie(ctx.app, userId);
   }
   async function newDoc() {
     const id = apiData<{ id: string }>(
@@ -298,6 +300,7 @@ describe('025 發起列表一致性與終態', () => {
       await manager.query('DELETE FROM auth_sessions WHERE user_id IN (?)', [
         ids,
       ]);
+      await manager.delete(AuthorizationUserRole, { userId: In(ids) });
       await manager.delete(User, ids);
     }
     await closeSecurityE2eApp(ctx);

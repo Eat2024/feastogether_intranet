@@ -1,3 +1,5 @@
+import { AppException } from '#app/common/errors/app.exception';
+import { AppErrors } from '#app/common/errors/app-errors';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
@@ -58,10 +60,14 @@ function setup(doc = document()) {
     requireDepartment: jest.fn(() =>
       Promise.resolve({ departmentCode: 'A001' }),
     ),
-    readableDocument: jest.fn(() => Promise.resolve(doc)),
+    readableForActor: jest.fn(() => Promise.resolve(doc)),
     checkDepartmentDocument: jest.fn(() => Promise.resolve(doc)),
-    canExportDocument: jest.fn(() => Promise.resolve(true)),
+    exportDocument: jest.fn(() => Promise.resolve(doc)),
     checkEsignCreator: jest.fn(),
+    canManageDocument: jest.fn(
+      (doc: EsignDocument, actor: { userId: number }) =>
+        Promise.resolve(doc.createdByUserId === actor.userId),
+    ),
   };
   const exports = { documentSummary: jest.fn(() => Promise.resolve(null)) };
   const users = {
@@ -96,6 +102,7 @@ function setup(doc = document()) {
     records as never,
     {} as never,
     exports as never,
+    { requirePermissions: () => Promise.resolve() } as never,
   );
   return {
     service,
@@ -127,7 +134,10 @@ describe('部門文件查詢', () => {
         },
       },
     );
-    const result = await setup(doc).service.list(1, 'dep');
+    const result = await setup(doc).service.list(
+      { kind: 'employee', userId: 1 },
+      'dep',
+    );
     expect(result[0]).toMatchObject({
       status: 'initiating',
       signStartAt: '2026-10-01T00:00:00.000Z',
@@ -146,17 +156,26 @@ describe('部門文件查詢', () => {
   it.each(['draft', 'active'])(
     '沒有有效工作時 %s 不回傳受理摘要',
     async (status) => {
-      const result = await setup(document({ status })).service.list(1, 'dep');
+      const result = await setup(document({ status })).service.list(
+        { kind: 'employee', userId: 1 },
+        'dep',
+      );
       expect(result[0]).toHaveProperty('initiation', null);
     },
   );
   it('背景發起期間顯示發起中且可篩選，原始草稿狀態不變', async () => {
     const doc = Object.assign(document(), { isInitiating: true });
     const s = setup(doc);
-    expect(await s.service.list(1, 'dep', 'initiating')).toEqual([
-      expect.objectContaining({ id: '10', status: 'initiating' }),
-    ]);
-    expect(await s.service.list(1, 'dep', 'draft')).toEqual([]);
+    expect(
+      await s.service.list(
+        { kind: 'employee', userId: 1 },
+        'dep',
+        'initiating',
+      ),
+    ).toEqual([expect.objectContaining({ id: '10', status: 'initiating' })]);
+    expect(
+      await s.service.list({ kind: 'employee', userId: 1 }, 'dep', 'draft'),
+    ).toEqual([]);
     expect(doc.status).toBe('draft');
   });
   it('背景任務結束後依文件狀態顯示草稿或簽署中', async () => {
@@ -164,14 +183,18 @@ describe('部門文件查詢', () => {
       const s = setup(
         Object.assign(document({ status }), { isInitiating: false }),
       );
-      expect(await s.service.list(1, 'dep')).toEqual([
-        expect.objectContaining({ status }),
-      ]);
+      expect(
+        await s.service.list({ kind: 'employee', userId: 1 }, 'dep'),
+      ).toEqual([expect.objectContaining({ status })]);
     }
   });
   it('dep 使用可信部門 repository，保留狀態推導且回傳 isCreator', async () => {
     const s = setup(document({ status: 'active', signEndAt: new Date(0) }));
-    const result = await s.service.list(2, 'dep', 'expired');
+    const result = await s.service.list(
+      { kind: 'employee', userId: 2 },
+      'dep',
+      'expired',
+    );
     expect(s.documents.findByDepartment).toHaveBeenCalledWith(
       'A001',
       s.manager,
@@ -190,7 +213,7 @@ describe('部門文件查詢', () => {
     '個人範圍 %s 不要求部門',
     async (role) => {
       const s = setup();
-      await s.service.list(1, role);
+      await s.service.list({ kind: 'employee', userId: 1 }, role);
       expect(s.policy.requireDepartment).not.toHaveBeenCalled();
       expect(s.documents.findByDepartment).not.toHaveBeenCalled();
     },
@@ -201,7 +224,7 @@ describe('部門文件查詢', () => {
       document(),
       document({ id: 11 }),
     ]);
-    const result = await s.service.list(2, 'dep');
+    const result = await s.service.list({ kind: 'employee', userId: 2 }, 'dep');
     expect(s.users.findByIds).toHaveBeenCalledWith([1], s.manager);
     expect(s.signers.countsByDocumentIds).toHaveBeenCalledWith(
       [11, 10],
@@ -229,7 +252,7 @@ describe('部門文件查詢', () => {
       document({ id: 11 }),
       document({ id: 12, status: 'completed' }),
     ]);
-    const result = await s.service.list(1);
+    const result = await s.service.list({ kind: 'employee', userId: 1 });
     expect(s.documents.findListByIds).toHaveBeenCalledWith(
       [10, 11, 12],
       s.manager,
@@ -240,7 +263,7 @@ describe('部門文件查詢', () => {
 
   it('同部門詳情只回進度白名單，且不讀管理資料', async () => {
     const s = setup();
-    const result = await s.service.detail(10, 2);
+    const result = await s.service.detail(10, { kind: 'employee', userId: 2 });
     expect(result).toMatchObject({
       isCreator: false,
       canExport: true,
@@ -268,8 +291,10 @@ describe('部門文件查詢', () => {
   });
   it('建立人詳情保留管理欄位；匯出能力獨立判斷', async () => {
     const s = setup();
-    s.policy.canExportDocument.mockResolvedValue(false);
-    const result = await s.service.detail(10, 1);
+    s.policy.exportDocument.mockRejectedValue(
+      new AppException(...AppErrors.AUTHORIZATION_DENIED),
+    );
+    const result = await s.service.detail(10, { kind: 'employee', userId: 1 });
     expect(result).toMatchObject({
       isCreator: true,
       canExport: false,
@@ -281,10 +306,14 @@ describe('部門文件查詢', () => {
   });
   it('export 視角先嚴格部門授權，使用完整 Excel DTO 而非管理詳情', async () => {
     const s = setup(document({ status: 'active' }));
-    const result = await s.service.exportDocument(10, 2);
-    expect(s.policy.checkDepartmentDocument).toHaveBeenCalledWith(
+    const result = await s.service.exportDocument(10, {
+      kind: 'employee',
+      userId: 2,
+    });
+    expect(s.policy.exportDocument).toHaveBeenCalledWith(
       expect.any(EsignDocument),
-      2,
+      { kind: 'employee', userId: 2 },
+      'esign.export.read',
       s.manager,
     );
     expect(result.signers[0]).toMatchObject({
@@ -297,7 +326,9 @@ describe('部門文件查詢', () => {
   });
   it('草稿即使同部門亦不可藉匯出視角取得完整個資', async () => {
     const s = setup();
-    await expect(s.service.exportDocument(10, 2)).rejects.toMatchObject({
+    await expect(
+      s.service.exportDocument(10, { kind: 'employee', userId: 2 }),
+    ).rejects.toMatchObject({
       status: 404,
     });
     expect(s.signers.findByDocument).not.toHaveBeenCalled();

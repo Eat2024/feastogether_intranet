@@ -14,7 +14,7 @@
 
 ## 必須遵守
 
-- 全域 guard 對所有未標 `@Public()` 的 endpoint 驗證 session，只放行員工；Super user 只能進入標了 `@AllowSuperUser()` 的 endpoint（目前只有 `GET /api/auth/session`），其他回 403 `AUTH_ACTOR_NOT_ALLOWED`。Super user 的業務授權由 Spec 028 決定。`@Public()` 入口必須自行負責適用的 pre-session 驗證。
+- 全域 guard 對所有未標 `@Public()` 的 endpoint 驗證 session，只放行員工；Super user 只能進入標了 `@AllowSuperUser()` 的 endpoint（目前包含 `GET /api/auth/session` 與 `GET /api/auth/me`），其他回 403 `AUTH_ACTOR_NOT_ALLOWED`。Super user 的業務授權由 Spec 028 決定。`@Public()` 入口必須自行負責適用的 pre-session 驗證。
 - Controller 只處理 HTTP 邊界並回傳 DTO，不直接回傳 TypeORM entity，不重複包裝全域 interceptor 的 response envelope。
 - 跨目錄 import 使用 `#app/*`，同 feature 近距離可用相對路徑；避免 `../../` 以上深層路徑。
 - 業務 entity 繼承 `AuditableEntity`，DB 欄位用 snake_case、TS property 用 camelCase，並於 entity/欄位加繁體中文 comment。

@@ -22,9 +22,11 @@ export const ERROR_CODE_MAP: Record<string, string> = {
 
   // --- Validation ---
   INVALID_REQUEST: '輸入資料格式有誤，請確認後再試',
+  REQUEST_FORMAT_INVALID: '授權請求格式不正確',
 
   // --- 電子簽 ---
   ESIGN_INVALID_PDF: 'PDF 格式、大小或頁數不符合規格',
+  ESIGN_DEPARTMENT_LOOKUP_UNAVAILABLE: '暫時無法查核文件歸屬部門',
   ESIGN_DEPARTMENT_UNAVAILABLE: '無法取得您的部門資料，請重新登入或聯絡系統管理員',
   ESIGN_RESOURCE_NOT_FOUND: '找不到此文件，或您沒有權限存取',
   ESIGN_INTERNAL_LOGIN_REQUIRED: '請登入入口網，至我的電子簽完成操作',
@@ -40,5 +42,13 @@ export const ERROR_CODE_MAP: Record<string, string> = {
   STAFF_LOOKUP_FAILED: '查詢員工資料失敗，請稍後再試',
 
   // --- Server ---
+  AUTHORIZATION_DENIED: '您沒有執行此操作的權限',
+  AUTHORIZATION_PROTECTED_ROLE: '受保護角色或維護專用權限不可指派或修改',
+  AUTHORIZATION_RESOURCE_NOT_FOUND: '找不到指定的授權資源',
+  AUTHORIZATION_VERSION_CONFLICT: '授權設定已變更，請重新讀取後再操作',
+  AUTHORIZATION_ROLE_NAME_CONFLICT: '此子功能已有同名角色',
+  AUTHORIZATION_ROLE_IN_USE: '此角色仍有員工使用，請先解除指派',
+  AUTHORIZATION_EMPLOYEE_INELIGIBLE: '指定員工不符合授權資格',
+  AUTHORIZATION_UNAVAILABLE: '授權服務暫時無法使用',
   INTERNAL_ERROR: '伺服器發生錯誤，請稍後再試',
 };

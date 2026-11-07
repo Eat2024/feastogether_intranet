@@ -67,7 +67,7 @@ export class EsignSigningTaskService {
     }
     this.access.assertInternalSigner(document, signer, userId);
     if (signer.status === 'pending')
-        this.validation.assertActiveSigningWindow(document, new Date());
+      this.validation.assertActiveSigningWindow(document, new Date());
     return this.toTask(document, signer, manager);
   }
 
@@ -109,7 +109,9 @@ export class EsignSigningTaskService {
     const [totals, allFields, creator, record] = await Promise.all([
       this.signers.completionCounts(document.id, manager),
       this.fields.findByDocument(document.id, manager),
-      this.users.findById(document.createdByUserId, manager),
+      document.createdByUserId === null
+        ? Promise.resolve(null)
+        : this.users.findById(document.createdByUserId, manager),
       signer.status === 'signed'
         ? this.records.findBySignerId(signer.id, manager)
         : null,

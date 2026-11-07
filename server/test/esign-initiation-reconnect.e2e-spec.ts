@@ -1,3 +1,4 @@
+import { grantDocumentCreator } from './helpers/authorization-business-fixtures';
 import { createSyntheticPortal, type SyntheticPortal } from './synthetic-portal.helper';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { INestApplicationContext } from '@nestjs/common';
@@ -61,6 +62,7 @@ reconnectSuite('022 Redis metadata 遺失後同程序恢復', () => {
       "SELECT id FROM users WHERE empid='RC02201'",
     );
     ownerId = String(users[0].id);
+    await grantDocumentCreator(ctx.app, users[0].id);
   });
   afterAll(async () => {
     await Promise.all(workers.map((worker) => worker.close()));

@@ -81,6 +81,120 @@ CREATE TABLE `auth_sessions` (
   CONSTRAINT `chk_auth_sessions_status` CHECK ((`status` in (_utf8mb4'validating',_utf8mb4'pending',_utf8mb4'active',_utf8mb4'failed',_utf8mb4'revoked')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='WebView 啟動與員工登入 Session';
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `audit_logs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `audit_logs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `action` varchar(80) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '稽核動作',
+  `entity_type` varchar(80) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主要目標型別',
+  `entity_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主要目標 ID',
+  `actor_user_id` bigint DEFAULT NULL COMMENT '操作者本地使用者 ID',
+  `actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作者種類',
+  `source` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作來源',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '子功能代碼',
+  `request_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '請求追蹤 ID',
+  `changes` json NOT NULL COMMENT '欄位異動集合',
+  `before_snapshot` json DEFAULT NULL COMMENT '異動前快照',
+  `after_snapshot` json DEFAULT NULL COMMENT '異動後快照',
+  `description` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '描述',
+  `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '來源 IP',
+  `user_agent` text COLLATE utf8mb4_unicode_ci COMMENT 'User-Agent',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  PRIMARY KEY (`id`),
+  KEY `idx_audit_logs_created_at` (`created_at`),
+  KEY `idx_audit_logs_entity` (`entity_type`,`entity_id`,`created_at`,`id`),
+  KEY `idx_audit_logs_actor` (`actor_user_id`,`created_at`,`id`),
+  KEY `idx_audit_logs_action` (`action`,`created_at`,`id`),
+  KEY `idx_audit_logs_module` (`module_key`,`created_at`,`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通用稽核歷史紀錄（append-only）';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `authorization_permissions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `authorization_permissions` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
+  `permission_key` varchar(100) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '權限代碼',
+  `permission_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '權限名稱',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_authorization_permissions_key` (`permission_key`),
+  UNIQUE KEY `uq_authorization_permissions_scope` (`module_key`,`id`),
+  KEY `idx_authorization_permissions_created_at` (`created_at`),
+  KEY `idx_authorization_permissions_updated_at` (`updated_at`),
+  KEY `idx_authorization_permissions_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='權限目錄';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `authorization_role_permissions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `authorization_role_permissions` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
+  `role_id` bigint unsigned NOT NULL COMMENT '角色 ID',
+  `permission_id` bigint unsigned NOT NULL COMMENT '權限 ID',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_authorization_role_permissions_pair` (`role_id`,`permission_id`),
+  KEY `idx_authorization_role_permissions_created_at` (`created_at`),
+  KEY `idx_authorization_role_permissions_updated_at` (`updated_at`),
+  KEY `idx_authorization_role_permissions_deleted_at` (`deleted_at`),
+  KEY `fk_authorization_role_permissions_role_scope` (`module_key`,`role_id`),
+  KEY `fk_authorization_role_permissions_permission_scope` (`module_key`,`permission_id`),
+  CONSTRAINT `fk_authorization_role_permissions_permission_scope` FOREIGN KEY (`module_key`, `permission_id`) REFERENCES `authorization_permissions` (`module_key`, `id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_authorization_role_permissions_role_scope` FOREIGN KEY (`module_key`, `role_id`) REFERENCES `authorization_roles` (`module_key`, `id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色權限關聯';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `authorization_roles`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `authorization_roles` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
+  `role_code` varchar(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '穩定角色代碼',
+  `role_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL COMMENT '角色名稱',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否啟用',
+  `version` int unsigned NOT NULL DEFAULT '1' COMMENT '設定版本',
+  `active_role_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin GENERATED ALWAYS AS ((case when (`deleted_at` is null) then `role_name` else NULL end)) VIRTUAL COMMENT '未刪除角色名稱',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_authorization_roles_code` (`module_key`,`role_code`),
+  UNIQUE KEY `uq_authorization_roles_scope` (`module_key`,`id`),
+  UNIQUE KEY `uq_authorization_roles_name` (`module_key`,`active_role_name`),
+  KEY `idx_authorization_roles_created_at` (`created_at`),
+  KEY `idx_authorization_roles_updated_at` (`updated_at`),
+  KEY `idx_authorization_roles_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `authorization_user_roles`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `authorization_user_roles` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '識別碼',
+  `user_id` bigint NOT NULL COMMENT '員工 ID',
+  `module_key` varchar(50) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '子功能代碼',
+  `role_id` bigint unsigned NOT NULL COMMENT '角色 ID',
+  `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
+  `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_authorization_user_roles_pair` (`user_id`,`role_id`),
+  KEY `idx_authorization_user_roles_created_at` (`created_at`),
+  KEY `idx_authorization_user_roles_updated_at` (`updated_at`),
+  KEY `idx_authorization_user_roles_deleted_at` (`deleted_at`),
+  KEY `idx_authorization_user_roles_user_scope` (`user_id`,`module_key`,`deleted_at`),
+  KEY `fk_authorization_user_roles_role_scope` (`module_key`,`role_id`),
+  CONSTRAINT `fk_authorization_user_roles_role_scope` FOREIGN KEY (`module_key`, `role_id`) REFERENCES `authorization_roles` (`module_key`, `id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_authorization_user_roles_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='員工角色關聯';
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_document_fields`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -99,6 +213,8 @@ CREATE TABLE `esign_document_fields` (
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '建立操作者種類',
+  `updated_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '更新操作者種類',
   PRIMARY KEY (`id`),
   KEY `idx_esign_document_fields_doc_page_sort_id` (`document_id`,`page_number`,`sort_order`,`id`),
   KEY `idx_esign_document_fields_created_at` (`created_at`),
@@ -110,8 +226,10 @@ CREATE TABLE `esign_document_fields` (
   CONSTRAINT `fk_esign_document_fields_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_document_fields_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `chk_esign_document_fields_bounds` CHECK (((`x_percent` >= 0) and (`x_percent` < 100) and (`y_percent` >= 0) and (`y_percent` < 100) and (`width_percent` > 0) and (`height_percent` > 0) and ((`x_percent` + `width_percent`) <= 100) and ((`y_percent` + `height_percent`) <= 100))),
+  CONSTRAINT `chk_esign_document_fields_created_actor` CHECK ((((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system',_utf8mb4'legacy_unknown')) and (`created_by_user_id` is null)))),
   CONSTRAINT `chk_esign_document_fields_page` CHECK ((`page_number` >= 1)),
-  CONSTRAINT `chk_esign_document_fields_type` CHECK ((`field_type` in (_utf8mb4'signature',_utf8mb4'date')))
+  CONSTRAINT `chk_esign_document_fields_type` CHECK ((`field_type` in (_utf8mb4'signature',_utf8mb4'date'))),
+  CONSTRAINT `chk_esign_document_fields_updated_actor` CHECK ((((`updated_by_actor_kind` = _utf8mb4'employee') and (`updated_by_user_id` is not null)) or ((`updated_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system',_utf8mb4'legacy_unknown')) and (`updated_by_user_id` is null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件簽署欄位';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_documents`;
@@ -122,7 +240,7 @@ CREATE TABLE `esign_documents` (
   `doc_number` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '文件 UUID',
   `title` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件名稱',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'draft' COMMENT '文件狀態',
-  `created_by_user_id` bigint NOT NULL COMMENT '建立人 ID',
+  `created_by_user_id` bigint DEFAULT NULL COMMENT '建立人 ID',
   `sign_start_at` datetime(6) DEFAULT NULL COMMENT '簽署開始時間',
   `sign_end_at` datetime(6) DEFAULT NULL COMMENT '簽署截止時間',
   `signing_payload_json` json DEFAULT NULL COMMENT '固定簽署 payload',
@@ -138,6 +256,9 @@ CREATE TABLE `esign_documents` (
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
   `created_by_department_code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin DEFAULT NULL COMMENT '建立時部門代碼快照',
   `created_by_department_name` varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '建立時部門名稱快照',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'employee' COMMENT '建立操作者種類',
+  `updated_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '最後管理操作者種類',
+  `updated_by_user_id` bigint DEFAULT NULL COMMENT '最後管理員工 ID',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_documents_doc_number` (`doc_number`),
   KEY `idx_esign_documents_creator_status_updated_id` (`created_by_user_id`,`status`,`updated_at`,`id`),
@@ -150,9 +271,13 @@ CREATE TABLE `esign_documents` (
   KEY `idx_esign_documents_updated_at` (`updated_at`),
   KEY `idx_esign_documents_deleted_at` (`deleted_at`),
   KEY `idx_esign_documents_department_deleted_updated_id` (`created_by_department_code`,`deleted_at`,`updated_at`,`id`),
+  KEY `fk_esign_documents_updated_by` (`updated_by_user_id`),
   CONSTRAINT `fk_esign_documents_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_esign_documents_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_documents_created_actor` CHECK ((((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` = _utf8mb4'super_user') and (`created_by_user_id` is null)))),
   CONSTRAINT `chk_esign_documents_sign_period` CHECK ((((`status` = _utf8mb4'draft') and ((`sign_start_at` is null) or (`sign_end_at` is null) or (`sign_start_at` < `sign_end_at`))) or ((`status` <> _utf8mb4'draft') and (`sign_start_at` is not null) and (`sign_end_at` is not null) and (`sign_start_at` < `sign_end_at`)))),
-  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'expired',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped')))
+  CONSTRAINT `chk_esign_documents_status` CHECK ((`status` in (_utf8mb4'draft',_utf8mb4'active',_utf8mb4'expired',_utf8mb4'finalizing',_utf8mb4'completed',_utf8mb4'stopped'))),
+  CONSTRAINT `chk_esign_documents_updated_actor` CHECK ((((`updated_by_actor_kind` is null) and (`updated_by_user_id` is null)) or ((`updated_by_actor_kind` is not null) and (((`updated_by_actor_kind` = _utf8mb4'employee') and (`updated_by_user_id` is not null)) or ((`updated_by_actor_kind` = _utf8mb4'super_user') and (`updated_by_user_id` is null))))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='電子簽文件';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_export_jobs`;
@@ -162,7 +287,7 @@ CREATE TABLE `esign_export_jobs` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '匯出工作流水號',
   `export_type` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '匯出類型',
   `document_id` bigint DEFAULT NULL COMMENT '文件 ID',
-  `created_by_user_id` bigint DEFAULT NULL COMMENT '建立員工 ID，NULL 為外部簽署人本人下載',
+  `created_by_user_id` bigint DEFAULT NULL COMMENT '匯出員工 ID，NULL 為 Super user 或外部簽署人',
   `signer_id` bigint DEFAULT NULL COMMENT '單人副本的簽署人',
   `conditions_json` json DEFAULT NULL COMMENT 'Excel 匯出條件',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending' COMMENT '工作狀態',
@@ -186,6 +311,7 @@ CREATE TABLE `esign_export_jobs` (
   `next_attempt_at` datetime(6) DEFAULT NULL COMMENT '再次排入時間',
   `staging_json` json DEFAULT NULL COMMENT '暫存成果位置',
   `download_file_name` varchar(1024) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '首次下載提供的檔名快照，NULL 為尚未記錄',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'employee' COMMENT '實際匯出操作者種類',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_export_jobs_public_id` (`public_id`),
   KEY `idx_esign_export_jobs_document_id` (`document_id`),
@@ -206,7 +332,7 @@ CREATE TABLE `esign_export_jobs` (
   CONSTRAINT `fk_esign_export_jobs_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_export_jobs_signer` FOREIGN KEY (`signer_id`) REFERENCES `esign_signers` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_export_jobs_user` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `chk_esign_export_jobs_record_type` CHECK ((((`export_type` <> _utf8mb4'excel') or ((`conditions_json` is not null) and (`created_by_user_id` is not null) and (`signer_id` is null))) and ((`export_type` <> _utf8mb4'pdf') or ((`signer_id` is not null) and (`conditions_json` is null))) and ((`export_type` in (_utf8mb4'excel',_utf8mb4'pdf')) or ((`created_by_user_id` is not null) and (`signer_id` is null) and (`conditions_json` is null)))))
+  CONSTRAINT `chk_esign_export_jobs_record_type` CHECK ((((`export_type` = _utf8mb4'pdf') and (`signer_id` is not null) and (`conditions_json` is null) and (((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` = _utf8mb4'external_signer') and (`created_by_user_id` is null)))) or ((`export_type` in (_utf8mb4'excel',_utf8mb4'signed_copies_zip')) and (`signer_id` is null) and (((`export_type` = _utf8mb4'excel') and (`conditions_json` is not null)) or ((`export_type` = _utf8mb4'signed_copies_zip') and (`conditions_json` is null))) and (((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` = _utf8mb4'super_user') and (`created_by_user_id` is null))))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='匯出工作';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_file_objects`;
@@ -263,7 +389,7 @@ CREATE TABLE `esign_initiation_jobs` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '工作流水號',
   `public_id` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '工作公開 UUID',
   `document_id` bigint NOT NULL COMMENT '文件 ID',
-  `created_by_user_id` bigint NOT NULL COMMENT '原發起者 ID',
+  `created_by_user_id` bigint DEFAULT NULL COMMENT '原發起者 ID',
   `request_key` char(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '冪等請求 UUID',
   `request_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '正規化請求 SHA256',
   `parent_job_id` bigint DEFAULT NULL COMMENT '人工重試來源工作 ID',
@@ -291,6 +417,7 @@ CREATE TABLE `esign_initiation_jobs` (
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '建立時間',
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新時間',
   `deleted_at` datetime(6) DEFAULT NULL COMMENT '軟刪除時間',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'employee' COMMENT '實際提交操作者種類',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_initiation_jobs_public` (`public_id`),
   UNIQUE KEY `uq_esign_initiation_jobs_request` (`document_id`,`request_key`),
@@ -304,6 +431,7 @@ CREATE TABLE `esign_initiation_jobs` (
   CONSTRAINT `fk_esign_initiation_jobs_creator` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_initiation_jobs_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_initiation_jobs_parent` FOREIGN KEY (`parent_job_id`) REFERENCES `esign_initiation_jobs` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_initiation_jobs_actor` CHECK ((((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` = _utf8mb4'super_user') and (`created_by_user_id` is null)))),
   CONSTRAINT `chk_esign_initiation_jobs_completion` CHECK ((((`status` in (_utf8mb4'queued',_utf8mb4'processing')) and (`completed_at` is null)) or ((`status` in (_utf8mb4'succeeded',_utf8mb4'failed')) and (`completed_at` is not null)))),
   CONSTRAINT `chk_esign_initiation_jobs_counts` CHECK (((`total_count` > 0) and (`processed_count` >= 0) and (`processed_count` <= `total_count`) and (`attempt_count` between 0 and 3) and (`issue_count` >= 0))),
   CONSTRAINT `chk_esign_initiation_jobs_deadline` CHECK ((`deadline_at` > `accepted_at`)),
@@ -328,6 +456,7 @@ CREATE TABLE `esign_notification_batches` (
   `kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'invitation' COMMENT '初邀或催簽',
   `request_id` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '催簽請求 UUID',
   `request_payload_sha256` char(64) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '正規化請求雜湊',
+  `notified_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '實際通知操作者種類',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_notification_batches_public_id` (`public_id`),
   UNIQUE KEY `uq_esign_notification_batches_request` (`document_id`,`notified_by_user_id`,`request_id`),
@@ -336,6 +465,7 @@ CREATE TABLE `esign_notification_batches` (
   KEY `fk_esign_notification_batches_user` (`notified_by_user_id`),
   CONSTRAINT `fk_esign_notification_batches_document` FOREIGN KEY (`document_id`) REFERENCES `esign_documents` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_notification_batches_user` FOREIGN KEY (`notified_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `chk_esign_notification_batches_actor` CHECK ((((`notified_by_actor_kind` = _utf8mb4'employee') and (`notified_by_user_id` is not null)) or ((`notified_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system')) and (`notified_by_user_id` is null)))),
   CONSTRAINT `chk_esign_notification_batches_kind` CHECK ((`kind` in (_utf8mb4'invitation',_utf8mb4'reminder')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知批次';
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -442,6 +572,8 @@ CREATE TABLE `esign_signers` (
   `reject_request_id` char(36) CHARACTER SET ascii COLLATE ascii_bin DEFAULT NULL COMMENT '拒簽冪等請求 UUID',
   `note` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '建立人管理備註，不屬簽署證據',
   `external_email` varchar(255) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((case when (`signer_type` = _utf8mb4'email') then `email` else NULL end)) STORED COMMENT '外部地址唯一性衍生欄位',
+  `created_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '建立操作者種類',
+  `updated_by_actor_kind` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'system' COMMENT '更新操作者種類',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_esign_signers_public_id` (`public_id`),
   UNIQUE KEY `uq_esign_signers_document_user` (`document_id`,`user_id`),
@@ -466,9 +598,11 @@ CREATE TABLE `esign_signers` (
   CONSTRAINT `fk_esign_signers_updated_by` FOREIGN KEY (`updated_by_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_esign_signers_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `chk_esign_signers_completion` CHECK ((((`status` in (_utf8mb4'pending',_utf8mb4'rejected')) and (`completion_status` is null) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`status` = _utf8mb4'signed') and (`completion_status` is not null) and (((`completion_status` in (_utf8mb4'pending',_utf8mb4'failed')) and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'processing') and (`completion_lease_token` is not null) and (`completion_lease_expires_at` is not null) and (`completion_ready_at` is null)) or ((`completion_status` = _utf8mb4'ready') and (`completion_lease_token` is null) and (`completion_lease_expires_at` is null) and (`completion_ready_at` is not null)))))),
+  CONSTRAINT `chk_esign_signers_created_actor` CHECK ((((`created_by_actor_kind` = _utf8mb4'employee') and (`created_by_user_id` is not null)) or ((`created_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system',_utf8mb4'legacy_unknown')) and (`created_by_user_id` is null)))),
   CONSTRAINT `chk_esign_signers_identity` CHECK ((((`signer_type` = _utf8mb4'user') and (`user_id` is not null) and (`empid_snapshot` is not null)) or ((`signer_type` = _utf8mb4'email') and (`user_id` is null) and (`email` is not null) and (`empid_snapshot` is null)))),
   CONSTRAINT `chk_esign_signers_status` CHECK ((`status` in (_utf8mb4'pending',_utf8mb4'signed',_utf8mb4'rejected'))),
-  CONSTRAINT `chk_esign_signers_terminal_times` CHECK ((((`signed_at` is null) or (`rejected_at` is null)) and ((`status` <> _utf8mb4'rejected') or ((`rejected_at` is not null) and (`reject_request_id` is not null) and (`reject_reason` is not null)))))
+  CONSTRAINT `chk_esign_signers_terminal_times` CHECK ((((`signed_at` is null) or (`rejected_at` is null)) and ((`status` <> _utf8mb4'rejected') or ((`rejected_at` is not null) and (`reject_request_id` is not null) and (`reject_reason` is not null))))),
+  CONSTRAINT `chk_esign_signers_updated_actor` CHECK ((((`updated_by_actor_kind` = _utf8mb4'employee') and (`updated_by_user_id` is not null)) or ((`updated_by_actor_kind` in (_utf8mb4'super_user',_utf8mb4'system',_utf8mb4'legacy_unknown')) and (`updated_by_user_id` is null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文件簽署人';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `esign_verification_records`;

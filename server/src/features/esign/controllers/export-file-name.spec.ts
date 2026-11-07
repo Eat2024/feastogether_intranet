@@ -1,3 +1,8 @@
+import { AppException } from '#app/common/errors/app.exception';
+import { AppErrors } from '#app/common/errors/app-errors';
+import type { Actor } from '#app/features/auth/auth.types';
+import { PortalDirectoryService } from '#app/infrastructure/portal/portal-directory.service';
+import { AuthorizationService } from '#app/features/authorization/services/authorization.service';
 import { ExportHistoryController } from './export-history.controller';
 import { EsignExportHistoryService } from '../services/esign-export-history.service';
 import { InitiationJobRepository } from '../repositories/initiation-job.repository';
@@ -66,6 +71,20 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     const module = await Test.createTestingModule({
       controllers: [ExportsController, ExportHistoryController],
       providers: [
+        // 本套件只驗檔名契約；能力矩陣由真 HTTP/DB 的 authorization-colleague 測試負責。
+        {
+          provide: AuthorizationService,
+          useValue: {
+            requirePermissions: (actor: Actor, keys: string[]) => {
+              if (
+                actor.kind === 'employee' &&
+                keys.includes('esign.export.all')
+              )
+                throw new AppException(...AppErrors.AUTHORIZATION_DENIED);
+              return Promise.resolve();
+            },
+          },
+        },
         { provide: EsignExportHistoryService, useValue: { redownloadPdf } },
         {
           provide: InitiationJobRepository,
@@ -74,7 +93,15 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
         EsignExportService,
         EsignAccessPolicyService,
         EsignDocumentValidationService,
-        { provide: MysqlService, useValue: { getManager: () => ({}) } },
+        { provide: PortalDirectoryService, useValue: {} },
+        {
+          provide: MysqlService,
+          useValue: {
+            getManager: () => ({}),
+            transaction: (run: (manager: object) => Promise<unknown>) =>
+              run({}),
+          },
+        },
         { provide: DocumentRepository, useValue: { findById: () => document } },
         {
           provide: UserRepository,
@@ -330,7 +357,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     expect(response.statusCode).toBe(400);
     expect(response.body).not.toContain('sensitive-name');
   });
-  it('無員工 session、失效 session 不授權；Super user 回 403', async () => {
+  it('無員工 session、失效 session 不授權；Super user 可準備一般匯出', async () => {
     const payload = { type: 'excel' };
     expect(
       (await app.inject({ method: 'POST', url, payload })).statusCode,
@@ -346,7 +373,7 @@ describe('準備匯出檔名（真 controller／service／policy／guard）', ()
     });
     expect(
       (await app.inject({ method: 'POST', url, headers, payload })).statusCode,
-    ).toBe(403);
+    ).toBe(200);
   });
   it('缺少或不允許的來源不授權', async () => {
     const payload = { type: 'excel' };

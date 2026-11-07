@@ -1,3 +1,4 @@
+import type { Actor } from '#app/features/auth/auth.types';
 import { Injectable } from '@nestjs/common';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
 import { randomUUID } from 'node:crypto';
@@ -42,7 +43,7 @@ export class EsignInitiationJobService {
 
   async accept(
     documentId: number,
-    userId: number,
+    actor: Actor,
     body: InitiateDocumentDto,
     requestKey?: string,
   ): Promise<InitiationJobDto> {
@@ -51,18 +52,14 @@ export class EsignInitiationJobService {
     const input = this.normalize(body);
     const hash = canonicalSha256(input);
     const key = requestKey ?? randomUUID();
-    await this.preflightAcceptance(documentId, userId, requestKey);
+    await this.preflightAcceptance(documentId, actor, requestKey);
     const accepted = await this.mysql
       .transaction(async (manager) => {
-        const creator = await this.users.findByIdForShare(userId, manager);
-        if (!creator || !creator.isActive || creator.deletedAt)
-          throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
-        const document = await this.documents.findInitiationAccess(
+        const document = await this.access.lockManagedInitiationAccess(
           documentId,
+          actor,
           manager,
-          true,
         );
-        this.access.checkEsignCreator(document, userId);
         const previous = await this.jobs.byKey(documentId, key, manager);
         if (previous) {
           if (previous.requestHash !== hash)
@@ -71,7 +68,8 @@ export class EsignInitiationJobService {
             );
           return { job: previous, reused: true };
         }
-        this.access.checkEsignDraftCreator(document, userId);
+        if (document.status !== 'draft')
+          throw new AppException(...AppErrors.ESIGN_DRAFT_NOT_EDITABLE);
         await this.access.assertNotInitiating(documentId, manager);
         const now = new Date();
         const end = new Date(input.signEndAt);
@@ -83,7 +81,8 @@ export class EsignInitiationJobService {
         const job = await this.jobs.create(
           {
             documentId,
-            createdByUserId: userId,
+            createdByActorKind: actor.kind,
+            createdByUserId: actor.kind === 'employee' ? actor.userId : null,
             requestKey: key,
             requestHash: hash,
             inputJson: input,
@@ -102,7 +101,7 @@ export class EsignInitiationJobService {
       this.logJob(accepted.job, 'esign.initiation_accepted');
       await this.producer.enqueueInitiation(accepted.job.id);
     }
-    return { ...this.summary(accepted.job), reused: accepted.reused };
+    return { ...(await this.summary(accepted.job)), reused: accepted.reused };
   }
 
   /** initial/retry 共用新工作的狀態、計數與期限，不承擔授權或輸入來源判定。 */
@@ -126,7 +125,7 @@ export class EsignInitiationJobService {
   async retry(
     documentId: number,
     publicId: string,
-    userId: number,
+    actor: Actor,
     requestKey: string | undefined,
     body: unknown,
   ): Promise<InitiationJobDto> {
@@ -140,23 +139,14 @@ export class EsignInitiationJobService {
           Object.keys(body).length))
     )
       throw new AppException(...AppErrors.ESIGN_INITIATION_INVALID_REQUEST);
-    await this.preflightAcceptance(documentId, userId, requestKey, publicId);
+    await this.preflightAcceptance(documentId, actor, requestKey, publicId);
     const accepted = await this.mysql
       .transaction(async (manager) => {
-        const creator = await this.users.findByIdForShare(userId, manager);
-        if (!creator || !creator.isActive || creator.deletedAt)
-          throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
-        const document = await this.documents.findInitiationAccess(
+        const document = await this.access.lockManagedInitiationAccess(
           documentId,
+          actor,
           manager,
-          true,
         );
-        if (
-          !document ||
-          document.deletedAt ||
-          document.createdByUserId !== userId
-        )
-          throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
         const previous = await this.jobs.byKey(documentId, requestKey, manager);
         const parent = await this.jobs.find(
           documentId,
@@ -216,7 +206,8 @@ export class EsignInitiationJobService {
         const job = await this.jobs.create(
           {
             documentId,
-            createdByUserId: userId,
+            createdByActorKind: actor.kind,
+            createdByUserId: actor.kind === 'employee' ? actor.userId : null,
             requestKey,
             requestHash: hash,
             parentJobId: parent.id,
@@ -236,14 +227,14 @@ export class EsignInitiationJobService {
       this.logJob(accepted.job, 'esign.initiation_accepted');
       await this.producer.enqueueInitiation(accepted.job.id);
     }
-    return { ...this.summary(accepted.job), reused: accepted.reused };
+    return { ...(await this.summary(accepted.job)), reused: accepted.reused };
   }
 
   async latest(
     documentId: number,
-    userId: number,
+    actor: Actor,
   ): Promise<InitiationJobDto | null> {
-    const manager = await this.queryManager(documentId, userId);
+    const manager = await this.queryManager(documentId, actor);
     const job = await this.jobs.latest(documentId, manager);
     return job ? this.summary(job) : null;
   }
@@ -251,9 +242,9 @@ export class EsignInitiationJobService {
   async get(
     documentId: number,
     publicId: string,
-    userId: number,
+    actor: Actor,
   ): Promise<InitiationJobDto> {
-    const manager = await this.queryManager(documentId, userId);
+    const manager = await this.queryManager(documentId, actor);
     const job = await this.jobs.find(documentId, publicId, manager);
     if (!job) throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
     return this.summary(job);
@@ -262,9 +253,9 @@ export class EsignInitiationJobService {
   async input(
     documentId: number,
     publicId: string,
-    userId: number,
+    actor: Actor,
   ): Promise<InitiateDocumentDto> {
-    const manager = await this.queryManager(documentId, userId);
+    const manager = await this.queryManager(documentId, actor);
     const job = await this.jobs.find(
       documentId,
       publicId,
@@ -282,10 +273,10 @@ export class EsignInitiationJobService {
   async issues(
     documentId: number,
     publicId: string,
-    userId: number,
+    actor: Actor,
     query: InitiationIssuesQueryDto,
   ): Promise<InitiationIssuesDto> {
-    const manager = await this.queryManager(documentId, userId);
+    const manager = await this.queryManager(documentId, actor);
     const job = await this.jobs.find(
       documentId,
       publicId,
@@ -319,12 +310,12 @@ export class EsignInitiationJobService {
   /** 只快拒新請求；歷史 key 也必須保留鎖內 hash/parent 驗證及重播優先。 */
   private async preflightAcceptance(
     documentId: number,
-    userId: number,
+    actor: Actor,
     requestKey?: string,
     parentPublicId?: string,
   ): Promise<void> {
     try {
-      const manager = await this.queryManager(documentId, userId);
+      const manager = await this.queryManager(documentId, actor);
       if (
         parentPublicId &&
         !(await this.jobs.hasPublicId(documentId, parentPublicId, manager))
@@ -347,23 +338,14 @@ export class EsignInitiationJobService {
     }
   }
 
-  /** 查詢仍核對目前有效建立人，不沿用部門唯讀權限。 */
-  private async queryManager(documentId: number, userId: number) {
+  /** 查詢以輕量投影核對目前管理能力與範圍，不沿用部門唯讀權限。 */
+  private async queryManager(documentId: number, actor: Actor) {
     const manager = this.mysql.getManager();
-    const creator = await this.users.findById(userId, manager);
-    const document = await this.documents.findInitiationAccess(
-      documentId,
+    await this.access.manageableDocument(
+      await this.documents.findInitiationAccess(documentId, manager),
+      actor,
       manager,
     );
-    if (
-      !creator ||
-      !creator.isActive ||
-      creator.deletedAt ||
-      !document ||
-      document.deletedAt ||
-      document.createdByUserId !== userId
-    )
-      throw new AppException(...AppErrors.ESIGN_INITIATION_NOT_FOUND);
     return manager;
   }
 
@@ -401,15 +383,15 @@ export class EsignInitiationJobService {
       heartbeat.assertHealthy();
       if (!(await this.jobs.renew(lease, this.mysql.getManager())))
         throw new AppException(
-              ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
-            );
+          ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+        );
       const result = await this.mysql.transaction(async (manager) => {
         const result = await this.initiation.initiateInTransaction(
           {
             ...claimed.inputJson!,
             signers,
             documentId: claimed.documentId,
-            creatorUserId: claimed.createdByUserId,
+            actor: this.jobActor(claimed),
             signStartAt: new Date(claimed.inputJson!.signStartAt),
             signEndAt: new Date(claimed.inputJson!.signEndAt),
           },
@@ -425,8 +407,8 @@ export class EsignInitiationJobService {
           current.deadlineAt <= new Date()
         )
           throw new AppException(
-              ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
-            );
+            ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+          );
         current.status = 'succeeded';
         current.stage = 'completed';
         current.processedCount = current.totalCount;
@@ -438,8 +420,8 @@ export class EsignInitiationJobService {
         await this.jobs.save(current, manager);
         if (current.deadlineAt <= new Date())
           throw new AppException(
-              ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
-            );
+            ...AppErrors.ESIGN_INITIATION_PROCESSING_TIMEOUT,
+          );
         return result;
       });
       notificationJobs = result.notificationJobs;
@@ -642,7 +624,7 @@ export class EsignInitiationJobService {
 
   private classifyFailure(
     error: unknown,
-    creatorUserId: number,
+    creatorUserId: number | null,
   ): { code: string; transient: boolean } {
     if (error instanceof AppException) {
       if (
@@ -844,8 +826,37 @@ export class EsignInitiationJobService {
     };
   }
 
-  summary(job: EsignInitiationJob): InitiationJobDto {
+  private jobActor(job: EsignInitiationJob): Actor {
+    if (job.createdByActorKind === 'super_user' && job.createdByUserId === null)
+      return { kind: 'super_user' };
+    if (
+      job.createdByActorKind === 'employee' &&
+      job.createdByUserId !== null &&
+      Number.isSafeInteger(job.createdByUserId) &&
+      job.createdByUserId > 0
+    )
+      return { kind: 'employee', userId: job.createdByUserId };
+    throw new AppException(...AppErrors.AUTH_IDENTITY_INVALID);
+  }
+
+  async summary(job: EsignInitiationJob): Promise<InitiationJobDto> {
+    const employee =
+      job.createdByUserId === null
+        ? null
+        : await this.users.findById(
+            job.createdByUserId,
+            this.mysql.getManager(),
+          );
     return {
+      createdBy: {
+        kind: job.createdByActorKind,
+        userId:
+          job.createdByUserId == null ? null : String(job.createdByUserId),
+        name:
+          job.createdByActorKind === 'super_user'
+            ? 'Super user'
+            : (employee?.name ?? '員工'),
+      },
       jobId: job.publicId,
       documentId: String(job.documentId),
       status: job.status,

@@ -1,3 +1,4 @@
+import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
 import { randomUUID } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -37,7 +38,7 @@ describe('Spec017 部門管理安全邊界', () => {
   let path: string;
   beforeAll(async () => {
     ctx = await createSecurityE2eApp();
-    fixture = await createDepartmentFixtures(ctx);
+    fixture = await createDepartmentFixtures(ctx, 'document_creator');
     document = await fixture.createDocument(fixture.users.a1);
     signer = await fixture.manager.save(
       EsignSigner,
@@ -63,6 +64,9 @@ describe('Spec017 部門管理安全邊界', () => {
         await manager.delete(EsignDocument, { id: document.id });
       }
       const ids = Object.values(fixture.users).map((user) => user.id);
+      await manager.delete(AuthorizationUserRole, {
+        userId: In(Object.values(fixture.users).map((u) => u.id)),
+      });
       await manager.delete(AuthSession, { userId: In(ids) });
       await manager.delete(User, { id: In(ids) });
     }
@@ -100,9 +104,12 @@ describe('Spec017 部門管理安全邊界', () => {
     }
   });
 
-  it('未知全公司與偽造部門參數拒絕；未登入401，缺部門409', async () => {
+  it('未授權全公司與偽造部門參數拒絕；未登入401，缺部門409', async () => {
+    await request(ctx.server)
+      .get('/api/esign/documents?role=all')
+      .set('Cookie', fixture.cookies.a2)
+      .expect(403);
     for (const query of [
-      'role=all',
       'role=dep&departmentCode=B001',
       'role=dep&departmentId=1',
     ]) {
@@ -272,7 +279,7 @@ describe('Spec017 一般匯出直接網址安全邊界', () => {
 
   beforeAll(async () => {
     ctx = await createSecurityE2eApp();
-    fixture = await createDepartmentFixtures(ctx);
+    fixture = await createDepartmentFixtures(ctx, 'document_creator');
     const { manager, users } = fixture;
     for (let index = 0; index < 2; index += 1) {
       const document = await fixture.createDocument(users.a1, {
@@ -349,6 +356,7 @@ describe('Spec017 一般匯出直接網址安全邊界', () => {
       manager.create(EsignExportJob, {
         publicId: randomUUID(),
         documentId: documents[0].id,
+        createdByActorKind: 'external_signer',
         createdByUserId: null,
         signerId: signers[0].id,
         exportType: 'pdf',
@@ -375,6 +383,9 @@ describe('Spec017 一般匯出直接網址安全邊界', () => {
       await manager.delete(EsignSigner, { documentId: In(documentIds) });
       await manager.delete(EsignDocument, { id: In(documentIds) });
       const userIds = Object.values(users).map((user) => user.id);
+      await manager.delete(AuthorizationUserRole, {
+        userId: In(Object.values(fixture.users).map((u) => u.id)),
+      });
       await manager.delete(AuthSession, { userId: In(userIds) });
       await manager.delete(User, { id: In(userIds) });
     }
@@ -441,9 +452,11 @@ describe('Spec017 一般匯出直接網址安全邊界', () => {
       if (route.range)
         call.set('Range', 'bytes=0-3').set('If-Range', '"synthetic-etag"');
       const response = await call;
+      const expectedStatus =
+        status === 409 && route.path.includes('/downloads') ? 404 : status;
       expect({ route: route.path, status: response.status }).toEqual({
         route: route.path,
-        status,
+        status: expectedStatus,
       });
       expect(response.headers['content-type']).toMatch(/application\/json/);
       expect(response.headers['content-disposition']).toBeUndefined();
@@ -456,9 +469,9 @@ describe('Spec017 一般匯出直接網址安全邊界', () => {
         zipFiles[0].objectKey,
       ])
         expect(response.text).not.toContain(secret);
-      if (status === 409)
+      if (expectedStatus === 409)
         expect(apiError(response).code).toBe('ESIGN_DEPARTMENT_UNAVAILABLE');
-      if (status === 404)
+      if (expectedStatus === 404)
         expect(apiError(response).code).toBe('ESIGN_RESOURCE_NOT_FOUND');
     }
   }

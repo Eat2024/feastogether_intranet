@@ -1,4 +1,7 @@
-import { createSyntheticPortal, type SyntheticPortal } from './synthetic-portal.helper';
+import {
+  createSyntheticPortal,
+  type SyntheticPortal,
+} from './synthetic-portal.helper';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Queue, Worker } from 'bullmq';
 import { ESIGN_DOCUMENT_INITIATION_QUEUE } from '#app/features/esign/esign-queue.constants';
@@ -50,6 +53,10 @@ describe('022 背景發起有限恢復', () => {
       "SELECT id FROM users WHERE empid='RC02201'",
     );
     ownerId = String(users[0].id);
+    await db.query(
+      "INSERT IGNORE INTO authorization_user_roles(module_key,user_id,role_id) SELECT 'esign',?,id FROM authorization_roles WHERE role_code='document_creator'",
+      [ownerId],
+    );
   });
   afterAll(async () => {
     if (ctx) await closeSecurityE2eApp(ctx);
@@ -229,9 +236,18 @@ describe('022 背景發起有限恢復', () => {
       const first = await db.manager.findOneByOrFail(EsignInitiationJob, {
         id: row.id,
       });
-      for (let tick = 0; tick < 12; tick++) {
+      // 真 MySQL 更新仍在 event loop 執行；等待可觀察的續租結果，不能假設每個假時鐘 tick 都已落庫。
+      for (let tick = 0; tick < 18; tick++) {
         await jest.advanceTimersByTimeAsync(30000);
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        const progress = await db.manager.findOneByOrFail(EsignInitiationJob, {
+          id: row.id,
+        });
+        if (
+          progress.leaseExpiresAt!.getTime() >
+          first.leaseExpiresAt!.getTime() + 300000
+        )
+          break;
       }
       const renewed = await db.manager.findOneByOrFail(EsignInitiationJob, {
         id: row.id,
@@ -639,7 +655,17 @@ describe('022 背景發起有限恢復', () => {
   }
 
   async function login(empid: string): Promise<string> {
-    await portal.insertPeople([{ person_empid: empid, person_name: '背景合成員工', person_status: 1, department_id: 'D022', department_name: '測試部', title: '測試員工', email: `${empid.toLowerCase()}@example.test` }]);
+    await portal.insertPeople([
+      {
+        person_empid: empid,
+        person_name: '背景合成員工',
+        person_status: 1,
+        department_id: 'D022',
+        department_name: '測試部',
+        title: '測試員工',
+        email: `${empid.toLowerCase()}@example.test`,
+      },
+    ]);
     const launched = await request(ctx.server)
       .post('/api/auth/webview-launches')
       .set('Authorization', `Bearer ${createLaunchJwt(empid)}`)
@@ -655,7 +681,16 @@ describe('022 背景發起有限恢復', () => {
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');
-    await Promise.all([empid].map((employeeNo) => ctx.app.get<DataSource>(MYSQL_MAIN).query('UPDATE users SET email=? WHERE empid=?', [`${employeeNo.toLowerCase()}@example.test`, employeeNo])));
+    await Promise.all(
+      [empid].map((employeeNo) =>
+        ctx.app
+          .get<DataSource>(MYSQL_MAIN)
+          .query('UPDATE users SET email=? WHERE empid=?', [
+            `${employeeNo.toLowerCase()}@example.test`,
+            employeeNo,
+          ]),
+      ),
+    );
     return value;
   }
 });
@@ -686,4 +721,3 @@ function createLaunchJwt(empid: string): string {
   ).toString('base64url');
   return `${header}.${payload}.${signature}`;
 }
-

@@ -1,24 +1,24 @@
 # 管理 API 與相容契約
 
-狀態：設計，未實作。機器契約見 [openapi.json](openapi.json)，能力目錄見 [permissions.md](permissions.md)。所有成功／失敗沿專案 `{success,data,timestamp}`／`{success:false,error:{code,message},timestamp}`。管理API皆SuperUserOnly、no-store；所有寫入Origin防護，不新增帳密或cookie。
+狀態：028實作與HTTP驗收契約。機器契約見 [openapi.json](openapi.json)，能力目錄見 [permissions.md](permissions.md)。所有成功／失敗沿專案 `{success,data,timestamp}`／`{success:false,error:{code,message},timestamp}`。管理API皆SuperUserOnly、no-store；所有寫入Origin防護，不新增帳密或cookie。
 
 ## 管理資源
 
 | 方法／路徑 | 行為 |
 |---|---|
 | GET /api/authorization/modules | compiled子功能目錄 |
-| GET /api/authorization/modules/{moduleKey}/permissions | 該module權限目錄，含assignable，不能編輯 |
+| GET /api/authorization/modules/{moduleKey}/permissions | 該module權限目錄，含由compiled catalog計算的assignable，不能編輯 |
 | GET /api/authorization/modules/{moduleKey}/roles | 角色分頁，含protected／active／version，預設含未刪除的啟用與停用角色 |
 | POST 同上 | roleName，後端產生不可變roleCode；201 |
 | GET /api/authorization/modules/{moduleKey}/roles/{roleId} | 詳細角色與permissionKeys |
 | PATCH 同上 | roleName及／或isActive、expectedVersion；200，非空patch |
 | DELETE 同上 | expectedVersion查詢參數；無有效指派才soft-delete，204 |
 | PUT /api/authorization/modules/{moduleKey}/roles/{roleId}/permissions | permissionKeys完整集合、expectedVersion；差異更新，200 |
-| GET /api/authorization/modules/{moduleKey}/roles/{roleId}/employees | 有效指派者分頁；只回userId／name，必要員編只在授權專用結果中提供且不進log |
-| GET /api/authorization/modules/{moduleKey}/employees/{userId}/roles | explicit roleIds／implicitRoles，及有效角色概覽；無員工404 |
+| GET /api/authorization/modules/{moduleKey}/roles/{roleId}/employees | 有效指派者分頁；只回userId／name，不回員編或完整人事資料 |
+| GET /api/authorization/modules/{moduleKey}/employees/{userId}/roles | explicit roleIds／implicitRoles；無員工404 |
 | POST /api/authorization/modules/{moduleKey}/employee-role-assignments | body empId／roleIds／expectedRoleIds；原子查核、預建員工及覆寫該module一般角色集合，200 |
 | GET /api/authorization/events | limit／beforeId cursor，可選moduleKey，查授權audit白名單 |
-| GET /api/me/authorization | 任一有效actor的本人能力，見permissions契約 |
+| GET /api/auth/me | 任一有效 actor 的 session 白名單資料與本人能力，見 permissions 契約；不回角色資料 |
 
 路徑只放本地ID或公開目錄代碼，不將員編放URL。employee-role-assignments是建立一次角色配置結果的資源，重送完全相同目標可no-op；不是一次替換所有員工權限。roleIds=[]表示撤掉該module所有一般角色，不能撤同仁。
 
@@ -30,7 +30,7 @@ empId1～32字，保留大小寫與前後字元、不trim或轉數字；Portal e
 
 role變更鎖role並比expectedVersion，成功version+1；no-op不加版也不新增audit。assignment鎖user再role，以expectedRoleIds核對目前explicit集合；目標已一致可冪等成功。role／assignment與audit在同transaction；任何FK、版本或audit失敗不留半套關聯。
 
-平台目錄目前沒有可指派權限，不接受platform一般角色建立；同仁role不得透過任何CRUD／permission／assignment間接改變。自訂角色只能引用assignable權限，禁止platform.authorization.manage。
+平台目錄目前沒有可指派權限，不接受platform一般角色建立；同仁role不得透過任何CRUD／permission／assignment間接改變。自訂角色只能引用compiled catalog標示可指派的權限，禁止platform.authorization.manage；保護與可指派狀態皆不另存DB旗標。
 
 ## 分頁與輸出
 
@@ -43,7 +43,7 @@ assignment回 `{userId,moduleKey,roleIds,implicitRoles,changed}`，不回Portal�
 | 狀態 | code | 行為 |
 |---|---|---|
 | 400 | REQUEST_FORMAT_INVALID | 格式、未知欄位或invalid module／permission |
-| 401 | 027既有AUTH_TOKEN_MISSING／AUTH_TOKEN_INVALID | 無有效actor；不洩漏細節 |
+| 401 | UNAUTHORIZED（027 AUTH_TOKEN_MISSING／AUTH_TOKEN_INVALID 的HTTP code） | 無有效actor；不洩漏細節 |
 | 403 | AUTHORIZATION_DENIED | 有身分但缺功能或非Super user管理操作 |
 | 403 | AUTHORIZATION_PROTECTED_ROLE | 企圖修改同仁、指派維護專用能力 |
 | 404 | AUTHORIZATION_RESOURCE_NOT_FOUND | 目標不存在、已刪除或module路徑與實體不符 |
@@ -64,6 +64,9 @@ assignment回 `{userId,moduleKey,roleIds,implicitRoles,changed}`，不回Portal�
 4. document列表的`role`既有查詢值是資料範圍，不是RBAC角色。新增明確`role=all`僅read-all可用；其他role保持原義。super預設無employee本人範圍，未帶role時使用all；普通員工預設行為保留。不得由任意departmentCode query繞過部門。既有DocumentsListView明確傳role=dep，須作最小caller相容：由027 actor判別Super user傳all，員工保留dep；不新增篩選UI或業務畫面。
 5. 已受理job保存真正actor；worker以job actor執行已受理工作，不重新假裝creator，也不因管理者無員工身分進入本人簽署分支。後續poll/retry/download以目前actor重新授權。
 6. 既有departmentFile及pdf歷史個人副本下載收緊為本人指派；合法一般ZIP／Excel／整份文件匯出沿另一能力與資源政策，不可讓histories成為旁路。
+
+7. 文件詳情新增 `canManage` 作管理／唯讀 DTO 的 discriminator。`isCreator` 保留原員工建立人判斷，管理他人文件不改成 true；建立人失去 manage 時仍 `isCreator=true`、`canManage=false`。欄位及管理簽署資訊依 canManage 裁切，既有詳情／編輯／簽署人設定 caller 以 canManage 判斷管理能力，所有寫入仍重新授權。
+8. Super 建立的 departmentCode 保留原碼，不 trim／轉大小寫；只能匹配一筆未停用且有名稱的 Portal 部門。格式或無效部門回既有 400 `INVALID_REQUEST`，Portal 查核不可用回 503 `ESIGN_DEPARTMENT_LOOKUP_UNAVAILABLE`。
 
 ## 安全紀錄
 

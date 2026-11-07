@@ -79,8 +79,9 @@ describe('EsignInitiationService', () => {
       ),
     };
     const access = {
-      checkAndLockDraftDoc: jest.fn(async () => document),
-      checkEsignDraftCreator: jest.fn(),
+      assertNotInitiating: jest.fn(),
+      lockManagedDraft: jest.fn(async () => document),
+      manageableDocument: jest.fn(),
     };
     const pdf = {
       validatePersistedPdf: jest.fn(async () => ({
@@ -166,7 +167,7 @@ describe('EsignInitiationService', () => {
     const { service, mysql, documents, jobs } = setup();
     const input: InitiateDocumentInput = {
       documentId: 3,
-      creatorUserId: 7,
+      actor: { kind: 'employee', userId: 7 },
       signers: [
         { type: 'email', name: '候選人', email: 'candidate@example.test' },
       ],
@@ -210,7 +211,7 @@ describe('EsignInitiationService', () => {
     } = setup();
     await service.initiate({
       documentId: 3,
-      creatorUserId: 7,
+      actor: { kind: 'employee', userId: 7 },
       signers: [
         { type: 'email', name: '候選人', email: 'candidate@example.test' },
       ],
@@ -238,17 +239,17 @@ describe('EsignInitiationService', () => {
     );
     expect(
       employeeEmails.resolveForInitiation.mock.invocationCallOrder[0],
-    ).toBeLessThan(access.checkAndLockDraftDoc.mock.invocationCallOrder[0]);
+    ).toBeLessThan(access.lockManagedDraft.mock.invocationCallOrder[0]);
     expect(signerService.prepareSigners).toHaveBeenCalledWith(
       document,
-      7,
+      { kind: 'employee', userId: 7 },
       expect.any(Array),
       manager,
       expect.any(Map),
     );
     expect(fieldService.buildFields).toHaveBeenCalledWith(
       document,
-      7,
+      { kind: 'employee', userId: 7 },
       expect.arrayContaining([
         expect.objectContaining({
           type: 'signature',
@@ -256,11 +257,10 @@ describe('EsignInitiationService', () => {
       ]),
       manager,
     );
-    expect(access.checkAndLockDraftDoc).toHaveBeenCalledWith(
+    expect(access.lockManagedDraft).toHaveBeenCalledWith(
       3,
-      7,
+      { kind: 'employee', userId: 7 },
       manager,
-      undefined,
     );
     expect(document).toMatchObject({
       createdByUserId: 7,
@@ -311,7 +311,7 @@ describe('EsignInitiationService', () => {
     await expect(
       service.initiate({
         documentId: 3,
-        creatorUserId: 7,
+        actor: { kind: 'employee', userId: 7 },
         signers: [
           { type: 'email', name: '候選人', email: 'candidate@example.test' },
         ],
@@ -341,7 +341,7 @@ describe('EsignInitiationService', () => {
     await expect(
       service.initiate({
         documentId: 3,
-        creatorUserId: 7,
+        actor: { kind: 'employee', userId: 7 },
         signers: [
           { type: 'email', name: '候選人', email: 'candidate@example.test' },
         ],
@@ -382,7 +382,7 @@ describe('EsignInitiationService', () => {
     });
     await service.initiate({
       documentId: 3,
-      creatorUserId: 7,
+      actor: { kind: 'employee', userId: 7 },
       signers: [{ type: 'user', userId: '8' }],
       fields: [
         {

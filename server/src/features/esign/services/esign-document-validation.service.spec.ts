@@ -136,3 +136,52 @@ describe('EsignDocumentValidationService', () => {
     ).toThrow('完整性');
   });
 });
+
+describe('Super 建立部門 exact-match', () => {
+  const row = {
+    department_ch_id: 'AUTH-A',
+    department_name: '可信部門',
+    stopdate: null,
+  };
+  it.each([undefined, '', 'auth-a', ' AUTH-A', 'AUTH-A ', 'A'.repeat(51)])(
+    '拒絕缺值或不相符原碼 %p',
+    async (code) => {
+      const service = new EsignDocumentValidationService({
+        listOrgChartSource: () => Promise.resolve({ departments: [row] }),
+      } as never);
+      await expect(
+        service.requireCreationDepartment(code),
+      ).rejects.toMatchObject({ status: 400 });
+    },
+  );
+  it.each([
+    [{ ...row, stopdate: '2020-01-01' }],
+    [row, row],
+    [{ ...row, department_name: ' ' }],
+    [],
+  ])('無效、重複或空名稱拒絕', async (...departments) => {
+    const service = new EsignDocumentValidationService({
+      listOrgChartSource: () => Promise.resolve({ departments }),
+    } as never);
+    await expect(
+      service.requireCreationDepartment('AUTH-A'),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+  it('保留原碼及可信名稱，Portal 失敗回503', async () => {
+    const lookup = jest.fn().mockResolvedValue({ departments: [row] });
+    const service = new EsignDocumentValidationService({
+      listOrgChartSource: lookup,
+    } as never);
+    await expect(service.requireCreationDepartment('AUTH-A')).resolves.toEqual({
+      departmentCode: 'AUTH-A',
+      departmentName: '可信部門',
+    });
+    lookup.mockRejectedValueOnce(new Error('上游失效'));
+    await expect(
+      service.requireCreationDepartment('AUTH-A'),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: 'ESIGN_DEPARTMENT_LOOKUP_UNAVAILABLE',
+    });
+  });
+});

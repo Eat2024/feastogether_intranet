@@ -14,7 +14,7 @@ export interface DocumentUpload {
 }
 
 /** multipart 允許的文字欄位；fields 為 JSON 字串，由 DTO 解析與驗證。 */
-const TEXT_FIELDS = new Set(['title', 'fields']);
+const TEXT_FIELDS = new Set(['title', 'fields', 'departmentCode']);
 
 /** 僅供電子簽草稿上傳：解析 file/title/fields，不建立資料、不驗證 PDF 業務內容。 */
 @Injectable()

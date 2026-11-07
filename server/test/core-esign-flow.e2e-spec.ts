@@ -1,3 +1,4 @@
+import { grantDocumentCreatorByEmployeeNo } from './helpers/authorization-business-fixtures';
 import {
   completeInitiation,
   deleteInitiationJobs,
@@ -227,6 +228,10 @@ describe('核心電子簽 US1', () => {
       'DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE empid IN (?, ?, ?))',
       [creatorEmpid, outsiderEmpid, signerEmpid],
     );
+    await db.query(
+      'DELETE FROM authorization_user_roles WHERE user_id IN (SELECT id FROM users WHERE empid IN (?, ?, ?, ?))',
+      [creatorEmpid, outsiderEmpid, signerEmpid, importedEmpid],
+    );
     await db.query('DELETE FROM users WHERE empid IN (?, ?, ?, ?)', [
       creatorEmpid,
       outsiderEmpid,
@@ -242,14 +247,25 @@ describe('核心電子簽 US1', () => {
         'DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE empid = ?)',
         [empid],
       );
+      await db.query(
+        'DELETE FROM authorization_user_roles WHERE user_id IN (SELECT id FROM users WHERE empid = ?)',
+        [empid],
+      );
       await db.query('DELETE FROM users WHERE empid = ?', [empid]);
     }
     await closeSecurityE2eApp(ctx);
   });
 
   it('停用後沒有稽核表，建立人也無法呼叫簽署歷程 API', async () => {
-    expect(await db.query("SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='esign_audit_events'" )).toEqual([]);
-    await request(ctx.server).get('/api/esign/documents/1/history').set('Cookie', creatorCookie).expect(404);
+    expect(
+      await db.query(
+        "SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='esign_audit_events'",
+      ),
+    ).toEqual([]);
+    await request(ctx.server)
+      .get('/api/esign/documents/1/history')
+      .set('Cookie', creatorCookie)
+      .expect(404);
   });
 
   it('一次發起可從空草稿完成設定；失敗完整回滾既有名單、欄位與通知', async () => {
@@ -352,7 +368,7 @@ describe('核心電子簽 US1', () => {
             .initiateInTransaction(
               {
                 documentId: id,
-                creatorUserId: draft.createdByUserId,
+                actor: { kind: 'employee', userId: draft.createdByUserId! },
                 signers: [
                   {
                     type: 'email',
@@ -546,6 +562,10 @@ describe('核心電子簽 US1', () => {
   });
 
   it('簽署人候選：GET 與 POST 僅解析既有本機帳號', async () => {
+    await db.query(
+      'DELETE FROM authorization_user_roles WHERE user_id IN (SELECT id FROM users WHERE empid = ?)',
+      [importedEmpid],
+    );
     await db.query('DELETE FROM users WHERE empid = ?', [importedEmpid]);
     const eligibleStaff = ctx.app.get<{ lookupEligibleStaff: jest.Mock }>(
       EligibleStaffService,
@@ -1304,13 +1324,17 @@ describe('核心電子簽 US1', () => {
       [documentId],
     );
     expect(completed[0]?.status).toBe('completed');
-    const creatorCopy = await downloadCopy(
+    await downloadCopy(
       `/api/esign/documents/${documentId}/signers/${signers[0].publicId}`,
       creatorCookie,
+    ).expect(404);
+    const firstOwnCopy = await downloadCopy(
+      '/api/external-signing-task',
+      externalCookie,
     )
       .expect(200)
       .expect('Content-Type', /application\/pdf/);
-    // 副本產生後外部簽署人下載本人副本，內容與建立人下載的同一人副本相同
+    // 副本產生後僅外部簽署人下載本人副本，重複下載內容一致
     expect(
       apiData<SigningTask>(
         await request(ctx.server)
@@ -1332,7 +1356,7 @@ describe('核心電子簽 US1', () => {
       .expect('Cache-Control', 'private, no-store')
       .expect('X-Content-Type-Options', 'nosniff');
     expect(
-      Buffer.compare(externalCopy.body as Buffer, creatorCopy.body as Buffer),
+      Buffer.compare(externalCopy.body as Buffer, firstOwnCopy.body as Buffer),
     ).toBe(0);
     await downloadCopy(
       `/api/esign/documents/${documentId}/signers/${signers[0].publicId}`,
@@ -1342,7 +1366,7 @@ describe('核心電子簽 US1', () => {
       .get(`/api/external-completions/${signers[0].publicId}`)
       .expect(404);
     // 浮水印在保存副本前完成；兩個下載入口直接提供同一個固定產物。
-    const downloadedPdf = await PDFDocument.load(creatorCopy.body as Buffer);
+    const downloadedPdf = await PDFDocument.load(firstOwnCopy.body as Buffer);
     const unicodeMaps = downloadedPdf.context
       .enumerateIndirectObjects()
       .flatMap(([, value]) =>
@@ -1391,10 +1415,10 @@ describe('核心電子簽 US1', () => {
     );
     expect(externalAfterNote.signer).not.toHaveProperty('note');
     const repeatedCopy = await downloadCopy(
-      `/api/esign/documents/${documentId}/signers/${signers[0].publicId}`,
-      creatorCookie,
+      '/api/external-signing-task',
+      externalCookie,
     ).expect(200);
-    expect(repeatedCopy.body).toEqual(creatorCopy.body);
+    expect(repeatedCopy.body).toEqual(firstOwnCopy.body);
     const completedFiles = await db.query<Array<{ sha256: string }>>(
       `SELECT f.sha256 FROM esign_file_objects f JOIN esign_signature_records r ON r.id = f.signature_record_id JOIN esign_signers s ON s.id = r.signer_id
        WHERE s.document_id = ? AND f.file_purpose = 'completed_pdf'`,
@@ -3042,8 +3066,8 @@ describe('核心電子簽 US1', () => {
         expect(files[i].document_id).toBeNull();
         expect(Number(files[i].signer_id)).toBe(Number(owners[i].id));
         const response = await downloadCopy(
-          `/api/esign/documents/${id}/signers/${files[i].public_id}`,
-          creatorCookie,
+          `/api/esign/signing-tasks/${files[i].public_id}`,
+          cookies[i],
         ).expect(200);
         expect(
           createHash('sha256')
@@ -3230,20 +3254,20 @@ describe('核心電子簽 US1', () => {
   /** 只固定系統時間（Date），計時器與 I/O 照常運作 */
   function useFakeDate(now: Date): void {
     jest.useFakeTimers({
-    now,
-    doNotFake: [
-      'hrtime',
-      'nextTick',
-      'performance',
-      'queueMicrotask',
-      'setImmediate',
-      'clearImmediate',
-      'setInterval',
-      'clearInterval',
-      'setTimeout',
-      'clearTimeout',
-    ],
-  });
+      now,
+      doNotFake: [
+        'hrtime',
+        'nextTick',
+        'performance',
+        'queueMicrotask',
+        'setImmediate',
+        'clearImmediate',
+        'setInterval',
+        'clearInterval',
+        'setTimeout',
+        'clearTimeout',
+      ],
+    });
   }
 
   /** 單一簽署人文件的簽署人 id（Redis 驗證碼 key 以它區分） */
@@ -3775,6 +3799,7 @@ describe('核心電子簽 US1', () => {
       .type('form')
       .send({ code })
       .expect(303);
+    await grantDocumentCreatorByEmployeeNo(ctx.app, empid);
     const raw: unknown = activated.headers['set-cookie'];
     const cookie = Array.isArray(raw) ? raw[0] : raw;
     if (typeof cookie !== 'string') throw new Error('缺少 session cookie');

@@ -111,18 +111,18 @@ describe('runtime API coverage', () => {
   it.each([
     '/api/roles',
     '/api/users',
-    '/api/auth/me',
     '/api/auth/oauth/start',
     '/api/auth/oauth/callback',
   ])('%s 在正式 runtime 不存在', async (path) => {
     await request(ctx.server).get(path).expect(404);
   });
 
-  it('Spec 2 WebView 與 session routes 已註冊', async () => {
+  it('WebView、session 與目前登入者 routes 已註冊', async () => {
     await request(ctx.server).post('/api/auth/webview-launches').expect(401);
     await request(ctx.server).get('/api/auth/webview').expect(400);
     await request(ctx.server).post('/api/auth/session').expect(400);
     await request(ctx.server).get('/api/auth/session').expect(401);
+    await request(ctx.server).get('/api/auth/me').expect(401);
     await request(ctx.server)
       .delete('/api/auth/session')
       .set('Origin', 'http://localhost:3000')
@@ -204,6 +204,7 @@ describe('runtime API coverage', () => {
   });
 
   it('匯出歷程改由 history/export 提供，舊路由不再提供存取', async () => {
+    await request(ctx.server).get('/api/esign/documents/1/history').expect(404);
     await request(ctx.server).get('/api/esign/exports').expect(404);
     const response = await request(ctx.server)
       .get('/api/esign/history/export?type=zip')
@@ -274,10 +275,15 @@ function internalOperations(): Array<[string, string]> {
   let path = '';
   for (const line of spec.split('\n')) {
     if (line === 'components:') break;
-    const pathMatch = /^  (\/[^:]+):$/.exec(line);
+    const pathMatch = /^ {2}(\/[^:]+):$/.exec(line);
     if (pathMatch) path = pathMatch[1];
-    const method = /^    (get|post|put|patch|delete):$/.exec(line);
-    if (method && path.startsWith('/esign/'))
+    const method = /^ {4}(get|post|put|patch|delete):$/.exec(line);
+    // Spec 015 已移除文件舊 history route，下方另驗證其 404。
+    if (
+      method &&
+      path.startsWith('/esign/') &&
+      path !== '/esign/documents/{documentId}/history'
+    )
       operations.push([
         method[1].toUpperCase(),
         '/api' +

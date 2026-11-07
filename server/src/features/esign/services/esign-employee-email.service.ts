@@ -14,13 +14,13 @@ export class EsignEmployeeEmailService {
   /** 先共享鎖定員工再鎖文件；固定資格／信箱，與其他文件受理的外鍵共享引用相容。 */
   async resolveForInitiation(
     userIds: string[],
-    creatorUserId: number,
+    creatorUserId: number | null,
     manager: EntityManager,
   ): Promise<Map<number, User>> {
     if (
       !Array.isArray(userIds) ||
-      !Number.isSafeInteger(creatorUserId) ||
-      creatorUserId < 1 ||
+      (creatorUserId !== null &&
+        (!Number.isSafeInteger(creatorUserId) || creatorUserId < 1)) ||
       userIds.some(
         (id) =>
           typeof id !== 'string' ||
@@ -31,9 +31,12 @@ export class EsignEmployeeEmailService {
       throw new AppException(...AppErrors.ESIGN_EMPLOYEE_IDENTITY_UNAVAILABLE);
     }
     const signerIds = new Set(userIds.map(Number));
-    const ids = [...new Set([...signerIds, creatorUserId])].sort(
-      (a, b) => a - b,
-    );
+    const ids = [
+      ...new Set([
+        ...signerIds,
+        ...(creatorUserId === null ? [] : [creatorUserId]),
+      ]),
+    ].sort((a, b) => a - b);
     let rows: User[];
     try {
       rows = await this.users.findByIdsWithEmail(ids, manager, 'shared');

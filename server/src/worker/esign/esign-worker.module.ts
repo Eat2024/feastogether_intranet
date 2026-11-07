@@ -1,3 +1,5 @@
+import { AuthorizationModule } from '#app/features/authorization/authorization.module';
+import { PortalModule } from '#app/infrastructure/portal/portal.module';
 import { EsignInitiationJobService } from '#app/features/esign/services/esign-initiation-job.service';
 import { EsignInitiationService } from '#app/features/esign/services/esign-initiation.service';
 import { EsignEmployeeEmailService } from '#app/features/esign/services/esign-employee-email.service';
@@ -28,6 +30,8 @@ import { DocumentFinalizationProcessor } from './document-finalization.processor
 
 @Module({
   imports: [
+    AuthorizationModule,
+    PortalModule,
     MysqlModule,
     FileStorageModule,
     LoggingModule,

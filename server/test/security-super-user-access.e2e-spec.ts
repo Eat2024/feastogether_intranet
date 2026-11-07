@@ -429,7 +429,7 @@ describe('Super user hidden entry (027-04)', () => {
       );
 
       const business = await request(ctx.server)
-        .get('/api/esign/documents')
+        .get('/api/esign/signing-tasks')
         .set('Origin', ORIGIN)
         .set('Cookie', `${AUTH_COOKIE_NAME}=${token}`)
         .expect(403);

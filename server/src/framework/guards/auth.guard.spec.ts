@@ -151,7 +151,13 @@ describe('AuthGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(request.authSession).toEqual(superUserSession);
     expect(request.user).toBeUndefined();
-    expect(setAuditUserId).not.toHaveBeenCalled();
+    expect(setAuditUserId).toHaveBeenCalledWith('auditActor', {
+      kind: 'super_user',
+    });
+    expect(setAuditUserId).not.toHaveBeenCalledWith(
+      'auditUserId',
+      expect.anything(),
+    );
   });
 
   it('@AllowSuperUser() 端點對員工照常掛員工身分', async () => {

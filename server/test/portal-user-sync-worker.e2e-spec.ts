@@ -1,3 +1,6 @@
+import { DataSource } from 'typeorm';
+import { buildMysqlOptions } from '#app/infrastructure/database/mysql/mysql.options';
+import { seedAuthorizationCatalog } from './helpers/authorization-fixtures';
 import type { INestApplicationContext } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { defaultRepeatStrategy, Queue } from 'bullmq';
@@ -27,6 +30,15 @@ describe('Portal 員工主檔每日排程（worker）', () => {
   let workers: INestApplicationContext[] = [];
 
   async function startWorker(): Promise<void> {
+    const db = await new DataSource(
+      buildMysqlOptions((key) => process.env[key]),
+    ).initialize();
+    try {
+      await seedAuthorizationCatalog(db);
+    } finally {
+      await db.destroy();
+    }
+
     const worker = await Test.createTestingModule({ imports: [WorkerModule] })
       .overrideProvider(PortalUserSyncService)
       .useValue({ run })

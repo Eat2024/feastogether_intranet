@@ -51,7 +51,7 @@ describe('簽署人真正批次新增', () => {
     await fixture(async (ds, documentId, actorId) => {
       const cls = {
         isActive: () => true,
-        get: () => actorId,
+        get: () => ({ kind: 'employee', userId: actorId }),
       } as unknown as ClsService;
       new AuditSubscriber(ds, cls);
       const inputs = signers(ds, documentId, 501).reverse();

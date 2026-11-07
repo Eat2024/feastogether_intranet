@@ -85,6 +85,10 @@ export class DocumentRepository {
     return this.findList({ createdByDepartmentCode }, manager);
   }
 
+  findAllForList(manager: EntityManager) {
+    return this.findList({}, manager);
+  }
+
   findListCreatedByUser(createdByUserId: number, manager: EntityManager) {
     return this.findList({ createdByUserId }, manager);
   }
@@ -111,6 +115,7 @@ export class DocumentRepository {
         'document.title',
         'document.status',
         'document.createdByUserId',
+        'document.createdByActorKind',
         'document.createdAt',
         'document.updatedAt',
         'document.signStartAt',
@@ -217,7 +222,7 @@ export class DocumentRepository {
 
   async save(document: EsignDocument, manager: EntityManager) {
     // 新建沒有舊版本；正式 activate 先將 status 設為 active，不進入草稿編輯分支。
-    if (!document.id || document.status !== 'draft')
+    if (!document.id || document.status !== 'draft' || document.deletedAt)
       return manager.save(document);
     // 呼叫端已授權並持有文件鎖。以 DB 原始微秒作下限，不使用 entity 的毫秒 Date。
     const previous = await manager
@@ -260,11 +265,16 @@ export class DocumentRepository {
       .execute();
   }
 
-  softDeleteDraft(id: number, deletedAt: Date, manager: EntityManager) {
+  softDeleteDraft(
+    id: number,
+    deletedAt: Date,
+    manager: EntityManager,
+    audit: Pick<EsignDocument, 'updatedByActorKind' | 'updatedByUserId'>,
+  ) {
     return manager
       .createQueryBuilder()
       .update(EsignDocument)
-      .set({ deletedAt, updatedAt: () => this.nextDraftVersion })
+      .set({ ...audit, deletedAt, updatedAt: () => this.nextDraftVersion })
       .where('id = :id AND status = :status AND deleted_at IS NULL', {
         id,
         status: 'draft',

@@ -2,8 +2,8 @@ import { IsIn, IsOptional } from 'class-validator';
 
 export class ListDocumentsQueryDto {
   @IsOptional()
-  @IsIn(['dep', 'created', 'assigned'])
-  role?: 'dep' | 'created' | 'assigned';
+  @IsIn(['dep', 'created', 'assigned', 'all'])
+  role?: 'dep' | 'created' | 'assigned' | 'all';
 
   @IsOptional()
   @IsIn([

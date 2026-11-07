@@ -42,8 +42,8 @@ describe('EsignStoppageService', () => {
       saveMany: jest.fn(async (value: object[]) => value),
     };
     const access = {
-      checkEsignCreator: jest.fn(),
-      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
+      lockManagedDocument: jest.fn(async () => document),
+      assertManagerNotInitiating: jest.fn().mockResolvedValue(undefined),
       assertNotInitiating: jest.fn().mockResolvedValue(undefined),
     };
     const validation = {
@@ -66,12 +66,14 @@ describe('EsignStoppageService', () => {
     '%s creator 停止時必填理由、保留已簽 credential/evidence 並使 pending 邀請失效',
     async (status) => {
       const { service, document, signers, access } = setup(status);
-      expect(() => service.stopByCreator(3, 7, '   ')).toThrow(
-        '停止原因必須為 1 至 500 字',
-      );
+      expect(() =>
+        service.stopByActor(3, { kind: 'employee', userId: 7 }, '   '),
+      ).toThrow('停止原因必須為 1 至 500 字');
 
-      await expect(service.stopByCreator(3, 7, '資料有誤')).resolves.toBe(true);
-      expect(access.checkEsignCreator).toHaveBeenCalled();
+      await expect(
+        service.stopByActor(3, { kind: 'employee', userId: 7 }, '資料有誤'),
+      ).resolves.toBe(true);
+      expect(access.lockManagedDocument).toHaveBeenCalled();
       expect(document).toMatchObject({
         createdByUserId: 7,
         createdByDepartmentCode: '00A',
@@ -88,9 +90,9 @@ describe('EsignStoppageService', () => {
 
   it.each(['completed'])('%s 不可手動停止', async (status) => {
     const { service, documents } = setup(status);
-    await expect(service.stopByCreator(3, 7, '停止')).rejects.toThrow(
-      '只有簽署中的文件可以停止',
-    );
+    await expect(
+      service.stopByActor(3, { kind: 'employee', userId: 7 }, '停止'),
+    ).rejects.toThrow('只有簽署中的文件可以停止');
     expect(documents.save).not.toHaveBeenCalled();
   });
 });

@@ -1,3 +1,5 @@
+import { In } from 'typeorm';
+import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -23,7 +25,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { employeeSessionCookie } from './employee-session.helper';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 
 describe('022 背景工作終態明細保留', () => {
   jest.setTimeout(60000);
@@ -58,7 +60,7 @@ describe('022 背景工作終態明細保留', () => {
     pdf = Buffer.from(await source.save());
   });
   async function session(userId: number) {
-    return await employeeSessionCookie(ctx.app, userId);
+    return await documentCreatorSessionCookie(ctx.app, userId);
   }
   async function newDoc() {
     const id = apiData<{ id: string }>(
@@ -545,6 +547,7 @@ describe('022 背景工作終態明細保留', () => {
       await manager.query('DELETE FROM auth_sessions WHERE user_id IN (?)', [
         ids,
       ]);
+      await manager.delete(AuthorizationUserRole, { userId: In(ids) });
       await manager.delete(User, ids);
     }
     await closeSecurityE2eApp(ctx);

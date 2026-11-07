@@ -104,16 +104,37 @@ export class ExportJobRepository {
   create(fields: Partial<EsignExportJob>, manager: EntityManager) {
     return manager.create(EsignExportJob, fields);
   }
+  displayRecord(id: number, manager: EntityManager) {
+    return manager
+      .createQueryBuilder(EsignExportJob, 'job')
+      .withDeleted()
+      .leftJoin('job.createdByUser', 'exporter')
+      .leftJoin('job.signer', 'signer')
+      .select([
+        'job.id',
+        'job.createdByActorKind',
+        'job.createdByUserId',
+        'exporter.id',
+        'exporter.name',
+        'exporter.empid',
+        'signer.id',
+        'signer.nameSnapshot',
+        'signer.email',
+      ])
+      .where('job.id=:id', { id })
+      .getOne();
+  }
   documents(
     q: { cursor?: string; limit: number; status?: string; q?: string },
-    departmentCode: string,
+    departmentCode: string | null,
     manager: EntityManager,
   ) {
     const query = manager
       .createQueryBuilder(EsignDocument, 'document')
       .leftJoinAndSelect('document.createdByUser', 'creator')
-      .where('document.deletedAt IS NULL')
-      .andWhere('document.createdByDepartmentCode = :departmentCode', {
+      .where('document.deletedAt IS NULL');
+    if (departmentCode !== null)
+      query.andWhere('document.createdByDepartmentCode = :departmentCode', {
         departmentCode,
       });
     if (q.cursor)
@@ -133,7 +154,7 @@ export class ExportJobRepository {
   historyPage(
     q: {
       exportType: EsignExportType;
-      departmentCode: string;
+      departmentCode: string | null;
       documentId?: number;
       q?: string;
       offset: number;
@@ -159,7 +180,7 @@ export class ExportJobRepository {
   historyRecord(
     publicId: string,
     exportType: EsignExportType,
-    departmentCode: string,
+    departmentCode: string | null,
     manager: EntityManager,
   ) {
     return this.historyRecordsQuery(undefined, departmentCode, manager)
@@ -168,11 +189,32 @@ export class ExportJobRepository {
       .getOne();
   }
 
+  /** 個人副本歷史只以本人指派查詢，不借用部門或一般匯出範圍。 */
+  personalCopyRecord(publicId: string, userId: number, manager: EntityManager) {
+    return manager
+      .createQueryBuilder(EsignExportJob, 'job')
+      .innerJoin('job.document', 'document', 'document.deletedAt IS NULL')
+      .innerJoin(
+        'job.signer',
+        'signer',
+        'signer.deletedAt IS NULL AND signer.documentId = job.documentId',
+      )
+      .where('job.publicId = :publicId AND job.exportType = :type', {
+        publicId,
+        type: EXPORT_TYPE_COLUMN.pdf,
+      })
+      .andWhere('signer.signerType = :signerType AND signer.userId = :userId', {
+        signerType: 'user',
+        userId,
+      })
+      .getOne();
+  }
+
   /** 依匯出類型分組計數，條件與 historyPage 相同。 */
   async historyCounts(
     exportTypes: EsignExportType[],
     documentId: number | undefined,
-    departmentCode: string,
+    departmentCode: string | null,
     manager: EntityManager,
     q?: string,
   ) {
@@ -193,7 +235,7 @@ export class ExportJobRepository {
   /** 列表與單筆紀錄共用的查詢：可見的紀錄，帶出文件、匯出員工與簽署人的顯示欄位。 */
   private historyRecordsQuery(
     documentId: number | undefined,
-    departmentCode: string,
+    departmentCode: string | null,
     manager: EntityManager,
     q?: string,
   ) {
@@ -206,6 +248,7 @@ export class ExportJobRepository {
           'job.exportType',
           'job.documentId',
           'job.createdByUserId',
+          'job.createdByActorKind',
           'job.signerId',
           'job.conditionsJson',
           'job.downloadFileName',
@@ -241,7 +284,7 @@ export class ExportJobRepository {
    */
   private visibleHistoryQuery(
     documentId: number | undefined,
-    departmentCode: string,
+    departmentCode: string | null,
     manager: EntityManager,
     q?: string,
   ) {
@@ -251,8 +294,9 @@ export class ExportJobRepository {
       .innerJoin('job.document', 'document', 'document.deletedAt IS NULL')
       .where('(job.exportType <> :zipType OR job.snapshotJson IS NOT NULL)', {
         zipType: EXPORT_TYPE_COLUMN.zip,
-      })
-      .andWhere('document.createdByDepartmentCode = :departmentCode', {
+      });
+    if (departmentCode !== null)
+      query.andWhere('document.createdByDepartmentCode = :departmentCode', {
         departmentCode,
       });
     if (documentId)

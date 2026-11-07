@@ -1,3 +1,7 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { CurrentActor } from '#app/framework/decorators/current-actor.decorator';
+import { AllowSuperUser } from '#app/framework/decorators/allow-super-user.decorator';
+import { RequirePermissions } from '#app/features/authorization/decorators/require-permissions.decorator';
 import { InitiationJobResponseDto } from '../dto/initiation-response.dto';
 import { SignerNoteDto } from '../dto/signer-note.dto';
 import { DraftSaveDto, DraftSettingsDto } from '../dto/draft-settings.dto';
@@ -72,15 +76,17 @@ export class DocumentsController {
     private readonly exportHistory: EsignExportHistoryService,
   ) {}
 
-  // 依角色與狀態列出目前員工可見的電子簽文件。
+  // 依資料範圍與狀態列出目前操作者可見的電子簽文件。
   @ApiOperation({
     summary: '列出電子簽文件',
     description:
-      'dep 為同部門；created／assigned 為本人範圍，未帶 role 合併本人範圍。不接受呼叫者指定部門。',
+      'dep 為同部門；created／assigned 為本人範圍，員工未帶 role 合併本人範圍。all 需要 read-all，Super 預設 all。不接受呼叫者指定部門。',
   })
+  @RequirePermissions('esign.document.read')
+  @AllowSuperUser()
   @Get()
-  list(@CurrentUserId() userId: number, @Query() query: ListDocumentsQueryDto) {
-    return this.queries.list(userId, query.role, query.status);
+  list(@CurrentActor() actor: Actor, @Query() query: ListDocumentsQueryDto) {
+    return this.queries.list(actor, query.role, query.status);
   }
 
   // 上傳pdf檔，可一併帶入草稿欄位
@@ -89,11 +95,13 @@ export class DocumentsController {
   @ApiOperation({
     summary: '上傳 PDF 並建立草稿',
     description:
-      '以 multipart/form-data 接收 title、file 與可選的 fields（JSON 字串），建立草稿及共用欄位。',
+      '以 multipart/form-data 接收 title、file 與可選的 fields（JSON 字串）。Super 必填有效 departmentCode；員工不接受部門覆寫。',
   })
+  @RequirePermissions('esign.document.create')
+  @AllowSuperUser()
   @Post()
   async create(
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body('fields') body: CreateDocumentDto,
     @Body('file') file: DocumentUpload['file'],
   ) {
@@ -102,7 +110,8 @@ export class DocumentsController {
     }
     const document = await this.drafts.create({
       title: body.title,
-      creatorUserId: userId,
+      actor,
+      departmentCode: body.departmentCode,
       fields: body.fields,
       ...file,
     });
@@ -115,15 +124,18 @@ export class DocumentsController {
     description:
       '建立人回傳管理詳情；同部門非建立人回傳裁切的唯讀詳情。view=export 另驗證同部門後只提供 Excel 匯出資料，不新增紀錄。',
   })
+  @RequirePermissions('esign.document.read')
+  @AllowSuperUser()
   @Get(':documentId')
   detail(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Query() query: ReadDocumentQueryDto,
   ) {
-    return query.view === 'export'
-      ? this.queries.exportDocument(this.id(id), userId)
-      : this.queries.detail(this.id(id), userId);
+    if (query.view === 'export') {
+      return this.queries.exportDocument(this.id(id), actor);
+    }
+    return this.queries.detail(this.id(id), actor);
   }
 
   // 更新草稿內容，並在提供新 PDF 時替換原檔。
@@ -134,15 +146,17 @@ export class DocumentsController {
     description:
       '僅建立人可修改草稿。以 multipart/form-data 接收更新內容；替換 PDF 會清除舊欄位，有傳 fields 時依新 PDF 重新建立，未換 PDF 時則整批取代傳入的欄位。',
   })
+  @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Patch(':documentId')
   async update(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body('fields') body: UpdateDocumentDto,
     @Body('file') file: DocumentUpload['file'],
   ) {
     const documentId = this.id(id);
-    await this.drafts.update(documentId, userId, {
+    await this.drafts.update(documentId, actor, {
       title: body.title,
       file,
       fields: body.fields,
@@ -154,13 +168,14 @@ export class DocumentsController {
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '刪除草稿',
-    description:
-      '僅建立人可刪除尚未發起的文件，以軟刪除保留資料。',
+    description: '僅建立人可刪除尚未發起的文件，以軟刪除保留資料。',
   })
+  @RequirePermissions('esign.document.manage')
   @Delete(':documentId')
+  @AllowSuperUser()
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('documentId') id: string, @CurrentUserId() userId: number) {
-    return this.drafts.delete(this.id(id), userId);
+  delete(@Param('documentId') id: string, @CurrentActor() actor: Actor) {
+    return this.drafts.delete(this.id(id), actor);
   }
 
   // 儲存草稿簽署人名單、期間與選項，不發起簽署。
@@ -170,29 +185,33 @@ export class DocumentsController {
     description:
       '相容既有回應形狀；可在同一交易整批取代簽署人並保存起迄時間、浮水印與允許拒簽。此 API 不儲存 PDF、欄位位置或發起簽署。',
   })
+  @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Put(':documentId/draftSave')
   async replaceSigners(
     @Param('documentId') id: string,
     @Body() body: DraftSaveDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
     const documentId = this.id(id);
-    await this.signerService.draftSave(documentId, userId, body);
-    return (await this.queries.detail(documentId, userId)).signers;
+    await this.signerService.draftSave(documentId, actor, body);
+    return (await this.queries.detail(documentId, actor)).signers;
   }
 
   // 完整暫存草稿的簽署人名單、期間與選項。
   @UseGuards(OriginGuard)
   @ApiOperation({ summary: '完整暫存草稿名單、期間與選項' })
+  @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Patch(':documentId/draft-settings')
   async saveDraftSettings(
     @Param('documentId') id: string,
     @Body() body: DraftSettingsDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
     const documentId = this.id(id);
-    await this.signerService.saveDraftSettings(documentId, userId, body);
-    return this.queries.detail(documentId, userId);
+    await this.signerService.saveDraftSettings(documentId, actor, body);
+    return this.queries.detail(documentId, actor);
   }
 
   // 整批取代草稿的共用簽署欄位。
@@ -201,16 +220,18 @@ export class DocumentsController {
     summary: '整批更新草稿共用欄位',
     description: '驗證原 PDF 完整性與欄位位置後，整批取代共用欄位。',
   })
+  @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Put(':documentId/fields')
   async replaceFields(
     @Param('documentId') id: string,
     @Body() body: ReplaceFieldsDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
     const documentId = this.id(id);
-    await this.fieldService.replace(documentId, userId, body.fields);
-    const detail = await this.queries.detail(documentId, userId);
-    if (!detail.isCreator)
+    await this.fieldService.replace(documentId, actor, body.fields);
+    const detail = await this.queries.detail(documentId, actor);
+    if (!detail.canManage)
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     return detail.fields;
   }
@@ -250,20 +271,17 @@ export class DocumentsController {
     status: 503,
     description: '無法確認可靠保存；可用原 key 查回／重送',
   })
+  @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Post(':documentId/initiations')
   async initiate(
     @Param('documentId') id: string,
     @Body() body: InitiateDocumentDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Headers('idempotency-key') key: string | undefined,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<InitiationJobDto> {
-    const result = await this.initiations.accept(
-      this.id(id),
-      userId,
-      body,
-      key,
-    );
+    const result = await this.initiations.accept(this.id(id), actor, body, key);
     reply
       .code(result.reused ? 200 : 202)
       .header(
@@ -279,13 +297,15 @@ export class DocumentsController {
   @ApiOperation({
     summary: '重新開放已到期文件補簽',
     description:
-      '僅建立人可設定新期限；reason 可省略，舊客戶端提供的原因不再保存。舊期限不符或任一外部待簽者缺固定信箱／原邀請回 409。內部無信箱仍可補簽；成功後有信箱者依內部群寄、外部逐人方式通知，保留已簽及已拒證據。',
+      '具有管理能力且範圍允許者可設定新期限；reason 可省略，舊客戶端提供的原因不再保存。舊期限不符或任一外部待簽者缺固定信箱／原邀請回 409。內部無信箱仍可補簽；成功後有信箱者依內部群寄、外部逐人方式通知，保留已簽及已拒證據。',
   })
   @ApiBody({ type: ReopenDocumentDto })
+  @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Post(':documentId/reopenings')
   reopen(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body(
       new ValidationPipe({
         expectedType: ReopenDocumentDto,
@@ -298,23 +318,25 @@ export class DocumentsController {
     )
     body: ReopeningInput,
   ) {
-    return this.reopenings.reopen(this.id(id), userId, body);
+    return this.reopenings.reopen(this.id(id), actor, body);
   }
 
   // 取得目前補簽輪仍保留密文的邀請，不寄信或輪替憑證。
   @ApiOperation({
     summary: '取得仍可取用的補簽邀請',
     description:
-      '僅建立人讀取內外部待簽者尚存密文的邀請，不寄信、不輪替憑證。成功寄送後省略該項，全數送達回空陣列；請以通知紀錄確認進度。',
+      '具有管理能力且範圍允許者讀取內外部待簽者尚存密文的邀請，不寄信、不輪替憑證。成功寄送後省略該項，全數送達回空陣列；請以通知紀錄確認進度。',
   })
+  @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Get(':documentId/reopening-invitations')
   @Header('Cache-Control', 'private, no-store')
   @Header('Referrer-Policy', 'no-referrer')
   reopeningInvitations(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
-    return this.queries.reopeningInvitations(this.id(id), userId);
+    return this.queries.reopeningInvitations(this.id(id), actor);
   }
 
   // 供建立人或同部門讀取文件原始 PDF。
@@ -322,15 +344,17 @@ export class DocumentsController {
     summary: '讀取授權文件的原始 PDF',
     description: '驗證建立人或同部門唯讀權限後回傳原始 PDF 串流，供預覽使用。',
   })
+  @RequirePermissions('esign.document.read')
   @Get(':documentId/source-file')
   @Header('Cache-Control', 'private, no-store')
+  @AllowSuperUser()
   @Header('X-Content-Type-Options', 'nosniff')
   async source(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Res() reply: FastifyReply,
   ) {
-    const file = await this.queries.source(this.id(id), userId);
+    const file = await this.queries.source(this.id(id), actor);
     if (!file) {
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     }
@@ -344,48 +368,53 @@ export class DocumentsController {
       .send(file.bytes);
   }
 
-  // 由建立人永久停止文件簽署。
+  // 管理者永久停止文件簽署，保留原建立者。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '停止文件簽署',
     description:
-      '由建立人提供原因停止簽署，回傳更新後的文件詳情並保留停止紀錄。',
+      '管理者提供原因停止簽署，回傳更新後的文件詳情並保留停止紀錄。',
   })
+  @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Post(':documentId/stoppages')
   async stop(
     @Param('documentId') id: string,
     @Body() body: StopDocumentDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
     const documentId = this.id(id);
-    await this.stoppages.stopByCreator(documentId, userId, body.reason);
-    return this.queries.detail(documentId, userId);
+    await this.stoppages.stopByActor(documentId, actor, body.reason);
+    return this.queries.detail(documentId, actor);
   }
 
   // 由建立人儲存指定簽署人的管理備註。
   @UseGuards(OriginGuard)
   @ApiOperation({ summary: '儲存或清除簽署人的管理備註' })
+  @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Patch(':documentId/signers/:signerPublicId/note')
   saveSignerNote(
     @Param('documentId') id: string,
     @Param('signerPublicId') signerPublicId: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body() body: SignerNoteDto,
   ) {
     return this.signerService.saveNote(
       this.id(id),
       signerPublicId,
-      userId,
+      actor,
       body.note,
     );
   }
 
-  // 供同部門員工下載指定簽署人的已簽副本；送出前寫入 pdf 匯出紀錄。
+  // 指定員工本人下載已簽副本；送出前寫入 pdf 匯出紀錄。
   @ApiOperation({
     summary: '下載指定簽署人的個人 PDF',
     description:
-      '同部門員工可依簽署人下載已產製完成的個人副本，回 200 application/pdf 附件。送出前新增一筆 pdf 匯出紀錄（匯出人為目前員工、範圍為簽署人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、跨部門或簽署人不屬於此文件回 404、副本未產製完成回 409，都不記錄。取代已移除的 GET …/completed-file。',
+      '需 signing.copy 能力及該內部指派的員工本人，才能下載已產製完成的個人副本，回 200 application/pdf 附件。送出前新增一筆 pdf 匯出紀錄（匯出人為目前員工、範圍為簽署人），寫入失敗回 500 且不送出檔案。缺少或不允許的 Origin 回 403、非本人或簽署人不屬於此文件回 404（本人資格不受部門影響）、副本未產製完成回 409，都不記錄。取代已移除的 GET …/completed-file。',
   })
+  @RequirePermissions('esign.signing.copy')
   @Post(':documentId/signers/:signerPublicId/completed-file/downloads')
   @CompletedPdfDownload()
   async downloadCompletedFile(

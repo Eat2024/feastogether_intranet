@@ -1,3 +1,4 @@
+import { grantDocumentCreatorByEmployeeNo } from './helpers/authorization-business-fixtures';
 import {
   completeInitiation,
   deleteInitiationJobs,
@@ -92,6 +93,7 @@ describe('拒簽 HTTP 與結案', () => {
       .send({ code })
       .expect(303);
     cookie = String(session.headers['set-cookie'][0]);
+    await grantDocumentCreatorByEmployeeNo(ctx.app, 'E2E00903');
     await Promise.all(
       ['E2E00903'].map((employeeNo) =>
         ctx.app

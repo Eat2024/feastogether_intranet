@@ -40,7 +40,7 @@ describe('buildMysqlOptions', () => {
   it('明確註冊電子簽 entities、AuthSession 與拒簽 migration', () => {
     const options = buildMysqlOptions(readEnv);
 
-    expect(options.entities).toHaveLength(16);
+    expect(options.entities).toHaveLength(21);
     expect(
       (options.migrations as Array<{ name: string }>).map(
         (migration) => migration.name,
@@ -52,6 +52,11 @@ describe('buildMysqlOptions', () => {
       ),
     ).toEqual(
       expect.arrayContaining([
+        'AuthorizationRole',
+        'AuthorizationPermission',
+        'AuthorizationRolePermission',
+        'AuthorizationUserRole',
+        'AuditLog',
         'Department',
         'User',
         'AuthSession',
@@ -88,6 +93,10 @@ describe('buildMysqlOptions', () => {
       'ExportDownloadFileName1793836800000',
       'RetireSigningAudit1793836801000',
       'SuperUserAccess1793836802000',
+      'ModuleAuthorization1793923200000',
+      'EsignDocumentActors1793923201000',
+      'EsignLifecycleActors1793923202000',
+      'EsignExportActors1793923203000',
     ]);
   });
 

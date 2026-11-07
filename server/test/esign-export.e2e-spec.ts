@@ -1,3 +1,4 @@
+import { grantDocumentCreatorByEmployeeNo } from './helpers/authorization-business-fixtures';
 import { EsignDocument } from '#app/features/esign/entities/esign-document.entity';
 import { User } from '#app/features/users/entities/user.entity';
 import { rm, writeFile } from 'node:fs/promises';
@@ -979,17 +980,17 @@ describe('Spec009 匯出 API', () => {
             }),
           );
           const record = await db.manager.save(
-      EsignSignatureRecord,
-      db.manager.create(EsignSignatureRecord, {
-        signerId: signer.id,
-        documentSha256: 'a'.repeat(64),
-        signingPayloadSha256: 'b'.repeat(64),
-        consentVersion: 'test',
-        authenticationMethod: 'test',
-        authenticationEventId: randomUUID(),
-        signedAtUtc: new Date(),
-      }),
-    );
+            EsignSignatureRecord,
+            db.manager.create(EsignSignatureRecord, {
+              signerId: signer.id,
+              documentSha256: 'a'.repeat(64),
+              signingPayloadSha256: 'b'.repeat(64),
+              consentVersion: 'test',
+              authenticationMethod: 'test',
+              authenticationEventId: randomUUID(),
+              signedAtUtc: new Date(),
+            }),
+          );
           const file = await storage.store({
             directory: `documents/bounded-${documentId}`,
             extension: 'pdf',
@@ -1180,6 +1181,7 @@ describe('Spec009 匯出 API', () => {
       .type('form')
       .send({ code })
       .expect(303);
+    await grantDocumentCreatorByEmployeeNo(ctx.app, empid);
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');

@@ -1,3 +1,6 @@
+import { exportActorView } from '../helpers/export-actor';
+import type { Actor } from '#app/features/auth/auth.types';
+import type { EntityManager } from 'typeorm';
 import { todayInTaipei } from '#app/common/date-time.helper';
 import { exportFileName } from '../helpers/export-file-name';
 import { EsignAccessPolicyService } from './esign-access-policy.service';
@@ -19,7 +22,6 @@ import {
   type CreateExcelExportRecordDto,
   type ExcelExportDocumentDto,
   EXPORT_HISTORY_TYPES,
-  type ExportedByDto,
   type ExportHistoryItemDto,
   type ExportHistoryPageDto,
   type ExportHistoryQueryDto,
@@ -55,18 +57,22 @@ export class EsignExportHistoryService {
 
   async list(
     q: ExportHistoryQueryDto,
-    userId: number,
+    actor: Actor,
   ): Promise<ExportHistoryPageDto> {
     const documentId = q.documentId ? Number(q.documentId) : undefined;
     // 計數與分頁使用同一讀取快照，先導正頁碼才計算 offset，避免巨大請求頁碼溢位。
     const result = await this.mysql
       .getManager()
       .transaction('REPEATABLE READ', async (manager) => {
-        const user = await this.access.requireDepartment(userId, manager);
+        const department = await this.access.exportScope(
+          actor,
+          'esign.export.read',
+          manager,
+        );
         const counts = await this.jobs.historyCounts(
           Object.values(EXPORT_TYPE_COLUMN),
           documentId,
-          user.departmentCode,
+          department,
           manager,
           q.q,
         );
@@ -82,7 +88,7 @@ export class EsignExportHistoryService {
           {
             exportType: EXPORT_TYPE_COLUMN[q.type],
             documentId,
-            departmentCode: user.departmentCode,
+            departmentCode: department,
             q: q.q,
             offset: (page - 1) * q.pageSize,
             limit: q.pageSize,
@@ -102,52 +108,65 @@ export class EsignExportHistoryService {
     };
   }
 
-  /** 記錄前端產生的 Excel：同部門員工可記錄已發起文件，匯出人取自 session。 */
+  /** 記錄前端產生的 Excel：以 create 與當前範圍授權，匯出人取自 actor。 */
   async recordExcel(
-    userId: number,
+    actor: Actor,
     body: CreateExcelExportRecordDto,
   ): Promise<ExportHistoryItemDto> {
-    const manager = this.mysql.getManager();
-    const user = await this.access.requireDepartment(userId, manager);
-    const document = await this.documents.findById(
-      Number(body.documentId),
-      manager,
-    );
-    await this.access.checkDepartmentDocument(document, userId, manager);
-    // 已發起的文件不會再回到草稿或被刪除，不需鎖定。
-    if (!document || document.status === 'draft')
-      throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
-    const { publicId } = await this.insertRecord({
-      exportType: EXPORT_TYPE_COLUMN.excel,
-      documentId: document.id,
-      createdByUserId: userId,
-      scopeDescription: fitScope(body.scope, '…'),
-      recordCount: body.count,
-      conditionsJson: body.conditions,
-      downloadFileName:
-        exportFileName(body.fileName, 'excel') ??
-        `${document.docNumber}_簽署紀錄_${todayInTaipei('yyyyMMdd')}.xlsx`,
-    });
-    const record = await this.jobs.historyRecord(
-      publicId!,
-      EXPORT_TYPE_COLUMN.excel,
-      user.departmentCode,
-      manager,
-    );
-    return this.toHistoryItem(record!, 'excel');
+    return this.mysql.transaction(async (manager) => {
+      const department = await this.access.exportScope(
+        actor,
+        'esign.export.create',
+        manager,
+      );
+      const document = await this.access.exportDocument(
+        await this.documents.findById(Number(body.documentId), manager),
+        actor,
+        'esign.export.create',
+        manager,
+      );
+      if (document.status === 'draft')
+        throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+      const { publicId } = await this.insertRecord(
+        {
+          exportType: EXPORT_TYPE_COLUMN.excel,
+          documentId: document.id,
+          createdByActorKind: actor.kind,
+          createdByUserId: actor.kind === 'employee' ? actor.userId : null,
+          scopeDescription: fitScope(body.scope, '…'),
+          recordCount: body.count,
+          conditionsJson: body.conditions,
+          downloadFileName:
+            exportFileName(body.fileName, 'excel') ??
+            `${document.docNumber}_簽署紀錄_${todayInTaipei('yyyyMMdd')}.xlsx`,
+        },
+        manager,
+      );
+      const record = await this.jobs.historyRecord(
+        publicId!,
+        EXPORT_TYPE_COLUMN.excel,
+        department,
+        manager,
+      );
+      return this.toHistoryItem(record!, 'excel');
+    }, 'READ COMMITTED');
   }
 
-  /** Excel 重新下載資料：同部門員工可依 excel 紀錄取得文件目前的資料；唯讀，不新增紀錄。 */
+  /** Excel 重新下載資料：以 read 與當前範圍授權；唯讀，不新增紀錄。 */
   async excelDocument(
     publicId: string,
-    userId: number,
+    actor: Actor,
   ): Promise<ExcelExportDocumentDto> {
     const manager = this.mysql.getManager();
-    const user = await this.access.requireDepartment(userId, manager);
+    const department = await this.access.exportScope(
+      actor,
+      'esign.export.read',
+      manager,
+    );
     const record = await this.jobs.historyRecord(
       publicId,
       EXPORT_TYPE_COLUMN.excel,
-      user.departmentCode,
+      department,
       manager,
     );
     const document = record
@@ -156,13 +175,15 @@ export class EsignExportHistoryService {
     if (!document || document.status === 'draft')
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
     const [creator, signers] = await Promise.all([
-      this.users.findById(document.createdByUserId, manager),
+      document.createdByUserId === null
+        ? Promise.resolve(null)
+        : this.users.findById(document.createdByUserId, manager),
       this.signers.findByDocument(document.id, manager),
     ]);
     return this.mapper.excelExportDocument(document, creator, signers);
   }
 
-  /** 同部門員工下載簽署人副本：匯出人為目前員工；副本未產生時沿用建立人下載的錯誤。 */
+  /** 既有文件路徑只供本人下載；部門、建立人或管理角色不構成副本資格。 */
   async downloadDepartmentCopy(
     documentId: number,
     signerPublicId: string,
@@ -195,7 +216,7 @@ export class EsignExportHistoryService {
   }
 
   /**
-   * 從 pdf 紀錄重新下載：同部門員工都能取得該簽署人目前的副本。
+   * 從 pdf 紀錄重新下載：只允許該指派的員工本人，與部門範圍無關。
    * 沿用既有紀錄，不新增或改寫匯出歷史。
    */
   async redownloadPdf(
@@ -203,11 +224,9 @@ export class EsignExportHistoryService {
     userId: number,
   ): Promise<PersonalCopyFile> {
     const manager = this.mysql.getManager();
-    const user = await this.access.requireDepartment(userId, manager);
-    const record = await this.jobs.historyRecord(
+    const record = await this.jobs.personalCopyRecord(
       publicId,
-      EXPORT_TYPE_COLUMN.pdf,
-      user.departmentCode,
+      userId,
       manager,
     );
     const signer = record
@@ -223,6 +242,7 @@ export class EsignExportHistoryService {
       record.documentId !== signer.documentId
     )
       throw new AppException(...AppErrors.ESIGN_RESOURCE_NOT_FOUND);
+    this.access.assertInternalSigner(document, signer, userId);
     const file = await this.completions.personalCopy(document, signer);
     if (!file)
       throw new AppException(...AppErrors.ESIGN_PERSONAL_COPY_NOT_READY);
@@ -244,6 +264,8 @@ export class EsignExportHistoryService {
       exportType: EXPORT_TYPE_COLUMN.pdf,
       documentId: signer.documentId,
       createdByUserId: exporterUserId,
+      createdByActorKind:
+        exporterUserId === null ? 'external_signer' : 'employee',
       signerId: signer.id,
       scopeDescription: scope,
       recordCount: 1,
@@ -253,8 +275,10 @@ export class EsignExportHistoryService {
   }
 
   /** 新增一筆已完成的 excel／pdf 紀錄；這兩類紀錄寫入後不再更新。 */
-  private insertRecord(fields: Partial<EsignExportJob>) {
-    const manager = this.mysql.getManager();
+  private insertRecord(
+    fields: Partial<EsignExportJob>,
+    manager: EntityManager = this.mysql.getManager(),
+  ) {
     return this.jobs.save(
       this.jobs.create(
         {
@@ -283,7 +307,7 @@ export class EsignExportHistoryService {
         title: document.title,
         docNumber: document.docNumber,
       },
-      exportedBy: exportedBy(record),
+      exportedBy: exportActorView(record),
       exportedAt: record.createdAt.toISOString(),
       downloadFileName: record.downloadFileName ?? null,
       scope: record.scopeDescription,
@@ -317,19 +341,4 @@ function fitScope(scope: string, marker = ''): string {
   return (
     characters.slice(0, SCOPE_MAX_LENGTH - marker.length).join('') + marker
   );
-}
-
-/** 匯出員工為 NULL 代表外部簽署人本人下載，以簽署人姓名與 Email 顯示；其餘顯示匯出員工。 */
-function exportedBy(record: EsignExportJob): ExportedByDto {
-  if (record.createdByUserId === null)
-    return {
-      name: record.signer!.nameSnapshot,
-      employeeNo: null,
-      email: record.signer!.email ?? null,
-    };
-  return {
-    name: record.createdByUser!.name,
-    employeeNo: record.createdByUser!.empid,
-    email: null,
-  };
 }

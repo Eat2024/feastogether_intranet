@@ -4,6 +4,7 @@ import { Readable } from 'node:stream';
 import { EsignDraftService } from './esign-draft.service';
 
 describe('EsignDraftService', () => {
+  const actor = { kind: 'employee' as const, userId: 9 };
   const manager = {} as never;
   const document = {
     id: 1,
@@ -51,9 +52,9 @@ describe('EsignDraftService', () => {
     const access = {
       requireDepartment: jest.fn(() => Promise.resolve(user)),
       checkEsignCreator: jest.fn(),
-      checkEsignDraftCreator: jest.fn(),
-      assertCreatorNotInitiating: jest.fn().mockResolvedValue(undefined),
-      checkAndLockDraftDoc: jest.fn(async () => document),
+      manageableDocument: jest.fn(),
+      assertManagerNotInitiating: jest.fn().mockResolvedValue(undefined),
+      lockManagedDraft: jest.fn(async () => document),
     };
     const fields = {
       deleteDraftFields: jest.fn(),
@@ -72,6 +73,9 @@ describe('EsignDraftService', () => {
       openReadStream: jest.fn(async () => Readable.from([Buffer.from('pdf')])),
       delete: jest.fn(async () => undefined),
     };
+    const authorization = {
+      requirePermissions: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new EsignDraftService(
       mysql as never,
       documents as never,
@@ -81,8 +85,11 @@ describe('EsignDraftService', () => {
       pdf as never,
       storage,
       fieldService as never,
+      authorization as never,
+      { checkStillDraft: jest.fn() } as never,
     );
     return {
+      authorization,
       service,
       user,
       mysql,
@@ -111,11 +118,30 @@ describe('EsignDraftService', () => {
     contentType: 'application/pdf',
   };
 
+  it('預檢後被撤權，在寫入交易重核時拒絕並清除已上傳檔案', async () => {
+    const { service, authorization, documents, storage } = setup();
+    authorization.requirePermissions
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(
+        new AppException(...AppErrors.AUTHORIZATION_DENIED),
+      );
+    await expect(
+      service.create({ title: '合成撤權文件', actor, ...pdfFile }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(authorization.requirePermissions).toHaveBeenLastCalledWith(
+      actor,
+      ['esign.document.create'],
+      manager,
+    );
+    expect(documents.create).not.toHaveBeenCalled();
+    expect(storage.delete).toHaveBeenCalledWith(stored);
+  });
+
   it('建立前先在同一交易鎖定有效員工，保存可信快照而不採用呼叫端部門', async () => {
     const { service, access, documents } = setup();
     const input = {
       title: '合成文件',
-      creatorUserId: 9,
+      actor,
       ...pdfFile,
       createdByDepartmentCode: '偽造部門',
       createdByDepartmentName: '偽造名稱',
@@ -135,7 +161,7 @@ describe('EsignDraftService', () => {
     const { service, user } = setup();
     user.departmentName = null;
     expect(
-      await service.create({ title: '合成文件', creatorUserId: 9, ...pdfFile }),
+      await service.create({ title: '合成文件', actor, ...pdfFile }),
     ).toMatchObject({
       createdByDepartmentCode: '00A',
       createdByDepartmentName: null,
@@ -149,7 +175,7 @@ describe('EsignDraftService', () => {
     const { service, access, documents, files, storage } = setup();
     access.requireDepartment.mockRejectedValueOnce(new AppException(...error));
     await expect(
-      service.create({ title: '合成文件', creatorUserId: 9, ...pdfFile }),
+      service.create({ title: '合成文件', actor, ...pdfFile }),
     ).rejects.toBeInstanceOf(AppException);
     expect(documents.create).not.toHaveBeenCalled();
     expect(files.save).not.toHaveBeenCalled();
@@ -160,14 +186,14 @@ describe('EsignDraftService', () => {
     const { service, user, access, documents } = setup();
     const old = await service.create({
       title: '舊文件',
-      creatorUserId: 9,
+      actor,
       ...pdfFile,
     });
     user.departmentCode = '00B';
     user.departmentName = '新部門';
     const current = await service.create({
       title: '新文件',
-      creatorUserId: 9,
+      actor,
       ...pdfFile,
     });
     expect(old).toMatchObject({
@@ -179,7 +205,7 @@ describe('EsignDraftService', () => {
       createdByDepartmentName: '新部門',
     });
     access.requireDepartment.mockClear();
-    await service.update(1, 9, { title: '改名' });
+    await service.update(1, actor, { title: '改名' });
     expect(access.requireDepartment).not.toHaveBeenCalled();
     expect(documents.save).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -194,7 +220,7 @@ describe('EsignDraftService', () => {
     const { service, documents, storage } = setup();
     documents.save.mockRejectedValueOnce(new Error('合成保存失敗'));
     await expect(
-      service.create({ title: '合成文件', creatorUserId: 9, ...pdfFile }),
+      service.create({ title: '合成文件', actor, ...pdfFile }),
     ).rejects.toThrow('合成保存失敗');
     expect(storage.delete).toHaveBeenCalledWith(stored);
   });
@@ -203,7 +229,7 @@ describe('EsignDraftService', () => {
     const { service, documents, files, storage } = setup();
     await service.create({
       title: '  合約  ',
-      creatorUserId: 9,
+      actor,
       bytes: Buffer.from('pdf'),
       originalFileName: '../合約.pdf',
       contentType: 'application/pdf',
@@ -231,14 +257,14 @@ describe('EsignDraftService', () => {
     const { service, fields, fieldService } = setup();
     await service.create({
       title: '合約',
-      creatorUserId: 9,
+      actor,
       fields: [placement],
       ...pdfFile,
     });
 
     expect(fieldService.build).toHaveBeenCalledWith(
       1,
-      9,
+      actor,
       [placement],
       2,
       manager,
@@ -258,7 +284,7 @@ describe('EsignDraftService', () => {
     await expect(
       service.create({
         title: '合約',
-        creatorUserId: 9,
+        actor,
         fields: [{ ...placement, page: 3 }],
         ...pdfFile,
       }),
@@ -268,11 +294,11 @@ describe('EsignDraftService', () => {
 
   it('修改草稿只帶欄位時，於同一交易整批取代欄位', async () => {
     const { service, fields, fieldService } = setup();
-    await service.update(1, 9, { fields: [placement] });
+    await service.update(1, actor, { fields: [placement] });
 
     expect(fieldService.buildFields).toHaveBeenCalledWith(
       expect.objectContaining({ id: 1, createdByUserId: 9, status: 'draft' }),
-      9,
+      actor,
       [placement],
       manager,
     );
@@ -281,12 +307,12 @@ describe('EsignDraftService', () => {
 
   it('修改草稿同時換 PDF 與帶欄位時，依新 PDF 頁數寫入欄位', async () => {
     const { service, fields, fieldService } = setup();
-    await service.update(1, 9, { file: pdfFile, fields: [placement] });
+    await service.update(1, actor, { file: pdfFile, fields: [placement] });
 
     expect(fields.deleteDraftFields).toHaveBeenCalledWith(1, manager);
     expect(fieldService.build).toHaveBeenCalledWith(
       1,
-      9,
+      actor,
       [placement],
       2,
       manager,
@@ -303,7 +329,7 @@ describe('EsignDraftService', () => {
     await expect(
       service.create({
         title: '合約',
-        creatorUserId: 9,
+        actor,
         bytes: Buffer.from('pdf'),
         originalFileName: 'a.pdf',
         contentType: 'application/pdf',
@@ -314,18 +340,18 @@ describe('EsignDraftService', () => {
 
   it('所有修改與刪除都重用 creator/draft policy', async () => {
     const { service, access } = setup();
-    await service.update(1, 9, { title: '新名稱' });
-    await service.delete(1, 9);
-    expect(access.checkAndLockDraftDoc).toHaveBeenNthCalledWith(
+    await service.update(1, actor, { title: '新名稱' });
+    await service.delete(1, actor);
+    expect(access.lockManagedDraft).toHaveBeenNthCalledWith(
       1,
       1,
-      9,
+      actor,
       manager,
     );
-    expect(access.checkAndLockDraftDoc).toHaveBeenNthCalledWith(
+    expect(access.lockManagedDraft).toHaveBeenNthCalledWith(
       2,
       1,
-      9,
+      actor,
       manager,
     );
   });
@@ -337,7 +363,7 @@ describe('EsignDraftService', () => {
       objectKey: 'esign/old/source.pdf',
     });
 
-    await service.update(1, 9, {
+    await service.update(1, actor, {
       file: {
         bytes: Buffer.from('pdf'),
         originalFileName: 'new.pdf',
@@ -355,28 +381,28 @@ describe('EsignDraftService', () => {
 
   it('policy 拒絕非 creator 或非 draft 時不寫入', async () => {
     const { service, access, documents } = setup();
-    access.checkAndLockDraftDoc.mockRejectedValueOnce(
+    access.lockManagedDraft.mockRejectedValueOnce(
       new Error('找不到電子簽資源'),
     );
-    await expect(service.update(1, 10, { title: '越權' })).rejects.toThrow(
-      '找不到電子簽資源',
-    );
-    access.checkAndLockDraftDoc.mockRejectedValueOnce(new Error('文件已發起'));
-    await expect(service.update(1, 9, { title: '改 active' })).rejects.toThrow(
-      '文件已發起',
-    );
+    await expect(
+      service.update(1, { kind: 'employee', userId: 10 }, { title: '越權' }),
+    ).rejects.toThrow('找不到電子簽資源');
+    access.lockManagedDraft.mockRejectedValueOnce(new Error('文件已發起'));
+    await expect(
+      service.update(1, actor, { title: '改 active' }),
+    ).rejects.toThrow('文件已發起');
     expect(documents.save).not.toHaveBeenCalled();
   });
 
   it('換 PDF 前的權限檢查失敗時，不上傳也不開啟交易', async () => {
     const { service, access, storage, mysql } = setup();
-    access.checkEsignDraftCreator.mockImplementationOnce(() => {
+    access.manageableDocument.mockImplementationOnce(() => {
       throw new Error('找不到電子簽資源');
     });
 
-    await expect(service.update(1, 10, { file: pdfFile })).rejects.toThrow(
-      '找不到電子簽資源',
-    );
+    await expect(
+      service.update(1, { kind: 'employee', userId: 10 }, { file: pdfFile }),
+    ).rejects.toThrow('找不到電子簽資源');
     expect(storage.store).not.toHaveBeenCalled();
     expect(mysql.transaction).not.toHaveBeenCalled();
   });
@@ -389,7 +415,7 @@ describe('EsignDraftService', () => {
       pageCount: 2,
     });
 
-    await expect(service.update(1, 9, { file: pdfFile })).rejects.toThrow(
+    await expect(service.update(1, actor, { file: pdfFile })).rejects.toThrow(
       '文件完整性驗證失敗',
     );
     expect(storage.delete).toHaveBeenCalledTimes(1);
@@ -399,9 +425,9 @@ describe('EsignDraftService', () => {
 
   it('上傳後鎖內檢查失敗時，只清除新檔而不修改舊資料', async () => {
     const { service, access, storage, files, fields } = setup();
-    access.checkAndLockDraftDoc.mockRejectedValueOnce(new Error('文件已發起'));
+    access.lockManagedDraft.mockRejectedValueOnce(new Error('文件已發起'));
 
-    await expect(service.update(1, 9, { file: pdfFile })).rejects.toThrow(
+    await expect(service.update(1, actor, { file: pdfFile })).rejects.toThrow(
       '文件已發起',
     );
     expect(storage.delete).toHaveBeenCalledWith(stored);
@@ -411,7 +437,7 @@ describe('EsignDraftService', () => {
 
   it('換 PDF 與多個欄位只驗證新檔一次，不重新讀取 PDF 或逐欄位查詢', async () => {
     const { service, pdf, files, fields, fieldService } = setup();
-    await service.update(1, 9, {
+    await service.update(1, actor, {
       file: pdfFile,
       fields: Array.from({ length: 10 }, () => ({ ...placement })),
     });
@@ -426,10 +452,10 @@ describe('EsignDraftService', () => {
 
   it('空欄位陣列仍會清空既有欄位', async () => {
     const { service, fieldService } = setup();
-    await service.update(1, 9, { fields: [] });
+    await service.update(1, actor, { fields: [] });
     expect(fieldService.buildFields).toHaveBeenCalledWith(
       expect.objectContaining({ id: 1 }),
-      9,
+      actor,
       [],
       manager,
     );
@@ -437,14 +463,14 @@ describe('EsignDraftService', () => {
 
   it('拒絕空白、過長名稱與空更新', async () => {
     const { service } = setup();
-    await expect(service.update(1, 9, {})).rejects.toThrow(
+    await expect(service.update(1, actor, {})).rejects.toThrow(
       '至少需要提供一項草稿更新內容',
     );
-    await expect(service.update(1, 9, { title: '   ' })).rejects.toThrow(
+    await expect(service.update(1, actor, { title: '   ' })).rejects.toThrow(
       '文件名稱必須為 1 至 200 字',
     );
     await expect(
-      service.update(1, 9, { title: 'x'.repeat(201) }),
+      service.update(1, actor, { title: 'x'.repeat(201) }),
     ).rejects.toThrow('文件名稱必須為 1 至 200 字');
   });
 });

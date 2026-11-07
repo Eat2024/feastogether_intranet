@@ -1,3 +1,4 @@
+import { grantDocumentCreatorByEmployeeNo } from './helpers/authorization-business-fixtures';
 import { completeInitiation } from './helpers/await-initiation';
 import { createPrivateKey, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
@@ -302,6 +303,7 @@ describe('Spec009 管理備註與歷程 API', () => {
       .type('form')
       .send({ code })
       .expect(303);
+    await grantDocumentCreatorByEmployeeNo(ctx.app, empid);
     const raw: unknown = response.headers['set-cookie'];
     const value: unknown = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== 'string') throw new Error('缺少測試 session');

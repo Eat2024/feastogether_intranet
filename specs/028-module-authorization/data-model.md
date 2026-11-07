@@ -11,19 +11,18 @@
 | role_code | varchar(80), NOT NULL；模組內穩定且不可改 |
 | role_name | varchar(100), trim後1～100字；同模組未刪除角色名稱不可重複，使用下述generated unique鍵 |
 | is_active | boolean NOT NULL default true |
-| is_protected | boolean NOT NULL default false；只有esign/colleague為true，不接受API設定 |
 | version | unsigned int NOT NULL default1；每次實質更動加1 |
 | 共用時間 | AuditableEntity欄位 |
 
-UNIQUE(module_key,role_code)、UNIQUE(module_key,id)。新增generated active_role_name = CASE WHEN deleted_at IS NULL THEN role_name ELSE NULL END，UNIQUE(module_key,active_role_name)，以utf8mb4_0900_bin精確比較，防止並發同名建立；inactive但未刪除也保留名稱。code跨soft-delete不重用，避免歷史指派指向新意義；roleName可在原角色刪除後重用。protected角色無管理寫入入口，權限定義以程式為準。
+UNIQUE(module_key,role_code)、UNIQUE(module_key,id)。新增generated active_role_name = CASE WHEN deleted_at IS NULL THEN role_name ELSE NULL END，UNIQUE(module_key,active_role_name)，以utf8mb4_0900_bin精確比較，防止並發同名建立；inactive但未刪除也保留名稱。code跨soft-delete不重用，避免歷史指派指向新意義；roleName可在原角色刪除後重用。protected狀態不落DB欄位，由compiled initial role catalog依module_key／role_code判定；protected角色無管理寫入入口，權限定義以程式為準。
 
 ## 2. authorization_permissions
 
-id bigint unsigned PK；module_key varchar(50)；permission_key varchar(100)全域唯一；permission_name varchar(100)；assignable boolean；共用時間。UNIQUE(module_key,id)。資料是compiled catalog投影，只能catalog sync寫入；platform.authorization.manage assignable=false，其他esign能力true。移除目錄項soft-delete，執行期再與compiled catalog交集，舊關聯不能授權。
+id bigint unsigned PK；module_key varchar(50)；permission_key varchar(100)全域唯一；permission_name varchar(100)；共用時間。UNIQUE(module_key,id)。資料是compiled catalog投影，只能catalog sync寫入；可否指派不落DB欄位，由compiled permission catalog判定，platform.authorization.manage不可指派、其他esign能力可指派。移除目錄項soft-delete，執行期再與compiled catalog交集，舊關聯不能授權。
 
 ## 3. authorization_role_permissions
 
-id bigint unsigned PK；module_key varchar(50) NOT NULL；role_id bigint unsigned NOT NULL；permission_id bigint unsigned NOT NULL；共用時間。UNIQUE(role_id,permission_id)。複合FK `(module_key,role_id)→roles(module_key,id)`、`(module_key,permission_id)→permissions(module_key,id)` 均RESTRICT；同scope由DB保障。FK不保障active/assignable，service在同交易核對。
+id bigint unsigned PK；module_key varchar(50) NOT NULL；role_id bigint unsigned NOT NULL；permission_id bigint unsigned NOT NULL；共用時間。UNIQUE(role_id,permission_id)。複合FK `(module_key,role_id)→roles(module_key,id)`、`(module_key,permission_id)→permissions(module_key,id)` 均RESTRICT；同scope由DB保障。FK不保障active或compiled catalog的可指派規則，service在同交易核對。
 
 覆寫角色權限時只對差異soft-delete或恢復原列（save），不得插入與歷史唯一鍵碰撞的新列；不可復活已移出compiled catalog的權限。protected同仁內容由受控sync保持，但effective authorization直接採程式固定集，不採可變關聯擴權。
 
@@ -35,11 +34,11 @@ id bigint unsigned PK；user_id bigint NOT NULL FK users.id RESTRICT；module_ke
 
 員工角色覆寫以鎖定users列後比較該module目前一般roleIds是否等於expectedRoleIds；不同回409。若目標集合本就等於目前集合，回no-op結果、不重複audit。roleIds去重後最多50筆，expectedRoleIds同規則。固定鎖序：users（如涉及指派）→ role id升冪 → permission id升冪 → relation rows。角色自身編輯不回鎖users；角色刪除可檢查關聯但不取得反向user鎖。
 
-## 5. authorization_events（BaseEntity，append-only）
+## 5. audit_logs（BaseEntity，append-only）
 
-id unsigned bigint PK；occurred_at datetime(6)及created_at各index；actor_kind varchar(20)=super_user|operator|system；source varchar(10)=http|repl|migration；module_key varchar(50)；event_type varchar(64)白名單；target_kind varchar(20)=role|user|catalog；target_id bigint nullable；request_id varchar(64)nullable；before_json／after_json JSON nullable。
+全系統共用稽核表，不另建授權專用事件表。id unsigned bigint PK；action varchar(80)；entity_type varchar(80)；entity_id varchar(64)；actor_user_id bigint nullable；actor_kind varchar(20)=employee|super_user|operator|system；source varchar(20)=http|repl|migration|worker；module_key varchar(50) nullable；request_id varchar(64) nullable；changes JSON；before_snapshot／after_snapshot JSON nullable；description varchar(500)、ip_address varchar(45)、user_agent text皆nullable；created_at及entity／actor／action／module查詢鍵有index。
 
-JSON只允許role code/name/active/version、permission keys、一般role IDs與本地user ID；不放員編、個資、帳密、完整入口、文件或簽名。HTTP操作者是027 Super user；REPL是明確本機operator且需驗本機維護設定仍對應active generation。成功異動與event同交易，audit失敗整筆rollback。查詢只有Super user／受控REPL，無更新／刪除API，不新增保留期排程。
+授權寫入adapter只允許role code/name/active/version、permission keys、一般role IDs與本地user ID；不放員編、個資、帳密、完整入口、文件或簽名。HTTP操作者是027 Super user；REPL是明確本機operator且需驗本機維護設定仍對應active generation。成功異動與audit log同交易，寫入失敗整筆rollback。授權查詢只篩選授權action，僅供Super user／受控REPL；共用repository不提供更新／刪除方法，不新增保留期排程。
 
 ## 6. 電子簽業務操作者增量
 
@@ -67,4 +66,4 @@ employee建立：departmentCode只能從現有可信員工來源，拒絕輸入�
 
 增量migration先加role表／actor nullable欄位、回填可證明的歷史kind，再建立CHECK／FK/index；不改既有ID或個人簽章內容。catalog sync及初始角色seed是明確REPL transaction，不在HTTP startup；same key重跑不覆蓋一般role已修改permission或active狀態，protected colleague由code固定。
 
-首次有效目錄初始化後可查詢基本授權；舊會話由唯讀同仁推導立即取得基本資格。上線前停止舊HTTP／worker、備份、migration、sync catalog、核定名單指派、測試，再啟動新保護；不能新舊授權程式混跑。down遇super建立業務資料或authorization audit時拒絕破壞性回退；空測試庫可apply/down/reapply，正式採備份復原或前向修復。
+首次有效目錄初始化後可查詢基本授權；舊會話由唯讀同仁推導立即取得基本資格。上線前停止舊HTTP／worker、備份、migration、sync catalog、核定名單指派、測試，再啟動新保護；不能新舊授權程式混跑。down遇super建立業務資料或audit_logs已有資料時拒絕破壞性回退；空測試庫可apply/down/reapply，正式採備份復原或前向修復。

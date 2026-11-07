@@ -1,3 +1,5 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { markDocumentUpdated } from '../helpers/management-actor';
 import type { InitiationLease } from '../repositories/initiation-job.repository';
 import { AppErrors } from '#app/common/errors/app-errors';
 import type { EntityManager } from 'typeorm';
@@ -26,7 +28,7 @@ export interface InitiateDocumentInput {
   signers: SignerInputDto[];
   fields: FieldPlacementDto[];
   documentId: number;
-  creatorUserId: number;
+  actor: Actor;
   signStartAt: Date;
   signEndAt: Date;
   /** 下載／匯出的已簽署 PDF 是否加上浮水印 */
@@ -73,10 +75,10 @@ export class EsignInitiationService {
     lease?: InitiationLease,
   ) {
     this.validateSigningPeriod(input);
-    const userIds = await this.prepareEmployeeIds(input, manager);
+    const userIds = await this.prepareEmployeeIds(input, manager, lease);
     const lockedUsers = await this.employeeEmails.resolveForInitiation(
       userIds,
-      input.creatorUserId,
+      input.actor.kind === 'employee' ? input.actor.userId : null,
       manager,
     );
     for (const [userId, employeeNo] of lease?.expectedEmployees ?? []) {
@@ -85,15 +87,20 @@ export class EsignInitiationService {
           userIds: [String(userId)],
         });
     }
-    const document = await this.access.checkAndLockDraftDoc(
-      input.documentId,
-      input.creatorUserId,
-      manager,
-      lease,
-    );
+    // 已受理工作沿持久 job actor 執行；租約與版本仍須在文件鎖內成立。
+    const document = lease
+      ? await this.documents.findByIdForUpdate(input.documentId, manager)
+      : await this.access.lockManagedDraft(
+          input.documentId,
+          input.actor,
+          manager,
+        );
+    if (!document || document.deletedAt || document.status !== 'draft')
+      throw new AppException(...AppErrors.ESIGN_DRAFT_NOT_EDITABLE);
+    await this.access.assertNotInitiating(input.documentId, manager, lease);
     const preparedSigners = await this.signerService.prepareSigners(
       document,
-      input.creatorUserId,
+      input.actor,
       input.signers,
       manager,
       lockedUsers,
@@ -111,7 +118,7 @@ export class EsignInitiationService {
     }
     const { fields, sourceMetadata } = await this.fieldService.buildFields(
       document,
-      input.creatorUserId,
+      input.actor,
       input.fields,
       manager,
     );
@@ -152,9 +159,14 @@ export class EsignInitiationService {
   private async prepareEmployeeIds(
     input: InitiateDocumentInput,
     manager: EntityManager,
+    lease?: InitiationLease,
   ): Promise<string[]> {
-    const document = await this.documents.findById(input.documentId, manager);
-    this.access.checkEsignDraftCreator(document, input.creatorUserId);
+    if (!lease)
+      await this.access.manageableDocument(
+        await this.documents.findById(input.documentId, manager),
+        input.actor,
+        manager,
+      );
     if (!Array.isArray(input.signers) || !input.signers.length)
       throw new AppException(...AppErrors.ESIGN_SIGNER_REQUIRED);
     const userIds = input.signers
@@ -263,14 +275,18 @@ export class EsignInitiationService {
         signer.invitationTokenSha256 = null;
         signer.invitationTokenCiphertext = null;
         signer.invitationExpiresAt = null;
-        signer.updatedByUserId = input.creatorUserId;
+        signer.updatedByUserId =
+          input.actor.kind === 'employee' ? input.actor.userId : null;
+        signer.updatedByActorKind = input.actor.kind;
         continue;
       }
       const token = this.tokens.createInvitationToken();
       signer.invitationTokenSha256 = token.digest;
       signer.invitationTokenCiphertext = token.ciphertext;
       signer.invitationExpiresAt = input.signEndAt;
-      signer.updatedByUserId = input.creatorUserId;
+      signer.updatedByUserId =
+        input.actor.kind === 'employee' ? input.actor.userId : null;
+      signer.updatedByActorKind = input.actor.kind;
     }
   }
 
@@ -289,6 +305,7 @@ export class EsignInitiationService {
     document.initiatedAt = initiatedAt;
     document.watermarkEnabled = input.watermark;
     document.allowReject = input.allowReject;
+    markDocumentUpdated(document, input.actor);
     await this.documents.save(document, manager);
   }
 
@@ -308,7 +325,9 @@ export class EsignInitiationService {
             documentId: documentId,
             filterType: 'external_invitation',
             targetCount: invitationSigners.length,
-            notifiedByUserId: input.creatorUserId,
+            notifiedByActorKind: input.actor.kind,
+            notifiedByUserId:
+              input.actor.kind === 'employee' ? input.actor.userId : null,
           },
           manager,
         ),

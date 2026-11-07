@@ -3,6 +3,11 @@ import { IsInt, Min, Max } from 'class-validator';
 
 /** 背景發起輕量摘要，不含確認名單或內部租約。 */
 export class InitiationJobDto {
+  createdBy!: {
+    kind: 'employee' | 'super_user';
+    userId: string | null;
+    name: string;
+  };
   jobId!: string;
   documentId!: string;
   status!: string;

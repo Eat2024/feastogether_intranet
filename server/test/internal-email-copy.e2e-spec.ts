@@ -1,3 +1,4 @@
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 import { completeInitiation } from './helpers/await-initiation';
 import { getQueueToken } from '@nestjs/bullmq';
 import { type INestApplicationContext } from '@nestjs/common';
@@ -91,7 +92,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         }),
       ),
     );
-    creatorCookie = await employeeSessionCookie(ctx.app, users[0].id);
+    creatorCookie = await documentCreatorSessionCookie(ctx.app, users[0].id);
   });
   afterAll(async () => {
     if (worker) await worker.close();
@@ -335,7 +336,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       evidence.document.completedPdfSha256,
     );
   });
-  it('內部員工同次 OTP 存取可輪詢 pending→ready，取得與建立人完全相同的真實 PDF', async () => {
+  it('外部本人同次 OTP 存取可輪詢 pending→ready，建立人不可代領真實 PDF', async () => {
     const f = await fixture();
     await downloadCopy(f.cookie).expect(401);
     await sign(f);
@@ -357,14 +358,13 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       .expect('Content-Type', /application\/pdf/)
       .expect('Cache-Control', 'private, no-store')
       .expect('Content-Disposition', /^attachment;/);
-    const creator = await request(ctx.server)
+    await request(ctx.server)
       .post(
         `/api/esign/documents/${f.document.id}/signers/${f.signers[0].publicId}/completed-file/downloads`,
       )
       .set('Origin', origin)
       .set('Cookie', creatorCookie)
-      .expect(200);
-    expect(personal.body).toEqual(creator.body);
+      .expect(404);
     expect(
       (await PDFDocument.load(personal.body as Buffer)).getPageCount(),
     ).toBe(1);
@@ -446,14 +446,14 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
           .send({ reason: '合成停止驗收' })
           .expect(201);
       } else if (state === 'expired') {
-        // 隔離資料庫的時間邊界 fixture：不可等待真實文件期限。
+        // 與建立時的 signStartAt 使用同一應用程式時鐘，避免 Docker VM 時差造成非法期間。
         await ctx.app
           .get(MysqlService)
           .getManager()
-          .query(
-            'UPDATE esign_documents SET sign_end_at=DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 SECOND) WHERE id=?',
-            [f.document.id],
-          );
+          .query('UPDATE esign_documents SET sign_end_at=? WHERE id=?', [
+            new Date(Date.now() - 1000),
+            f.document.id,
+          ]);
         await ctx.app
           .get(EsignExpiryService)
           .expireByDeadline(Number(f.document.id));
@@ -577,7 +577,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
       ]);
     for (const send of externalEndpoints(f.cookie)) await send().expect(401);
   });
-  it('儲存設備回傳被置換的有效 PDF 時，本人與建立人皆拒絕提供副本', async () => {
+  it('儲存設備回傳被置換的有效 PDF 時，本人拒絕損毀副本且建立人仍無本人資格', async () => {
     const f = await fixture();
     await sign(f);
     await finish(f);
@@ -597,7 +597,7 @@ describe('Spec016 外部本人副本回歸 HTTP／真實 PDF worker', () => {
         )
         .set('Origin', origin)
         .set('Cookie', creatorCookie)
-        .expect(409);
+        .expect(404);
     } finally {
       fault.mockRestore();
     }

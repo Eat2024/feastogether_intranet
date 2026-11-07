@@ -1,3 +1,4 @@
+import type { ExportedByDto } from './export-history.dto';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AppErrors } from '#app/common/errors/app-errors';
@@ -30,6 +31,7 @@ export class ExportQueryDto {
 
 /** 匯出工作的公開投影，不包含快照或儲存位置。 */
 export class ExportJobViewDto {
+  exportedBy!: ExportedByDto;
   id!: string;
   documentId!: string;
   status!: string;

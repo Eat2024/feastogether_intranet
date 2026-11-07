@@ -99,13 +99,18 @@ export class EsignViewMapper {
       isCreator: document.createdByUserId === viewerUserId,
       signStartAt: document.signStartAt?.toISOString() ?? null,
       signEndAt: document.signEndAt?.toISOString() ?? null,
-      createdBy: this.creator(creator),
+      createdBy: this.creator(creator, document.createdByActorKind),
     };
   }
 
   /** 建立人只給姓名與員編；帳號不存在時為 null */
-  creator(user: User | null | undefined): EsignDocumentCreatorDto | null {
-    return user ? { name: user.name, employeeNo: user.empid } : null;
+  creator(
+    user: User | null | undefined,
+    kind: 'employee' | 'super_user' = 'employee',
+  ): EsignDocumentCreatorDto | null {
+    if (kind === 'super_user')
+      return { kind, name: 'Super user', employeeNo: null };
+    return user ? { kind, name: user.name, employeeNo: user.empid } : null;
   }
 
   sourceFile(file: EsignFileObject, pageCount: number): EsignSourceFileDto {
@@ -157,7 +162,7 @@ export class EsignViewMapper {
       docNumber: document.docNumber,
       signStartAt: document.signStartAt?.toISOString() ?? null,
       ...this.signingEnd(document),
-      createdBy: this.creator(creator),
+      createdBy: this.creator(creator, document.createdByActorKind),
       signers: signers.map((signer) => this.signerResult(signer)),
     };
   }

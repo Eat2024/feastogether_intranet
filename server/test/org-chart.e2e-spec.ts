@@ -1,11 +1,12 @@
+import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
+import { User } from '#app/features/users/entities/user.entity';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Redis } from 'ioredis';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { REDIS_MAIN } from '#app/infrastructure/database/redis/redis.provider';
 import { RedisService } from '#app/infrastructure/database/redis/redis.service';
 import { EsignSignerCandidateService } from '#app/features/esign/services/esign-signer-candidate.service';
-import { SessionService } from '#app/features/auth/services/session.service';
-import { AUTH_COOKIE_NAME } from '#app/features/auth/auth.constants';
 import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { assertTestRedisDb } from '#app/infrastructure/database/test/ensure-test-redis';
 import { AppLoggerService } from '#app/infrastructure/logging/appLog/app-logger.service';
@@ -29,7 +30,7 @@ import {
 const route = '/api/esign/signer-candidates/org-chart';
 const pause = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
-const headers = { cookie: `${AUTH_COOKIE_NAME}=synthetic-session` };
+const headers = { cookie: '' };
 const sha256 = (value: unknown[]) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const environment = () => process.env.NODE_ENV ?? 'development';
@@ -98,26 +99,31 @@ describe('組織樹 API（合成 Portal）', () => {
   let slow: SecurityE2eContext;
   let misconfigured: SecurityE2eContext;
   const contexts: SecurityE2eContext[] = [];
+  const authorizationUserIds: number[] = [];
   let client: Redis;
   let key: string;
   let legacyKeys: string[];
   let sources: jest.SpyInstance[];
   const sourceCalls = () =>
     sources.reduce((total, spy) => total + spy.mock.calls.length, 0);
-  const createApp = (config?: PortalConfig) =>
-    createSecurityE2eApp((builder) => {
-      builder.overrideProvider(SessionService).useValue({
-        authenticate: (token: string) =>
-          Promise.resolve(
-            token === 'synthetic-session'
-              ? { actor: { kind: 'employee', userId: 1 }, user: {} }
-              : null,
-          ),
-      });
-      return config
+  const createApp = async (config?: PortalConfig) => {
+    const app = await createSecurityE2eApp((builder) =>
+      config
         ? builder.overrideProvider(PortalConfig).useValue(config)
-        : builder;
-    });
+        : builder,
+    );
+    const user = await app.app
+      .get(MysqlService)
+      .getManager()
+      .save(User, {
+        empid: randomUUID().slice(0, 8),
+        name: '合成組織查詢人員',
+        isActive: true,
+      });
+    authorizationUserIds.push(user.id);
+    headers.cookie = await documentCreatorSessionCookie(app.app, user.id);
+    return app;
+  };
 
   beforeAll(async () => {
     assertTestRedisDb();
@@ -245,6 +251,17 @@ describe('組織樹 API（合成 Portal）', () => {
     if (client?.status === 'ready') await client.del(key, ...legacyKeys);
     // 先關不回應的 server：逾時後 pool 仍在替排隊的呼叫建立連線，pool.end() 會等它們連線逾時
     await unresponsive?.close();
+    if (ctx && authorizationUserIds.length) {
+      const manager = ctx.app.get(MysqlService).getManager();
+      await manager.query('DELETE FROM auth_sessions WHERE user_id IN (?)', [
+        authorizationUserIds,
+      ]);
+      await manager.query(
+        'DELETE FROM authorization_user_roles WHERE user_id IN (?)',
+        [authorizationUserIds],
+      );
+      await manager.delete(User, authorizationUserIds);
+    }
     await Promise.all(
       [...contexts, slow, misconfigured]
         .filter(Boolean)

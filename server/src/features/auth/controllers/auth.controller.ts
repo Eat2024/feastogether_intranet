@@ -33,7 +33,7 @@ import {
   clearOauthTxCookie,
   setAuthCookie,
 } from '#app/features/auth/helpers/auth-cookie';
-import { AllowSuperUser } from '#app/framework/decorators/allow-super-user.decorator';
+import { AuthenticatedOnly } from '#app/features/authorization/decorators/require-permissions.decorator';
 import { Public } from '#app/framework/decorators/public.decorator';
 import type { AuthenticatedRequest } from '#app/framework/guards/auth.guard';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
@@ -159,7 +159,7 @@ export class AuthController {
   }
 
   // 取得目前身分（員工或 Super user）；會話已由 AuthGuard 驗證。
-  @AllowSuperUser()
+  @AuthenticatedOnly()
   @Get(configPath.AUTH_SESSION)
   @Header('Cache-Control', 'no-store')
   @ApiCookieAuth('sessionCookie')

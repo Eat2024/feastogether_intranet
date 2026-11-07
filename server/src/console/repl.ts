@@ -1,3 +1,4 @@
+import { createAuthorizationConsole } from './helpers/authorization.helpers';
 import { start } from 'node:repl';
 import type { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -58,6 +59,7 @@ async function bootstrap(): Promise<void> {
   });
   const server = start();
   server.context.auth = createAuthConsole(app);
+  server.context.authz = createAuthorizationConsole(app);
   server.on('exit', () => void app.close());
 }
 

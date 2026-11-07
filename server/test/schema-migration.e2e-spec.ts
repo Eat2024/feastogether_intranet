@@ -6,6 +6,11 @@ import { withSchemaTestDatabase } from '#app/infrastructure/database/test/schema
 import { revertAfter } from './schema-migration.helper';
 
 const BUSINESS_TABLES = [
+  'authorization_roles',
+  'authorization_permissions',
+  'authorization_role_permissions',
+  'authorization_user_roles',
+  'audit_logs',
   'hr_departments',
   'mail_recipient_whitelist',
   'users',
@@ -50,7 +55,9 @@ describe('e-sign schema migrations', () => {
         const before = await ds.query(
           'SELECT * FROM esign_verification_records',
         );
-        const document = await ds.query('SELECT * FROM esign_documents');
+        const document = await ds.query<Array<Record<string, unknown>>>(
+          'SELECT * FROM esign_documents',
+        );
         await ds.runMigrations();
         expect(await listBusinessTables(ds, database)).not.toContain(
           'esign_audit_events',
@@ -59,7 +66,11 @@ describe('e-sign schema migrations', () => {
           await ds.query('SELECT * FROM esign_verification_records'),
         ).toEqual(before);
         expect(await ds.query('SELECT * FROM esign_documents')).toEqual(
-          document,
+          expect.arrayContaining(
+            document.map((row: Record<string, unknown>) =>
+              expect.objectContaining(row),
+            ),
+          ),
         );
         await revertAfter(ds, 'RetireSigningAudit1793836801000');
         await expect(ds.undoLastMigration()).rejects.toThrow(
@@ -409,15 +420,15 @@ describe('e-sign schema migrations', () => {
               ['a'.repeat(64)],
             );
           const before: unknown = await ds.query(
-          'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
-        );
+            'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
+          );
           await revertAfter(ds, 'ExpiredDocuments1792368000000');
           await expect(ds.undoLastMigration()).rejects.toThrow('無法回滾');
           expect(
-          await ds.query(
-            'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
-          ),
-        ).toEqual(before);
+            await ds.query(
+              'SELECT id, doc_number, title, status, created_by_user_id, sign_start_at, sign_end_at, signing_payload_json, signing_payload_sha256, created_at, updated_at, deleted_at FROM esign_documents',
+            ),
+          ).toEqual(before);
         } finally {
           await ds.destroy();
         }
@@ -515,7 +526,7 @@ describe('e-sign schema migrations', () => {
     ],
     [
       'pdf',
-      "INSERT INTO esign_export_jobs (public_id,export_type,document_id,created_by_user_id,signer_id,status,scope_description,record_count,completed_at) VALUES ('00000000-0000-4000-8000-000000000035','pdf',1,NULL,1,'completed','外部（external@example.test）',1,NOW(6))",
+      "INSERT INTO esign_export_jobs (created_by_actor_kind,public_id,export_type,document_id,created_by_user_id,signer_id,status,scope_description,record_count,completed_at) VALUES ('external_signer','00000000-0000-4000-8000-000000000035','pdf',1,NULL,1,'completed','外部（external@example.test）',1,NOW(6))",
     ],
   ])(
     '已有 %s 紀錄時，匯出紀錄 migration 在任何 DDL 前拒絕回滾',
@@ -554,7 +565,7 @@ describe('e-sign schema migrations', () => {
         await dataSource.runMigrations();
         const first = await schemaSnapshot(dataSource, database);
         expect(first.tables).toEqual(BUSINESS_TABLES);
-        expect(first.timeColumns).toHaveLength(80);
+        expect(first.timeColumns).toHaveLength(93);
         expect(first.missingTimeIndexes).toEqual([]);
         expect(first.legacyTables).toEqual([]);
         expect(first.authSessionIndexes).toEqual(
@@ -578,16 +589,19 @@ describe('e-sign schema migrations', () => {
           (await dataSource.driver.createSchemaBuilder().log()).upQueries,
         ).toEqual([]);
 
-        await dataSource.undoLastMigration();
+        await revertAfter(dataSource, 'EsignDocumentActors1793923201000');
+        await dataSource.undoLastMigration(); // 文件 actor
+        await dataSource.undoLastMigration(); // 授權 schema
         expect(await listBusinessTables(dataSource, database)).toEqual(
           BUSINESS_TABLES.filter(
             (table) =>
-              !['auth_security_events', 'super_user_access'].includes(table),
+              table !== 'audit_logs' &&
+              !table.startsWith('authorization_'),
           ),
         );
         expect(
           await hasColumn(dataSource, database, 'auth_sessions', 'actor_kind'),
-        ).toBe(false);
+        ).toBe(true);
 
         await dataSource.runMigrations();
         expect(await schemaSnapshot(dataSource, database)).toEqual(first);
@@ -655,7 +669,7 @@ async function schemaSnapshot(dataSource: DataSource, database: string) {
   const legacyRows = await dataSource.query<Array<{ TABLE_NAME: string }>>(
     `SELECT TABLE_NAME FROM information_schema.tables
       WHERE table_schema = ? AND (
-        (TABLE_NAME LIKE 'auth\\_%' AND TABLE_NAME NOT IN ('auth_sessions','auth_security_events')) OR TABLE_NAME IN ('roles','permissions','audit_logs','audit_log_targets')
+        (TABLE_NAME LIKE 'auth\\_%' AND TABLE_NAME NOT IN ('auth_sessions','auth_security_events')) OR TABLE_NAME IN ('roles','permissions','audit_log_targets')
       ) ORDER BY TABLE_NAME`,
     [database],
   );

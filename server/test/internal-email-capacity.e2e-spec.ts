@@ -1,3 +1,4 @@
+import { AuthorizationUserRole } from '#app/features/authorization/entities/authorization-user-role.entity';
 import {
   completeInitiation,
   deleteInitiationJobs,
@@ -36,7 +37,7 @@ import {
   closeSecurityE2eApp,
   type SecurityE2eContext,
 } from './security-e2e.helper';
-import { employeeSessionCookie } from './employee-session.helper';
+import { documentCreatorSessionCookie } from './helpers/authorization-business-fixtures';
 
 describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合成來源）', () => {
   let ctx: SecurityE2eContext;
@@ -149,7 +150,7 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
     });
     expect(users).toHaveLength(5001);
     mailFixture(ctx).allowEmails(users.map((user) => email(user.empid)));
-    cookie = await employeeSessionCookie(ctx.app, users[0].id);
+    cookie = await documentCreatorSessionCookie(ctx.app, users[0].id);
     const pdf = await PDFDocument.create();
     pdf.addPage();
     documentId = apiData<{ id: string }>(
@@ -255,6 +256,7 @@ describe('Spec023 全公司本機 Email 容量（真實 HTTP/MySQL/Redis、合�
         await manager.query('DELETE FROM auth_sessions WHERE user_id IN (?)', [
           ids,
         ]);
+        await manager.delete(AuthorizationUserRole, { userId: In(ids) });
         await manager.delete(User, ids);
       }
       expect(

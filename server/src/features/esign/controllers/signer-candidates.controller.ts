@@ -1,3 +1,5 @@
+import { AllowSuperUser } from '#app/framework/decorators/allow-super-user.decorator';
+import { RequireAnyPermission } from '#app/features/authorization/decorators/require-permissions.decorator';
 import { OrgDepartmentDto } from '../dto/org-chart.dto';
 import { ApiOperation, ApiOkResponse, ApiResponse } from '@nestjs/swagger';
 import {
@@ -22,16 +24,18 @@ import {
   SignerCandidateResolutionsResponseDto,
 } from '../dto/employee-directory-response.dto';
 
+@RequireAnyPermission('esign.document.create', 'esign.document.manage')
 @Controller('esign/signer-candidates')
 export class SignerCandidatesController {
   constructor(private readonly candidates: EsignSignerCandidateService) {}
 
   // 取得正式員工組織樹，沿用三十分鐘共用快取。
+  @AllowSuperUser()
   @Get('org-chart')
   @Header('Cache-Control', 'private, no-store')
   @ApiOperation({
     summary: '查詢正式員工組織架構',
-    description: '需有效員工 session',
+    description: '需有效 actor session 及 create 或 manage 能力',
   })
   @ApiOkResponse({ type: SignerCandidateOrgChartResponseDto })
   @ApiResponse({
@@ -56,6 +60,7 @@ export class SignerCandidatesController {
   }
 
   // 將所選員編解析為已同步的本機簽署人，不即時補查或建帳。
+  @AllowSuperUser()
   @Post('resolutions')
   @HttpCode(200)
   @UseGuards(OriginGuard)
@@ -63,7 +68,7 @@ export class SignerCandidatesController {
   @ApiOperation({
     summary: '解析已選員工為本機簽署人',
     description:
-      '需有效員工 session 與 Origin 檢查；僅解析已同步至本機的完整員編，不回傳信箱；查無或停用為 unavailable，需同步或確認帳號狀態。',
+      '需有效 actor session 及 create 或 manage 能力 與 Origin 檢查；僅解析已同步至本機的完整員編，不回傳信箱；查無或停用為 unavailable，需同步或確認帳號狀態。',
   })
   @ApiOkResponse({ type: SignerCandidateResolutionsResponseDto })
   @ApiResponse({
@@ -99,6 +104,7 @@ export class SignerCandidatesController {
     description:
       '依 q 查詢本機有效員工，不呼叫上游或建立帳號；未建帳員工須先完成資料同步；已選員編可使用 POST resolutions 解析。',
   })
+  @AllowSuperUser()
   @Get()
   async list(@Query('q') query?: string) {
     const users = await this.candidates.list(query);

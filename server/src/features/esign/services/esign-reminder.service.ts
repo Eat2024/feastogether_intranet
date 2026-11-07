@@ -1,3 +1,5 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { markDocumentUpdated } from '../helpers/management-actor';
 import { notificationStatus } from './notification-status';
 import { createHash, randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
@@ -6,6 +8,7 @@ import { MysqlService } from '#app/infrastructure/database/mysql/mysql.service';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { AppException } from '#app/common/errors/app.exception';
 import {
+  type NotificationBatchActorDto,
   NotificationBatchDto,
   NotificationListDto,
   NotificationPageDto,
@@ -31,11 +34,7 @@ export class EsignReminderService {
     private readonly jobs: EsignJobProducerService,
   ) {}
 
-  async create(
-    documentId: number,
-    userId: number,
-    input: NotificationBatchDto,
-  ) {
+  async create(documentId: number, actor: Actor, input: NotificationBatchDto) {
     if (
       input.selection === 'all_pending' &&
       input.signerPublicIds !== undefined
@@ -45,21 +44,21 @@ export class EsignReminderService {
     const hash = createHash('sha256')
       .update(JSON.stringify({ selection: input.selection, ids }))
       .digest('hex');
-    await this.access.assertCreatorNotInitiating(
+    await this.access.assertManagerNotInitiating(
       documentId,
-      userId,
+      actor,
       this.mysql.getManager(),
     );
     const result = await this.mysql.transaction(async (manager) => {
-      const document = await this.documents.findByIdForUpdate(
+      const document = await this.access.lockManagedDocument(
         documentId,
+        actor,
         manager,
       );
-      this.access.checkEsignCreator(document, userId);
       await this.access.assertNotInitiating(documentId, manager);
       const previous = await this.notifications.findBatchRequest(
         documentId,
-        userId,
+        actor,
         input.requestId,
         manager,
       );
@@ -126,13 +125,16 @@ export class EsignReminderService {
             })),
           },
         );
+      markDocumentUpdated(document, actor);
+      await this.documents.save(document, manager);
       const batch = await this.notifications.saveBatch(
         this.notifications.createBatch(
           {
             publicId: randomUUID(),
             kind: 'reminder',
             documentId,
-            notifiedByUserId: userId,
+            notifiedByActorKind: actor.kind,
+            notifiedByUserId: actor.kind === 'employee' ? actor.userId : null,
             requestId: input.requestId,
             requestPayloadSha256: hash,
             filterType: input.selection,
@@ -203,11 +205,12 @@ export class EsignReminderService {
     return result.view;
   }
 
-  async list(documentId: number, userId: number, page: NotificationListDto) {
+  async list(documentId: number, actor: Actor, page: NotificationListDto) {
     const manager = this.mysql.getManager();
-    this.access.checkEsignCreator(
+    await this.access.manageableDocument(
       await this.documents.findById(documentId, manager),
-      userId,
+      actor,
+      manager,
     );
     const batches = await this.notifications.listBatches(
       documentId,
@@ -229,14 +232,15 @@ export class EsignReminderService {
 
   async detail(
     documentId: number,
-    userId: number,
+    actor: Actor,
     batchId: string,
     page = new NotificationPageDto(),
   ) {
     const manager = this.mysql.getManager();
-    this.access.checkEsignCreator(
+    await this.access.manageableDocument(
       await this.documents.findById(documentId, manager),
-      userId,
+      actor,
+      manager,
     );
     const batch = await this.notifications.findBatchPublic(
       documentId,
@@ -249,15 +253,24 @@ export class EsignReminderService {
 
   private async summary(batch: EsignNotificationBatch, manager: EntityManager) {
     const counts = await this.notifications.batchCounts(batch.id, manager);
+    const requestedBy: NotificationBatchActorDto | null =
+      batch.notifiedByActorKind === 'system'
+        ? null
+        : {
+            kind: batch.notifiedByActorKind,
+            userId:
+              batch.notifiedByUserId == null
+                ? null
+                : String(batch.notifiedByUserId),
+            name:
+              batch.notifiedByActorKind === 'super_user'
+                ? 'Super user'
+                : (batch.notifiedByUser?.name ?? '員工'),
+          };
     return {
       batchId: batch.publicId,
       kind: batch.kind,
-      requestedBy: batch.notifiedByUserId
-        ? {
-            userId: String(batch.notifiedByUserId),
-            name: batch.notifiedByUser?.name ?? '員工',
-          }
-        : null,
+      requestedBy,
       status: notificationStatus(counts),
       selectedCount: batch.targetCount,
       queuedCount: Object.entries(counts).reduce(

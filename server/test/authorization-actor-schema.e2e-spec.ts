@@ -1,9 +1,11 @@
+import { revertAfter } from './schema-migration.helper';
 import { withAuthorizationDatabase } from './helpers/authorization-fixtures';
 
 describe('028 文件 actor schema', () => {
   jest.setTimeout(120_000);
   it('空庫回退再套用；歷史稽核精準回填且簽署關聯、雜湊與證據保持', async () => {
     await withAuthorizationDatabase(async (db) => {
+      await revertAfter(db, 'EsignDocumentActors1793923201000');
       await db.undoLastMigration();
       await db.query(
         "INSERT INTO users (id,empid,name) VALUES (1,'HISTORY-1','合成人員')",
@@ -99,6 +101,7 @@ describe('028 文件 actor schema', () => {
       await db.query(
         "UPDATE esign_signers SET updated_by_actor_kind='super_user',updated_by_user_id=NULL WHERE id=1",
       );
+      await revertAfter(db, 'EsignDocumentActors1793923201000');
       await expect(db.undoLastMigration()).rejects.toThrow('無法回滾');
     });
   });
@@ -123,7 +126,9 @@ describe('028 文件 actor schema', () => {
           'UPDATE esign_documents SET updated_by_actor_kind=NULL,updated_by_user_id=1 WHERE id=1',
         ),
       ).rejects.toThrow();
+      await revertAfter(db, 'EsignDocumentActors1793923201000');
       await expect(db.undoLastMigration()).rejects.toThrow('無法回滾');
+      await db.runMigrations();
       expect((await db.driver.createSchemaBuilder().log()).upQueries).toEqual(
         [],
       );

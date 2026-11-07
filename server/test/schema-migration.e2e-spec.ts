@@ -589,6 +589,7 @@ describe('e-sign schema migrations', () => {
           (await dataSource.driver.createSchemaBuilder().log()).upQueries,
         ).toEqual([]);
 
+        await revertAfter(dataSource, 'EsignDocumentActors1793923201000');
         await dataSource.undoLastMigration(); // 文件 actor
         await dataSource.undoLastMigration(); // 授權 schema
         expect(await listBusinessTables(dataSource, database)).toEqual(

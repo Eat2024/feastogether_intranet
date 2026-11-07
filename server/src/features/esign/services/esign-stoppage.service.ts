@@ -1,3 +1,5 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { markDocumentUpdated } from '../helpers/management-actor';
 import { AppErrors } from '#app/common/errors/app-errors';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '#app/common/errors/app.exception';
@@ -17,31 +19,31 @@ export class EsignStoppageService {
     private readonly validation: EsignDocumentValidationService,
   ) {}
 
-  stopByCreator(documentId: number, creatorUserId: number, reason: string) {
+  stopByActor(documentId: number, actor: Actor, reason: string) {
     const normalized = reason.trim();
     if (normalized.length < 1 || normalized.length > 500) {
       throw new AppException(...AppErrors.ESIGN_STOP_REASON_INVALID);
     }
-    return this.stop(documentId, normalized, new Date(), creatorUserId);
+    return this.stop(documentId, normalized, new Date(), actor);
   }
 
   private async stop(
     documentId: number,
     reason: string,
     now: Date,
-    creatorUserId: number,
+    actor: Actor,
   ) {
-    await this.access.assertCreatorNotInitiating(
+    await this.access.assertManagerNotInitiating(
       documentId,
-      creatorUserId,
+      actor,
       this.mysql.getManager(),
     );
     return this.mysql.transaction(async (manager) => {
-      const document = await this.documents.findByIdForUpdate(
+      const document = await this.access.lockManagedDocument(
         documentId,
+        actor,
         manager,
       );
-      this.access.checkEsignCreator(document, creatorUserId);
       await this.access.assertNotInitiating(documentId, manager);
       this.validation.assertActiveForStop(document);
       const signers = await this.signers.findByDocumentForUpdate(
@@ -50,6 +52,9 @@ export class EsignStoppageService {
       );
       for (const signer of signers) {
         if (signer.status === 'pending') {
+          signer.updatedByActorKind = actor.kind;
+          signer.updatedByUserId =
+            actor.kind === 'employee' ? actor.userId : null;
           signer.invitationTokenSha256 = null;
           signer.invitationTokenCiphertext = null;
           signer.invitationExpiresAt = null;
@@ -59,6 +64,7 @@ export class EsignStoppageService {
       document.status = 'stopped';
       document.stoppedAt = now;
       document.stopReason = reason;
+      markDocumentUpdated(document, actor);
       await this.documents.save(document, manager);
       return true;
     });

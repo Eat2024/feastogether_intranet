@@ -517,17 +517,17 @@ it('目前能力的 create/manage/read-all 正負矩陣，查詢部門不可升�
           })
         ).statusCode,
       ).toBe(404);
-      // 尚未完成 actor 遷移的生命週期端點仍拒絕 Super。
+      // Super 管理權不會放寬已刪除文件的資源範圍。
       expect(
         (
           await ctx.app.inject({
             method: 'POST',
             url: '/api/esign/documents/1/stoppages',
             headers: { cookie: superCookie, origin },
-            payload: {},
+            payload: { reason: '合成停止原因' },
           })
         ).statusCode,
-      ).toBe(403);
+      ).toBe(404);
     } finally {
       await closeSecurityE2eApp(ctx);
     }

@@ -1,3 +1,4 @@
+import { EsignLifecycleActors1793923202000 } from '../migrations/1793923202000-EsignLifecycleActors';
 import { EsignDocumentActors1793923201000 } from '../migrations/1793923201000-EsignDocumentActors';
 import { ModuleAuthorization1793923200000 } from '../migrations/1793923200000-ModuleAuthorization';
 import { AuthorizationRole } from '#app/features/authorization/entities/authorization-role.entity';
@@ -142,6 +143,7 @@ export function buildMysqlOptions(
       SuperUserAccess1793836802000,
       ModuleAuthorization1793923200000,
       EsignDocumentActors1793923201000,
+      EsignLifecycleActors1793923202000,
     ],
 
     extra: {

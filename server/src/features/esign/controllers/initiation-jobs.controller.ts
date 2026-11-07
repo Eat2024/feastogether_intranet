@@ -28,7 +28,9 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
-import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
+import { CurrentActor } from '#app/framework/decorators/current-actor.decorator';
+import { AllowSuperUser } from '#app/framework/decorators/allow-super-user.decorator';
+import type { Actor } from '#app/features/auth/auth.types';
 import {
   InitiationJobDto,
   InitiationIssuesQueryDto,
@@ -36,6 +38,7 @@ import {
 import { EsignInitiationJobService } from '../services/esign-initiation-job.service';
 
 @ApiCookieAuth('sessionCookie')
+@AllowSuperUser()
 @RequirePermissions('esign.document.manage')
 @Controller('esign/documents/:documentId/initiation-jobs')
 export class InitiationJobsController {
@@ -49,10 +52,10 @@ export class InitiationJobsController {
     description: '新 UUID；相同 key 重播原子工作',
   })
   @ApiResponse({ status: 400, description: '缺少合法 key 或 body 不為空' })
-  @ApiResponse({ status: 404, description: '工作不存在或不是有效建立人' })
+  @ApiResponse({ status: 404, description: '工作不存在或無管理範圍' })
   @ApiResponse({ status: 409, description: '忙碌、重播衝突或不符合新重試條件' })
   @ApiResponse({ status: 410, description: '原確認輸入已清理' })
-  @ApiOperation({ summary: '建立人以新請求識別重試原確認輸入' })
+  @ApiOperation({ summary: '管理者以新請求識別重試原確認輸入' })
   @ApiResponse({
     status: 202,
     type: InitiationJobResponseDto,
@@ -65,12 +68,12 @@ export class InitiationJobsController {
   async retry(
     @Param('documentId', ParseIntPipe) documentId: number,
     @Param('jobId', ParseUUIDPipe) jobId: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Headers('idempotency-key') key: string | undefined,
     @Body() body: unknown,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<InitiationJobDto> {
-    const result = await this.jobs.retry(documentId, jobId, userId, key, body);
+    const result = await this.jobs.retry(documentId, jobId, actor, key, body);
     reply
       .code(result.reused ? 200 : 202)
       .header(
@@ -83,58 +86,58 @@ export class InitiationJobsController {
 
   @Get('latest')
   @Header('Cache-Control', 'private, no-store')
-  @ApiOperation({ summary: '建立人查詢最近一次背景發起工作，尚無工作回 null' })
+  @ApiOperation({ summary: '管理者查詢最近一次背景發起工作，尚無工作回 null' })
   @ApiOkResponse({
     type: LatestInitiationJobResponseDto,
   })
   @ApiResponse({ status: 401, description: '尚未登入' })
-  @ApiResponse({ status: 404, description: '文件不存在或不是建立人' })
+  @ApiResponse({ status: 404, description: '文件不存在或無管理範圍' })
   latest(
     @Param('documentId', ParseIntPipe) documentId: number,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ): Promise<InitiationJobDto | null> {
-    return this.jobs.latest(documentId, userId);
+    return this.jobs.latest(documentId, actor);
   }
 
   @Get(':jobId/issues')
   @Header('Cache-Control', 'private, no-store')
-  @ApiOperation({ summary: '建立人分頁查詢失敗人員問題' })
+  @ApiOperation({ summary: '管理者分頁查詢失敗人員問題' })
   @ApiOkResponse({ type: InitiationIssuesResponseDto })
   @ApiResponse({ status: 409, description: '工作尚未失敗' })
   @ApiResponse({ status: 410, description: '問題明細已清理' })
   issues(
     @Param('documentId', ParseIntPipe) documentId: number,
     @Param('jobId', ParseUUIDPipe) jobId: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Query() query: InitiationIssuesQueryDto,
   ) {
-    return this.jobs.issues(documentId, jobId, userId, query);
+    return this.jobs.issues(documentId, jobId, actor, query);
   }
 
   @Get(':jobId/input')
   @Header('Cache-Control', 'private, no-store')
-  @ApiOperation({ summary: '建立人還原背景發起的確認輸入' })
+  @ApiOperation({ summary: '管理者還原背景發起的確認輸入' })
   @ApiOkResponse({ type: InitiationInputResponseDto })
   @ApiResponse({ status: 410, description: '原確認輸入已清理' })
   input(
     @Param('documentId', ParseIntPipe) documentId: number,
     @Param('jobId', ParseUUIDPipe) jobId: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
-    return this.jobs.input(documentId, jobId, userId);
+    return this.jobs.input(documentId, jobId, actor);
   }
 
   @Get(':jobId')
   @Header('Cache-Control', 'private, no-store')
-  @ApiOperation({ summary: '建立人查詢背景發起工作摘要' })
+  @ApiOperation({ summary: '管理者查詢背景發起工作摘要' })
   @ApiOkResponse({ type: InitiationJobResponseDto })
   @ApiResponse({ status: 401, description: '尚未登入' })
-  @ApiResponse({ status: 404, description: '工作不存在或不是建立人' })
+  @ApiResponse({ status: 404, description: '工作不存在或無管理範圍' })
   get(
     @Param('documentId', ParseIntPipe) documentId: number,
     @Param('jobId', ParseUUIDPipe) jobId: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ): Promise<InitiationJobDto> {
-    return this.jobs.get(documentId, jobId, userId);
+    return this.jobs.get(documentId, jobId, actor);
   }
 }

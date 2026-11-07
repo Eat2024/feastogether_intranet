@@ -274,20 +274,16 @@ export class DocumentsController {
     description: '無法確認可靠保存；可用原 key 查回／重送',
   })
   @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Post(':documentId/initiations')
   async initiate(
     @Param('documentId') id: string,
     @Body() body: InitiateDocumentDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Headers('idempotency-key') key: string | undefined,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<InitiationJobDto> {
-    const result = await this.initiations.accept(
-      this.id(id),
-      userId,
-      body,
-      key,
-    );
+    const result = await this.initiations.accept(this.id(id), actor, body, key);
     reply
       .code(result.reused ? 200 : 202)
       .header(
@@ -303,14 +299,15 @@ export class DocumentsController {
   @ApiOperation({
     summary: '重新開放已到期文件補簽',
     description:
-      '僅建立人可設定新期限；reason 可省略，舊客戶端提供的原因不再保存。舊期限不符或任一外部待簽者缺固定信箱／原邀請回 409。內部無信箱仍可補簽；成功後有信箱者依內部群寄、外部逐人方式通知，保留已簽及已拒證據。',
+      '具有管理能力且範圍允許者可設定新期限；reason 可省略，舊客戶端提供的原因不再保存。舊期限不符或任一外部待簽者缺固定信箱／原邀請回 409。內部無信箱仍可補簽；成功後有信箱者依內部群寄、外部逐人方式通知，保留已簽及已拒證據。',
   })
   @ApiBody({ type: ReopenDocumentDto })
   @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Post(':documentId/reopenings')
   reopen(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body(
       new ValidationPipe({
         expectedType: ReopenDocumentDto,
@@ -323,24 +320,25 @@ export class DocumentsController {
     )
     body: ReopeningInput,
   ) {
-    return this.reopenings.reopen(this.id(id), userId, body);
+    return this.reopenings.reopen(this.id(id), actor, body);
   }
 
   // 取得目前補簽輪仍保留密文的邀請，不寄信或輪替憑證。
   @ApiOperation({
     summary: '取得仍可取用的補簽邀請',
     description:
-      '僅建立人讀取內外部待簽者尚存密文的邀請，不寄信、不輪替憑證。成功寄送後省略該項，全數送達回空陣列；請以通知紀錄確認進度。',
+      '具有管理能力且範圍允許者讀取內外部待簽者尚存密文的邀請，不寄信、不輪替憑證。成功寄送後省略該項，全數送達回空陣列；請以通知紀錄確認進度。',
   })
   @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Get(':documentId/reopening-invitations')
   @Header('Cache-Control', 'private, no-store')
   @Header('Referrer-Policy', 'no-referrer')
   reopeningInvitations(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
-    return this.queries.reopeningInvitations(this.id(id), userId);
+    return this.queries.reopeningInvitations(this.id(id), actor);
   }
 
   // 供建立人或同部門讀取文件原始 PDF。
@@ -372,23 +370,24 @@ export class DocumentsController {
       .send(file.bytes);
   }
 
-  // 由建立人永久停止文件簽署。
+  // 管理者永久停止文件簽署，保留原建立者。
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '停止文件簽署',
     description:
-      '由建立人提供原因停止簽署，回傳更新後的文件詳情並保留停止紀錄。',
+      '管理者提供原因停止簽署，回傳更新後的文件詳情並保留停止紀錄。',
   })
   @RequirePermissions('esign.document.manage')
+  @AllowSuperUser()
   @Post(':documentId/stoppages')
   async stop(
     @Param('documentId') id: string,
     @Body() body: StopDocumentDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
     const documentId = this.id(id);
-    await this.stoppages.stopByCreator(documentId, userId, body.reason);
-    return this.queries.detail(documentId, { kind: 'employee', userId });
+    await this.stoppages.stopByActor(documentId, actor, body.reason);
+    return this.queries.detail(documentId, actor);
   }
 
   // 由建立人儲存指定簽署人的管理備註。

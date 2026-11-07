@@ -352,7 +352,7 @@ describe('核心電子簽 US1', () => {
             .initiateInTransaction(
               {
                 documentId: id,
-                creatorUserId: draft.createdByUserId,
+                actor: { kind: 'employee', userId: draft.createdByUserId! },
                 signers: [
                   {
                     type: 'email',

@@ -10,7 +10,9 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
+import { CurrentActor } from '#app/framework/decorators/current-actor.decorator';
+import { AllowSuperUser } from '#app/framework/decorators/allow-super-user.decorator';
+import type { Actor } from '#app/features/auth/auth.types';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { AppException } from '#app/common/errors/app.exception';
 import { AppErrors } from '#app/common/errors/app-errors';
@@ -21,6 +23,7 @@ import {
 } from '../dto/notification-batch.dto';
 import { EsignReminderService } from '../services/esign-reminder.service';
 
+@AllowSuperUser()
 @RequirePermissions('esign.document.manage')
 @Controller('esign/documents/:documentId/notification-batches')
 export class NotificationBatchesController {
@@ -30,31 +33,31 @@ export class NotificationBatchesController {
   @ApiOperation({
     summary: '建立內外部催簽批次',
     description:
-      '僅建立人；指定或全部待簽人員均使用發起時固定信箱，同信箱逐人寄送及計算額度。先持久保存再背景寄送，回傳受理狀態而非已送達。',
+      '具有管理能力且範圍允許者；指定或全部待簽人員均使用發起時固定信箱，同信箱逐人寄送及計算額度。先持久保存再背景寄送，回傳受理狀態而非已送達。',
   })
   @Post()
   @HttpCode(202)
   @UseGuards(OriginGuard)
   create(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body() body: NotificationBatchDto,
   ) {
-    return this.reminders.create(this.id(id), userId, body);
+    return this.reminders.create(this.id(id), actor, body);
   }
 
   // 供建立人分頁查詢文件的催簽批次。
   @ApiOperation({
     summary: '查詢催簽批次結果',
-    description: '僅建立人可檢視逐人寄送結果；不回傳郵件憑證。',
+    description: '具有管理能力且範圍允許者可檢視逐人寄送結果；不回傳郵件憑證。',
   })
   @Get()
   list(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Query() page: NotificationListDto,
   ) {
-    return this.reminders.list(this.id(id), userId, page);
+    return this.reminders.list(this.id(id), actor, page);
   }
 
   // 供建立人查詢指定催簽批次的逐人寄送結果。
@@ -63,9 +66,9 @@ export class NotificationBatchesController {
     @Param('documentId') id: string,
     @Param('batchId') batchId: string,
     @Query() page: NotificationPageDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
-    return this.reminders.detail(this.id(id), userId, batchId, page);
+    return this.reminders.detail(this.id(id), actor, batchId, page);
   }
 
   private id(value: string) {

@@ -47,3 +47,10 @@ export class NotificationListDto extends NotificationPageDto {
   @IsIn(['invitation', 'reminder'])
   kind?: 'invitation' | 'reminder';
 }
+
+/** 郵件批次只顯示實際操作身分，不含郵件或邀請憑證。 */
+export interface NotificationBatchActorDto {
+  kind: 'employee' | 'super_user';
+  userId: string | null;
+  name: string;
+}

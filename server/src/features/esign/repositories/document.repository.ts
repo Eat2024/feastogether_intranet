@@ -265,11 +265,16 @@ export class DocumentRepository {
       .execute();
   }
 
-  softDeleteDraft(id: number, deletedAt: Date, manager: EntityManager) {
+  softDeleteDraft(
+    id: number,
+    deletedAt: Date,
+    manager: EntityManager,
+    audit: Pick<EsignDocument, 'updatedByActorKind' | 'updatedByUserId'>,
+  ) {
     return manager
       .createQueryBuilder()
       .update(EsignDocument)
-      .set({ deletedAt, updatedAt: () => this.nextDraftVersion })
+      .set({ ...audit, deletedAt, updatedAt: () => this.nextDraftVersion })
       .where('id = :id AND status = :status AND deleted_at IS NULL', {
         id,
         status: 'draft',

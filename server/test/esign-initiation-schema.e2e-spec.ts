@@ -58,7 +58,6 @@ describe('背景發起工作 schema', () => {
   });
   it('一般工作讀取不載入敏感 JSON，維護掃描索引涵蓋狀態與時間', async () => {
     await withJobs(async (ds) => {
-      await revertAfter(ds, 'BackgroundSignatureInitiation1793750401000');
       await insertJob(ds);
       const job = await ds.manager.findOneByOrFail(EsignInitiationJob, {
         id: 1,

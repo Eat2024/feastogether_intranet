@@ -249,3 +249,13 @@ await authz.assignRoles('esign', {
 - 改以process-scoped `caffeinate -is`定向重跑受影響套件：security 2 suites／8 tests、schema 2 suites／19 tests全綠。其餘套件保留完整執行通過證據；不宣稱合併後曾有單次完整綠燈，09最終整合統一回歸。
 - 文件actor MySQL案例涵蓋NULL-aware CHECK、歷史employee/legacy_unknown回填、document未知最後actor、不可變雜湊/簽署證據保留、up/down/reapply與受保護資料拒絕down。HTTP涵蓋create/manage/read-all矩陣、可信部門與員工覆寫拒絕、原creator/department保留、草稿狀態、備註/欄位/簽署人真actor、被指定user_id不變、撤權建立人canManage=false及role=all。
 - 隔離MySQL `127.0.0.1:13328`、`feastogether_intranet_test_f*`與Redis測試設定僅存ignored檔；沒有操作正式/UAT資料。07/08尚待生命週期與匯出actor遷移，09 readiness前不能宣稱028全業務已切換。
+
+
+## 028-07 生命週期 actor 交接
+
+- 發起／重試／停止／補簽／提醒與工作 latest/poll/issues/input、通知詳情及補簽邀請，全數使用真 Actor 並重核當前 manage 與資源範圍；Super 不繞過狀態、期限、busy、通知節流或證據規則。
+- `EsignLifecycleActors1793923202000`：initiation job 新 created actor kind，employee 必有 user、Super 必為 NULL；通知新增 employee/super_user/system，歷史有 user 回填 employee、無 user 回填 system。新增 CHECK 與禁止破壞 actor/授權稽核的 down；schema.sql 以新隔離庫真實套用後 dump。
+- worker 由持久化 job 建立 actor，沿現有 lease/version/deadline 執行已受理工作；角色撤權不倒退取消，後續 HTTP 一律重新授權。同 job 自動重試／idempotent replay 保留提交者，人工新 job 保存新提交者。佇列只傳 job ID，producer／processor 無須另一份 actor。
+- job.createdBy 與通知 requestedBy 回傳 kind、nullable userId、顯示姓名；client types 同步 nullable，既有姓名顯示即可呈現 Super user，沒有新增 UI。系統通知 requestedBy 延用 null。mapper 的文件 actor 顯示沿06介面，生命週期 DTO 不含確認輸入、租約或憑證。
+- 管理動作更新最後 actor，原 creator/department 與 signing payload 保留。擴充回歸一併修正 softDeleteDraft：以同一次 SQL 保存 actor 與單調版本，避免未來時間版本倒退。
+- 已驗證新 lifecycle 三項（真 HTTP→Bull WorkerModule→poll、撤權、跨 actor 重試）、schema9 suites/48 tests、unit128 suites/1309 tests、root build/lint與client bundle檢查。使用 ignored 測試庫 g／Redis DB7，沒有新 env、dependency、正式資料或部署。完整security32 suites/212 tests全綠（135.3秒），既有initiation鎖／續租／retry／完整性合計48項分輪通過；client test4項通過。08匯出與09最終切換仍需接續。

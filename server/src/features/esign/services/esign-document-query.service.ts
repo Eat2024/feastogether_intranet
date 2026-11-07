@@ -227,9 +227,7 @@ export class EsignDocumentQueryService {
       readable.createdByUserId === null
         ? Promise.resolve(null)
         : this.users.findById(readable.createdByUserId, manager),
-      userId === undefined
-        ? Promise.resolve(false)
-        : this.canExportDocument(readable, userId),
+      this.canExportDocument(readable, actor),
     ]);
     let sourceFile: EsignSourceFileDto | undefined;
     if (source) {
@@ -242,10 +240,9 @@ export class EsignDocumentQueryService {
     const common = {
       ...summary,
       canExport,
-      exportSummary:
-        canExport && userId !== undefined
-          ? await this.exports.documentSummary(documentId, userId)
-          : null,
+      exportSummary: canExport
+        ? await this.exports.documentSummary(documentId, actor)
+        : null,
       sourceFile,
       signStartAt: readable.signStartAt?.toISOString() ?? null,
       signEndAt: readable.signEndAt?.toISOString() ?? null,
@@ -393,14 +390,13 @@ export class EsignDocumentQueryService {
   }
 
   /** 匯出資料與一般詳情分離授權，不產生匯出紀錄或回傳管理憑證。 */
-  async exportDocument(documentId: number, userId: number) {
-    await this.authorization.requirePermissions({ kind: 'employee', userId }, [
-      'esign.export.read',
-    ]);
+  async exportDocument(documentId: number, actor: Actor) {
+    await this.authorization.requirePermissions(actor, ['esign.export.read']);
     const manager = this.mysql.getManager();
-    const document = await this.policy.checkDepartmentDocument(
+    const document = await this.policy.exportDocument(
       await this.documents.findById(documentId, manager),
-      userId,
+      actor,
+      'esign.export.read',
       manager,
     );
     if (document.status === 'draft') {
@@ -414,31 +410,33 @@ export class EsignDocumentQueryService {
     ]);
     return {
       ...this.mapper.excelExportDocument(document, creator, signers),
-      exportSummary: await this.exports.documentSummary(documentId, userId),
+      exportSummary: await this.exports.documentSummary(documentId, actor),
       status: this.mapper.documentSummary(document, this.count(signers)).status,
     };
   }
 
   /** UI 旗標也要有匯出能力；只有缺能力可轉 false，目錄或 DB 故障仍拒絕。 */
-  private async canExportDocument(document: EsignDocument, userId: number) {
+  private async canExportDocument(document: EsignDocument, actor: Actor) {
     try {
-      await this.authorization.requirePermissions(
-        { kind: 'employee', userId },
-        ['esign.export.read'],
+      await this.policy.exportDocument(
+        document,
+        actor,
+        'esign.export.read',
+        this.mysql.getManager(),
       );
+      return true;
     } catch (error) {
       if (
         error instanceof AppException &&
-        error.code === 'AUTHORIZATION_DENIED'
+        [
+          'AUTHORIZATION_DENIED',
+          'ESIGN_RESOURCE_NOT_FOUND',
+          'ESIGN_DEPARTMENT_UNAVAILABLE',
+        ].includes(error.code)
       )
         return false;
       throw error;
     }
-    return this.policy.canExportDocument(
-      document,
-      userId,
-      this.mysql.getManager(),
-    );
   }
 
   private count(signers: Array<{ status: string }>) {

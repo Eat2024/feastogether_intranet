@@ -102,9 +102,18 @@ export interface ExportStaging {
 @Index('idx_esign_export_jobs_signer_created', ['signerId', 'createdAt', 'id'])
 @Check(
   'chk_esign_export_jobs_record_type',
-  "(`export_type` <> 'excel' OR (`conditions_json` IS NOT NULL AND `created_by_user_id` IS NOT NULL AND `signer_id` IS NULL)) AND (`export_type` <> 'pdf' OR (`signer_id` IS NOT NULL AND `conditions_json` IS NULL)) AND (`export_type` IN ('excel','pdf') OR (`created_by_user_id` IS NOT NULL AND `signer_id` IS NULL AND `conditions_json` IS NULL))",
+  "(export_type='pdf' AND signer_id IS NOT NULL AND conditions_json IS NULL AND ((created_by_actor_kind='employee' AND created_by_user_id IS NOT NULL) OR (created_by_actor_kind='external_signer' AND created_by_user_id IS NULL))) OR (export_type IN ('excel','signed_copies_zip') AND signer_id IS NULL AND ((export_type='excel' AND conditions_json IS NOT NULL) OR (export_type='signed_copies_zip' AND conditions_json IS NULL)) AND ((created_by_actor_kind='employee' AND created_by_user_id IS NOT NULL) OR (created_by_actor_kind='super_user' AND created_by_user_id IS NULL)))",
 )
 export class EsignExportJob {
+  @Column({
+    name: 'created_by_actor_kind',
+    type: 'varchar',
+    length: 20,
+    default: 'employee',
+    comment: '實際匯出操作者種類',
+  })
+  createdByActorKind!: 'employee' | 'super_user' | 'external_signer';
+
   @Column({
     name: 'download_file_name',
     type: 'varchar',
@@ -258,7 +267,7 @@ export class EsignExportJob {
     name: 'created_by_user_id',
     type: 'bigint',
     nullable: true,
-    comment: '建立員工 ID，NULL 為外部簽署人本人下載',
+    comment: '匯出員工 ID，NULL 為 Super user 或外部簽署人',
   })
   createdByUserId!: number | null;
 

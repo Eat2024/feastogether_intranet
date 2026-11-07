@@ -44,6 +44,35 @@ export class EsignAccessPolicyService {
   ) {}
 
   /** 功能能力與資源範圍分開；只放寬範圍，不放寬文件狀態。 */
+  /** null 代表明確 export.all；一般員工仍須目前可信部門。 */
+  async exportScope(
+    actor: Actor,
+    capability: 'esign.export.read' | 'esign.export.create',
+    manager: EntityManager,
+  ): Promise<string | null> {
+    await this.authorization.requirePermissions(actor, [capability], manager);
+    if (await this.hasPermission(actor, 'esign.export.all', manager))
+      return null;
+    if (actor.kind !== 'employee') throw this.notFound();
+    return (await this.requireDepartment(actor.userId, manager)).departmentCode;
+  }
+
+  async exportDocument(
+    document: EsignDocument | null,
+    actor: Actor,
+    capability: 'esign.export.read' | 'esign.export.create',
+    manager: EntityManager,
+  ): Promise<EsignDocument> {
+    const department = await this.exportScope(actor, capability, manager);
+    if (
+      !document ||
+      document.deletedAt ||
+      (department !== null && document.createdByDepartmentCode !== department)
+    )
+      throw this.notFound();
+    return document;
+  }
+
   async readableForActor(
     document: EsignDocument | null,
     actor: Actor,

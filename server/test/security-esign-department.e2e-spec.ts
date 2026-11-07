@@ -356,6 +356,7 @@ describe('Spec017 一般匯出直接網址安全邊界', () => {
       manager.create(EsignExportJob, {
         publicId: randomUUID(),
         documentId: documents[0].id,
+        createdByActorKind: 'external_signer',
         createdByUserId: null,
         signerId: signers[0].id,
         exportType: 'pdf',

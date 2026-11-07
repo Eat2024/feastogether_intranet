@@ -1,3 +1,6 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { CurrentActor } from '#app/framework/decorators/current-actor.decorator';
+import { AllowSuperUser } from '#app/framework/decorators/allow-super-user.decorator';
 import {
   RequirePermissions,
   RequireAnyPermission,
@@ -28,7 +31,6 @@ import {
   PreparedExportDownloadDto,
 } from '../dto/export.dto';
 import type { FastifyReply } from 'fastify';
-import { CurrentUserId } from '#app/framework/decorators/current-user-id.decorator';
 import { OriginGuard } from '#app/framework/guards/origin.guard';
 import { AppException } from '#app/common/errors/app.exception';
 import { AppErrors } from '#app/common/errors/app-errors';
@@ -40,6 +42,7 @@ import { EsignExportService } from '../services/esign-export.service';
 import { ExportQueryDto, ExportRequestDto } from '../dto/export.dto';
 
 @RequirePermissions('esign.export.read')
+@AllowSuperUser()
 @Controller('esign')
 export class ExportsController {
   constructor(
@@ -56,7 +59,7 @@ export class ExportsController {
   @ApiOperation({
     summary: '準備當次匯出下載',
     description:
-      '需有效員工 session、同源 Origin，以及同部門已發起且未刪除的文件。驗證名稱並補上 Excel／ZIP 副檔名；Excel 空白回 null，ZIP 空白沿用成果名稱與原下載路徑。ZIP 需提供 exportId、fileId，確認成果可用後回傳同源下載資訊。ZIP 準備成功時僅首次保存下載檔名快照，之後改名下載不覆寫；不產檔、不新增歷史列。Excel 由記錄匯出 API 保存檔名。',
+      '需有效 actor session 與同源 Origin；Excel 需要 export.create，ZIP 需要 export.read；預設同部門，export.all 可跨部門。文件須已發起且未刪除。驗證名稱並補上 Excel／ZIP 副檔名；Excel 空白回 null，ZIP 空白沿用成果名稱與原下載路徑。ZIP 需提供 exportId、fileId，確認成果可用後回傳同源下載資訊。ZIP 準備成功時僅首次保存下載檔名快照，之後改名下載不覆寫；不產檔、不新增歷史列。Excel 由記錄匯出 API 保存檔名。',
   })
   @ApiOkResponse({ type: PreparedExportDownloadDto })
   @ApiResponse({
@@ -64,11 +67,12 @@ export class ExportsController {
     description:
       'INVALID_REQUEST：檔名、類型或欄位不合法；文件 ID 沿用既有錯誤',
   })
-  @ApiResponse({ status: 401, description: '需有效員工 session' })
+  @ApiResponse({ status: 401, description: '需有效 actor session' })
   @ApiResponse({ status: 403, description: 'CSRF_ORIGIN_REJECTED：來源不允許' })
   @ApiResponse({
     status: 404,
-    description: 'ESIGN_RESOURCE_NOT_FOUND：文件不存在、草稿、已刪除或非同部門',
+    description:
+      'ESIGN_RESOURCE_NOT_FOUND：文件不存在、草稿、已刪除或超出授權範圍',
   })
   @ApiResponse({
     status: 409,
@@ -80,31 +84,31 @@ export class ExportsController {
   })
   prepareDownload(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body() body: PrepareExportDownloadDto,
   ): Promise<PreparedExportDownloadDto> {
-    return this.exports.prepareDownload(numericId(id), userId, body);
+    return this.exports.prepareDownload(numericId(id), actor, body);
   }
 
   // 查詢可匯出簽署副本的文件。
   @Get('exportable-documents') list(
     @Query() query: ExportQueryDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
-    return this.exports.listDocuments(query, userId);
+    return this.exports.listDocuments(query, actor);
   }
 
-  // 由同部門員工申請文件副本 ZIP 匯出，回傳既有或新建的匯出狀態。
+  // 由具 create 能力且文件在授權範圍的 actor申請文件副本 ZIP 匯出，回傳既有或新建的匯出狀態。
   @RequirePermissions('esign.export.create')
   @Post('documents/:documentId/exports')
   @UseGuards(OriginGuard)
   async request(
     @Param('documentId') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body() _body: ExportRequestDto,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const result = await this.exports.request(numericId(id), userId);
+    const result = await this.exports.request(numericId(id), actor);
     reply.status(result.status === 'completed' ? 200 : 202);
     return result;
   }
@@ -113,22 +117,22 @@ export class ExportsController {
   @Get('documents/:documentId/exports/:exportId') detail(
     @Param('documentId') id: string,
     @Param('exportId') exportId: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ) {
-    return this.exports.detail(numericId(id), exportId, userId);
+    return this.exports.detail(numericId(id), exportId, actor);
   }
 
-  // 由同部門員工重試文件副本匯出工作。
+  // 由具 create 能力且文件在授權範圍的 actor重試文件副本匯出工作。
   @RequirePermissions('esign.export.create')
   @Post('documents/:documentId/exports/:exportId/retries')
   @UseGuards(OriginGuard)
   async retry(
     @Param('documentId') id: string,
     @Param('exportId') exportId: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const result = await this.exports.retry(numericId(id), exportId, userId);
+    const result = await this.exports.retry(numericId(id), exportId, actor);
     reply.status(result.status === 'completed' ? 200 : 202);
     return result;
   }
@@ -138,7 +142,7 @@ export class ExportsController {
   async download(
     @Param('documentId') id: string,
     @Param('exportId') exportId: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Param('fileId') fileId: string,
     @Query() query: ExportDownloadQueryDto,
     @Headers('range') range: string | undefined,
@@ -149,7 +153,7 @@ export class ExportsController {
       numericId(id),
       exportId,
       numericId(fileId),
-      userId,
+      actor,
     );
     const size = Number(file.fileSize);
     const etag = `"${file.sha256}"`;
@@ -176,6 +180,8 @@ export class ExportsController {
       await this.exports.recordDownloadFileName(
         file.exportJobId!,
         file.originalFileName ?? 'signed-copies.zip',
+        numericId(id),
+        actor,
       );
     if (selected)
       reply

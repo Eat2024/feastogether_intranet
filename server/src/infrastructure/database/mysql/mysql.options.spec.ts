@@ -95,6 +95,7 @@ describe('buildMysqlOptions', () => {
       'SuperUserAccess1793836802000',
       'ModuleAuthorization1793923200000',
       'EsignDocumentActors1793923201000',
+      'EsignExportActors1793923203000',
     ]);
   });
 

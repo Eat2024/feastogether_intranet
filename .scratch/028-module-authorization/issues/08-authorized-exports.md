@@ -4,7 +4,7 @@
 
 **Blocked by:** [028-06](06-cross-department-documents.md)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Source:** [Spec](../../../specs/028-module-authorization/spec.md)、[Plan](../../../specs/028-module-authorization/plan.md)、[Tasks](../../../specs/028-module-authorization/tasks.md)、[API 契約](../../../specs/028-module-authorization/contracts/api-behavior.md)、[權限目錄](../../../specs/028-module-authorization/contracts/permissions.md)、[維運契約](../../../specs/028-module-authorization/contracts/operations.md)
 

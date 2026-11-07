@@ -1,3 +1,5 @@
+import { AppException } from '#app/common/errors/app.exception';
+import { AppErrors } from '#app/common/errors/app-errors';
 import { User } from '#app/features/users/entities/user.entity';
 import { EsignDocument } from '../entities/esign-document.entity';
 import { EsignSigner } from '../entities/esign-signer.entity';
@@ -60,7 +62,7 @@ function setup(doc = document()) {
     ),
     readableForActor: jest.fn(() => Promise.resolve(doc)),
     checkDepartmentDocument: jest.fn(() => Promise.resolve(doc)),
-    canExportDocument: jest.fn(() => Promise.resolve(true)),
+    exportDocument: jest.fn(() => Promise.resolve(doc)),
     checkEsignCreator: jest.fn(),
     canManageDocument: jest.fn(
       (doc: EsignDocument, actor: { userId: number }) =>
@@ -289,7 +291,9 @@ describe('部門文件查詢', () => {
   });
   it('建立人詳情保留管理欄位；匯出能力獨立判斷', async () => {
     const s = setup();
-    s.policy.canExportDocument.mockResolvedValue(false);
+    s.policy.exportDocument.mockRejectedValue(
+      new AppException(...AppErrors.AUTHORIZATION_DENIED),
+    );
     const result = await s.service.detail(10, { kind: 'employee', userId: 1 });
     expect(result).toMatchObject({
       isCreator: true,
@@ -302,10 +306,14 @@ describe('部門文件查詢', () => {
   });
   it('export 視角先嚴格部門授權，使用完整 Excel DTO 而非管理詳情', async () => {
     const s = setup(document({ status: 'active' }));
-    const result = await s.service.exportDocument(10, 2);
-    expect(s.policy.checkDepartmentDocument).toHaveBeenCalledWith(
+    const result = await s.service.exportDocument(10, {
+      kind: 'employee',
+      userId: 2,
+    });
+    expect(s.policy.exportDocument).toHaveBeenCalledWith(
       expect.any(EsignDocument),
-      2,
+      { kind: 'employee', userId: 2 },
+      'esign.export.read',
       s.manager,
     );
     expect(result.signers[0]).toMatchObject({
@@ -318,7 +326,9 @@ describe('部門文件查詢', () => {
   });
   it('草稿即使同部門亦不可藉匯出視角取得完整個資', async () => {
     const s = setup();
-    await expect(s.service.exportDocument(10, 2)).rejects.toMatchObject({
+    await expect(
+      s.service.exportDocument(10, { kind: 'employee', userId: 2 }),
+    ).rejects.toMatchObject({
       status: 404,
     });
     expect(s.signers.findByDocument).not.toHaveBeenCalled();

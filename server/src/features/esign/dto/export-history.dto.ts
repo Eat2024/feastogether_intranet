@@ -73,6 +73,7 @@ export class ExportHistoryDocumentDto {
 
 /** 匯出人：員工有 employeeNo、email 為 null；外部簽署人相反。 */
 export class ExportedByDto {
+  kind!: 'employee' | 'super_user' | 'external_signer';
   name!: string;
   employeeNo!: string | null;
   email!: string | null;

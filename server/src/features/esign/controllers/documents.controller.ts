@@ -133,9 +133,7 @@ export class DocumentsController {
     @Query() query: ReadDocumentQueryDto,
   ) {
     if (query.view === 'export') {
-      if (actor.kind !== 'employee')
-        throw new AppException(...AppErrors.AUTH_ACTOR_NOT_ALLOWED);
-      return this.queries.exportDocument(this.id(id), actor.userId);
+      return this.queries.exportDocument(this.id(id), actor);
     }
     return this.queries.detail(this.id(id), actor);
   }

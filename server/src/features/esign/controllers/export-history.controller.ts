@@ -1,3 +1,6 @@
+import type { Actor } from '#app/features/auth/auth.types';
+import { CurrentActor } from '#app/framework/decorators/current-actor.decorator';
+import { AllowSuperUser } from '#app/framework/decorators/allow-super-user.decorator';
 import { RequirePermissions } from '#app/features/authorization/decorators/require-permissions.decorator';
 import {
   Body,
@@ -42,12 +45,13 @@ export class ExportHistoryController {
   constructor(private readonly history: EsignExportHistoryService) {}
 
   // 依類型以頁碼查詢同部門文件的匯出紀錄，附各類型總筆數。
+  @AllowSuperUser()
   @Get()
   @ApiOperation({
     summary: '查詢歷史匯出紀錄',
     description: [
       '**權限**',
-      '- 需有效員工 session，只可查看同部門文件的紀錄',
+      '- 需有效 actor session 與 export.read；預設同部門，export.all 可跨部門',
       '- 外部簽署 session 一律拒絕',
       '',
       '**排序與分頁**',
@@ -59,7 +63,7 @@ export class ExportHistoryController {
       '- `items`：只含查詢的 `type`',
       '- `total`：該類型的總筆數',
       '- `typeTotals`：各類型總筆數，與 items 套用相同 q、documentId 及可見範圍，不受目前 type 限制',
-      '- `exportedBy`：員工有 `employeeNo`、`email` 為 null；外部簽署人相反',
+      '- `exportedBy`：員工有 `employeeNo`、`email` 為 null；外部簽署人相反；Super user 的 employeeNo/email 均為 null，kind 明確區分操作者',
       '- `downloadFileName`：首次提供下載的檔名快照，尚未記錄為 null',
       '- `conditions`：只在 `excel` 出現',
       '- `signerPublicId`：只在 `pdf` 出現',
@@ -81,20 +85,21 @@ export class ExportHistoryController {
   @ApiResponse({ status: 401, description: '需有效員工 session' })
   list(
     @Query() query: ExportHistoryQueryDto,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ): Promise<ExportHistoryPageDto> {
-    return this.history.list(query, userId);
+    return this.history.list(query, actor);
   }
 
   // 新匯出 Excel 前回報並寫入紀錄；歷史重新下載不呼叫此端點。
   @RequirePermissions('esign.export.create')
+  @AllowSuperUser()
   @Post()
   @UseGuards(OriginGuard)
   @ApiOperation({
     summary: '記錄 Excel 匯出',
     description: [
       '**權限**',
-      '- 需有效員工 session 與同源請求，文件須同部門，不限建立人',
+      '- 需有效 actor session、export.create 與同源請求；預設同部門，export.all 可跨部門',
       '- 匯出人取自 session，不接受前端傳入',
       '',
       '**Body**',
@@ -134,19 +139,20 @@ export class ExportHistoryController {
     description: 'ESIGN_RESOURCE_NOT_FOUND：文件不存在、已刪除或仍是草稿',
   })
   record(
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
     @Body() body: CreateExcelExportRecordDto,
   ): Promise<ExportHistoryItemDto> {
-    return this.history.recordExcel(userId, body);
+    return this.history.recordExcel(actor, body);
   }
 
   // 依 Excel 紀錄取得文件目前的資料，供前端重新產生 Excel；唯讀。
+  @AllowSuperUser()
   @Get(':id/document')
   @ApiOperation({
     summary: '取得 Excel 重新下載資料',
     description: [
       '**權限**',
-      '- 需有效員工 session，同部門員工可用，不限建立人或原匯出人',
+      '- 需有效 actor session 與 export.read；預設同部門，export.all 可跨部門，不限原匯出人',
       '- 外部簽署 session 一律拒絕',
       '',
       '**規則**',
@@ -176,9 +182,9 @@ export class ExportHistoryController {
   })
   excelDocument(
     @Param('id') id: string,
-    @CurrentUserId() userId: number,
+    @CurrentActor() actor: Actor,
   ): Promise<ExcelExportDocumentDto> {
-    return this.history.excelDocument(id, userId);
+    return this.history.excelDocument(id, actor);
   }
 
   // 從單人 PDF 紀錄重新下載；不新增或改寫匯出歷史。

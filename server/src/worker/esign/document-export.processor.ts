@@ -62,6 +62,7 @@ export class DocumentExportProcessor
         await this.jobs.save(job, m);
         return null;
       }
+      // 已受理的工作沿用持久化提交 actor；不以文件建立人代填，也不重驗其後續撤權。
       job.status = 'processing';
       job.failureCode = null;
       job.leaseToken = generation;

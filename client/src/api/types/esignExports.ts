@@ -9,6 +9,7 @@ export type EsignExportStatus = 'pending' | 'waiting' | 'processing' | 'complete
 
 /** 一次 ZIP 匯出工作；範圍固定為受理當下所有已簽署的個人副本 */
 export interface EsignExportJob {
+  exportedBy: { kind: 'employee' | 'super_user' | 'external_signer'; name: string; employeeNo: string | null; email: string | null };
   id: string;
   documentId: string;
   status: EsignExportStatus;
@@ -62,8 +63,8 @@ interface ExportHistoryItemBase {
   /** 紀錄 id（ZIP 為匯出工作 id） */
   id: string;
   document: { id: string; title: string; docNumber: string };
-  /** 員工有 employeeNo、email 為 null；外部簽署人相反 */
-  exportedBy: { name: string; employeeNo: string | null; email: string | null };
+  /** 員工有 employeeNo、email 為 null；外部簽署人相反；Super user 兩者均為 null */
+  exportedBy: { kind: 'employee' | 'super_user' | 'external_signer'; name: string; employeeNo: string | null; email: string | null };
   exportedAt: string;
   /** 首次下載提供的檔名快照；null 為未記錄 */
   downloadFileName: string | null;

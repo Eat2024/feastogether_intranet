@@ -3,7 +3,7 @@
 # build context = repository root（共用 workspace lockfile）
 # ========================
 # Node ≥24.22.1
-FROM node:24.22.1-alpine AS builder
+FROM node:24.22.1-alpine AS deps
 
 WORKDIR /workspace
 RUN corepack enable
@@ -13,11 +13,19 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY .github/scripts/install-git-hooks.cjs ./.github/scripts/install-git-hooks.cjs
 COPY client/package.json ./client/package.json
 COPY server/package.json ./server/package.json
+# 完整依賴：build 需要 @nestjs/cli、typescript 等開發工具；只在此連網下載一次
 RUN pnpm install --frozen-lockfile --filter feastogether-intranet-server...
 
 # 複製後端原始碼並 build
+FROM deps AS builder
 COPY server ./server
 RUN pnpm --filter feastogether-intranet-server build
+
+# 執行期只需 dependencies：清掉 node_modules 後以同一份 store 離線重裝，不帶 jest、eslint、
+# @nestjs/cli 等開發工具。直接在既有 node_modules 改裝 --prod 不會移除 .pnpm 內的開發套件。
+FROM deps AS prod-deps
+RUN rm -rf node_modules server/node_modules \
+  && pnpm install --frozen-lockfile --prod --offline --filter feastogether-intranet-server...
 
 # ========================
 # Runtime stage
@@ -29,8 +37,8 @@ ENV NODE_ENV=production
 
 # server/node_modules 內的 pnpm symlink 指向 workspace root node_modules/.pnpm，
 # 兩層都必須保留；package.json 則供 Node subpath imports（#app/*）解析。
-COPY --from=builder /workspace/node_modules /workspace/node_modules
-COPY --from=builder /workspace/server/node_modules ./node_modules
+COPY --from=prod-deps /workspace/node_modules /workspace/node_modules
+COPY --from=prod-deps /workspace/server/node_modules ./node_modules
 COPY --from=builder /workspace/server/package.json ./
 COPY --from=builder /workspace/server/dist ./dist
 

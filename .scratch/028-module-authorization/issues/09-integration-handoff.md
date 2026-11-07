@@ -4,7 +4,7 @@
 
 **Blocked by:** [028-05](05-employee-role-assignment.md)、[028-07](07-lifecycle-actors.md)、[028-08](08-authorized-exports.md)、[027-08](../../027-super-user-access/issues/08-integration-handoff.md)
 
-**Status:** claimed
+**Status:** resolved
 
 **Source:** [Spec](../../../specs/028-module-authorization/spec.md)、[Plan](../../../specs/028-module-authorization/plan.md)、[Tasks](../../../specs/028-module-authorization/tasks.md)、[API 契約](../../../specs/028-module-authorization/contracts/api-behavior.md)、[權限目錄](../../../specs/028-module-authorization/contracts/permissions.md)、[維運契約](../../../specs/028-module-authorization/contracts/operations.md)
 
@@ -43,3 +43,9 @@
 - 完整security修正Swagger描述後38 suites／226 tests全通過；完整schema10 suites／49 tests全通過。完整root build、root lint（server271既有warnings／0errors，client lint通過）、client4tests與最後bundle檢查均通過。
 - 實際compiled Swagger63 paths無隱藏入口提示，保留actor wire契約；029三menu keys與OpenAPI no-store／actor／HTTP錯誤code已核對。
 - 狀態保留 `claimed` 供merger最終code-review與整合；正式部署兩項AC依前述外部前置保留未勾。
+
+### 2026-11-07 Repository 整合紀錄
+
+- 實作與最終驗收 tip `abea097`（`028-09-integration`，包含 legacy fixtures `19d1577` 與輕量重播修復 `bd7a59f`）已 fast-forward 合入 `028-module-authorization`；已核對 quickstart 的實測紀錄，本票 repository 實作與隔離驗收結案為 `resolved`，後續仍進行整合分支 code review。
+- unit 129 suites／1310 tests、business 56 suites／569 tests 與獨立 reconnect 1項、security 38 suites／226 tests、schema 10 suites／49 tests、root build／lint、client test 4項／bundle 均通過。
+- 真實核定名單與實際停止舊服務／切換部署兩項 AC 刻意保留未勾，沿前述外部維運前置交付；此結案不代表正式部署或核定指派已完成，不能以合成驗收替代。

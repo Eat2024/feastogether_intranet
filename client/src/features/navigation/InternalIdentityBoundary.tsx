@@ -12,7 +12,11 @@ import Typography from '@mui/material/Typography';
 import { usePathname } from 'next/navigation';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { clearInternalBusinessCache } from './authorization-cache';
-import { getActorIdentity, getIdentityBoundaryPhase } from './identity-adoption';
+import {
+  getActorIdentity,
+  getIdentityBoundaryPhase,
+  keepsBusinessSubtreeMounted,
+} from './identity-adoption';
 
 const CurrentAuthMeContext = createContext<AuthMe | null>(null);
 
@@ -27,14 +31,23 @@ function BoundaryStatus({
   offline = false,
   retry,
   retrying = false,
+  overlay = false,
 }: {
   error?: boolean;
   offline?: boolean;
   retry?: () => void;
   retrying?: boolean;
+  overlay?: boolean;
 }) {
   return (
-    <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 3 }}>
+    <Box
+      sx={{
+        minHeight: '100vh', display: 'grid', placeItems: 'center', p: 3,
+        ...(overlay && {
+          position: 'fixed', inset: 0, zIndex: 'modal', bgcolor: 'background.default',
+        }),
+      }}
+    >
       {error ? (
         <Alert
           severity="error"
@@ -59,7 +72,8 @@ export default function InternalIdentityBoundary({ children }: { children: React
   const pathname = usePathname();
   const queryClient = useQueryClient();
   const query = useGetMeQuery(pathname);
-  const [adoptedIdentity, setAdoptedIdentity] = useState<string | null>(null);
+  const [adopted, setAdopted] = useState<{ identity: string; me: AuthMe } | null>(null);
+  const adoptedIdentity = adopted?.identity ?? null;
   const incomingIdentity = query.data ? getActorIdentity(query.data) : null;
   const phase = getIdentityBoundaryPhase({
     queryStatus: query.status,
@@ -73,18 +87,19 @@ export default function InternalIdentityBoundary({ children }: { children: React
     if (phase !== 'adopting' || !incomingIdentity) return;
     let active = true;
     const adopt = async () => {
+      if (!query.data) return;
       if (adoptedIdentity === null) await Promise.resolve();
       else await clearInternalBusinessCache(queryClient);
-      if (active) setAdoptedIdentity(incomingIdentity);
+      if (active) setAdopted({ identity: incomingIdentity, me: query.data });
     };
     void adopt();
     return () => { active = false; };
-  }, [adoptedIdentity, incomingIdentity, phase, queryClient]);
+  }, [adoptedIdentity, incomingIdentity, phase, query.data, queryClient]);
 
-  if (phase === 'paused') {
+  if (phase === 'initial-paused') {
     return <BoundaryStatus error offline retry={() => { void query.refetch(); }} />;
   }
-  if (phase === 'error') {
+  if (phase === 'initial-error') {
     return (
       <BoundaryStatus
         error
@@ -94,7 +109,34 @@ export default function InternalIdentityBoundary({ children }: { children: React
       />
     );
   }
-  if (phase !== 'ready' || !query.data) return <BoundaryStatus />;
+  if (!keepsBusinessSubtreeMounted(phase)) return <BoundaryStatus />;
 
-  return <CurrentAuthMeContext.Provider value={query.data}>{children}</CurrentAuthMeContext.Provider>;
+  const blocked = phase !== 'ready';
+  const contextValue = blocked ? adopted?.me : query.data;
+  if (!contextValue) return <BoundaryStatus />;
+
+  return (
+    <CurrentAuthMeContext.Provider value={contextValue}>
+      <Box
+        inert={blocked || undefined}
+        aria-hidden={blocked || undefined}
+        sx={blocked ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
+      >
+        {children}
+      </Box>
+      {phase === 'revalidating' && <BoundaryStatus overlay />}
+      {phase === 'revalidation-paused' && (
+        <BoundaryStatus overlay error offline retry={() => { void query.refetch(); }} />
+      )}
+      {phase === 'revalidation-error' && (
+        <BoundaryStatus
+          overlay
+          error
+          offline={typeof navigator !== 'undefined' && !navigator.onLine}
+          retry={() => { void query.refetch(); }}
+          retrying={query.isFetching}
+        />
+      )}
+    </CurrentAuthMeContext.Provider>
+  );
 }

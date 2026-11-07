@@ -1,6 +1,14 @@
 import type { AuthMe } from '@/api/types';
 
-export type IdentityBoundaryPhase = 'loading' | 'paused' | 'error' | 'adopting' | 'ready';
+export type IdentityBoundaryPhase =
+  | 'initial-loading'
+  | 'initial-paused'
+  | 'initial-error'
+  | 'revalidating'
+  | 'revalidation-paused'
+  | 'revalidation-error'
+  | 'adopting'
+  | 'ready';
 export type EmptyNavigationPresentation = 'none' | 'expanded-message' | 'compact-tooltip';
 
 export const getActorIdentity = (me: AuthMe): string =>
@@ -14,12 +22,25 @@ export function getIdentityBoundaryPhase(input: {
   adoptedIdentity: string | null;
   incomingIdentity: string | null;
 }): IdentityBoundaryPhase {
-  if (input.fetchStatus === 'paused') return 'paused';
-  if (input.fetchStatus !== 'idle' || input.queryStatus === 'pending') return 'loading';
-  if (input.queryStatus === 'error' || !input.hasData || !input.incomingIdentity) return 'error';
+  const hasAdoptedIdentity = input.adoptedIdentity !== null;
+  if (input.fetchStatus === 'paused') {
+    return hasAdoptedIdentity ? 'revalidation-paused' : 'initial-paused';
+  }
+  if (input.fetchStatus !== 'idle' || input.queryStatus === 'pending') {
+    return hasAdoptedIdentity ? 'revalidating' : 'initial-loading';
+  }
+  if (input.queryStatus === 'error' || !input.hasData || !input.incomingIdentity) {
+    return hasAdoptedIdentity && input.hasData && input.incomingIdentity === input.adoptedIdentity
+      ? 'revalidation-error'
+      : 'initial-error';
+  }
   if (input.adoptedIdentity !== input.incomingIdentity) return 'adopting';
   return 'ready';
 }
+
+/** 同 actor 重驗保留 React subtree；初次載入及真正換 actor 才卸載。 */
+export const keepsBusinessSubtreeMounted = (phase: IdentityBoundaryPhase): boolean =>
+  phase === 'ready' || phase === 'revalidating' || phase.startsWith('revalidation-');
 
 export function getEmptyNavigationPresentation(
   status: 'empty' | 'ready',

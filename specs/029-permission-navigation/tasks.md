@@ -50,7 +50,7 @@
 - [x] T013 [US2] 在 `specs/029-permission-navigation/quickstart.md` B 補全 Super user→員工、登出、登入失敗保留身分、延遲舊回應及跨分頁聚焦測試腳本；驗收前置為 027 真實登入與單會話切換，而非前端偽造 actor。
 - [x] T014 [US2] 建立 `client/src/features/navigation/authorization-cache.ts` 精確清理 helper，先cancel再remove AUTH_ME、內部session與適用ESIGN_*白名單queries；取消完成後才導航／接新身分，不清外部簽署憑證、公開資料或建立持久session fingerprint。
 - [x] T015 [US2] 在 `client/src/features/super-user-login/SuperUserLoginForm.tsx` 與 `client/src/api/queries/auth.ts` 所承接的 027 成功登入/登出清理點加入 T014（以 027 最終實際位置為準，先核對不建立第二份流程）；失敗不清原身分，成功不恢復舊 session，不改 027 密碼錯誤401局部處理。
-- [x] T016 [US2] 在 `client/src/features/navigation/InternalIdentityBoundary.tsx` 比較記憶體內前後 actor identity；focus/route/refresh 重驗及 actor 切換期間先卸載全部業務子樹，清完舊內部資料才採用新快照，避免新 permissions 配舊 actor；不新增 BroadcastChannel、輪詢或裝置 cookie。
+- [x] T016 [US2] 在 `client/src/features/navigation/InternalIdentityBoundary.tsx` 比較記憶體內前後 actor identity；同 actor focus/route/refresh 重驗以 inert/遮蔽保留本機表單狀態，真正 actor 切換則先卸載業務子樹、清完舊內部資料才採用新快照，避免新 permissions 配舊 actor；不新增 BroadcastChannel、輪詢或裝置 cookie。
 - [ ] T017 [US2] 在 `specs/029-permission-navigation/quickstart.md` 記錄實際 Super user 三項可見、員工切回兩項、舊請求取消不覆蓋與外部流程不受清理影響的結果；檢查 menu/browser payload 不含入口原值、部署帳密、token、其他人資料或不存在管理頁。
 
 ## Phase 5: US3 權限變更與查詢失敗的導覽行為（P1）

@@ -52,6 +52,6 @@ Super user顯示全部三個真實業務項目，不出現角色管理、員工�
 
 ## 紀錄結果
 
-2026-11-07 自動驗證：`pnpm -C client test` 19 tests passed；`lint`、`build`、`check:bundle` 均通過。測試包含 auth/me 精確 DTO、actor與角色欄位拒絕、actor A→B／focus 採用邊界、401清理範圍、403合併與no-loop、paused/error及收合空狀態，以及同 module精確比對、多能力AND、空群組與重複key fail-closed。
+2026-11-07 自動驗證：`pnpm -C client test` 19 tests passed；`lint`、`build`、`check:bundle` 均通過。測試包含 auth/me 精確 DTO、actor與角色欄位拒絕、同 actor focus重驗保留掛載／actor A→B卸載採用邊界、401清理範圍、403合併與no-loop、paused/error及收合空狀態，以及同 module精確比對、多能力AND、空群組與重複key fail-closed。
 
 尚未在本機建立真實員工／Super user session 執行瀏覽器角色矩陣、聚焦競態、iframe 與 401／403 網路驗收；這些項目不宣稱完成。後續可附遮蔽敏感值的截圖／network摘要，不附真實隱藏入口或session。

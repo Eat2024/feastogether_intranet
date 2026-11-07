@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   getEmptyNavigationPresentation,
   getIdentityBoundaryPhase,
+  keepsBusinessSubtreeMounted,
 } from '../src/features/navigation/identity-adoption.ts';
 import {
   isAuthorizationQueryKey,
@@ -21,15 +22,25 @@ const phase = (overrides = {}) => getIdentityBoundaryPhase({
   ...overrides,
 });
 
-test('focus refetch 與 actor A→B 採用期間不掛載業務子樹', () => {
-  assert.equal(phase({ fetchStatus: 'fetching' }), 'loading');
+test('同 actor focus refetch 保留掛載但阻擋呈現，actor A→B 才卸載採用', () => {
+  const revalidating = phase({ fetchStatus: 'fetching' });
+  assert.equal(revalidating, 'revalidating');
+  assert.equal(keepsBusinessSubtreeMounted(revalidating), true);
   assert.equal(phase({ incomingIdentity: 'employee:2' }), 'adopting');
+  assert.equal(keepsBusinessSubtreeMounted('adopting'), false);
   assert.equal(phase(), 'ready');
+  assert.equal(keepsBusinessSubtreeMounted('ready'), true);
 });
 
-test('paused 與 error 會進入可重試狀態而非沿用舊資料', () => {
-  assert.equal(phase({ fetchStatus: 'paused' }), 'paused');
-  assert.equal(phase({ queryStatus: 'error', hasData: false, incomingIdentity: null }), 'error');
+test('同 actor paused/error 保留掛載並遮蔽，初次失敗不掛載', () => {
+  assert.equal(phase({ fetchStatus: 'paused' }), 'revalidation-paused');
+  assert.equal(keepsBusinessSubtreeMounted('revalidation-paused'), true);
+  assert.equal(phase({ queryStatus: 'error' }), 'revalidation-error');
+  assert.equal(keepsBusinessSubtreeMounted('revalidation-error'), true);
+  assert.equal(phase({
+    queryStatus: 'error', hasData: false, incomingIdentity: null, adoptedIdentity: null,
+  }), 'initial-error');
+  assert.equal(keepsBusinessSubtreeMounted('initial-error'), false);
 });
 
 test('無可用功能在展開與收合側欄都有可理解狀態', () => {

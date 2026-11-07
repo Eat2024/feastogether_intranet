@@ -2,7 +2,8 @@
 
 // 電子簽列表（後端資料）：GET /api/esign/documents?role=dep 取得目前員工所屬部門的文件，
 // 搜尋、篩選、排序與分頁依網址參數在前端處理。
-import { useGetDocumentsQuery, useGetMeQuery } from '@/api/queries';
+import { useGetDocumentsQuery } from '@/api/queries';
+import { useCurrentAuthMe } from '@/features/navigation/InternalIdentityBoundary';
 import LinkPagination from '@/components/LinkPagination';
 import SearchField from '@/components/SearchField';
 import FormsFilterBar from '@/features/forms/FormsFilterBar';
@@ -13,7 +14,7 @@ import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import DocumentsTable from './DocumentsTable';
 import {
@@ -28,12 +29,11 @@ import {
 
 export default function DocumentsListView() {
   const params = useSearchParams();
-  const pathname = usePathname();
   const filters = useMemo(() => parseDocumentFilters(params), [params]);
   const sort = useMemo(() => parseDocumentSort(params), [params]);
-  const { data: session } = useGetMeQuery(pathname);
+  const session = useCurrentAuthMe();
   const { data, isPending, isError, error, refetch, isFetching } = useGetDocumentsQuery(
-    { role: session?.user === null ? 'all' : 'dep' }, { enabled: !!session },
+    { role: session.user === null ? 'all' : 'dep' }, { enabled: true },
   );
 
   const docs = useMemo(() => {

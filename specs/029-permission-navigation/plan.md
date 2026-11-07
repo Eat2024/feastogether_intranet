@@ -68,7 +68,9 @@ specs/029-permission-navigation/
 client/src/components/sidebar/services.ts      # 集中路徑、link/group設定與已知導覽能力
 client/src/features/navigation/
   filter-visible-menu.ts                      # 純過濾／設定驗證，無HTTP
-  useVisibleMenuItems.ts                      # pathname、能力query與呈現狀態
+  InternalIdentityBoundary.tsx               # pathname能力query、actor採用與全域狀態
+  identity-adoption.ts                       # 可測的actor採用狀態機
+  useVisibleNavigation.ts                    # 已採用快照的可見選單
   authorization-cache.ts                      # 精確cancel/remove/invalidate helpers
 client/src/api/
   endpoints.ts + query-keys.ts + query-options.ts
@@ -86,7 +88,7 @@ client/src/features/super-user-login/           # 僅027成功／登出快取銜
 
 ## Phase 0 結論
 
-[research.md](research.md)已核對CKS選單與intranet實際SideNav、QueryClient預設、Axios envelope、EmbedBridge、iframe CSS及原型狀態。本人能力契約已與028同步，見[消費契約](contracts/authorization-consumer.md)。已解決並發查詢／舊快照、未知權限與403循環問題。
+[research.md](research.md)已核對CKS選單與intranet實際Sidebar、QueryClient預設、Axios envelope、EmbedBridge、iframe CSS及原型狀態。本人能力契約已與028同步，見[消費契約](contracts/authorization-consumer.md)。已解決並發查詢／舊快照、未知權限與403循環問題。
 
 ## Phase 1 設計與切片
 
@@ -109,4 +111,4 @@ client/src/features/super-user-login/           # 僅027成功／登出快取銜
 
 ## 驗證狀態
 
-目前只產出計畫與文件；無程式、schema、config修改。文件引用／placeholder／跨spec鍵值已做靜態檢查；lint/build、瀏覽器與實際API測試留待implementation。extensions.yml不存在，無前後置hooks。可進入speckit-tasks，實作依賴027／028先完成。
+前端程式、純函式測試與自動驗證已完成；未新增schema、環境變數或dependency。真實員工／Super user瀏覽器角色矩陣、入口網iframe及實際撤權／401／403網路驗收仍待可用環境，不宣稱完成。

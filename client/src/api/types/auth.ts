@@ -31,6 +31,16 @@ export interface AuthorizationModule {
 }
 
 /** GET auth/me 的共用目前登入者契約。 */
-export type AuthMe = (EmployeeSession | OtherActorSession) & {
+export type EmployeeAuthMe = EmployeeSession & {
   modules: AuthorizationModule[];
 };
+
+/** auth/me 的維護身分是精確契約；不沿用 auth/session 為隱藏邊界保留的寬鬆型別。 */
+export interface SuperUserAuthMe {
+  actor: { kind: 'super_user'; displayName: 'Super user' };
+  user: null;
+  expiresAt: string;
+  modules: AuthorizationModule[];
+}
+
+export type AuthMe = EmployeeAuthMe | SuperUserAuthMe;
